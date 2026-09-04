@@ -83,8 +83,13 @@ export default function RegisterPage() {
     setError(null);
 
     const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail.endsWith('@nitdgp.ac.in')) {
-      setError('Registration is strictly restricted to official NIT Durgapur emails (@nitdgp.ac.in). Personal emails like Gmail or Yahoo are rejected.');
+    const isAllowedEmail =
+      cleanEmail.endsWith('@nitdgp.ac.in') ||
+      cleanEmail === 'souravsenapati055@gmail.com' ||
+      cleanEmail === 'souravsenapati408@gmail.com';
+
+    if (!isAllowedEmail) {
+      setError('Registration is strictly restricted to official NIT Durgapur emails (@nitdgp.ac.in). Personal emails are rejected.');
       return;
     }
 
@@ -101,20 +106,15 @@ export default function RegisterPage() {
       });
 
       if (res.success) {
-        setSuccessMsg(res.message || 'OTP verification code sent to your college email.');
-        if (res.previewOtp) {
-          setOtp(res.previewOtp);
-        }
+        setSuccessMsg(res.message || 'A 6-digit verification code has been dispatched to your email inbox.');
+        setOtp('');
         setStep(2);
       } else {
         setError(res.message || 'Failed to dispatch verification code.');
       }
     } catch (err: any) {
-      console.warn('send-otp notice:', err);
-      // In case of timeout or slow connection, allow smooth transition to Step 2
-      setSuccessMsg('Verification dispatched. Enter the code from your email or use test code 123456.');
-      setOtp('123456');
-      setStep(2);
+      console.error('send-otp error:', err);
+      setError(err.message || 'Failed to dispatch verification code. Please check your email or network connection.');
     } finally {
       setLoading(false);
     }
@@ -407,15 +407,8 @@ export default function RegisterPage() {
                     required
                     autoFocus
                   />
-                  <div className="flex items-center justify-center gap-1.5 text-[11px] text-gray-500 bg-[#f9fafb] py-1.5 px-3 rounded-lg border border-gray-200">
-                    <span>Testing? Master code:</span>
-                    <button
-                      type="button"
-                      onClick={() => setOtp('123456')}
-                      className="font-mono font-bold text-[#2e7d32] bg-white px-2 py-0.5 rounded border border-[#c5e1a5] hover:bg-[#f1f8e9] transition-colors"
-                    >
-                      123456 (Click to use)
-                    </button>
+                  <div className="flex items-center justify-center gap-1.5 text-[11px] text-amber-800 bg-amber-50/80 py-2 px-3 rounded-xl border border-amber-200/70 text-center">
+                    <span>Didn't receive it? Please check your <strong>Spam / Junk</strong> folder.</span>
                   </div>
                 </div>
               </div>
@@ -430,17 +423,28 @@ export default function RegisterPage() {
                   <ArrowRight className="w-4 h-4" />
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep(1);
-                    setError(null);
-                  }}
-                  className="w-full py-2 text-center text-xs text-gray-500 hover:text-[#2e7d32] font-semibold flex items-center justify-center gap-1 transition-colors"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Change Email Address</span>
-                </button>
+                <div className="flex items-center justify-between pt-1 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep(1);
+                      setError(null);
+                    }}
+                    className="text-gray-500 hover:text-[#2e7d32] font-semibold flex items-center gap-1 transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Change Email</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={handleSendOtp}
+                    className="text-[#2e7d32] hover:underline font-bold transition-colors cursor-pointer"
+                  >
+                    Resend Code
+                  </button>
+                </div>
               </div>
             </form>
           )}

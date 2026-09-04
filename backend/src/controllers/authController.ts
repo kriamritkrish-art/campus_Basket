@@ -64,8 +64,7 @@ export class AuthController {
 
       res.status(200).json({
         success: true,
-        message: 'A 6-digit verification code has been dispatched to your official college email. Valid for 5 minutes.',
-        previewOtp: plainOtp
+        message: 'A 6-digit verification code has been dispatched to your official college email. Valid for 5 minutes.'
       });
     } catch (err) {
       next(err);

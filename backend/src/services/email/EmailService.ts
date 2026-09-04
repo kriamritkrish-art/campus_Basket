@@ -39,10 +39,14 @@ export class EmailService {
       try {
         const fromMatch = env.EMAIL_FROM.match(/^(.*?)\s*<(.+?)>$/);
         const senderName = fromMatch ? fromMatch[1].trim() : 'NIT Durgapur Campus Services';
-        const senderEmail = env.BREVO_SENDER_EMAIL || (fromMatch ? fromMatch[2].trim() : env.EMAIL_FROM);
+        const senderEmail = env.BREVO_SENDER_EMAIL || (fromMatch ? fromMatch[2].trim() : 'souravsenapati055@gmail.com');
 
-        fetch('https://api.brevo.com/v3/smtp/email', {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 7000);
+
+        const res = await fetch('https://api.brevo.com/v3/smtp/email', {
           method: 'POST',
+          signal: controller.signal,
           headers: {
             'accept': 'application/json',
             'api-key': env.BREVO_API_KEY,
@@ -54,20 +58,16 @@ export class EmailService {
             subject,
             htmlContent: html
           })
-        })
-          .then(async (res) => {
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-              console.warn('[EmailService] Brevo API responded with error:', data);
-            } else {
-              console.info(`[EmailService] Email delivered successfully via Brevo API to ${recipientEmail} (MessageId: ${(data as any).messageId || 'ok'})`);
-            }
-          })
-          .catch((err) => {
-            console.warn('[EmailService] Brevo API network notice:', err?.message || err);
-          });
+        });
+        clearTimeout(timeout);
 
-        return true;
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          console.warn('[EmailService] Brevo API responded with error:', data);
+        } else {
+          console.info(`[EmailService] Email delivered successfully via Brevo API to ${recipientEmail} (MessageId: ${(data as any).messageId || 'ok'})`);
+          return true;
+        }
       } catch (err: any) {
         console.warn('[EmailService] Brevo dispatch exception:', err?.message || err);
       }

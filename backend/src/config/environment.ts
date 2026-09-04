@@ -25,10 +25,10 @@ export const env = {
   SMTP_PORT: parseInt(process.env.SMTP_PORT || '587', 10),
   SMTP_USER: process.env.SMTP_USER || '',
   SMTP_PASSWORD: process.env.SMTP_PASSWORD || '',
-  EMAIL_FROM: process.env.EMAIL_FROM || 'NIT Durgapur Campus Services <services@nitdgp.ac.in>',
+  EMAIL_FROM: process.env.EMAIL_FROM || 'NIT Durgapur Campus Services <souravsenapati055@gmail.com>',
 
   BREVO_API_KEY: process.env.BREVO_API_KEY || '',
-  BREVO_SENDER_EMAIL: process.env.BREVO_SENDER_EMAIL || '',
+  BREVO_SENDER_EMAIL: process.env.BREVO_SENDER_EMAIL || 'souravsenapati055@gmail.com',
 
   GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY || '',
   REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',
