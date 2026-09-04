@@ -1,4 +1,11 @@
-const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+const getApiBase = () => {
+  let raw = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000').trim();
+  if (!raw.startsWith('http://') && !raw.startsWith('https://')) {
+    raw = `https://${raw}`;
+  }
+  return raw.replace(/\/+$/, '');
+};
+const API_BASE = getApiBase();
 
 export interface ApiResponse<T = any> {
   success: boolean;

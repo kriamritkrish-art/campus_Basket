@@ -9,13 +9,21 @@ const nextConfig = {
       'drive.google.com',
       'lh3.googleusercontent.com'
     ],
+    remotePatterns: [
+      { protocol: 'https', hostname: '**' },
+      { protocol: 'http', hostname: '**' }
+    ],
   },
   async rewrites() {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+    let rawUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000').trim();
+    if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://') && !rawUrl.startsWith('/')) {
+      rawUrl = `https://${rawUrl}`;
+    }
+    const cleanUrl = rawUrl.replace(/\/+$/, '');
     return [
       {
         source: '/api/:path*',
-        destination: `${backendUrl}/api/:path*`,
+        destination: `${cleanUrl}/api/:path*`,
       },
     ];
   },
