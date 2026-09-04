@@ -3,24 +3,32 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../lib/api';
 import { Product } from '../../types';
+import { FALLBACK_STORE_PRODUCTS } from '../../lib/fallbackCatalog';
 import { ProductCard } from '../../components/products/ProductCard';
 import { BookOpen, Search } from 'lucide-react';
 
+const DEFAULT_ESSENTIALS_PRODUCTS = FALLBACK_STORE_PRODUCTS.filter(
+  (p) => p.categoryId === 'cat_essentials' || p.category?.slug === 'essentials'
+);
+
 export default function EssentialsPage() {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>(DEFAULT_ESSENTIALS_PRODUCTS);
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     async function loadEssentials() {
       try {
         const query = search ? `&search=${encodeURIComponent(search)}` : '';
         const res = await apiRequest(`/api/products?category=essentials${query}`);
-        if (res.success && res.data) {
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
           setProducts(res.data);
+        } else if (!search) {
+          setProducts(DEFAULT_ESSENTIALS_PRODUCTS);
         }
       } catch (err) {
         console.warn(err);
+        if (!search) setProducts(DEFAULT_ESSENTIALS_PRODUCTS);
       } finally {
         setLoading(false);
       }

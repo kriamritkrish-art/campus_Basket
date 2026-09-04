@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { apiRequest } from '../lib/api';
 import { Product } from '../types';
+import { FALLBACK_STORE_PRODUCTS } from '../lib/fallbackCatalog';
 import { ProductCard } from '../components/products/ProductCard';
 import { LaundryBookingDrawer } from '../components/laundry/LaundryBookingDrawer';
 import {
@@ -144,8 +145,8 @@ const LAUNDRY_SERVICES_LIST = [
 
 export default function HomePage() {
   const [activeCategory, setActiveCategory] = useState<CategoryKey>('food');
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<Product[]>(FALLBACK_STORE_PRODUCTS);
+  const [loading, setLoading] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedSubfilter, setSelectedSubfilter] = useState('all');
 
@@ -153,11 +154,14 @@ export default function HomePage() {
     async function loadCatalog() {
       try {
         const res = await apiRequest('/api/products?limit=50');
-        if (res.success && res.data) {
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
           setProducts(res.data);
+        } else {
+          setProducts(FALLBACK_STORE_PRODUCTS);
         }
       } catch (err) {
-        console.warn('Failed to fetch catalog:', err);
+        console.warn('Failed to fetch catalog from backend, using robust client catalog:', err);
+        setProducts(FALLBACK_STORE_PRODUCTS);
       } finally {
         setLoading(false);
       }

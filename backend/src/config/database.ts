@@ -38,6 +38,8 @@ if (env.NODE_ENV !== 'production') {
   global.rawPrismaInstance = rawPrisma;
 }
 
+import { autoSeedDatabase } from '../services/seedService';
+
 global.isDatabaseHealthy = false;
 
 export async function connectDatabase(): Promise<boolean> {
@@ -45,6 +47,12 @@ export async function connectDatabase(): Promise<boolean> {
     await rawPrisma.$connect();
     global.isDatabaseHealthy = true;
     console.info('[Database] Connected successfully to MySQL database via Prisma');
+
+    // Automatically check and seed empty database on boot
+    autoSeedDatabase(rawPrisma).catch((err) => {
+      console.warn('[Database] Auto-seed background error:', err);
+    });
+
     return true;
   } catch (err: any) {
     global.isDatabaseHealthy = false;

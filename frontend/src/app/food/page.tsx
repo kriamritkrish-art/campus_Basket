@@ -3,24 +3,32 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '../../lib/api';
 import { Product } from '../../types';
+import { FALLBACK_STORE_PRODUCTS } from '../../lib/fallbackCatalog';
 import { ProductCard } from '../../components/products/ProductCard';
 import { Utensils, Clock, Search, Filter } from 'lucide-react';
 
+const DEFAULT_FOOD_PRODUCTS = FALLBACK_STORE_PRODUCTS.filter(
+  (p) => p.categoryId === 'cat_food' || p.category?.slug === 'food'
+);
+
 export default function FoodPage() {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>(DEFAULT_FOOD_PRODUCTS);
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     async function loadFood() {
       try {
         const query = search ? `&search=${encodeURIComponent(search)}` : '';
         const res = await apiRequest(`/api/products?category=food${query}`);
-        if (res.success && res.data) {
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
           setProducts(res.data);
+        } else if (!search) {
+          setProducts(DEFAULT_FOOD_PRODUCTS);
         }
       } catch (err) {
         console.warn(err);
+        if (!search) setProducts(DEFAULT_FOOD_PRODUCTS);
       } finally {
         setLoading(false);
       }
