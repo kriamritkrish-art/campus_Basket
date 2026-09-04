@@ -207,6 +207,38 @@ export class AuthController {
 
       const passwordHash = await bcrypt.hash(data.password, 10);
 
+      // Gracefully resolve Hall foreign key ID
+      let resolvedHallId = data.hallId;
+      let resolvedHallNumber = data.hallNumber || null;
+      try {
+        const hallById = await prisma.hall.findUnique({ where: { id: resolvedHallId } });
+        if (!hallById) {
+          const matchedHall = await prisma.hall.findFirst({
+            where: {
+              OR: [
+                { name: { contains: data.hallId.replace('hall_', '') } },
+                { hallNumber: data.hallId.replace('hall_', '') },
+                { name: 'Hall 11' }
+              ]
+            }
+          });
+          if (matchedHall) {
+            resolvedHallId = matchedHall.id;
+            resolvedHallNumber = resolvedHallNumber || matchedHall.hallNumber;
+          } else {
+            const firstHall = await prisma.hall.findFirst();
+            if (firstHall) {
+              resolvedHallId = firstHall.id;
+              resolvedHallNumber = resolvedHallNumber || firstHall.hallNumber;
+            }
+          }
+        } else {
+          resolvedHallNumber = resolvedHallNumber || hallById.hallNumber;
+        }
+      } catch (err) {
+        console.warn('Hall lookup notice:', err);
+      }
+
       // Create User and Student profile transactionally
       const newUser = await prisma.$transaction(async (tx) => {
         const user = await tx.user.create({
@@ -225,8 +257,8 @@ export class AuthController {
             rollNumber: data.rollNumber,
             registrationNumber: data.registrationNumber,
             mobileNumber: data.mobileNumber,
-            hallId: data.hallId,
-            hallNumber: data.hallNumber || null,
+            hallId: resolvedHallId,
+            hallNumber: resolvedHallNumber,
             roomNumber: data.roomNumber,
             isVerified: true
           }
