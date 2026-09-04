@@ -1,0 +1,694 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  ADMIN
+  SERVICE_PROVIDER
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAYMENT_FAILED
+  CONFIRMED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  REFUND_REQUESTED
+  REFUNDED
+}
+
+enum LaundryStatus {
+  REQUESTED
+  ACCEPTED
+  PICKUP_SCHEDULED
+  PICKUP_VERIFIED
+  CLOTHES_COLLECTED
+  IN_LAUNDRY
+  WASHING
+  DRYING
+  IRONING
+  READY
+  DELIVERY_SCHEDULED
+  DELIVERY_VERIFIED
+  COMPLETED
+  CANCELLED
+}
+
+enum LaundryOtpType {
+  PICKUP
+  DELIVERY
+}
+
+enum PaymentMethod {
+  RAZORPAY
+  CASH_ON_DELIVERY
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  SUCCESS
+  FAILED
+  REFUND_REQUESTED
+  REFUNDED
+}
+
+enum TicketCategory {
+  PAYMENT
+  LAUNDRY
+  FOOD
+  DELIVERY
+  ACCOUNT
+  OTHER
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+model User {
+  id           String           @id @default(cuid())
+  email        String           @unique
+  passwordHash String
+  role         Role             @default(STUDENT)
+  isActive     Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  student      Student?
+  admin        Admin?
+  provider     ServiceProvider?
+  notifications Notification[]
+  sessions     Session[]
+  auditLogs    AuditLog[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Student {
+  id                 String           @id @default(cuid())
+  userId             String           @unique
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName           String
+  rollNumber         String           @unique
+  registrationNumber String           @unique
+  mobileNumber       String           @unique
+  hallId             String?
+  hall               Hall?            @relation(fields: [hallId], references: [id])
+  hallNumber         String?
+  roomNumber         String
+  isVerified         Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  orders             Order[]
+  laundryOrders      LaundryOrder[]
+  cart               Cart?
+  favorites          Favorite[]
+  reviews            Review[]
+  supportTickets     SupportTicket[]
+  couponUsages       CouponUsage[]
+  receipts           Receipt[]
+
+  @@index([rollNumber])
+  @@index([registrationNumber])
+  @@index([mobileNumber])
+}
+
+model Admin {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName    String
+  permissions String   @default("ALL")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ServiceProvider {
+  id              String         @id @default(cuid())
+  userId          String         @unique
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName        String
+  mobileNumber    String         @unique
+  serviceCategory String         // e.g. FOOD, FRUITS, LAUNDRY, ESSENTIALS
+  assignedZones   String         @default("ALL") // JSON array or comma separated
+  activeStatus    Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  orders          Order[]
+  laundryOrders   LaundryOrder[]
+  products        Product[]
+
+  @@index([serviceCategory])
+}
+
+model Hall {
+  id                   String   @id @default(cuid())
+  name                 String   @unique
+  hallNumber           String
+  isActive             Boolean  @default(true)
+  isServiceable        Boolean  @default(true)
+  serviceZoneId        String?
+  serviceZone          ServiceZone? @relation(fields: [serviceZoneId], references: [id])
+  deliveryInstructions String?  @db.Text
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  students             Student[]
+  serviceZoneHalls     ServiceZoneHall[]
+}
+
+model ServiceZone {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  polygonCoordinates String  @db.Text // JSON array of [lat, lng] coordinates
+  isActive          Boolean  @default(true)
+  availableServices String   @default("ALL") // JSON array of services e.g. ["FOOD","FRUITS","LAUNDRY","ESSENTIALS"]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  halls             Hall[]
+  serviceZoneHalls  ServiceZoneHall[]
+}
+
+model ServiceZoneHall {
+  id            String      @id @default(cuid())
+  serviceZoneId String
+  hallId        String
+  serviceZone   ServiceZone @relation(fields: [serviceZoneId], references: [id], onDelete: Cascade)
+  hall          Hall        @relation(fields: [hallId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceZoneId, hallId])
+}
+
+model Category {
+  id           String    @id @default(cuid())
+  name         String    @unique
+  slug         String    @unique
+  description  String?   @db.Text
+  image        String?   @db.Text
+  isActive     Boolean   @default(true)
+  displayOrder Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  products     Product[]
+  coupons      Coupon[]
+
+  @@index([slug])
+}
+
+model Product {
+  id                String         @id @default(cuid())
+  name              String
+  slug              String         @unique
+  categoryId        String
+  category          Category       @relation(fields: [categoryId], references: [id])
+  description       String?        @db.Text
+  price             Decimal        @db.Decimal(10, 2)
+  discountPrice     Decimal?       @db.Decimal(10, 2)
+  unit              String         @default("piece") // kg, dozen, plate, piece, pack
+  sku               String?        @unique
+  stock             Int            @default(0)
+  lowStockThreshold Int            @default(5)
+  availability      Boolean        @default(true)
+  isFeatured        Boolean        @default(false)
+  providerId        String?
+  provider          ServiceProvider? @relation(fields: [providerId], references: [id])
+  availableToday    Boolean        @default(true)
+  startTime         String?        // e.g. "12:00"
+  endTime           String?        // e.g. "22:00"
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  images            ProductImage[]
+  inventory         Inventory?
+  cartItems         CartItem[]
+  orderItems        OrderItem[]
+  favorites         Favorite[]
+  reviews           Review[]
+
+  @@index([categoryId])
+  @@index([slug])
+  @@index([isFeatured])
+}
+
+model ProductImage {
+  id                String   @id @default(cuid())
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  googleDriveFileId String
+  googleDriveUrl    String   @db.Text
+  fileName          String
+  mimeType          String
+  fileSize          Int
+  isPrimary         Boolean  @default(false)
+  uploadedBy        String
+  createdAt         DateTime @default(now())
+
+  @@index([productId])
+  @@index([googleDriveFileId])
+}
+
+model Inventory {
+  id                String   @id @default(cuid())
+  productId         String   @unique
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  currentStock      Int      @default(0)
+  lowStockThreshold Int      @default(5)
+  isOutOfStock      Boolean  @default(false)
+  lastRestockedAt   DateTime?
+  updatedAt         DateTime @updatedAt
+}
+
+model Cart {
+  id        String     @id @default(cuid())
+  studentId String     @unique
+  student   Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  items     CartItem[]
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int      @default(1)
+  unitPrice Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId])
+}
+
+model Order {
+  id                  String               @id @default(cuid())
+  orderNumber         String               @unique // e.g. NIT-2026-000001
+  studentId           String
+  student             Student              @relation(fields: [studentId], references: [id])
+  providerId          String?
+  provider            ServiceProvider?     @relation(fields: [providerId], references: [id])
+  status              OrderStatus          @default(PENDING_PAYMENT)
+  totalAmount         Decimal              @db.Decimal(10, 2)
+  subtotal            Decimal              @db.Decimal(10, 2)
+  deliveryFee         Decimal              @default(0.00) @db.Decimal(10, 2)
+  discountAmount      Decimal              @default(0.00) @db.Decimal(10, 2)
+  paymentMethod       PaymentMethod        @default(RAZORPAY)
+  paymentStatus       PaymentStatus        @default(PENDING)
+  hallName            String
+  hallNumber          String?
+  roomNumber          String
+  specialInstructions String?              @db.Text
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  items               OrderItem[]
+  statusHistory       OrderStatusHistory[]
+  payment             Payment?
+  receipt             Receipt?
+  supportTickets      SupportTicket[]
+  couponUsage         CouponUsage?
+
+  @@index([orderNumber])
+  @@index([studentId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  productName String
+  quantity    Int
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  totalPrice  Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+
+  @@index([orderId])
+}
+
+model OrderStatusHistory {
+  id             String       @id @default(cuid())
+  orderId        String
+  order          Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  previousStatus OrderStatus?
+  newStatus      OrderStatus
+  changedBy      String
+  notes          String?      @db.Text
+  createdAt      DateTime     @default(now())
+
+  @@index([orderId])
+}
+
+model LaundryOrder {
+  id                   String                 @id @default(cuid())
+  orderNumber          String                 @unique // e.g. LAU-2026-000124
+  trackingNumber       String                 @unique
+  qrCodeData           String                 @db.Text
+  studentId            String
+  student              Student                @relation(fields: [studentId], references: [id])
+  providerId           String?
+  provider             ServiceProvider?       @relation(fields: [providerId], references: [id])
+  status               LaundryStatus          @default(REQUESTED)
+  estimatedPrice       Decimal                @db.Decimal(10, 2)
+  finalPrice           Decimal?               @db.Decimal(10, 2)
+  hallName             String
+  hallNumber           String?
+  roomNumber           String
+  pickupDate           DateTime
+  preferredPickupTime  String
+  preferredReturnTime  String
+  specialInstructions  String?                @db.Text
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  items                LaundryItem[]
+  photos               LaundryItemPhoto[]
+  otps                 LaundryOtp[]
+  statusHistory        LaundryStatusHistory[]
+  payment              Payment?
+  receipt              Receipt?
+
+  @@index([orderNumber])
+  @@index([trackingNumber])
+  @@index([studentId])
+  @@index([status])
+}
+
+model LaundryItem {
+  id             String       @id @default(cuid())
+  laundryOrderId String
+  laundryOrder   LaundryOrder @relation(fields: [laundryOrderId], references: [id], onDelete: Cascade)
+  itemType       String       // e.g. Shirt, T-Shirt, Pants, Jeans, Kurta, Bedsheet, Towel, Blanket
+  quantity       Int
+  unitPrice      Decimal      @db.Decimal(10, 2)
+  conditionNote  String?      @db.Text
+  createdAt      DateTime     @default(now())
+
+  @@index([laundryOrderId])
+}
+
+model LaundryItemPhoto {
+  id                String       @id @default(cuid())
+  laundryOrderId    String
+  laundryOrder      LaundryOrder @relation(fields: [laundryOrderId], references: [id], onDelete: Cascade)
+  googleDriveFileId String
+  googleDriveUrl    String       @db.Text
+  description       String?      @db.Text
+  uploadedBy        String
+  createdAt         DateTime     @default(now())
+
+  @@index([laundryOrderId])
+}
+
+model LaundryOtp {
+  id             String         @id @default(cuid())
+  laundryOrderId String
+  laundryOrder   LaundryOrder   @relation(fields: [laundryOrderId], references: [id], onDelete: Cascade)
+  otpType        LaundryOtpType // PICKUP or DELIVERY
+  otpHash        String
+  isUsed         Boolean        @default(false)
+  attempts       Int            @default(0)
+  expiresAt      DateTime
+  createdAt      DateTime       @default(now())
+
+  @@index([laundryOrderId, otpType])
+}
+
+model LaundryStatusHistory {
+  id             String         @id @default(cuid())
+  laundryOrderId String
+  laundryOrder   LaundryOrder   @relation(fields: [laundryOrderId], references: [id], onDelete: Cascade)
+  previousStatus LaundryStatus?
+  newStatus      LaundryStatus
+  changedBy      String
+  notes          String?        @db.Text
+  createdAt      DateTime       @default(now())
+
+  @@index([laundryOrderId])
+}
+
+model Payment {
+  id                 String               @id @default(cuid())
+  orderId            String?              @unique
+  order              Order?               @relation(fields: [orderId], references: [id])
+  laundryOrderId     String?              @unique
+  laundryOrder       LaundryOrder?        @relation(fields: [laundryOrderId], references: [id])
+  studentId          String
+  amount             Decimal              @db.Decimal(10, 2)
+  currency           String               @default("INR")
+  status             PaymentStatus        @default(PENDING)
+  paymentMethod      PaymentMethod        @default(RAZORPAY)
+  razorpayOrderId    String?              @unique
+  razorpayPaymentId  String?              @unique
+  razorpaySignature  String?              @db.Text
+  cashCollectedBy    String?
+  cashCollectedAt    DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  transactions       PaymentTransaction[]
+  refunds            Refund[]
+
+  @@index([razorpayOrderId])
+  @@index([razorpayPaymentId])
+}
+
+model PaymentTransaction {
+  id            String   @id @default(cuid())
+  paymentId     String
+  payment       Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  transactionId String   @unique // Webhook event ID or gateway transaction ID
+  provider      String   @default("RAZORPAY")
+  eventType     String
+  payload       String   @db.Text
+  status        String
+  createdAt     DateTime @default(now())
+
+  @@index([transactionId])
+}
+
+model Refund {
+  id               String    @id @default(cuid())
+  paymentId        String
+  payment          Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  razorpayRefundId String?   @unique
+  amount           Decimal   @db.Decimal(10, 2)
+  reason           String?   @db.Text
+  status           String    @default("REQUESTED") // REQUESTED, PROCESSING, REFUNDED, FAILED
+  processedAt      DateTime?
+  createdAt        DateTime  @default(now())
+}
+
+model Receipt {
+  id              String        @id @default(cuid())
+  receiptNumber   String        @unique // e.g. RCP-2026-000001
+  orderId         String?       @unique
+  order           Order?        @relation(fields: [orderId], references: [id])
+  laundryOrderId  String?       @unique
+  laundryOrder    LaundryOrder? @relation(fields: [laundryOrderId], references: [id])
+  studentId       String
+  student         Student       @relation(fields: [studentId], references: [id])
+  totalAmount     Decimal       @db.Decimal(10, 2)
+  receiptDataJson String        @db.Text // Full JSON snapshot of student, items, fees, payment
+  isGenerated     Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+
+  @@index([receiptNumber])
+  @@index([studentId])
+}
+
+model Coupon {
+  id               String        @id @default(cuid())
+  code             String        @unique
+  description      String?       @db.Text
+  discountType     DiscountType  @default(PERCENTAGE)
+  discountValue    Decimal       @db.Decimal(10, 2)
+  minOrderAmount   Decimal       @default(0.00) @db.Decimal(10, 2)
+  maxDiscountAmount Decimal?     @db.Decimal(10, 2)
+  expiryDate       DateTime?
+  usageLimit       Int?
+  perUserLimit     Int           @default(1)
+  categoryId       String?
+  category         Category?     @relation(fields: [categoryId], references: [id])
+  isActive         Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+
+  usages           CouponUsage[]
+
+  @@index([code])
+}
+
+model CouponUsage {
+  id        String   @id @default(cuid())
+  couponId  String
+  coupon    Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  orderId   String   @unique
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  usedAt    DateTime @default(now())
+
+  @@unique([couponId, studentId, orderId])
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, productId])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rating    Int      @default(5) // 1 to 5
+  comment   String?  @db.Text
+  isHidden  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@index([studentId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String   @db.Text
+  type      String   // ORDER, LAUNDRY, PAYMENT, ANNOUNCEMENT, SYSTEM
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model SupportTicket {
+  id            String         @id @default(cuid())
+  ticketNumber  String         @unique // e.g. TKT-2026-0001
+  studentId     String
+  student       Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  orderId       String?
+  order         Order?         @relation(fields: [orderId], references: [id])
+  category      TicketCategory @default(OTHER)
+  message       String         @db.Text
+  priority      TicketPriority @default(MEDIUM)
+  status        TicketStatus   @default(OPEN)
+  adminResponse String?        @db.Text
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([studentId])
+  @@index([status])
+}
+
+model OtpVerification {
+  id         String   @id @default(cuid())
+  email      String
+  otpHash    String
+  purpose    String   @default("REGISTRATION") // REGISTRATION, PASSWORD_RESET, PROFILE_CHANGE
+  isVerified Boolean  @default(false)
+  attempts   Int      @default(0)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([email])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+}
+
+model Announcement {
+  id            String    @id @default(cuid())
+  title         String
+  message       String    @db.Text
+  imageUrl      String?   @db.Text
+  startTime     DateTime  @default(now())
+  endTime       DateTime?
+  targetService String    @default("ALL")
+  targetZone    String    @default("ALL")
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String
+  entityId  String?
+  oldValue  String?  @db.Text
+  newValue  String?  @db.Text
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([action])
+  @@index([entity])
+  @@index([createdAt])
+}
+
+model AdminSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String   @db.Text
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+}

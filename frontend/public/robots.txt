@@ -1,0 +1,27 @@
+# Robots.txt for NIT Durgapur Campus Services
+User-agent: *
+Allow: /
+Allow: /food
+Allow: /fruits
+Allow: /laundry
+Allow: /essentials
+Allow: /products/*
+Allow: /about
+Allow: /faq
+Allow: /contact
+Allow: /privacy
+Allow: /terms
+Allow: /refund-policy
+
+# Disallow Private & Authenticated Portals
+Disallow: /admin/
+Disallow: /provider/
+Disallow: /dashboard/
+Disallow: /orders/
+Disallow: /cart/
+Disallow: /checkout/
+Disallow: /profile/
+Disallow: /support/
+Disallow: /api/
+
+Sitemap: https://services.nitdgp.ac.in/sitemap.xml

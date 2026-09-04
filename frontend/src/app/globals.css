@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 13%;
+  }
+
+  body {
+    @apply bg-[#f8f8f8] text-[#212121] antialiased selection:bg-[#84c225] selection:text-white min-h-screen flex flex-col font-sans;
+  }
+}
+
+/* BigBasket Style Cards */
+.bb-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease-in-out;
+}
+
+.bb-card:hover {
+  border-color: #84c225;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+.glass-panel {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+}
+
+.glass-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease-in-out;
+}
+
+.glass-card:hover {
+  border-color: #84c225;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.09);
+  transform: translateY(-2px);
+}
+
+/* Indian Vegetarian and Non-Vegetarian Dot Badges */
+.veg-icon {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid #2e7d32;
+  border-radius: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+}
+
+.veg-icon::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #2e7d32;
+}
+
+.non-veg-icon {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid #d32f2f;
+  border-radius: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+}
+
+.non-veg-icon::after {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  border-bottom: 6px solid #d32f2f;
+}
+
+/* BigBasket Discount Corner Tag */
+.bb-discount-badge {
+  background-color: #689f38;
+  color: #ffffff;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  padding: 2px 6px;
+  border-radius: 3px 0 6px 0;
+  text-transform: uppercase;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #84c225;
+}

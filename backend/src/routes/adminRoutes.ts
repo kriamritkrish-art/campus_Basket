@@ -1,0 +1,95 @@
+import { Router } from 'express';
+import multer from 'multer';
+import { AdminController } from '../controllers/adminController';
+import { AdminServicesController } from '../controllers/adminServicesController';
+import { AdminAnalyticsController } from '../controllers/adminAnalyticsController';
+import { AdminReportController } from '../controllers/adminReportController';
+import { AdminPeopleController } from '../controllers/adminPeopleController';
+import { AdminCampusController } from '../controllers/adminCampusController';
+import { authGuard } from '../middleware/authGuard';
+import { rbacGuard } from '../middleware/rbacGuard';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB max
+});
+
+const router = Router();
+
+// Strict Authentication & RBAC Guard: ADMIN Only
+router.use(authGuard);
+router.use(rbacGuard(['ADMIN']));
+
+// 1. Dashboard Executive Overview & KPIs
+router.get('/dashboard', AdminController.getDashboardMetrics);
+
+// 2. Commerce: Products & Inventory
+router.get('/products', AdminController.getAllProducts);
+router.post('/products', upload.single('image'), AdminController.createProduct);
+router.patch('/products/:id', AdminController.updateProduct);
+router.post('/products/:id/image', upload.single('image'), AdminController.uploadProductImage);
+router.get('/products/:id/analytics', AdminController.getProductAnalytics);
+
+router.get('/inventory', AdminController.getInventory);
+router.patch('/inventory/:id', AdminController.updateStock);
+
+// 3. Commerce: Orders & Refunds
+router.get('/orders', AdminController.getAllOrders);
+router.get('/orders/:id', AdminController.getOrderDetails);
+router.patch('/orders/:id/status', AdminController.updateOrderStatus);
+router.post('/orders/:id/assign', AdminController.assignProvider);
+router.post('/orders/refund', AdminController.processRefund);
+router.get('/orders/:id/receipt', AdminReportController.downloadReceipt);
+
+// 4. Primary Services Management
+router.get('/services/food', AdminServicesController.getFoodAndMeals);
+router.get('/services/fruits', AdminServicesController.getFreshFruits);
+router.get('/services/laundry', AdminServicesController.getExpressLaundry);
+router.patch('/services/laundry/:id/status', AdminServicesController.updateLaundryStatus);
+router.get('/services/essentials', AdminServicesController.getStationeryAndEssentials);
+
+// 5. Power BI-Style Analytics
+router.get('/analytics/overview', AdminAnalyticsController.getOverview);
+router.get('/analytics/category/:categoryId', AdminAnalyticsController.getCategoryDrilldown);
+
+// 6. Reports, Receipts & CSV Exports
+router.post('/reports/generate', AdminReportController.generateReport);
+router.get('/reports/history', AdminReportController.getReportHistory);
+router.get('/reports/export-csv', AdminReportController.exportCsv);
+
+// 7. People: Students, Providers, Halls
+router.get('/students', AdminPeopleController.getStudents);
+router.patch('/students/:id/status', AdminPeopleController.toggleStudentActive);
+
+router.get('/providers', AdminPeopleController.getProviders);
+router.patch('/providers/:id/status', AdminPeopleController.toggleProviderActive);
+
+router.get('/halls', AdminPeopleController.getHalls);
+router.post('/halls', AdminPeopleController.createHall);
+
+// 8. Campus & Marketing
+router.get('/zones', AdminCampusController.getZones);
+router.post('/zones', AdminCampusController.createZone);
+
+router.get('/categories', AdminCampusController.getCategories);
+router.post('/categories', AdminCampusController.createCategory);
+
+router.get('/coupons', AdminCampusController.getCoupons);
+router.post('/coupons', AdminCampusController.createCoupon);
+
+router.get('/announcements', AdminCampusController.getAnnouncements);
+router.post('/announcements', AdminCampusController.createAnnouncement);
+
+router.get('/campus/hours', AdminCampusController.getBusinessHours);
+router.post('/campus/hours', AdminCampusController.updateBusinessHours);
+
+// 9. System: Support, Audit & Settings
+router.get('/support/tickets', AdminPeopleController.getSupportTickets);
+router.patch('/support/tickets/:id', AdminPeopleController.replySupportTicket);
+
+router.get('/audit-logs', AdminPeopleController.getAuditLogs);
+
+router.get('/settings', AdminController.getSettings);
+router.post('/settings', AdminController.updateSetting);
+
+export default router;
