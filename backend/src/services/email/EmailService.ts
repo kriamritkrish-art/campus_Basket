@@ -28,6 +28,72 @@ export class EmailService {
   }
 
   /**
+   * Dispatches an email using Brevo REST API or Nodemailer SMTP
+   */
+  private async dispatchEmail(recipientEmail: string, subject: string, html: string): Promise<boolean> {
+    // High visibility console output for local development & cloud logs
+    console.info(`[EMAIL SERVICE] To: ${recipientEmail} | Subject: ${subject}`);
+
+    // Option 1: Brevo REST API (Fastest, uses HTTPS port 443, never blocked by cloud firewalls)
+    if (env.BREVO_API_KEY) {
+      try {
+        const fromMatch = env.EMAIL_FROM.match(/^(.*?)\s*<(.+?)>$/);
+        const senderName = fromMatch ? fromMatch[1].trim() : 'NIT Durgapur Campus Services';
+        const senderEmail = env.BREVO_SENDER_EMAIL || (fromMatch ? fromMatch[2].trim() : env.EMAIL_FROM);
+
+        fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: {
+            'accept': 'application/json',
+            'api-key': env.BREVO_API_KEY,
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({
+            sender: { name: senderName, email: senderEmail },
+            to: [{ email: recipientEmail }],
+            subject,
+            htmlContent: html
+          })
+        })
+          .then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              console.warn('[EmailService] Brevo API responded with error:', data);
+            } else {
+              console.info(`[EmailService] Email delivered successfully via Brevo API to ${recipientEmail} (MessageId: ${(data as any).messageId || 'ok'})`);
+            }
+          })
+          .catch((err) => {
+            console.warn('[EmailService] Brevo API network notice:', err?.message || err);
+          });
+
+        return true;
+      } catch (err: any) {
+        console.warn('[EmailService] Brevo dispatch exception:', err?.message || err);
+      }
+    }
+
+    // Option 2: Nodemailer SMTP Relay (e.g. smtp-relay.brevo.com or custom SMTP)
+    if (this.isConfigured && this.transporter) {
+      this.transporter
+        .sendMail({
+          from: env.EMAIL_FROM,
+          to: recipientEmail,
+          subject,
+          html
+        })
+        .then(() => {
+          console.info(`[EmailService] Email delivered successfully via SMTP to ${recipientEmail}`);
+        })
+        .catch((err) => {
+          console.warn('[EmailService] SMTP delivery notice:', err?.message || err);
+        });
+    }
+
+    return true;
+  }
+
+  /**
    * Sends the 6-digit registration / verification OTP to the official NIT Durgapur email.
    */
   async sendOtpEmail(recipientEmail: string, otp: string): Promise<boolean> {
@@ -63,31 +129,13 @@ export class EmailService {
       </div>
     `;
 
-    // High visibility console output for local development & cloud logs
     console.info(`\n======================================================`);
     console.info(`[EMAIL SERVICE] To: ${recipientEmail}`);
     console.info(`[EMAIL SERVICE] Subject: ${subject}`);
     console.info(`[EMAIL SERVICE] OTP CODE: >>> ${otp} <<< (Expires in 5m)`);
     console.info(`======================================================\n`);
 
-    if (this.isConfigured && this.transporter) {
-      // Fire-and-forget in background so HTTP response is returned instantly without hanging
-      this.transporter
-        .sendMail({
-          from: env.EMAIL_FROM,
-          to: recipientEmail,
-          subject,
-          html
-        })
-        .then(() => {
-          console.info(`[EmailService] OTP email delivered to ${recipientEmail}`);
-        })
-        .catch((err) => {
-          console.warn('[EmailService] SMTP delivery skipped or timed out:', err?.message || err);
-        });
-    }
-
-    return true;
+    return this.dispatchEmail(recipientEmail, subject, html);
   }
 
   /**
@@ -100,8 +148,16 @@ export class EmailService {
     totalAmount: number
   ): Promise<boolean> {
     const subject = `[Confirmed] Your Campus Order ${orderNumber}`;
-    console.info(`[EmailService] Order confirmation dispatched to ${recipientEmail} for ${orderNumber} (₹${totalAmount})`);
-    return true;
+    const html = `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 540px; margin: 0 auto; padding: 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;">
+        <h2 style="color: #2e7d32; margin-top: 0;">NIT Durgapur Campus Order Confirmed!</h2>
+        <p>Order Number: <strong>${orderNumber}</strong></p>
+        <p>Total Paid: <strong>₹${totalAmount}</strong></p>
+        <p>Items: ${itemsSummary}</p>
+        <p style="color: #64748b; font-size: 13px;">Our campus dispatch team has received your order and is preparing it for room delivery.</p>
+      </div>
+    `;
+    return this.dispatchEmail(recipientEmail, subject, html);
   }
 
   /**
@@ -114,7 +170,14 @@ export class EmailService {
     otpNotice?: string
   ): Promise<boolean> {
     const subject = `[Laundry Update] Order ${laundryOrderNumber} is now ${statusText}`;
-    console.info(`[EmailService] Laundry update dispatched to ${recipientEmail}: ${statusText}. ${otpNotice || ''}`);
-    return true;
+    const html = `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 540px; margin: 0 auto; padding: 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;">
+        <h2 style="color: #0284c7; margin-top: 0;">NIT Durgapur Express Laundry Update</h2>
+        <p>Order Number: <strong>${laundryOrderNumber}</strong></p>
+        <p>Current Status: <strong>${statusText}</strong></p>
+        ${otpNotice ? `<div style="padding: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; margin: 16px 0; color: #166534;">${otpNotice}</div>` : ''}
+      </div>
+    `;
+    return this.dispatchEmail(recipientEmail, subject, html);
   }
 }

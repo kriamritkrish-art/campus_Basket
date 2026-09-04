@@ -27,6 +27,9 @@ export const env = {
   SMTP_PASSWORD: process.env.SMTP_PASSWORD || '',
   EMAIL_FROM: process.env.EMAIL_FROM || 'NIT Durgapur Campus Services <services@nitdgp.ac.in>',
 
+  BREVO_API_KEY: process.env.BREVO_API_KEY || '',
+  BREVO_SENDER_EMAIL: process.env.BREVO_SENDER_EMAIL || '',
+
   GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY || '',
   REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',
 
