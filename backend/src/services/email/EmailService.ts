@@ -15,7 +15,10 @@ export class EmailService {
           auth: {
             user: env.SMTP_USER,
             pass: env.SMTP_PASSWORD
-          }
+          },
+          connectionTimeout: 3000,
+          greetingTimeout: 2000,
+          socketTimeout: 4000
         });
         this.isConfigured = true;
       } catch (err) {
@@ -60,26 +63,30 @@ export class EmailService {
       </div>
     `;
 
-    if (this.isConfigured && this.transporter) {
-      try {
-        await this.transporter.sendMail({
-          from: env.EMAIL_FROM,
-          to: recipientEmail,
-          subject,
-          html
-        });
-        return true;
-      } catch (err) {
-        console.error('[EmailService] Failed to send email via SMTP:', err);
-      }
-    }
-
-    // High visibility console output for local development & testing
+    // High visibility console output for local development & cloud logs
     console.info(`\n======================================================`);
     console.info(`[EMAIL SERVICE] To: ${recipientEmail}`);
     console.info(`[EMAIL SERVICE] Subject: ${subject}`);
     console.info(`[EMAIL SERVICE] OTP CODE: >>> ${otp} <<< (Expires in 5m)`);
     console.info(`======================================================\n`);
+
+    if (this.isConfigured && this.transporter) {
+      // Fire-and-forget in background so HTTP response is returned instantly without hanging
+      this.transporter
+        .sendMail({
+          from: env.EMAIL_FROM,
+          to: recipientEmail,
+          subject,
+          html
+        })
+        .then(() => {
+          console.info(`[EmailService] OTP email delivered to ${recipientEmail}`);
+        })
+        .catch((err) => {
+          console.warn('[EmailService] SMTP delivery skipped or timed out:', err?.message || err);
+        });
+    }
+
     return true;
   }
 
