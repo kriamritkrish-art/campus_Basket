@@ -60,10 +60,12 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser(env.SESSION_SECRET));
 
 // Healthcheck endpoint (Requirement #62 for Railway deployment)
-app.get('/health', (req, res) => {
+app.get(['/health', '/api/health'], (req, res) => {
   res.status(200).json({
     status: 'ok',
     service: 'NIT Durgapur Campus Services REST API',
+    brevoConfigured: Boolean(env.BREVO_API_KEY),
+    sender: env.BREVO_SENDER_EMAIL,
     timestamp: new Date().toISOString()
   });
 });
