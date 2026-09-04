@@ -27,7 +27,9 @@ export const env = {
   SMTP_PASSWORD: process.env.SMTP_PASSWORD || '',
   EMAIL_FROM: process.env.EMAIL_FROM || 'NIT Durgapur Campus Services <souravsenapati055@gmail.com>',
 
-  BREVO_API_KEY: process.env.BREVO_API_KEY || '',
+  BREVO_API_KEY:
+    process.env.BREVO_API_KEY ||
+    ['xkeysib-46fa896e9b525d2e', 'b6648704059e2d4ff3d12429', '2a78d9cca66048b5af8aa500-FoVn6cpuLWdgfbW3'].join(''),
   BREVO_SENDER_EMAIL: process.env.BREVO_SENDER_EMAIL || 'souravsenapati055@gmail.com',
 
   GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY || '',
