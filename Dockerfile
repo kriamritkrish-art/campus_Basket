@@ -35,4 +35,4 @@ COPY --from=builder /app/backend/prisma ./prisma
 
 EXPOSE 5000
 
-CMD ["npm", "run", "start"]
+CMD ["sh", "-c", "npx prisma db push && node dist/server.js"]
