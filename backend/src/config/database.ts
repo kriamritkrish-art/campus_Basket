@@ -79,7 +79,20 @@ const fallbackHandlers: Record<string, any> = {
       }
       return fallbackUsers.length;
     },
-    findMany: async () => JSON.parse(JSON.stringify(fallbackUsers))
+    findMany: async () => JSON.parse(JSON.stringify(fallbackUsers)),
+    create: async (args: any) => {
+      const newUser = {
+        id: `usr_${Date.now()}`,
+        email: args.data.email,
+        passwordHash: args.data.passwordHash,
+        role: args.data.role || 'STUDENT',
+        isActive: args.data.isActive !== undefined ? args.data.isActive : true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      fallbackUsers.push(newUser as any);
+      return JSON.parse(JSON.stringify(newUser));
+    }
   },
   admin: {
     findUnique: async (args: any) => {
@@ -93,7 +106,14 @@ const fallbackHandlers: Record<string, any> = {
     findUnique: async (args: any) => {
       const userId = args?.where?.userId;
       const rollNumber = args?.where?.rollNumber;
-      const user = fallbackUsers.find((u) => u.student && (u.student.userId === userId || u.student.rollNumber === rollNumber));
+      const mobileNumber = args?.where?.mobileNumber;
+      const registrationNumber = args?.where?.registrationNumber;
+      const user = fallbackUsers.find((u) => u.student && (
+        (userId && u.student.userId === userId) ||
+        (rollNumber && u.student.rollNumber === rollNumber) ||
+        (mobileNumber && u.student.mobileNumber === mobileNumber) ||
+        (registrationNumber && u.student.registrationNumber === registrationNumber)
+      ));
       return user?.student ? JSON.parse(JSON.stringify(user.student)) : null;
     },
     count: async () => fallbackUsers.filter((u) => u.role === 'STUDENT').length,
@@ -107,6 +127,27 @@ const fallbackHandlers: Record<string, any> = {
           orders: fallbackOrders.filter((o) => o.studentId === u.student?.id),
           laundryOrders: fallbackLaundryJobs.filter((l) => l.studentId === u.student?.id)
         }));
+    },
+    create: async (args: any) => {
+      const newStudent = {
+        id: `std_${Date.now()}`,
+        userId: args.data.userId,
+        fullName: args.data.fullName,
+        rollNumber: args.data.rollNumber,
+        registrationNumber: args.data.registrationNumber,
+        mobileNumber: args.data.mobileNumber,
+        hallId: args.data.hallId,
+        hallNumber: args.data.hallNumber,
+        roomNumber: args.data.roomNumber,
+        isVerified: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      const user = fallbackUsers.find((u) => u.id === args.data.userId);
+      if (user) {
+        user.student = newStudent as any;
+      }
+      return JSON.parse(JSON.stringify(newStudent));
     }
   },
   serviceProvider: {
@@ -289,6 +330,11 @@ const fallbackHandlers: Record<string, any> = {
     findUnique: async (args: any) => ({
       id: `cart_${args?.where?.studentId}`,
       studentId: args?.where?.studentId,
+      items: []
+    }),
+    create: async (args: any) => ({
+      id: `cart_${args?.data?.studentId}`,
+      studentId: args?.data?.studentId,
       items: []
     }),
     upsert: async (args: any) => ({
