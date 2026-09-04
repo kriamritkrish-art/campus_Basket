@@ -89,6 +89,7 @@ export interface Product {
   isOutOfStock: boolean;
   isFeatured: boolean;
   availableToday: boolean;
+  categoryId?: string;
   category?: Category;
   primaryImage?: string | null;
   images?: ProductImage[];

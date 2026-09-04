@@ -163,9 +163,9 @@ export function ServiceTrendChart({ data }: { data: any[] }) {
               color: '#17202A',
               boxShadow: '0 4px 14px rgba(0,0,0,0.08)'
             }}
-            formatter={(value: any, name: string) => [
+            formatter={(value: any, name: any) => [
               `₹${Number(value).toLocaleString('en-IN')}`,
-              name.charAt(0).toUpperCase() + name.slice(1)
+              String(name || '').charAt(0).toUpperCase() + String(name || '').slice(1)
             ]}
           />
           <Legend
@@ -221,7 +221,7 @@ export function HourlyVelocityChart({ data }: { data: Array<{ hour: string; labe
               color: '#17202A',
               boxShadow: '0 4px 14px rgba(0,0,0,0.08)'
             }}
-            formatter={(val: any, name: string) => [
+            formatter={(val: any, name: any) => [
               name === 'orders' ? `${val} Orders` : `₹${Number(val).toLocaleString('en-IN')}`,
               name === 'orders' ? 'Order Volume' : 'Revenue'
             ]}
