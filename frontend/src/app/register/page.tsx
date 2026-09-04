@@ -6,7 +6,24 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../lib/api';
 import { Hall } from '../../types';
-import { ShieldCheck, Mail, Lock, KeyRound, User, Phone, Home, ArrowRight, CheckCircle2 } from 'lucide-react';
+import {
+  ShieldCheck,
+  Mail,
+  Lock,
+  KeyRound,
+  User,
+  Phone,
+  Home,
+  ArrowRight,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Sparkles,
+  GraduationCap,
+  Building2,
+  RotateCcw,
+  AlertCircle
+} from 'lucide-react';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -18,6 +35,7 @@ export default function RegisterPage() {
   // Step 1 State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   // Step 2 State
   const [otp, setOtp] = useState('');
@@ -34,6 +52,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [autoFilled, setAutoFilled] = useState(false);
 
   useEffect(() => {
     apiRequest('/api/campus/halls')
@@ -46,6 +65,18 @@ export default function RegisterPage() {
       .catch(() => {});
   }, []);
 
+  const handleQuickDemoFill = () => {
+    setEmail('ss.24u10227@nitdgp.ac.in');
+    setPassword('Student@2026');
+    setFullName('Sourav Senapati');
+    setRollNumber('24U10227');
+    setRegistrationNumber('202410227');
+    setMobileNumber('9876501234');
+    setRoomNumber('B-304');
+    setAutoFilled(true);
+    setTimeout(() => setAutoFilled(false), 2500);
+  };
+
   // Step 1: Request OTP
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +84,12 @@ export default function RegisterPage() {
 
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail.endsWith('@nitdgp.ac.in')) {
-      setError('Registration is strictly restricted to official NIT Durgapur emails (@nitdgp.ac.in). Gmail, Yahoo, etc. are rejected.');
+      setError('Registration is strictly restricted to official NIT Durgapur emails (@nitdgp.ac.in). Personal emails like Gmail or Yahoo are rejected.');
+      return;
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
       return;
     }
 
@@ -65,7 +101,7 @@ export default function RegisterPage() {
       });
 
       if (res.success) {
-        setSuccessMsg(res.message || 'OTP sent to college email.');
+        setSuccessMsg(res.message || 'OTP verification code sent to your college email.');
         setStep(2);
       } else {
         setError(res.message || 'Failed to dispatch verification code.');
@@ -90,13 +126,13 @@ export default function RegisterPage() {
       });
 
       if (res.success) {
-        setSuccessMsg('Email verified! Please fill in your student residence details.');
+        setSuccessMsg('Email verified successfully! Please complete your campus residence details.');
         setStep(3);
       } else {
-        setError(res.message || 'Invalid or expired OTP.');
+        setError(res.message || 'Invalid or expired OTP verification code.');
       }
     } catch (err: any) {
-      setError(err.message || 'Invalid or expired OTP.');
+      setError(err.message || 'Invalid or expired OTP verification code.');
     } finally {
       setLoading(false);
     }
@@ -114,18 +150,18 @@ export default function RegisterPage() {
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
           password,
-          fullName,
+          fullName: fullName.trim(),
           rollNumber: rollNumber.trim().toUpperCase(),
           registrationNumber: registrationNumber.trim(),
           mobileNumber: mobileNumber.trim(),
-          hallId,
+          hallId: hallId || (halls[0]?.id || 'hall_11'),
           roomNumber: roomNumber.trim(),
         }),
       });
 
       if (res.success && res.token && res.user) {
         login(res.token, res.user);
-        router.push('/dashboard');
+        router.push('/');
       } else {
         setError(res.message || 'Registration failed.');
       }
@@ -137,249 +173,405 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-14">
-      <div className="glass-panel p-8 rounded-3xl border border-slate-800 space-y-6 shadow-2xl">
-        <div className="text-center space-y-2">
-          <div className="w-12 h-12 bg-sky-500/10 text-sky-400 rounded-2xl flex items-center justify-center mx-auto border border-sky-500/20">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <h1 className="text-2xl font-extrabold text-white">Student Registration</h1>
-          <p className="text-xs text-slate-400">
-            {step === 1 && 'Step 1: Enter your official @nitdgp.ac.in email'}
-            {step === 2 && 'Step 2: Enter the 6-digit verification code'}
-            {step === 3 && 'Step 3: Complete your campus hostel profile'}
-          </p>
-        </div>
+    <div className="max-w-xl mx-auto px-4 py-10 sm:py-14">
+      {/* Registration Card */}
+      <div className="bg-white rounded-3xl border border-gray-200 shadow-xl shadow-gray-200/50 relative overflow-hidden">
+        {/* Top Gradient Banner */}
+        <div className="h-2 w-full bg-gradient-to-r from-[#558b2f] via-[#689f38] to-[#84c225]" />
 
-        {/* Step Indicator */}
-        <div className="flex items-center justify-center gap-2">
-          {[1, 2, 3].map((s) => (
-            <div
-              key={s}
-              className={`h-1.5 rounded-full transition-all ${
-                s === step
-                  ? 'w-8 bg-sky-500'
-                  : s < step
-                  ? 'w-6 bg-emerald-500'
-                  : 'w-6 bg-slate-800'
-              }`}
-            />
-          ))}
-        </div>
+        <div className="p-7 sm:p-10 space-y-6">
+          {/* Header */}
+          <div className="text-center space-y-3">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#f1f8e9] text-[#2e7d32] border border-[#c5e1a5] text-xs font-bold tracking-wide">
+              <GraduationCap className="w-3.5 h-3.5 text-[#689f38]" />
+              <span>NIT Durgapur Student Onboarding</span>
+            </div>
 
-        {error && (
-          <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-800/80 text-xs text-rose-300">
-            {error}
-          </div>
-        )}
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#f1f8e9] to-[#dcedc8] text-[#2e7d32] border border-[#c5e1a5] flex items-center justify-center mx-auto shadow-xs">
+              <ShieldCheck className="w-7 h-7" />
+            </div>
 
-        {successMsg && (
-          <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-800/80 text-xs text-emerald-300 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-            <span>{successMsg}</span>
-          </div>
-        )}
-
-        {/* STEP 1: College Email & Password */}
-        {step === 1 && (
-          <form onSubmit={handleSendOtp} className="space-y-4">
             <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                Official College Email (@nitdgp.ac.in only)
-              </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
-                <input
-                  type="email"
-                  placeholder="e.g. ss.24u10227@nitdgp.ac.in"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-sky-500"
-                  required
-                />
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Personal emails like Gmail or Yahoo will be automatically rejected.
+              <h1 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
+                Create Student Account
+              </h1>
+              <p className="text-xs sm:text-sm text-gray-500 mt-1 max-w-sm mx-auto">
+                Direct room delivery & student tariffs across Halls 1–14
               </p>
             </div>
+          </div>
 
-            <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1.5">
-                Choose Secure Password (min 8 chars)
-              </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
-                <input
-                  type="password"
-                  placeholder="At least 8 characters with numbers & uppercase"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-sky-500"
-                  required
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-sky-600/20 active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
-            >
-              {loading ? 'Validating...' : 'Send Verification OTP'}{' '}
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </form>
-        )}
-
-        {/* STEP 2: 6-Digit OTP */}
-        {step === 2 && (
-          <form onSubmit={handleVerifyOtp} className="space-y-4">
-            <div className="p-3 bg-sky-950/40 border border-sky-800/40 rounded-xl text-xs text-sky-300 text-center">
-              We sent a 6-digit code to <strong>{email}</strong>. It expires in 5 minutes.
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1.5 text-center">
-                Enter 6-Digit Code
-              </label>
-              <div className="relative max-w-xs mx-auto">
-                <input
-                  type="text"
-                  maxLength={6}
-                  placeholder="123456"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-center text-2xl font-mono tracking-widest text-white focus:outline-none focus:border-sky-500"
-                  required
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading || otp.length !== 6}
-              className="w-full py-3 bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-sky-600/20 active:scale-95 disabled:opacity-50 transition-all"
-            >
-              {loading ? 'Verifying...' : 'Verify Email Code'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setStep(1)}
-              className="w-full text-center text-xs text-slate-400 hover:text-white"
-            >
-              Change Email Address
-            </button>
-          </form>
-        )}
-
-        {/* STEP 3: Student Details & Hall Selection */}
-        {step === 3 && (
-          <form onSubmit={handleCompleteRegistration} className="space-y-4">
-            <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1">Full Name</label>
-              <input
-                type="text"
-                placeholder="e.g. Sourav Senapati"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
-                required
+          {/* Step Progress Tracker */}
+          <div className="bg-[#f9fafb] p-3.5 rounded-2xl border border-gray-200">
+            <div className="flex items-center justify-between relative max-w-md mx-auto">
+              {/* Connector Bar Background */}
+              <div className="absolute top-4 left-6 right-6 h-0.5 bg-gray-200 -z-0" />
+              {/* Connector Bar Active Fill */}
+              <div
+                className="absolute top-4 left-6 h-0.5 bg-[#689f38] transition-all duration-300 -z-0"
+                style={{
+                  width: step === 1 ? '0%' : step === 2 ? '50%' : '100%',
+                }}
               />
-            </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">Roll Number</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 24U10227"
-                  value={rollNumber}
-                  onChange={(e) => setRollNumber(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white uppercase focus:outline-none focus:border-sky-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">Registration No.</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 202410227"
-                  value={registrationNumber}
-                  onChange={(e) => setRegistrationNumber(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-300 block mb-1">
-                10-Digit Mobile Number (For Delivery SMS / Call)
-              </label>
-              <input
-                type="tel"
-                placeholder="9876543210"
-                value={mobileNumber}
-                onChange={(e) => setMobileNumber(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">Residence Hall</label>
-                <select
-                  value={hallId}
-                  onChange={(e) => setHallId(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
-                  required
+              {/* Step 1 Indicator */}
+              <div className="relative z-10 flex flex-col items-center gap-1.5">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all ${
+                    step === 1
+                      ? 'bg-[#689f38] text-white ring-4 ring-[#689f38]/20 shadow-sm'
+                      : step > 1
+                      ? 'bg-[#2e7d32] text-white'
+                      : 'bg-white text-gray-400 border border-gray-300'
+                  }`}
                 >
-                  {halls.map((h) => (
-                    <option key={h.id} value={h.id}>
-                      {h.name}
-                    </option>
-                  ))}
-                  {halls.length === 0 && (
-                    <>
-                      <option value="hall_11">Hall 11</option>
-                      <option value="hall_12">Hall 12</option>
-                    </>
-                  )}
-                </select>
+                  {step > 1 ? <CheckCircle2 className="w-4 h-4" /> : '1'}
+                </div>
+                <span
+                  className={`text-[11px] font-bold ${
+                    step === 1 ? 'text-[#2e7d32]' : 'text-gray-500'
+                  }`}
+                >
+                  Email &amp; Auth
+                </span>
+              </div>
+
+              {/* Step 2 Indicator */}
+              <div className="relative z-10 flex flex-col items-center gap-1.5">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all ${
+                    step === 2
+                      ? 'bg-[#689f38] text-white ring-4 ring-[#689f38]/20 shadow-sm'
+                      : step > 2
+                      ? 'bg-[#2e7d32] text-white'
+                      : 'bg-white text-gray-400 border border-gray-300'
+                  }`}
+                >
+                  {step > 2 ? <CheckCircle2 className="w-4 h-4" /> : '2'}
+                </div>
+                <span
+                  className={`text-[11px] font-bold ${
+                    step === 2 ? 'text-[#2e7d32]' : 'text-gray-500'
+                  }`}
+                >
+                  Verify OTP
+                </span>
+              </div>
+
+              {/* Step 3 Indicator */}
+              <div className="relative z-10 flex flex-col items-center gap-1.5">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all ${
+                    step === 3
+                      ? 'bg-[#689f38] text-white ring-4 ring-[#689f38]/20 shadow-sm'
+                      : 'bg-white text-gray-400 border border-gray-300'
+                  }`}
+                >
+                  3
+                </div>
+                <span
+                  className={`text-[11px] font-bold ${
+                    step === 3 ? 'text-[#2e7d32]' : 'text-gray-500'
+                  }`}
+                >
+                  Hostel Info
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Fill Demo Banner for convenience */}
+          {step === 1 && (
+            <div className="bg-[#f1f8e9] rounded-xl p-2.5 border border-[#dcedc8] flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 text-[#2e7d32] font-medium truncate">
+                <KeyRound className="w-3.5 h-3.5 shrink-0 text-[#689f38]" />
+                <span className="truncate">Sample: <strong className="font-mono font-bold">ss.24u10227@nitdgp.ac.in</strong></span>
+              </div>
+              <button
+                type="button"
+                onClick={handleQuickDemoFill}
+                className="px-2.5 py-1 rounded-md bg-white hover:bg-[#f9fafb] text-[#2e7d32] border border-[#c5e1a5] font-bold text-[11px] flex items-center gap-1 shrink-0 shadow-2xs transition-colors"
+              >
+                {autoFilled ? <CheckCircle2 className="w-3 h-3 text-[#2e7d32]" /> : <Sparkles className="w-3 h-3 text-[#689f38]" />}
+                {autoFilled ? 'Loaded!' : 'Autofill'}
+              </button>
+            </div>
+          )}
+
+          {/* Error Alert */}
+          {error && (
+            <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2.5 animate-fadeIn">
+              <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Success Alert */}
+          {successMsg && (
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-start gap-2.5 animate-fadeIn">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span>{successMsg}</span>
+            </div>
+          )}
+
+          {/* STEP 1: Email & Password Form */}
+          {step === 1 && (
+            <form onSubmit={handleSendOtp} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1.5">
+                  Official College Email
+                  <span className="ml-1 text-[11px] font-semibold text-[#689f38]">(@nitdgp.ac.in only)</span>
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-gray-400 absolute left-3.5 top-3.5" />
+                  <input
+                    type="email"
+                    placeholder="e.g. ss.24u10227@nitdgp.ac.in"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-4 py-3 text-xs sm:text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#689f38] focus:ring-4 focus:ring-[#84c225]/15 transition-all shadow-2xs"
+                    required
+                  />
+                </div>
+                <p className="text-[11px] text-gray-500 mt-1.5 flex items-center gap-1">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#689f38]" />
+                  Personal emails like Gmail or Yahoo are strictly rejected.
+                </p>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">Room Number</label>
-                <input
-                  type="text"
-                  placeholder="e.g. B-304"
-                  value={roomNumber}
-                  onChange={(e) => setRoomNumber(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
-                  required
-                />
+                <label className="text-xs font-bold text-gray-700 block mb-1.5">
+                  Choose Secure Password
+                  <span className="ml-1 text-[11px] font-normal text-gray-500">(minimum 8 characters)</span>
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-3.5" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="At least 8 characters with numbers & uppercase"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-10 py-3 text-xs sm:text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#689f38] focus:ring-4 focus:ring-[#84c225]/15 transition-all shadow-2xs"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-3 text-gray-400 hover:text-gray-700 p-0.5 rounded"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-600/20 active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 mt-4"
-            >
-              {loading ? 'Creating Student Account...' : 'Complete Profile & Enter Marketplace'}
-            </button>
-          </form>
-        )}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 bg-gradient-to-r from-[#689f38] to-[#558b2f] hover:from-[#558b2f] hover:to-[#33691e] text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider rounded-xl shadow-lg shadow-[#689f38]/25 active:scale-[0.99] disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
+              >
+                {loading ? 'Validating College Domain...' : 'Send Verification OTP'}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
+          )}
 
-        <div className="text-center pt-4 border-t border-slate-800 text-xs text-slate-400">
-          Already verified?{' '}
-          <Link href="/login" className="text-sky-400 font-bold hover:underline">
-            Log in here
-          </Link>
+          {/* STEP 2: OTP Verification Form */}
+          {step === 2 && (
+            <form onSubmit={handleVerifyOtp} className="space-y-5">
+              <div className="p-4 bg-[#f1f8e9] border border-[#dcedc8] rounded-2xl text-center space-y-1">
+                <div className="text-xs text-gray-600">Verification code dispatched to:</div>
+                <div className="text-sm font-bold text-[#2e7d32] font-mono">{email}</div>
+                <div className="text-[11px] text-gray-500">Check your webmail inbox &amp; spam folder. Valid for 5 minutes.</div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-2 text-center uppercase tracking-wider">
+                  Enter 6-Digit OTP Code
+                </label>
+                <div className="max-w-xs mx-auto">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    placeholder="• • • • • •"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                    className="w-full bg-[#f8fbf5] border-2 border-[#84c225] rounded-2xl py-3.5 px-4 text-center text-3xl font-mono font-black tracking-[0.4em] text-gray-900 focus:outline-none focus:ring-4 focus:ring-[#84c225]/20 shadow-xs"
+                    required
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2.5">
+                <button
+                  type="submit"
+                  disabled={loading || otp.length !== 6}
+                  className="w-full py-3.5 bg-gradient-to-r from-[#689f38] to-[#558b2f] hover:from-[#558b2f] hover:to-[#33691e] text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider rounded-xl shadow-lg shadow-[#689f38]/25 active:scale-[0.99] disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {loading ? 'Verifying OTP Code...' : 'Verify & Continue'}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep(1);
+                    setError(null);
+                  }}
+                  className="w-full py-2 text-center text-xs text-gray-500 hover:text-[#2e7d32] font-semibold flex items-center justify-center gap-1 transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Change Email Address</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* STEP 3: Student Profile & Hall Details */}
+          {step === 3 && (
+            <form onSubmit={handleCompleteRegistration} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Full Student Name</label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    placeholder="e.g. Sourav Senapati"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#689f38] focus:ring-4 focus:ring-[#84c225]/15 transition-all"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Roll Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 24U10227"
+                    value={rollNumber}
+                    onChange={(e) => setRollNumber(e.target.value)}
+                    className="w-full bg-white border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-gray-900 uppercase placeholder:text-gray-400 focus:outline-none focus:border-[#689f38] focus:ring-4 focus:ring-[#84c225]/15 transition-all"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Registration No.</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 202410227"
+                    value={registrationNumber}
+                    onChange={(e) => setRegistrationNumber(e.target.value)}
+                    className="w-full bg-white border border-gray-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#689f38] focus:ring-4 focus:ring-[#84c225]/15 transition-all"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">
+                  10-Digit Mobile Number <span className="text-[11px] font-normal text-gray-500">(For Delivery SMS / Call)</span>
+                </label>
+                <div className="relative">
+                  <Phone className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+                  <input
+                    type="tel"
+                    placeholder="9876501234"
+                    value={mobileNumber}
+                    onChange={(e) => setMobileNumber(e.target.value)}
+                    className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#689f38] focus:ring-4 focus:ring-[#84c225]/15 transition-all"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Residence Hall</label>
+                  <div className="relative">
+                    <Building2 className="w-4 h-4 text-gray-400 absolute left-3.5 top-3 pointer-events-none" />
+                    <select
+                      value={hallId}
+                      onChange={(e) => setHallId(e.target.value)}
+                      className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-8 py-2.5 text-xs sm:text-sm text-gray-900 focus:outline-none focus:border-[#689f38] focus:ring-4 focus:ring-[#84c225]/15 transition-all appearance-none cursor-pointer"
+                      required
+                    >
+                      {halls.map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name}
+                        </option>
+                      ))}
+                      {halls.length === 0 && (
+                        <>
+                          <option value="hall_11">Hall 11</option>
+                          <option value="hall_12">Hall 12</option>
+                          <option value="hall_13">Hall 13</option>
+                          <option value="hall_14">Hall 14</option>
+                        </>
+                      )}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-gray-400">
+                      <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
+                        <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-gray-700 block mb-1">Room / Wing Number</label>
+                  <div className="relative">
+                    <Home className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      placeholder="e.g. B-304"
+                      value={roomNumber}
+                      onChange={(e) => setRoomNumber(e.target.value)}
+                      className="w-full bg-white border border-gray-300 rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#689f38] focus:ring-4 focus:ring-[#84c225]/15 transition-all"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 bg-gradient-to-r from-[#2e7d32] to-[#1b5e20] hover:from-[#1b5e20] hover:to-[#0d3813] text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider rounded-xl shadow-lg shadow-[#2e7d32]/25 active:scale-[0.99] disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer mt-3"
+              >
+                {loading ? 'Creating Student Account...' : 'Complete Profile & Enter Marketplace'}
+                <CheckCircle2 className="w-4 h-4" />
+              </button>
+            </form>
+          )}
+
+          {/* Bottom Login Link */}
+          <div className="text-center pt-4 border-t border-gray-200 text-xs text-gray-600">
+            Already verified?{' '}
+            <Link href="/login" className="text-[#689f38] font-bold hover:underline">
+              Log in here
+            </Link>
+          </div>
         </div>
+      </div>
+
+      {/* Trust & Policy Micro Badges */}
+      <div className="flex flex-wrap items-center justify-center gap-4 mt-6 text-xs text-gray-500">
+        <span className="flex items-center gap-1.5">
+          <ShieldCheck className="w-4 h-4 text-[#689f38]" /> Verified NITDGP Network
+        </span>
+        <span className="text-gray-300">•</span>
+        <span className="flex items-center gap-1.5">
+          <Building2 className="w-4 h-4 text-[#689f38]" /> Halls 1 to 14 Coverage
+        </span>
+        <span className="text-gray-300">•</span>
+        <span className="flex items-center gap-1.5">
+          <Lock className="w-4 h-4 text-[#689f38]" /> 256-bit Encrypted OTP
+        </span>
       </div>
     </div>
   );
