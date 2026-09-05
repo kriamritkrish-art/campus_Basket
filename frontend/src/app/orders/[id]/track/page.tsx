@@ -69,7 +69,7 @@ interface OrderData {
 }
 
 const CHECKPOINTS = [
-  { id: 'HUB', label: 'Pharmacy Hub', sub: 'Store / Canteen Hub' },
+  { id: 'HUB', label: 'Hub', sub: 'Store / Canteen Hub' },
   { id: 'CONFIRMED', label: 'Order Confirmed', sub: 'Verified & Queued' },
   { id: 'ASSIGNED', label: 'Partner Assigned', sub: 'Runner Dispatched' },
   { id: 'PICKED_UP', label: 'Picked Up', sub: 'Bag Packed & Tagged' },
@@ -524,20 +524,20 @@ export default function OrderTrackingPage() {
           </div>
 
           {/* ==================================================
-              3. LIVE GPS TRACK RADAR (Refined Modern Campus Tracker)
+              3. LIVE GPS TRACK RADAR (Whitish Modern Campus Tracker)
              ================================================== */}
-          <div className="bg-gradient-to-b from-[#0e1b33] via-[#091427] to-[#060d1b] rounded-[20px] p-4 sm:p-5 border border-[#1d3356] shadow-xl shadow-black/25 text-white relative overflow-hidden space-y-3.5 sm:space-y-4">
+          <div className="bg-gradient-to-b from-[#f8fafc] via-[#f1f5f9] to-[#f8fafc] rounded-[20px] p-4 sm:p-5 border border-slate-200 shadow-xs relative overflow-hidden space-y-3.5 sm:space-y-4">
 
             {/* Subtle background matrix texture */}
-            <div className="absolute inset-0 bg-[radial-gradient(#1e365d_1px,transparent_1px)] [background-size:16px_16px] opacity-35 pointer-events-none" />
+            <div className="absolute inset-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:16px_16px] opacity-35 pointer-events-none" />
 
             {/* Header: Compact Pill Badge + Status Text */}
             <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0c223c]/90 border border-[#1e5088] text-[#38bdf8] text-[10px] font-bold tracking-wider uppercase shadow-[0_0_10px_rgba(56,189,248,0.18)] shrink-0 self-start sm:self-auto">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#38bdf8] animate-pulse shadow-[0_0_6px_#38bdf8]" />
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-50 border border-sky-200 text-[#0284c7] text-[10px] font-extrabold tracking-wider uppercase shadow-2xs shrink-0 self-start sm:self-auto">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0284c7] animate-pulse" />
                 <span>LIVE GPS TRACK RADAR</span>
               </div>
-              <span className="text-xs sm:text-[13px] font-medium text-slate-100 tracking-normal leading-snug">
+              <span className="text-xs sm:text-[13px] font-bold text-slate-800 tracking-tight leading-snug">
                 {getRadarHeadline(order.status)}
               </span>
             </div>
@@ -547,11 +547,11 @@ export default function OrderTrackingPage() {
               <div className="relative min-w-[500px] sm:min-w-0">
 
                 {/* Background Inactive Track Line (Passes exactly through circle centers) */}
-                <div className="absolute top-4 -translate-y-1/2 left-[8.3333%] right-[8.3333%] h-[3px] bg-[#1b2d49] rounded-full" />
+                <div className="absolute top-4 -translate-y-1/2 left-[8.3333%] right-[8.3333%] h-[3px] bg-slate-200 rounded-full" />
 
                 {/* Completed/Active Track Line with subtle glow */}
                 <div
-                  className="absolute top-4 -translate-y-1/2 left-[8.3333%] h-[3px] bg-[#10b981] rounded-full shadow-[0_0_8px_rgba(16,185,129,0.35)] transition-all duration-500 ease-out"
+                  className="absolute top-4 -translate-y-1/2 left-[8.3333%] h-[3px] bg-[#10b981] rounded-full shadow-[0_0_8px_rgba(16,185,129,0.3)] transition-all duration-500 ease-out"
                   style={{
                     width: activeStep >= 0 ? `${(activeStep / 5) * 83.3333}%` : '0%'
                   }}
@@ -569,15 +569,15 @@ export default function OrderTrackingPage() {
                         {/* Floating minimal delivery vehicle badge above active step */}
                         {isActive && (
                           <div className="absolute -top-7 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-none">
-                            <div className="w-6 h-6 rounded-full bg-[#0b1d36] border border-[#34d399]/60 shadow-[0_2px_8px_rgba(0,0,0,0.6),0_0_8px_rgba(52,211,153,0.25)] flex items-center justify-center transition-all duration-300">
-                              <svg className="w-3.5 h-3.5 text-[#34d399]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <div className="w-6 h-6 rounded-full bg-white border border-[#10b981] shadow-md shadow-slate-300 flex items-center justify-center transition-all duration-300">
+                              <svg className="w-3.5 h-3.5 text-[#10b981]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <circle cx="18.5" cy="17.5" r="3.5" />
                                 <circle cx="5.5" cy="17.5" r="3.5" />
                                 <circle cx="15" cy="5" r="1" />
                                 <path d="M12 17.5V14l-3-3 4-3 2 3h2" />
                               </svg>
                             </div>
-                            <div className="w-1 h-1 rounded-full bg-[#34d399]/80 mt-0.5" />
+                            <div className="w-1 h-1 rounded-full bg-[#10b981] mt-0.5" />
                           </div>
                         )}
 
@@ -591,18 +591,18 @@ export default function OrderTrackingPage() {
                           <div
                             className={`rounded-full flex items-center justify-center font-semibold text-xs transition-all duration-300 shrink-0 ${
                               isCompleted
-                                ? 'w-6 h-6 bg-[#10b981] text-white shadow-[0_2px_6px_rgba(0,0,0,0.3)]'
+                                ? 'w-6 h-6 bg-[#10b981] text-white shadow-xs'
                                 : isActive
-                                ? 'w-7 h-7 bg-[#10b981] text-white ring-4 ring-[#10b981]/25 shadow-[0_0_14px_rgba(16,185,129,0.45)]'
-                                : 'w-6 h-6 bg-[#0c182b] text-slate-400 border border-[#1f3554]'
+                                ? 'w-7 h-7 bg-[#10b981] text-white ring-4 ring-[#10b981]/25 shadow-md shadow-[#10b981]/25'
+                                : 'w-6 h-6 bg-white border-2 border-slate-300 text-slate-400'
                             }`}
                           >
                             {isCompleted || (isActive && activeStep === 5) ? (
                               <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                             ) : isActive ? (
-                              <span className="w-2 h-2 rounded-full bg-white shadow-xs" />
+                              <span className="w-2 h-2 rounded-full bg-white shadow-2xs" />
                             ) : (
-                              <span className="text-[10px] font-semibold text-slate-400">{idx + 1}</span>
+                              <span className="text-[10px] font-bold text-slate-400">{idx + 1}</span>
                             )}
                           </div>
                         </div>
@@ -612,10 +612,10 @@ export default function OrderTrackingPage() {
                           <div
                             className={`text-[10px] sm:text-[11px] tracking-tight leading-tight transition-colors ${
                               isActive
-                                ? 'font-bold text-white'
+                                ? 'font-bold text-slate-900'
                                 : isCompleted
-                                ? 'font-medium text-slate-200'
-                                : 'font-normal text-slate-400'
+                                ? 'font-semibold text-slate-700'
+                                : 'font-medium text-slate-400'
                             }`}
                           >
                             {step.label}
