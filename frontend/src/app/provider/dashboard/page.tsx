@@ -102,6 +102,9 @@ export default function ProviderDashboardPage() {
   const [customerPage, setCustomerPage] = useState(1);
   const [customerSortBy, setCustomerSortBy] = useState<'spent' | 'orders' | 'recent'>('spent');
 
+  // Sales Trend Granularity Toggle
+  const [trendView, setTrendView] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+
   // Monthly Sales Metric Toggle
   const [monthlyMetric, setMonthlyMetric] = useState<'sales' | 'orders' | 'itemsSold'>('sales');
 
@@ -357,7 +360,7 @@ export default function ProviderDashboardPage() {
   };
 
   // CSV Export Trigger
-  const handleExportCsv = (type: 'orders' | 'customers' | 'products') => {
+  const handleExportCsv = (type: 'orders' | 'customers' | 'products' | 'sales') => {
     const token = localStorage.getItem('nit_token');
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
     const downloadUrl = `${backendUrl}/api/provider/export?type=${type}&token=${token}`;
@@ -439,6 +442,43 @@ export default function ProviderDashboardPage() {
       return new Date(b.lastPurchase).getTime() - new Date(a.lastPurchase).getTime();
     });
   }, [analytics, customerSearch, customerSortBy]);
+
+  // Aggregated Sales Trends based on daily/weekly/monthly toggle
+  const displayTrends = useMemo(() => {
+    const raw = analytics?.salesTrends || [];
+    if (trendView === 'daily') return raw;
+
+    if (trendView === 'weekly') {
+      const weeks: Record<string, { date: string; rawDate: string; sales: number; orders: number; itemsSold: number }> = {};
+      raw.forEach((d: any, idx: number) => {
+        const weekNum = `W${Math.floor(idx / 7) + 1} (${d.date})`;
+        if (!weeks[weekNum]) weeks[weekNum] = { date: weekNum, rawDate: d.rawDate, sales: 0, orders: 0, itemsSold: 0 };
+        weeks[weekNum].sales += d.sales;
+        weeks[weekNum].orders += d.orders;
+        weeks[weekNum].itemsSold += d.itemsSold;
+      });
+      return Object.values(weeks);
+    }
+
+    if (trendView === 'monthly') {
+      const months: Record<string, { date: string; rawDate: string; sales: number; orders: number; itemsSold: number }> = {};
+      raw.forEach((d: any) => {
+        const mKey = d.rawDate ? d.rawDate.slice(0, 7) : d.date;
+        if (!months[mKey]) months[mKey] = { date: mKey, rawDate: d.rawDate, sales: 0, orders: 0, itemsSold: 0 };
+        months[mKey].sales += d.sales;
+        months[mKey].orders += d.orders;
+        months[mKey].itemsSold += d.itemsSold;
+      });
+      return Object.values(months);
+    }
+    return raw;
+  }, [analytics, trendView]);
+
+  const customerItemsPerPage = 10;
+  const paginatedCustomers = useMemo(() => {
+    const start = (customerPage - 1) * customerItemsPerPage;
+    return processedCustomers.slice(start, start + customerItemsPerPage);
+  }, [processedCustomers, customerPage]);
 
   const kpis = analytics?.kpiCards;
   const isLaundryVendor =
@@ -527,33 +567,54 @@ export default function ProviderDashboardPage() {
               Download Monthly Report
             </button>
 
-            {/* CSV Export Dropdown */}
+            {/* CSV & Report Export Dropdown */}
             <div className="relative group">
               <button className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-medium px-3 py-2 rounded-lg transition-colors">
                 <Download className="w-3.5 h-3.5 text-emerald-400" />
-                Export Data
+                Export Report
               </button>
-              <div className="absolute right-0 mt-1 w-44 bg-slate-800 border border-slate-700 rounded-lg shadow-xl hidden group-hover:block z-50 overflow-hidden">
+              <div className="absolute right-0 mt-1 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl hidden group-hover:block z-50 overflow-hidden">
+                <button
+                  onClick={() => setMonthlyReportModalOpen(true)}
+                  className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
+                >
+                  <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                  Download PDF Report
+                </button>
                 <button
                   onClick={() => handleExportCsv('orders')}
                   className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
                 >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                  Orders CSV
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-blue-400" />
+                  Export Orders CSV
                 </button>
                 <button
                   onClick={() => handleExportCsv('customers')}
                   className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
                 >
-                  <Users className="w-3.5 h-3.5 text-blue-400" />
-                  Customers CSV
+                  <Users className="w-3.5 h-3.5 text-indigo-400" />
+                  Export Customers CSV
                 </button>
                 <button
                   onClick={() => handleExportCsv('products')}
                   className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
                 >
                   <Boxes className="w-3.5 h-3.5 text-amber-400" />
-                  Products CSV
+                  Export Products CSV
+                </button>
+                <button
+                  onClick={() => handleExportCsv('sales')}
+                  className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
+                >
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                  Export Sales CSV
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2 border-t border-slate-700"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-300" />
+                  Print Report
                 </button>
               </div>
             </div>
@@ -938,28 +999,57 @@ export default function ProviderDashboardPage() {
                     <p className="text-xs text-slate-500">Interactive revenue, orders & items sold progression</p>
                   </div>
 
-                  {/* Range Selector */}
-                  <div className="flex items-center bg-slate-100 p-1 rounded-lg text-xs font-medium">
-                    {['7d', '30d', '90d', '6m', '1y'].map((opt) => (
+                  {/* Aggregation & Range Selector */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-xs font-medium">
                       <button
-                        key={opt}
-                        onClick={() => setTimeframe(opt)}
+                        onClick={() => setTrendView('daily')}
                         className={`px-2.5 py-1 rounded transition-colors ${
-                          timeframe === opt
-                            ? 'bg-white text-emerald-700 font-bold shadow-sm'
-                            : 'text-slate-600 hover:text-slate-900'
+                          trendView === 'daily' ? 'bg-white text-emerald-700 font-bold shadow-sm' : 'text-slate-600'
                         }`}
                       >
-                        {opt.toUpperCase()}
+                        Daily
                       </button>
-                    ))}
+                      <button
+                        onClick={() => setTrendView('weekly')}
+                        className={`px-2.5 py-1 rounded transition-colors ${
+                          trendView === 'weekly' ? 'bg-white text-emerald-700 font-bold shadow-sm' : 'text-slate-600'
+                        }`}
+                      >
+                        Weekly
+                      </button>
+                      <button
+                        onClick={() => setTrendView('monthly')}
+                        className={`px-2.5 py-1 rounded transition-colors ${
+                          trendView === 'monthly' ? 'bg-white text-emerald-700 font-bold shadow-sm' : 'text-slate-600'
+                        }`}
+                      >
+                        Monthly
+                      </button>
+                    </div>
+
+                    <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-xs font-medium">
+                      {['7d', '30d', '90d', '6m', '1y'].map((opt) => (
+                        <button
+                          key={opt}
+                          onClick={() => setTimeframe(opt)}
+                          className={`px-2 py-1 rounded transition-colors ${
+                            timeframe === opt
+                              ? 'bg-white text-emerald-700 font-bold shadow-sm'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          {opt.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                {analytics?.salesTrends && analytics.salesTrends.length > 0 ? (
+                {displayTrends && displayTrends.length > 0 ? (
                   <div className="h-72 w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={analytics.salesTrends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <AreaChart data={displayTrends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                         <defs>
                           <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#059669" stopOpacity={0.4} />
@@ -1673,6 +1763,7 @@ export default function ProviderDashboardPage() {
                     <option value={5}>Top 5</option>
                     <option value={10}>Top 10</option>
                     <option value={20}>Top 20</option>
+                    <option value={1000}>All Products</option>
                   </select>
                   <select
                     value={productChartMetric}

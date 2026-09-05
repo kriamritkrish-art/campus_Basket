@@ -1142,6 +1142,34 @@ export class ProviderController {
         return;
       }
 
+      if (type === 'sales') {
+        const orders: any[] = (await prisma.order.findMany({
+          where: { providerId },
+          include: { items: true },
+          orderBy: { createdAt: 'desc' }
+        })) as any[];
+
+        const dailyMap: Record<string, { date: string; sales: number; orders: number; items: number }> = {};
+        orders.forEach((o) => {
+          const dKey = new Date(o.createdAt).toISOString().slice(0, 10);
+          if (!dailyMap[dKey]) dailyMap[dKey] = { date: dKey, sales: 0, orders: 0, items: 0 };
+          dailyMap[dKey].orders += 1;
+          if (o.status === 'DELIVERED') dailyMap[dKey].sales += Number(o.totalAmount);
+          const q = o.items ? o.items.reduce((s: number, i: any) => s + (i.quantity || 1), 0) : 1;
+          dailyMap[dKey].items += q;
+        });
+
+        const header = 'Date,Daily Sales (INR),Orders Placed,Items Sold\n';
+        const rows = Object.values(dailyMap)
+          .sort((a, b) => b.date.localeCompare(a.date))
+          .map((d) => [escapeCsv(d.date), d.sales, d.orders, d.items].join(','));
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="sales_trend_report.csv"');
+        res.send(header + rows.join('\n'));
+        return;
+      }
+
       // Default: orders export
       const orders: any[] = (await prisma.order.findMany({
         where: { providerId },
