@@ -96,7 +96,7 @@ export class GoogleDriveStorageService implements IStorageService {
 
         return {
           fileId,
-          webUrl: res.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`,
+          webUrl: `https://lh3.googleusercontent.com/d/${fileId}`,
           fileName,
           mimeType,
           fileSize: fileBuffer.length
