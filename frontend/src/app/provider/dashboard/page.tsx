@@ -47,7 +47,8 @@ import {
   PackageCheck,
   PackageX,
   ChefHat,
-  Bike
+  Bike,
+  Menu
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -112,6 +113,10 @@ export default function ProviderDashboardPage() {
   const [productChartLimit, setProductChartLimit] = useState<number>(5);
   const [productChartMetric, setProductChartMetric] = useState<'revenue' | 'unitsSold' | 'ordersCount'>('revenue');
 
+  // Demo / Sample Data Mode (enabled by default so graphs are rich)
+  const [demoMode, setDemoMode] = useState<boolean>(true);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
   // Detail Modals
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [monthlyReportModalOpen, setMonthlyReportModalOpen] = useState(false);
@@ -173,12 +178,15 @@ export default function ProviderDashboardPage() {
   }, [isAuthenticated, role, isLoading]);
 
   // Fetch full analytics
-  const loadAnalytics = async () => {
+  const loadAnalytics = async (isDemo = demoMode) => {
     try {
       setAnalyticsLoading(true);
       let query = `/api/provider/analytics?timeframe=${timeframe}`;
       if (timeframe === 'custom' && customStartDate && customEndDate) {
         query += `&startDate=${customStartDate}&endDate=${customEndDate}`;
+      }
+      if (isDemo) {
+        query += `&demo=true`;
       }
       const res = await apiRequest(query);
       if (res.success) {
@@ -228,8 +236,8 @@ export default function ProviderDashboardPage() {
     } catch (err) {}
   };
 
-  const refreshAll = () => {
-    loadAnalytics();
+  const refreshAll = (isDemo = demoMode) => {
+    loadAnalytics(isDemo);
     loadProducts();
     loadOrders();
     loadLaundryJobs();
@@ -363,7 +371,10 @@ export default function ProviderDashboardPage() {
   const handleExportCsv = (type: 'orders' | 'customers' | 'products' | 'sales') => {
     const token = localStorage.getItem('nit_token');
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
-    const downloadUrl = `${backendUrl}/api/provider/export?type=${type}&token=${token}`;
+    let downloadUrl = `${backendUrl}/api/provider/export?type=${type}&token=${token}`;
+    if (demoMode) {
+      downloadUrl += '&demo=true';
+    }
     window.open(downloadUrl, '_blank');
   };
 
@@ -486,8 +497,29 @@ export default function ProviderDashboardPage() {
     analytics?.provider?.serviceCategory === 'LAUNDRY' ||
     analytics?.provider?.serviceCategory === 'ALL';
 
+  const activeTabTitle = useMemo(() => {
+    switch (activeTab) {
+      case 'OVERVIEW':
+        return 'Overview & Business Analytics';
+      case 'LIVE_OPERATIONS':
+        return 'Live Operations & Order Pipeline';
+      case 'CUSTOMERS':
+        return 'Customer Analytics & Top Buyers';
+      case 'PRODUCTS':
+        return 'Products & Catalog Management';
+      case 'DELIVERY':
+        return 'Delivery Fleet & Partner Performance';
+      case 'FINANCE':
+        return 'Finance, Revenue & Settlement Statement';
+      case 'LAUNDRY':
+        return 'Doorstep Laundry OTP Verification Desk';
+      default:
+        return 'Overview & Business Analytics';
+    }
+  }, [activeTab]);
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex font-sans">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-5 right-5 z-50 bg-emerald-700 text-white px-5 py-3 rounded-lg shadow-xl flex items-center gap-3 border border-emerald-500 animate-slide-in">
@@ -496,273 +528,590 @@ export default function ProviderDashboardPage() {
         </div>
       )}
 
-      {/* TOP HEADER: SERVICE PROVIDER CONSOLE */}
-      <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-40 shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
-          {/* Provider Identity */}
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-md">
-              <Store className="w-6 h-6 text-white" />
-            </div>
-            <div>
+      {/* MOBILE DRAWER OVERLAY (lg:hidden) */}
+      {isMobileSidebarOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden flex">
+          <div
+            className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity"
+            onClick={() => setIsMobileSidebarOpen(false)}
+          />
+          <div className="relative w-72 max-w-[80vw] bg-slate-900 border-r border-slate-800 flex flex-col z-10 shadow-2xl">
+            {/* Header with close */}
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold tracking-wider uppercase text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
-                  Service Provider Console
-                </span>
-                <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                  ● Active
-                </span>
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center">
+                  <Store className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Console</span>
+                  <div className="text-xs font-bold text-white truncate max-w-[140px]">
+                    {analytics?.provider?.fullName || (user as any)?.fullName || 'Campus Partner Hub'}
+                  </div>
+                </div>
               </div>
-              <div className="flex items-baseline gap-2 mt-0.5">
-                <h1 className="text-lg font-bold text-white tracking-tight">
-                  {analytics?.provider?.fullName || (user as any)?.fullName || (user as any)?.provider?.fullName || 'Campus Partner Hub'}
-                </h1>
-                <span className="text-xs text-slate-400">
-                  ID: <span className="text-slate-200 font-mono font-medium">{analytics?.provider?.username || 'SP_VENDOR'}</span>
-                </span>
-                <span className="text-xs text-slate-400">
-                  Category: <span className="text-emerald-300 font-medium">{analytics?.provider?.serviceCategory || 'All Campus Stores'}</span>
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Actions: Global Date Filter, Export, Refresh, Logout */}
-          <div className="flex items-center flex-wrap gap-2.5">
-            {/* Global Date Filter Dropdown */}
-            <div className="relative">
-              <select
-                value={timeframe}
-                onChange={(e) => {
-                  if (e.target.value === 'custom') {
-                    setIsCustomDateOpen(true);
-                  } else {
-                    setIsCustomDateOpen(false);
-                    setTimeframe(e.target.value);
-                  }
-                }}
-                className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer hover:bg-slate-700/80 transition-colors"
-              >
-                <option value="today">Today</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="7d">Last 7 Days</option>
-                <option value="30d">Last 30 Days</option>
-                <option value="this_month">This Month</option>
-                <option value="last_month">Last Month</option>
-                <option value="90d">Last 3 Months</option>
-                <option value="6m">Last 6 Months</option>
-                <option value="1y">This Year</option>
-                <option value="custom">Custom Range...</option>
-              </select>
-            </div>
-
-            {/* Monthly Report PDF Generator */}
-            <button
-              onClick={() => setMonthlyReportModalOpen(true)}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors shadow-sm"
-              title="Download Monthly Business Analytics PDF"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              Download Monthly Report
-            </button>
-
-            {/* CSV & Report Export Dropdown */}
-            <div className="relative group">
-              <button className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-medium px-3 py-2 rounded-lg transition-colors">
-                <Download className="w-3.5 h-3.5 text-emerald-400" />
-                Export Report
-              </button>
-              <div className="absolute right-0 mt-1 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl hidden group-hover:block z-50 overflow-hidden">
-                <button
-                  onClick={() => setMonthlyReportModalOpen(true)}
-                  className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
-                >
-                  <FileText className="w-3.5 h-3.5 text-emerald-400" />
-                  Download PDF Report
-                </button>
-                <button
-                  onClick={() => handleExportCsv('orders')}
-                  className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-blue-400" />
-                  Export Orders CSV
-                </button>
-                <button
-                  onClick={() => handleExportCsv('customers')}
-                  className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
-                >
-                  <Users className="w-3.5 h-3.5 text-indigo-400" />
-                  Export Customers CSV
-                </button>
-                <button
-                  onClick={() => handleExportCsv('products')}
-                  className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
-                >
-                  <Boxes className="w-3.5 h-3.5 text-amber-400" />
-                  Export Products CSV
-                </button>
-                <button
-                  onClick={() => handleExportCsv('sales')}
-                  className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
-                >
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-                  Export Sales CSV
-                </button>
-                <button
-                  onClick={() => window.print()}
-                  className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2 border-t border-slate-700"
-                >
-                  <Printer className="w-3.5 h-3.5 text-slate-300" />
-                  Print Report
-                </button>
-              </div>
-            </div>
-
-            {/* Refresh */}
-            <button
-              onClick={refreshAll}
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition-colors"
-              title="Refresh Business Analytics"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${analyticsLoading ? 'animate-spin' : ''}`} />
-            </button>
-
-            {/* Sign Out */}
-            <button
-              onClick={logout}
-              className="flex items-center gap-1.5 bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 text-xs font-medium px-3 py-2 rounded-lg transition-colors"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              Sign Out
-            </button>
-          </div>
-        </div>
-
-        {/* Custom Date Range Picker Sub-bar */}
-        {isCustomDateOpen && (
-          <div className="bg-slate-800/90 border-t border-slate-700/60 px-4 py-2.5">
-            <div className="max-w-7xl mx-auto flex items-center gap-3 text-xs">
-              <span className="text-slate-300 font-medium">Custom Range:</span>
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-slate-200"
-              />
-              <span className="text-slate-400">to</span>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-slate-200"
-              />
               <button
-                onClick={() => {
-                  setTimeframe('custom');
-                  loadAnalytics();
-                }}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1 rounded"
+                onClick={() => setIsMobileSidebarOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
               >
-                Apply
+                <X className="w-5 h-5" />
               </button>
             </div>
-          </div>
-        )}
 
-        {/* Console Navigation Tabs */}
-        <div className="bg-slate-900/95 border-t border-slate-800 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto flex space-x-1 overflow-x-auto py-1">
-            <button
-              onClick={() => setActiveTab('OVERVIEW')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
-                activeTab === 'OVERVIEW'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              Overview & Analytics
-            </button>
-            <button
-              onClick={() => setActiveTab('LIVE_OPERATIONS')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
-                activeTab === 'LIVE_OPERATIONS'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5 text-amber-400" />
-              Live Operations & Orders
-              {kpis?.activeOrders?.value > 0 && (
-                <span className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.2 rounded-full text-[10px]">
-                  {kpis?.activeOrders?.value}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('CUSTOMERS')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
-                activeTab === 'CUSTOMERS'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5 text-blue-400" />
-              Customer Analytics & Top Buyers
-            </button>
-            <button
-              onClick={() => setActiveTab('PRODUCTS')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
-                activeTab === 'PRODUCTS'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <Boxes className="w-3.5 h-3.5" />
-              Products & Catalog
-            </button>
-            <button
-              onClick={() => setActiveTab('DELIVERY')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
-                activeTab === 'DELIVERY'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <Bike className="w-3.5 h-3.5 text-teal-400" />
-              Delivery Performance
-            </button>
-            <button
-              onClick={() => setActiveTab('FINANCE')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
-                activeTab === 'FINANCE'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <CircleDollarSign className="w-3.5 h-3.5 text-yellow-400" />
-              Finance & Settlements
-            </button>
-            {isLaundryVendor && (
+            {/* Nav list */}
+            <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5">
+              <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Business Management
+              </div>
+
               <button
-                onClick={() => setActiveTab('LAUNDRY')}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
-                  activeTab === 'LAUNDRY'
-                    ? 'bg-emerald-600 text-white shadow-sm'
+                onClick={() => { setActiveTab('OVERVIEW'); setIsMobileSidebarOpen(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'OVERVIEW'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                 }`}
               >
-                <Shirt className="w-3.5 h-3.5 text-indigo-400" />
-                Doorstep Laundry OTPs
+                <span className="flex items-center gap-2.5">
+                  <BarChart3 className="w-4 h-4" />
+                  Overview & Analytics
+                </span>
+                {activeTab === 'OVERVIEW' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
               </button>
-            )}
+
+              <button
+                onClick={() => { setActiveTab('LIVE_OPERATIONS'); setIsMobileSidebarOpen(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'LIVE_OPERATIONS'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Clock className="w-4 h-4 text-amber-400" />
+                  Live Operations & Orders
+                </span>
+                {kpis?.activeOrders?.value > 0 ? (
+                  <span className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded-full text-[10px]">
+                    {kpis?.activeOrders?.value}
+                  </span>
+                ) : activeTab === 'LIVE_OPERATIONS' ? (
+                  <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />
+                ) : null}
+              </button>
+
+              <button
+                onClick={() => { setActiveTab('CUSTOMERS'); setIsMobileSidebarOpen(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'CUSTOMERS'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Users className="w-4 h-4 text-blue-400" />
+                  Customer Analytics & Top Buyers
+                </span>
+                {activeTab === 'CUSTOMERS' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+              </button>
+
+              <button
+                onClick={() => { setActiveTab('PRODUCTS'); setIsMobileSidebarOpen(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'PRODUCTS'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Boxes className="w-4 h-4 text-emerald-400" />
+                  Products & Catalog
+                </span>
+                {activeTab === 'PRODUCTS' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+              </button>
+
+              <button
+                onClick={() => { setActiveTab('DELIVERY'); setIsMobileSidebarOpen(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'DELIVERY'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Bike className="w-4 h-4 text-teal-400" />
+                  Delivery Performance
+                </span>
+                {activeTab === 'DELIVERY' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+              </button>
+
+              <button
+                onClick={() => { setActiveTab('FINANCE'); setIsMobileSidebarOpen(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'FINANCE'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <CircleDollarSign className="w-4 h-4 text-yellow-400" />
+                  Finance & Settlements
+                </span>
+                {activeTab === 'FINANCE' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+              </button>
+
+              {isLaundryVendor && (
+                <button
+                  onClick={() => { setActiveTab('LAUNDRY'); setIsMobileSidebarOpen(false); }}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                    activeTab === 'LAUNDRY'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Shirt className="w-4 h-4 text-indigo-400" />
+                    Doorstep Laundry OTPs
+                  </span>
+                  {activeTab === 'LAUNDRY' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+                </button>
+              )}
+
+              {/* Reports & Tools */}
+              <div className="pt-4 px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Reports & Tools
+              </div>
+
+              <button
+                onClick={() => { setMonthlyReportModalOpen(true); setIsMobileSidebarOpen(false); }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-xs font-medium bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800/60 transition-colors"
+              >
+                <FileText className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span className="truncate">Monthly Report [PDF]</span>
+              </button>
+
+              {/* Demo Mode Toggle in Mobile */}
+              <div className="pt-2">
+                <button
+                  onClick={() => {
+                    const nextDemo = !demoMode;
+                    setDemoMode(nextDemo);
+                    loadAnalytics(nextDemo);
+                    showToast(nextDemo ? 'Sample Demo Data Enabled' : 'Switched to Live Database Data');
+                  }}
+                  className={`w-full flex items-center justify-between px-3.5 py-2 rounded-lg text-xs font-medium border transition-colors ${
+                    demoMode
+                      ? 'bg-amber-950/40 border-amber-600/50 text-amber-300'
+                      : 'bg-slate-800/50 border-slate-700 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Sample Graph Data</span>
+                  </span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${demoMode ? 'bg-amber-500 text-slate-950' : 'bg-slate-700 text-slate-300'}`}>
+                    {demoMode ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Sign Out in Mobile */}
+            <div className="p-3 border-t border-slate-800">
+              <button
+                onClick={logout}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-rose-950/30 hover:bg-rose-900/40 text-rose-300 border border-rose-800/40 transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Sign Out
+              </button>
+            </div>
           </div>
         </div>
-      </header>
+      )}
 
-      {/* MAIN CONTAINER */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
+      {/* DESKTOP VERTICAL SIDEBAR (The exact tabs from screenshot now arranged vertically!) */}
+      <aside className="hidden lg:flex flex-col w-64 xl:w-72 fixed inset-y-0 left-0 bg-slate-900 border-r border-slate-800 z-30 select-none shadow-xl">
+        {/* Top Branding & Provider Identity */}
+        <div className="p-4 border-b border-slate-800 bg-slate-900/60">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-md flex-shrink-0 mt-0.5">
+              <Store className="w-5 h-5 text-white" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold tracking-wider uppercase text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-800">
+                  Console
+                </span>
+                <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                  ● Active
+                </span>
+              </div>
+              <h1 className="text-sm font-bold text-white truncate mt-1" title={analytics?.provider?.fullName || 'Campus Partner Hub'}>
+                {analytics?.provider?.fullName || (user as any)?.fullName || (user as any)?.provider?.fullName || 'Campus Partner Hub'}
+              </h1>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5 truncate">
+                <span className="font-mono text-slate-200 font-medium">{analytics?.provider?.username || 'SP_VENDOR'}</span>
+                <span>•</span>
+                <span className="text-emerald-300 font-medium truncate">{analytics?.provider?.serviceCategory || 'All Campus Stores'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Vertical Navigation Tabs */}
+        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+          <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Operations & Analytics
+          </div>
+
+          <button
+            onClick={() => setActiveTab('OVERVIEW')}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === 'OVERVIEW'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <span className="flex items-center gap-2.5">
+              <BarChart3 className="w-4 h-4" />
+              Overview & Analytics
+            </span>
+            {activeTab === 'OVERVIEW' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('LIVE_OPERATIONS')}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === 'LIVE_OPERATIONS'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <span className="flex items-center gap-2.5">
+              <Clock className="w-4 h-4 text-amber-400" />
+              Live Operations & Orders
+            </span>
+            {kpis?.activeOrders?.value > 0 ? (
+              <span className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded-full text-[10px]">
+                {kpis?.activeOrders?.value}
+              </span>
+            ) : activeTab === 'LIVE_OPERATIONS' ? (
+              <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />
+            ) : null}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('CUSTOMERS')}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === 'CUSTOMERS'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <span className="flex items-center gap-2.5">
+              <Users className="w-4 h-4 text-blue-400" />
+              Customer Analytics & Top Buyers
+            </span>
+            {activeTab === 'CUSTOMERS' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('PRODUCTS')}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === 'PRODUCTS'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <span className="flex items-center gap-2.5">
+              <Boxes className="w-4 h-4 text-emerald-400" />
+              Products & Catalog
+            </span>
+            {activeTab === 'PRODUCTS' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('DELIVERY')}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === 'DELIVERY'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <span className="flex items-center gap-2.5">
+              <Bike className="w-4 h-4 text-teal-400" />
+              Delivery Performance
+            </span>
+            {activeTab === 'DELIVERY' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('FINANCE')}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === 'FINANCE'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <span className="flex items-center gap-2.5">
+              <CircleDollarSign className="w-4 h-4 text-yellow-400" />
+              Finance & Settlements
+            </span>
+            {activeTab === 'FINANCE' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+          </button>
+
+          {isLaundryVendor && (
+            <button
+              onClick={() => setActiveTab('LAUNDRY')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'LAUNDRY'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <span className="flex items-center gap-2.5">
+                <Shirt className="w-4 h-4 text-indigo-400" />
+                Doorstep Laundry OTPs
+              </span>
+              {activeTab === 'LAUNDRY' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+            </button>
+          )}
+
+          {/* Section: Reports & Tools */}
+          <div className="pt-5 px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Reports & Tools
+          </div>
+
+          <button
+            onClick={() => setMonthlyReportModalOpen(true)}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg text-xs font-medium bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800/60 transition-colors"
+            title="Download Monthly Business Analytics PDF"
+          >
+            <FileText className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <span className="truncate">Monthly Report [PDF]</span>
+          </button>
+
+          {/* Demo Mode Toggle */}
+          <div className="pt-2">
+            <button
+              onClick={() => {
+                const nextDemo = !demoMode;
+                setDemoMode(nextDemo);
+                loadAnalytics(nextDemo);
+                showToast(nextDemo ? 'Sample Demo Data Enabled (Viewing live graph demonstration)' : 'Switched to Live Database Data');
+              }}
+              className={`w-full flex items-center justify-between px-3.5 py-2 rounded-lg text-xs font-medium border transition-colors ${
+                demoMode
+                  ? 'bg-amber-950/40 border-amber-600/50 text-amber-300'
+                  : 'bg-slate-800/50 border-slate-700 text-slate-300 hover:bg-slate-800'
+              }`}
+              title="Toggle between sample demonstration analytics and live database data"
+            >
+              <span className="flex items-center gap-2">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Sample Graph Data</span>
+              </span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${demoMode ? 'bg-amber-500 text-slate-950' : 'bg-slate-700 text-slate-300'}`}>
+                {demoMode ? 'ON' : 'OFF'}
+              </span>
+            </button>
+            <p className="text-[10px] text-slate-400 px-2 mt-1">
+              {demoMode ? 'Showing rich dummy orders to view graphs' : 'Showing orders from database'}
+            </p>
+          </div>
+        </div>
+
+        {/* Footer: Sign Out */}
+        <div className="p-3 border-t border-slate-800">
+          <button
+            onClick={logout}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-rose-950/30 hover:bg-rose-900/40 text-rose-300 border border-rose-800/40 transition-colors"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            Sign Out
+          </button>
+        </div>
+      </aside>
+
+      {/* RIGHT WORKSPACE */}
+      <div className="lg:pl-64 xl:pl-72 flex-1 min-w-0 flex flex-col min-h-screen bg-slate-50">
+        {/* Sticky Top Header on Workspace */}
+        <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-20 shadow-md">
+          <div className="px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
+            {/* Left: Hamburger (mobile) + Breadcrumb */}
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={() => setIsMobileSidebarOpen(true)}
+                className="lg:hidden p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white"
+                aria-label="Open sidebar menu"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <div className="min-w-0">
+                <div className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <span>Service Provider Console</span>
+                  <span className="text-slate-500">/</span>
+                  <span className="text-slate-300 font-medium truncate">{activeTabTitle}</span>
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <h2 className="text-base font-bold text-white tracking-tight truncate">
+                    {activeTabTitle}
+                  </h2>
+                  {demoMode && (
+                    <button
+                      onClick={() => {
+                        setDemoMode(false);
+                        loadAnalytics(false);
+                        showToast('Switched to Live Database Data');
+                      }}
+                      className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full transition-colors"
+                      title="Click to switch to Live Database Data"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-400" />
+                      Sample Graph Data Active (Click to switch to Live)
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Quick Actions */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Global Date Filter Dropdown */}
+              <div className="relative">
+                <select
+                  value={timeframe}
+                  onChange={(e) => {
+                    if (e.target.value === 'custom') {
+                      setIsCustomDateOpen(true);
+                    } else {
+                      setIsCustomDateOpen(false);
+                      setTimeframe(e.target.value);
+                    }
+                  }}
+                  className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-2 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer hover:bg-slate-700/80 transition-colors"
+                >
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
+                  <option value="7d">Last 7 Days</option>
+                  <option value="30d">Last 30 Days</option>
+                  <option value="this_month">This Month</option>
+                  <option value="last_month">Last Month</option>
+                  <option value="90d">Last 3 Months</option>
+                  <option value="6m">Last 6 Months</option>
+                  <option value="1y">This Year</option>
+                  <option value="custom">Custom Range...</option>
+                </select>
+              </div>
+
+              {/* Monthly Report PDF Generator */}
+              <button
+                onClick={() => setMonthlyReportModalOpen(true)}
+                className="hidden md:flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors shadow-sm"
+                title="Download Monthly Business Analytics PDF"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Monthly Report
+              </button>
+
+              {/* Export Dropdown */}
+              <div className="relative group">
+                <button className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-medium px-3 py-2 rounded-lg transition-colors">
+                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden sm:inline">Export</span>
+                </button>
+                <div className="absolute right-0 mt-1 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl hidden group-hover:block z-50 overflow-hidden">
+                  <button
+                    onClick={() => setMonthlyReportModalOpen(true)}
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                    Download PDF Report
+                  </button>
+                  <button
+                    onClick={() => handleExportCsv('orders')}
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-blue-400" />
+                    Export Orders CSV
+                  </button>
+                  <button
+                    onClick={() => handleExportCsv('customers')}
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
+                  >
+                    <Users className="w-3.5 h-3.5 text-indigo-400" />
+                    Export Customers CSV
+                  </button>
+                  <button
+                    onClick={() => handleExportCsv('products')}
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
+                  >
+                    <Boxes className="w-3.5 h-3.5 text-amber-400" />
+                    Export Products CSV
+                  </button>
+                  <button
+                    onClick={() => handleExportCsv('sales')}
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
+                  >
+                    <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                    Export Sales CSV
+                  </button>
+                  <button
+                    onClick={() => window.print()}
+                    className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2 border-t border-slate-700"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-slate-300" />
+                    Print Report
+                  </button>
+                </div>
+              </div>
+
+              {/* Refresh */}
+              <button
+                onClick={() => { refreshAll(demoMode); showToast('Refreshed console analytics'); }}
+                className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition-colors"
+                title="Refresh Business Analytics"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${analyticsLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Custom Date Range Sub-bar */}
+          {isCustomDateOpen && (
+            <div className="bg-slate-800/90 border-t border-slate-700/60 px-4 py-2.5">
+              <div className="flex items-center gap-3 text-xs">
+                <span className="text-slate-300 font-medium">Custom Range:</span>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-slate-200"
+                />
+                <span className="text-slate-400">to</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-slate-200"
+                />
+                <button
+                  onClick={() => {
+                    setTimeframe('custom');
+                    loadAnalytics(demoMode);
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1 rounded"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          )}
+        </header>
+
+        {/* MAIN WORKSPACE BODY */}
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
         {/* =======================================================
             SECTION 2: 10 TOP KPI CARDS
             ======================================================= */}
@@ -2182,6 +2531,7 @@ export default function ProviderDashboardPage() {
           </div>
         )}
       </main>
+    </div>
 
       {/* =======================================================
           ORDER DETAILS MODAL WITH 7-STEP VISUAL TIMELINE

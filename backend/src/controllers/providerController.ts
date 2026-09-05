@@ -474,8 +474,17 @@ export class ProviderController {
         })
       ]);
 
-      const allOrders: any[] = allOrdersRaw as any[];
-      const allProducts: any[] = allProductsRaw as any[];
+      let allOrders: any[] = allOrdersRaw as any[];
+      let allProducts: any[] = allProductsRaw as any[];
+      const isDemoMode = req.query.demo === 'true' || allOrders.length === 0;
+
+      if (isDemoMode) {
+        const { fallbackOrders, fallbackProducts } = await import('../services/fallbackData');
+        allOrders = fallbackOrders.filter((o) => o.providerId === 'prov_canteen' || o.providerId === providerId);
+        if (allProducts.length === 0 || req.query.demo === 'true') {
+          allProducts = fallbackProducts.filter((p) => p.providerId === 'prov_canteen' || p.providerId === providerId);
+        }
+      }
 
       const now = new Date();
 
@@ -1038,7 +1047,8 @@ export class ProviderController {
           paidOrdersCount: paidOrders.length,
           unpaidOrdersCount: unpaidOrders.length
         },
-        businessInsights
+        businessInsights,
+        isDemoData: isDemoMode
       });
     } catch (err) {
       next(err);
@@ -1071,12 +1081,24 @@ export class ProviderController {
         const str = String(val).replace(/"/g, '""');
         return `"${str}"`;
       };
+      const isDemo = req.query.demo === 'true';
+      let demoOrders: any[] | null = null;
+      let demoProducts: any[] | null = null;
+      if (isDemo) {
+        const { fallbackOrders, fallbackProducts } = await import('../services/fallbackData');
+        demoOrders = fallbackOrders.filter((o) => o.providerId === 'prov_canteen' || o.providerId === providerId);
+        demoProducts = fallbackProducts.filter((p) => p.providerId === 'prov_canteen' || p.providerId === providerId);
+      }
 
       if (type === 'customers') {
-        const orders: any[] = (await prisma.order.findMany({
+        let orders: any[] = demoOrders || ((await prisma.order.findMany({
           where: { providerId },
           include: { student: { include: { hall: true } } }
-        })) as any[];
+        })) as any[]);
+        if (orders.length === 0 && !demoOrders) {
+          const { fallbackOrders } = await import('../services/fallbackData');
+          orders = fallbackOrders.filter((o) => o.providerId === 'prov_canteen');
+        }
 
         const customerMap: Record<string, any> = {};
         orders.forEach((o) => {
@@ -1119,10 +1141,14 @@ export class ProviderController {
       }
 
       if (type === 'products') {
-        const products: any[] = (await prisma.product.findMany({
+        let products: any[] = demoProducts || ((await prisma.product.findMany({
           where: { providerId },
           include: { category: true }
-        })) as any[];
+        })) as any[]);
+        if (products.length === 0 && !demoProducts) {
+          const { fallbackProducts } = await import('../services/fallbackData');
+          products = fallbackProducts.filter((p) => p.providerId === 'prov_canteen');
+        }
 
         const header = 'Product Name,Category,Price (INR),Current Stock,Low Stock Threshold,Approval Status\n';
         const rows = products.map((p) =>
@@ -1143,11 +1169,15 @@ export class ProviderController {
       }
 
       if (type === 'sales') {
-        const orders: any[] = (await prisma.order.findMany({
+        let orders: any[] = demoOrders || ((await prisma.order.findMany({
           where: { providerId },
           include: { items: true },
           orderBy: { createdAt: 'desc' }
-        })) as any[];
+        })) as any[]);
+        if (orders.length === 0 && !demoOrders) {
+          const { fallbackOrders } = await import('../services/fallbackData');
+          orders = fallbackOrders.filter((o) => o.providerId === 'prov_canteen');
+        }
 
         const dailyMap: Record<string, { date: string; sales: number; orders: number; items: number }> = {};
         orders.forEach((o) => {
@@ -1171,11 +1201,19 @@ export class ProviderController {
       }
 
       // Default: orders export
-      const orders: any[] = (await prisma.order.findMany({
+      let orders: any[] = demoOrders || ((await prisma.order.findMany({
         where: { providerId },
-        include: { student: { include: { hall: true } }, items: true, deliveryBoy: true },
+        include: {
+          items: true,
+          student: { include: { hall: true } },
+          deliveryBoy: true
+        },
         orderBy: { createdAt: 'desc' }
-      })) as any[];
+      })) as any[]);
+      if (orders.length === 0 && !demoOrders) {
+        const { fallbackOrders } = await import('../services/fallbackData');
+        orders = fallbackOrders.filter((o) => o.providerId === 'prov_canteen');
+      }
 
       const header = 'Order Number,Date,Customer Name,Hostel,Room,Items,Total Amount (INR),Status,Payment Method,Delivery Runner\n';
       const rows = orders.map((o) => {

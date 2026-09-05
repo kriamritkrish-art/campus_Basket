@@ -316,6 +316,9 @@ const fallbackHandlers: Record<string, any> = {
       if (args?.where?.categoryId) {
         prods = prods.filter((p) => p.categoryId === args.where.categoryId);
       }
+      if (args?.where?.providerId) {
+        prods = prods.filter((p: any) => p.providerId === args.where.providerId);
+      }
       if (args?.where?.availability !== undefined) {
         prods = prods.filter((p) => p.availability === args.where.availability);
       }
