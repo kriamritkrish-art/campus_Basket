@@ -119,9 +119,67 @@ export const completeRegistrationSchema = z.object({
  * Login Schema: Accepts either College Email OR Personal Email
  */
 export const loginSchema = z.object({
-  email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
+  email: z.string().min(1, 'Email or User ID is required'),
   password: z.string().min(1, 'Password is required')
 });
+
+export const verifyRoleLoginOtpSchema = z
+  .object({
+    email: z.string().optional(),
+    userId: z.string().optional(),
+    otp: z.string().length(6, 'OTP must be exactly 6 digits')
+  })
+  .refine((data) => !!(data.email || data.userId), {
+    message: 'Email or User ID is required'
+  });
+
+/**
+ * Admin: Create Service Provider Schema
+ */
+export const createServiceProviderSchema = z
+  .object({
+    fullName: z.string().min(2, 'Provider name is required').optional(),
+    businessName: z.string().min(2, 'Business name is required').optional(),
+    contactPerson: z.string().optional(),
+    username: z
+      .string()
+      .min(3, 'User ID must be at least 3 characters')
+      .regex(/^[a-zA-Z0-9_-]+$/, 'User ID can only contain letters, numbers, hyphens, and underscores'),
+    email: z.string().email('Valid Gmail address is required'),
+    password: z.string().min(6, 'Password must be at least 6 characters'),
+    serviceCategory: z.string().min(1, 'Service category is required'),
+    mobileNumber: z.string().optional(),
+    phone: z.string().optional(),
+    activeStatus: z.boolean().optional().default(true)
+  })
+  .refine((data) => !!(data.fullName || data.businessName), {
+    message: 'Provider or business name is required'
+  })
+  .refine((data) => !!(data.mobileNumber || data.phone), {
+    message: 'Phone number is required'
+  });
+
+/**
+ * Admin: Create Delivery Boy Schema
+ */
+export const createDeliveryBoySchema = z
+  .object({
+    fullName: z.string().min(2, 'Delivery person name is required'),
+    username: z
+      .string()
+      .min(3, 'User ID must be at least 3 characters')
+      .regex(/^[a-zA-Z0-9_-]+$/, 'User ID can only contain letters, numbers, hyphens, and underscores'),
+    email: z.string().email('Valid Gmail address is required'),
+    password: z.string().min(6, 'Password must be at least 6 characters'),
+    mobileNumber: z.string().optional(),
+    phone: z.string().optional(),
+    vehicleType: z.string().optional().default('Bicycle / Walk'),
+    activeStatus: z.boolean().optional().default(true),
+    status: z.string().optional()
+  })
+  .refine((data) => !!(data.mobileNumber || data.phone), {
+    message: 'Phone number is required'
+  });
 
 /**
  * Google Sign-In Schema
@@ -134,14 +192,14 @@ export const googleAuthSchema = z.object({
  * Password Recovery: Can provide either College Email OR Personal Email
  */
 export const forgotPasswordSchema = z.object({
-  email: z.string().min(1, 'Email is required').email('Please enter a valid email address')
+  email: z.string().min(1, 'Email is required')
 });
 
 /**
  * Password Reset: Email + 6-digit OTP + New Password
  */
 export const resetPasswordSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
+  email: z.string().min(1, 'Email is required'),
   otp: z.string().length(6, 'OTP must be exactly 6 digits'),
   newPassword: z
     .string()

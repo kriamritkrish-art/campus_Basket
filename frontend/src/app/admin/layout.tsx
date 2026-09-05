@@ -20,6 +20,7 @@ import {
   BookOpen,
   Users,
   Store,
+  Truck,
   Building2,
   CreditCard,
   Banknote,
@@ -93,6 +94,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       title: 'COMMERCE',
       items: [
         { label: 'Products', href: '/admin/products', icon: ShoppingBag },
+        { label: 'Product Approvals', href: '/admin/product-approvals', icon: CheckCircle2 },
         { label: 'Categories', href: '/admin/categories', icon: Layers },
         { label: 'Inventory', href: '/admin/inventory', icon: Boxes },
         { label: 'Orders', href: '/admin/orders', icon: ClipboardList }
@@ -112,6 +114,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       items: [
         { label: 'Students', href: '/admin/students', icon: Users },
         { label: 'Service Providers', href: '/admin/providers', icon: Store },
+        { label: 'Delivery Boys', href: '/admin/delivery-boys', icon: Truck },
         { label: 'Residence Halls', href: '/admin/halls', icon: Building2 }
       ]
     },

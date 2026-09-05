@@ -397,6 +397,9 @@ export class AdminController {
           isFeatured: isFeatured === 'true' || isFeatured === true,
           availableToday: availableToday === 'true' || availableToday === true,
           providerId: providerId || undefined,
+          approvalStatus: 'APPROVED',
+          approvedBy: req.user?.email || 'ADMIN',
+          approvedAt: new Date(),
           inventory: {
             create: {
               currentStock: parseInt(stock, 10),
@@ -972,6 +975,237 @@ export class AdminController {
       });
 
       res.status(200).json({ success: true, message: 'Setting updated', setting });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Product Approvals Queue
+   */
+  public static async getPendingProducts(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const products = await prisma.product.findMany({
+        where: { approvalStatus: 'PENDING' },
+        include: {
+          category: true,
+          provider: true,
+          images: true,
+          inventory: true
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      res.status(200).json({ success: true, products });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  public static async approveProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const product = await prisma.product.update({
+        where: { id },
+        data: {
+          approvalStatus: 'APPROVED',
+          approvedBy: req.user?.email || 'ADMIN',
+          approvedAt: new Date(),
+          rejectionReason: null
+        }
+      });
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'PRODUCT_APPROVED',
+        entity: 'Product',
+        entityId: id,
+        newValue: { name: product.name }
+      });
+
+      res.status(200).json({ success: true, message: 'Product approved successfully.', product });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  public static async rejectProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const product = await prisma.product.update({
+        where: { id },
+        data: {
+          approvalStatus: 'REJECTED',
+          approvedBy: req.user?.email || 'ADMIN',
+          rejectionReason: reason || 'Does not meet campus requirements'
+        }
+      });
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'PRODUCT_REJECTED',
+        entity: 'Product',
+        entityId: id,
+        newValue: { name: product.name, reason }
+      });
+
+      res.status(200).json({ success: true, message: 'Product rejected.', product });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Section 19: Provider-wise Sales Analytics
+   */
+  public static async getProviderSalesAnalytics(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { providerId } = req.params;
+      const provider = await prisma.serviceProvider.findUnique({
+        where: { id: providerId },
+        include: {
+          products: {
+            include: {
+              orderItems: {
+                where: { order: { status: 'DELIVERED' } }
+              }
+            }
+          },
+          orders: {
+            where: { status: 'DELIVERED' },
+            include: { items: true }
+          }
+        }
+      });
+
+      if (!provider) {
+        res.status(404).json({ success: false, message: 'Provider not found' });
+        return;
+      }
+
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+
+      const totalSales = provider.orders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+      const todaySales = provider.orders
+        .filter((o) => new Date(o.createdAt) >= todayStart)
+        .reduce((sum, o) => sum + Number(o.totalAmount), 0);
+      const monthlySales = provider.orders
+        .filter((o) => new Date(o.createdAt) >= monthStart)
+        .reduce((sum, o) => sum + Number(o.totalAmount), 0);
+
+      let totalUnitsSold = 0;
+      const productStats = provider.products.map((p) => {
+        const units = p.orderItems.reduce((sum, item) => sum + item.quantity, 0);
+        const revenue = p.orderItems.reduce((sum, item) => sum + Number(item.totalPrice), 0);
+        totalUnitsSold += units;
+        return {
+          id: p.id,
+          name: p.name,
+          price: Number(p.price),
+          unitsSold: units,
+          revenue
+        };
+      });
+
+      productStats.sort((a, b) => b.unitsSold - a.unitsSold);
+
+      res.status(200).json({
+        success: true,
+        analytics: {
+          providerName: provider.fullName,
+          serviceCategory: provider.serviceCategory,
+          totalProducts: provider.products.length,
+          totalOrders: provider.orders.length,
+          totalUnitsSold,
+          totalSales,
+          todaySales,
+          monthlySales,
+          topProducts: productStats.slice(0, 5)
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Section 22: Centralized Authentication Settings (Provider & Delivery Boy OTP)
+   */
+  public static async getAuthSettings(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const [providerOtp, deliveryBoyOtp] = await Promise.all([
+        prisma.adminSetting.findUnique({ where: { key: 'PROVIDER_OTP_ENABLED' } }),
+        prisma.adminSetting.findUnique({ where: { key: 'DELIVERY_BOY_OTP_ENABLED' } })
+      ]);
+
+      res.status(200).json({
+        success: true,
+        settings: {
+          providerOtpEnabled: providerOtp ? providerOtp.value === 'true' : false,
+          deliveryBoyOtpEnabled: deliveryBoyOtp ? deliveryBoyOtp.value === 'true' : false
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  public static async updateAuthSettings(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { providerOtpEnabled, deliveryBoyOtpEnabled } = req.body;
+
+      const updates: any[] = [];
+      if (providerOtpEnabled !== undefined) {
+        updates.push(
+          prisma.adminSetting.upsert({
+            where: { key: 'PROVIDER_OTP_ENABLED' },
+            update: { value: String(providerOtpEnabled) },
+            create: {
+              key: 'PROVIDER_OTP_ENABLED',
+              value: String(providerOtpEnabled),
+              description: 'Require Gmail OTP verification on Service Provider login'
+            }
+          })
+        );
+      }
+
+      if (deliveryBoyOtpEnabled !== undefined) {
+        updates.push(
+          prisma.adminSetting.upsert({
+            where: { key: 'DELIVERY_BOY_OTP_ENABLED' },
+            update: { value: String(deliveryBoyOtpEnabled) },
+            create: {
+              key: 'DELIVERY_BOY_OTP_ENABLED',
+              value: String(deliveryBoyOtpEnabled),
+              description: 'Require Gmail OTP verification on Delivery Boy login'
+            }
+          })
+        );
+      }
+
+      await Promise.all(updates);
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'AUTH_SETTINGS_UPDATED',
+        entity: 'AdminSetting',
+        newValue: { providerOtpEnabled, deliveryBoyOtpEnabled }
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Authentication security settings updated successfully.',
+        settings: {
+          providerOtpEnabled: providerOtpEnabled !== undefined ? providerOtpEnabled : undefined,
+          deliveryBoyOtpEnabled: deliveryBoyOtpEnabled !== undefined ? deliveryBoyOtpEnabled : undefined
+        }
+      });
     } catch (err) {
       next(err);
     }

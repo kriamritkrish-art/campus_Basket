@@ -1,6 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
+import bcrypt from 'bcryptjs';
 import { prisma } from '../config/database';
 import { AuditService } from '../services/audit/AuditService';
+import {
+  createServiceProviderSchema,
+  createDeliveryBoySchema
+} from '../validators/authValidators';
 
 export class AdminPeopleController {
   /**
@@ -190,23 +195,162 @@ export class AdminPeopleController {
   public static async getProviders(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const providers = await prisma.serviceProvider.findMany({
-        include: { user: true }
+        include: {
+          user: true,
+          products: { select: { id: true, stock: true, availability: true, approvalStatus: true } },
+          orders: { select: { id: true, totalAmount: true, status: true, createdAt: true } }
+        },
+        orderBy: { createdAt: 'desc' }
       });
 
       res.status(200).json({
         success: true,
-        providers: providers.map((p) => ({
-          id: p.id,
-          userId: p.userId,
-          fullName: p.fullName,
-          email: p.user?.email,
-          mobileNumber: p.mobileNumber,
-          serviceCategory: p.serviceCategory,
-          assignedZones: p.assignedZones,
-          activeStatus: p.activeStatus,
-          createdAt: p.createdAt
-        }))
+        providers: providers.map((p) => {
+          const totalSales = p.orders
+            .filter((o) => o.status === 'DELIVERED')
+            .reduce((sum, o) => sum + Number(o.totalAmount), 0);
+          return {
+            id: p.id,
+            userId: p.userId,
+            username: p.user?.username || null,
+            fullName: p.fullName,
+            email: p.user?.email,
+            mobileNumber: p.mobileNumber,
+            serviceCategory: p.serviceCategory,
+            assignedZones: p.assignedZones,
+            activeStatus: p.activeStatus,
+            totalProducts: p.products.length,
+            availableProducts: p.products.filter((pr) => pr.availability && pr.approvalStatus === 'APPROVED' && pr.stock > 0).length,
+            totalOrders: p.orders.length,
+            totalSales,
+            createdAt: p.createdAt
+          };
+        })
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  public static async createProvider(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = createServiceProviderSchema.parse(req.body);
+      const email = data.email.toLowerCase().trim();
+      const username = data.username.toLowerCase().trim();
+      const fullName = (data.businessName || data.fullName || data.contactPerson || '').trim();
+      const mobileNumber = (data.mobileNumber || data.phone || '').trim();
+      const isActive = data.activeStatus !== false;
+
+      const existing = await prisma.user.findFirst({
+        where: {
+          OR: [{ email }, { username }]
+        }
+      });
+
+      if (existing) {
+        res.status(409).json({ success: false, message: 'A user with this email or User ID already exists.' });
+        return;
+      }
+
+      const existingPhone = await prisma.serviceProvider.findUnique({ where: { mobileNumber } });
+      if (existingPhone) {
+        res.status(409).json({ success: false, message: 'This mobile number is already registered to another provider.' });
+        return;
+      }
+
+      const passwordHash = await bcrypt.hash(data.password, 10);
+
+      const result = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            email,
+            username,
+            passwordHash,
+            role: 'SERVICE_PROVIDER',
+            isActive,
+            accountStatus: 'ACTIVE'
+          }
+        });
+
+        const provider = await tx.serviceProvider.create({
+          data: {
+            userId: user.id,
+            fullName,
+            mobileNumber,
+            serviceCategory: data.serviceCategory,
+            activeStatus: isActive
+          }
+        });
+
+        return { user, provider };
+      });
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'SERVICE_PROVIDER_CREATED',
+        entity: 'ServiceProvider',
+        entityId: result.provider.id,
+        newValue: { name: data.fullName, category: data.serviceCategory, username, email }
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Service Provider created successfully.',
+        provider: {
+          id: result.provider.id,
+          userId: result.user.id,
+          username: result.user.username,
+          fullName: result.provider.fullName,
+          email: result.user.email,
+          mobileNumber: result.provider.mobileNumber,
+          serviceCategory: result.provider.serviceCategory,
+          activeStatus: result.provider.activeStatus
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  public static async updateProvider(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { fullName, serviceCategory, mobileNumber, activeStatus, password } = req.body;
+
+      const provider = await prisma.serviceProvider.findUnique({ where: { id }, include: { user: true } });
+      if (!provider) {
+        res.status(404).json({ success: false, message: 'Service provider not found.' });
+        return;
+      }
+
+      let passwordHash: string | undefined;
+      if (password && password.trim().length >= 6) {
+        passwordHash = await bcrypt.hash(password.trim(), 10);
+      }
+
+      await prisma.$transaction(async (tx) => {
+        if (passwordHash !== undefined || activeStatus !== undefined) {
+          await tx.user.update({
+            where: { id: provider.userId },
+            data: {
+              ...(passwordHash && { passwordHash }),
+              ...(activeStatus !== undefined && { isActive: activeStatus === true || activeStatus === 'true' })
+            }
+          });
+        }
+
+        await tx.serviceProvider.update({
+          where: { id },
+          data: {
+            ...(fullName && { fullName }),
+            ...(serviceCategory && { serviceCategory }),
+            ...(mobileNumber && { mobileNumber }),
+            ...(activeStatus !== undefined && { activeStatus: activeStatus === true || activeStatus === 'true' })
+          }
+        });
+      });
+
+      res.status(200).json({ success: true, message: 'Provider details updated successfully.' });
     } catch (err) {
       next(err);
     }
@@ -223,6 +367,355 @@ export class AdminPeopleController {
       });
 
       res.status(200).json({ success: true, message: 'Provider status updated', provider: updated });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  public static async deleteProvider(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const provider = await prisma.serviceProvider.findUnique({ where: { id } });
+      if (!provider) {
+        res.status(404).json({ success: false, message: 'Provider not found.' });
+        return;
+      }
+
+      await prisma.serviceProvider.update({
+        where: { id },
+        data: { activeStatus: false }
+      });
+      await prisma.user.update({
+        where: { id: provider.userId },
+        data: { isActive: false, accountStatus: 'DEACTIVATED' }
+      });
+
+      res.status(200).json({ success: true, message: 'Service Provider deactivated successfully.' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  public static async getProviderDetails(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const provider = await prisma.serviceProvider.findUnique({
+        where: { id },
+        include: {
+          user: true,
+          products: {
+            include: { category: true, images: true, inventory: true }
+          },
+          orders: {
+            include: {
+              student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
+              items: true,
+              deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true } }
+            },
+            orderBy: { createdAt: 'desc' }
+          }
+        }
+      });
+
+      if (!provider) {
+        res.status(404).json({ success: false, message: 'Provider not found.' });
+        return;
+      }
+
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+
+      const deliveredOrders = provider.orders.filter((o) => o.status === 'DELIVERED');
+      const totalSales = deliveredOrders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+      const todaySales = deliveredOrders
+        .filter((o) => new Date(o.createdAt) >= todayStart)
+        .reduce((sum, o) => sum + Number(o.totalAmount), 0);
+      const monthlySales = deliveredOrders
+        .filter((o) => new Date(o.createdAt) >= monthStart)
+        .reduce((sum, o) => sum + Number(o.totalAmount), 0);
+
+      res.status(200).json({
+        success: true,
+        provider: {
+          id: provider.id,
+          userId: provider.userId,
+          username: provider.user?.username,
+          fullName: provider.fullName,
+          email: provider.user?.email,
+          mobileNumber: provider.mobileNumber,
+          serviceCategory: provider.serviceCategory,
+          activeStatus: provider.activeStatus,
+          createdAt: provider.createdAt,
+          stats: {
+            totalProducts: provider.products.length,
+            availableProducts: provider.products.filter((p) => p.availability && p.approvalStatus === 'APPROVED' && p.stock > 0).length,
+            outOfStockProducts: provider.products.filter((p) => p.stock <= 0).length,
+            pendingApprovals: provider.products.filter((p) => p.approvalStatus === 'PENDING').length,
+            totalOrders: provider.orders.length,
+            pendingOrders: provider.orders.filter((o) => ['CONFIRMED', 'ACCEPTED'].includes(o.status)).length,
+            processingOrders: provider.orders.filter((o) => o.status === 'PREPARING').length,
+            completedOrders: deliveredOrders.length,
+            totalSales,
+            todaySales,
+            monthlySales
+          },
+          products: provider.products,
+          orders: provider.orders
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Delivery Boys Management
+   */
+  public static async getDeliveryBoys(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const deliveryBoys = await prisma.deliveryBoy.findMany({
+        include: {
+          user: true,
+          orders: { select: { id: true, status: true, totalAmount: true, createdAt: true } },
+          laundryOrders: { select: { id: true, status: true } }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      res.status(200).json({
+        success: true,
+        deliveryBoys: deliveryBoys.map((d) => {
+          const activeAssignments = d.orders.filter((o) =>
+            ['DELIVERY_ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY'].includes(o.status)
+          ).length;
+          const completedDeliveries = d.orders.filter((o) => o.status === 'DELIVERED').length;
+
+          return {
+            id: d.id,
+            userId: d.userId,
+            username: d.user?.username || null,
+            fullName: d.fullName,
+            email: d.user?.email,
+            mobileNumber: d.mobileNumber,
+            vehicleType: d.vehicleType,
+            activeStatus: d.activeStatus,
+            currentZone: d.currentZone,
+            activeAssignments,
+            completedDeliveries,
+            totalAssigned: d.orders.length,
+            createdAt: d.createdAt
+          };
+        })
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  public static async createDeliveryBoy(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = createDeliveryBoySchema.parse(req.body);
+      const email = data.email.toLowerCase().trim();
+      const username = data.username.toLowerCase().trim();
+      const mobileNumber = (data.mobileNumber || data.phone || '').trim();
+      const isActive = data.status ? data.status === 'ACTIVE' : data.activeStatus !== false;
+
+      const existing = await prisma.user.findFirst({
+        where: {
+          OR: [{ email }, { username }]
+        }
+      });
+
+      if (existing) {
+        res.status(409).json({ success: false, message: 'A user with this email or User ID already exists.' });
+        return;
+      }
+
+      const existingPhone = await prisma.deliveryBoy.findUnique({ where: { mobileNumber } });
+      if (existingPhone) {
+        res.status(409).json({ success: false, message: 'This phone number is already registered to another delivery partner.' });
+        return;
+      }
+
+      const passwordHash = await bcrypt.hash(data.password, 10);
+
+      const result = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            email,
+            username,
+            passwordHash,
+            role: 'DELIVERY_BOY',
+            isActive,
+            accountStatus: 'ACTIVE'
+          }
+        });
+
+        const deliveryBoy = await tx.deliveryBoy.create({
+          data: {
+            userId: user.id,
+            fullName: data.fullName,
+            mobileNumber,
+            vehicleType: data.vehicleType || 'Bicycle / Walk',
+            activeStatus: isActive
+          }
+        });
+
+        return { user, deliveryBoy };
+      });
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'DELIVERY_BOY_CREATED',
+        entity: 'DeliveryBoy',
+        entityId: result.deliveryBoy.id,
+        newValue: { name: data.fullName, username, email }
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Delivery Partner account created successfully.',
+        deliveryBoy: {
+          id: result.deliveryBoy.id,
+          userId: result.user.id,
+          username: result.user.username,
+          fullName: result.deliveryBoy.fullName,
+          email: result.user.email,
+          mobileNumber: result.deliveryBoy.mobileNumber,
+          vehicleType: result.deliveryBoy.vehicleType,
+          activeStatus: result.deliveryBoy.activeStatus
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  public static async updateDeliveryBoy(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { fullName, mobileNumber, vehicleType, activeStatus, password } = req.body;
+
+      const deliveryBoy = await prisma.deliveryBoy.findUnique({ where: { id }, include: { user: true } });
+      if (!deliveryBoy) {
+        res.status(404).json({ success: false, message: 'Delivery partner not found.' });
+        return;
+      }
+
+      let passwordHash: string | undefined;
+      if (password && password.trim().length >= 6) {
+        passwordHash = await bcrypt.hash(password.trim(), 10);
+      }
+
+      await prisma.$transaction(async (tx) => {
+        if (passwordHash !== undefined || activeStatus !== undefined) {
+          await tx.user.update({
+            where: { id: deliveryBoy.userId },
+            data: {
+              ...(passwordHash && { passwordHash }),
+              ...(activeStatus !== undefined && { isActive: activeStatus === true || activeStatus === 'true' })
+            }
+          });
+        }
+
+        await tx.deliveryBoy.update({
+          where: { id },
+          data: {
+            ...(fullName && { fullName }),
+            ...(mobileNumber && { mobileNumber }),
+            ...(vehicleType && { vehicleType }),
+            ...(activeStatus !== undefined && { activeStatus: activeStatus === true || activeStatus === 'true' })
+          }
+        });
+      });
+
+      res.status(200).json({ success: true, message: 'Delivery partner details updated successfully.' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  public static async deleteDeliveryBoy(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const deliveryBoy = await prisma.deliveryBoy.findUnique({ where: { id } });
+      if (!deliveryBoy) {
+        res.status(404).json({ success: false, message: 'Delivery partner not found.' });
+        return;
+      }
+
+      await prisma.deliveryBoy.update({
+        where: { id },
+        data: { activeStatus: false }
+      });
+      await prisma.user.update({
+        where: { id: deliveryBoy.userId },
+        data: { isActive: false, accountStatus: 'DEACTIVATED' }
+      });
+
+      res.status(200).json({ success: true, message: 'Delivery partner deactivated successfully.' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  public static async assignDeliveryBoy(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params; // order id
+      const { deliveryBoyId } = req.body;
+
+      const [order, deliveryBoy] = await Promise.all([
+        prisma.order.findUnique({ where: { id } }),
+        deliveryBoyId ? prisma.deliveryBoy.findUnique({ where: { id: deliveryBoyId } }) : null
+      ]);
+
+      if (!order) {
+        res.status(404).json({ success: false, message: 'Order not found.' });
+        return;
+      }
+
+      if (deliveryBoyId && !deliveryBoy) {
+        res.status(404).json({ success: false, message: 'Delivery partner not found.' });
+        return;
+      }
+
+      const updated = await prisma.order.update({
+        where: { id },
+        data: {
+          deliveryBoyId: deliveryBoyId || null,
+          status: deliveryBoyId ? 'DELIVERY_ASSIGNED' : order.status,
+          statusHistory: {
+            create: {
+              previousStatus: order.status,
+              newStatus: deliveryBoyId ? 'DELIVERY_ASSIGNED' : order.status,
+              changedBy: req.user?.email || 'ADMIN',
+              notes: deliveryBoy
+                ? `Delivery assigned to ${deliveryBoy.fullName} (${deliveryBoy.mobileNumber})`
+                : 'Delivery partner unassigned'
+            }
+          }
+        }
+      });
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'ORDER_DELIVERY_ASSIGNED',
+        entity: 'Order',
+        entityId: order.id,
+        newValue: { deliveryBoyId, deliveryBoyName: deliveryBoy?.fullName }
+      });
+
+      res.status(200).json({
+        success: true,
+        message: deliveryBoy
+          ? `Order assigned to ${deliveryBoy.fullName}`
+          : 'Order unassigned successfully',
+        order: updated
+      });
     } catch (err) {
       next(err);
     }

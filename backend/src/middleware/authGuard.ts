@@ -5,9 +5,10 @@ import { env } from '../config/environment';
 export interface AuthUserPayload {
   userId: string;
   email: string;
-  role: 'STUDENT' | 'ADMIN' | 'SERVICE_PROVIDER';
+  role: 'STUDENT' | 'ADMIN' | 'SERVICE_PROVIDER' | 'DELIVERY_BOY';
   studentId?: string;
   providerId?: string;
+  deliveryBoyId?: string;
 }
 
 declare global {

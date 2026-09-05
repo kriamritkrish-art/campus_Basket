@@ -21,6 +21,7 @@ router.post('/register', AuthController.register);
 
 // Authentication & Session
 router.post('/login', loginLimiter, AuthController.login);
+router.post('/login/verify-otp', AuthController.verifyRoleLoginOtp);
 router.post('/google', AuthController.googleAuth);
 router.post('/logout', AuthController.logout);
 router.get('/me', authGuard, AuthController.getMe);

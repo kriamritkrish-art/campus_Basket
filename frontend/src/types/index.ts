@@ -1,11 +1,15 @@
-export type Role = 'STUDENT' | 'ADMIN' | 'SERVICE_PROVIDER';
+export type Role = 'STUDENT' | 'ADMIN' | 'SERVICE_PROVIDER' | 'DELIVERY_BOY';
 
 export type OrderStatus =
   | 'PENDING_PAYMENT'
   | 'PAYMENT_FAILED'
   | 'CONFIRMED'
+  | 'ACCEPTED'
   | 'PREPARING'
   | 'READY'
+  | 'READY_FOR_PICKUP'
+  | 'DELIVERY_ASSIGNED'
+  | 'PICKED_UP'
   | 'OUT_FOR_DELIVERY'
   | 'DELIVERED'
   | 'CANCELLED'
@@ -50,13 +54,25 @@ export interface Student {
   hall?: Hall;
 }
 
+export interface DeliveryBoy {
+  id: string;
+  userId: string;
+  fullName: string;
+  mobileNumber: string;
+  vehicleType?: string;
+  activeStatus: boolean;
+  currentZone?: string;
+}
+
 export interface User {
   id: string;
   email: string;
+  username?: string;
   role: Role;
   student?: Student;
   admin?: { fullName: string; permissions: string };
-  provider?: { fullName: string; serviceCategory: string; mobileNumber: string };
+  provider?: { businessName?: string; fullName?: string; contactPerson?: string; serviceCategory?: string; mobileNumber?: string; phone?: string; activeStatus?: boolean };
+  deliveryBoy?: DeliveryBoy;
 }
 
 export interface Category {
@@ -91,6 +107,9 @@ export interface Product {
   availableToday: boolean;
   categoryId?: string;
   category?: Category;
+  providerId?: string;
+  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  rejectionReason?: string | null;
   primaryImage?: string | null;
   images?: ProductImage[];
   rating: number;

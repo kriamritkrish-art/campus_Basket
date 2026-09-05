@@ -25,6 +25,9 @@ router.get('/dashboard', AdminController.getDashboardMetrics);
 
 // 2. Commerce: Products & Inventory
 router.get('/products', AdminController.getAllProducts);
+router.get('/products/pending', AdminController.getPendingProducts);
+router.patch('/products/:id/approve', AdminController.approveProduct);
+router.patch('/products/:id/reject', AdminController.rejectProduct);
 router.post('/products', upload.single('image'), AdminController.createProduct);
 router.patch('/products/:id', AdminController.updateProduct);
 router.post('/products/:id/image', upload.single('image'), AdminController.uploadProductImage);
@@ -38,6 +41,7 @@ router.get('/orders', AdminController.getAllOrders);
 router.get('/orders/:id', AdminController.getOrderDetails);
 router.patch('/orders/:id/status', AdminController.updateOrderStatus);
 router.post('/orders/:id/assign', AdminController.assignProvider);
+router.post('/orders/:id/assign-delivery', AdminPeopleController.assignDeliveryBoy);
 router.post('/orders/refund', AdminController.processRefund);
 router.get('/orders/:id/receipt', AdminReportController.downloadReceipt);
 
@@ -57,13 +61,23 @@ router.post('/reports/generate', AdminReportController.generateReport);
 router.get('/reports/history', AdminReportController.getReportHistory);
 router.get('/reports/export-csv', AdminReportController.exportCsv);
 
-// 7. People: Students, Providers, Halls
+// 7. People: Students, Providers, Delivery Boys, Halls
 router.get('/students', AdminPeopleController.getStudents);
 router.patch('/students/:id/status', AdminPeopleController.toggleStudentActive);
 router.delete('/students/:id', AdminPeopleController.deleteStudent);
 
 router.get('/providers', AdminPeopleController.getProviders);
+router.post('/providers', AdminPeopleController.createProvider);
+router.patch('/providers/:id', AdminPeopleController.updateProvider);
+router.delete('/providers/:id', AdminPeopleController.deleteProvider);
 router.patch('/providers/:id/status', AdminPeopleController.toggleProviderActive);
+router.get('/providers/:id/details', AdminPeopleController.getProviderDetails);
+router.get('/providers/:providerId/analytics', AdminController.getProviderSalesAnalytics);
+
+router.get('/delivery-boys', AdminPeopleController.getDeliveryBoys);
+router.post('/delivery-boys', AdminPeopleController.createDeliveryBoy);
+router.patch('/delivery-boys/:id', AdminPeopleController.updateDeliveryBoy);
+router.delete('/delivery-boys/:id', AdminPeopleController.deleteDeliveryBoy);
 
 router.get('/halls', AdminPeopleController.getHalls);
 router.post('/halls', AdminPeopleController.createHall);
@@ -92,5 +106,7 @@ router.get('/audit-logs', AdminPeopleController.getAuditLogs);
 
 router.get('/settings', AdminController.getSettings);
 router.post('/settings', AdminController.updateSetting);
+router.get('/settings/auth-otp', AdminController.getAuthSettings);
+router.post('/settings/auth-otp', AdminController.updateAuthSettings);
 
 export default router;

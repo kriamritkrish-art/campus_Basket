@@ -20,7 +20,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-type UserRole = 'STUDENT' | 'ADMIN' | 'SERVICE_PROVIDER';
+type UserRole = 'STUDENT' | 'ADMIN' | 'SERVICE_PROVIDER' | 'DELIVERY_BOY';
 
 function LoginForm() {
   const router = useRouter();
@@ -28,12 +28,19 @@ function LoginForm() {
   const { login } = useAuth();
 
   const [activeRole, setActiveRole] = useState<UserRole>('STUDENT');
-  const [email, setEmail] = useState('ss.24u10227@nitdgp.ac.in');
+  const [identifier, setIdentifier] = useState('ss.24u10227@nitdgp.ac.in');
   const [password, setPassword] = useState('Student@2026');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [autoFilled, setAutoFilled] = useState(false);
+
+  // OTP Verification Step State
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpUserId, setOtpUserId] = useState('');
+  const [maskedEmail, setMaskedEmail] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
 
   useEffect(() => {
     const roleParam = searchParams.get('role')?.toUpperCase();
@@ -41,15 +48,19 @@ function LoginForm() {
 
     if (roleParam === 'ADMIN' || redirectParam?.includes('admin')) {
       setActiveRole('ADMIN');
-      setEmail('souravsenapati408@gmail.com');
+      setIdentifier('souravsenapati408@gmail.com');
       setPassword('Sourav@12345');
+    } else if (roleParam === 'DELIVERY_BOY' || roleParam === 'DELIVERY' || redirectParam?.includes('delivery')) {
+      setActiveRole('DELIVERY_BOY');
+      setIdentifier('DB_BOY_01');
+      setPassword('Delivery@12345');
     } else if (roleParam === 'PROVIDER' || roleParam === 'SERVICE_PROVIDER' || redirectParam?.includes('provider')) {
       setActiveRole('SERVICE_PROVIDER');
-      setEmail('vendor@nitdgp.ac.in');
+      setIdentifier('vendor@nitdgp.ac.in');
       setPassword('Vendor@12345');
     } else if (roleParam === 'STUDENT' || redirectParam?.includes('student')) {
       setActiveRole('STUDENT');
-      setEmail('ss.24u10227@nitdgp.ac.in');
+      setIdentifier('ss.24u10227@nitdgp.ac.in');
       setPassword('Student@2026');
     }
   }, [searchParams]);
@@ -58,31 +69,56 @@ function LoginForm() {
     setActiveRole(role);
     setError(null);
     setAutoFilled(false);
+    setOtpStep(false);
     if (role === 'ADMIN') {
-      setEmail('souravsenapati408@gmail.com');
+      setIdentifier('souravsenapati408@gmail.com');
       setPassword('Sourav@12345');
+    } else if (role === 'DELIVERY_BOY') {
+      setIdentifier('DB_BOY_01');
+      setPassword('Delivery@12345');
     } else if (role === 'SERVICE_PROVIDER') {
-      setEmail('vendor@nitdgp.ac.in');
+      setIdentifier('vendor@nitdgp.ac.in');
       setPassword('Vendor@12345');
     } else {
-      setEmail('ss.24u10227@nitdgp.ac.in');
+      setIdentifier('ss.24u10227@nitdgp.ac.in');
       setPassword('Student@2026');
     }
   };
 
   const handleQuickFill = (role: UserRole) => {
     if (role === 'ADMIN') {
-      setEmail('souravsenapati408@gmail.com');
+      setIdentifier('souravsenapati408@gmail.com');
       setPassword('Sourav@12345');
+    } else if (role === 'DELIVERY_BOY') {
+      setIdentifier('DB_BOY_01');
+      setPassword('Delivery@12345');
     } else if (role === 'SERVICE_PROVIDER') {
-      setEmail('vendor@nitdgp.ac.in');
+      setIdentifier('vendor@nitdgp.ac.in');
       setPassword('Vendor@12345');
     } else {
-      setEmail('ss.24u10227@nitdgp.ac.in');
+      setIdentifier('ss.24u10227@nitdgp.ac.in');
       setPassword('Student@2026');
     }
     setAutoFilled(true);
     setTimeout(() => setAutoFilled(false), 2500);
+  };
+
+  const handleRoleRedirect = (userRole: string) => {
+    const redirectUrl = searchParams.get('redirect');
+    if (redirectUrl) {
+      router.push(redirectUrl);
+      return;
+    }
+
+    if (userRole === 'ADMIN') {
+      router.push('/admin/dashboard');
+    } else if (userRole === 'SERVICE_PROVIDER') {
+      router.push('/provider/dashboard');
+    } else if (userRole === 'DELIVERY_BOY') {
+      router.push('/delivery/dashboard');
+    } else {
+      router.push('/dashboard');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,25 +129,20 @@ function LoginForm() {
     try {
       const res = await apiRequest('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        body: JSON.stringify({ email: identifier.trim(), password }),
       });
+
+      if (res.requiresOtp) {
+        setOtpStep(true);
+        setOtpUserId(res.userId);
+        setMaskedEmail(res.targetEmail || 'your registered Gmail');
+        setLoading(false);
+        return;
+      }
 
       if (res.success && res.token && res.user) {
         login(res.token, res.user);
-
-        const redirectUrl = searchParams.get('redirect');
-        if (redirectUrl) {
-          router.push(redirectUrl);
-          return;
-        }
-
-        if (res.user.role === 'ADMIN') {
-          router.push('/admin/dashboard');
-        } else if (res.user.role === 'SERVICE_PROVIDER') {
-          router.push('/provider/dashboard');
-        } else {
-          router.push('/dashboard');
-        }
+        handleRoleRedirect(res.user.role);
       } else {
         setError(res.message || 'Login failed. Please verify your credentials.');
       }
@@ -119,6 +150,35 @@ function LoginForm() {
       setError(err.message || 'Login failed. Please check your network connection.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVerifyOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpCode || otpCode.length !== 6) {
+      setError('Please enter the complete 6-digit OTP code.');
+      return;
+    }
+
+    setError(null);
+    setOtpLoading(true);
+
+    try {
+      const res = await apiRequest('/api/auth/login/verify-otp', {
+        method: 'POST',
+        body: JSON.stringify({ userId: otpUserId, otp: otpCode.trim() }),
+      });
+
+      if (res.success && res.token && res.user) {
+        login(res.token, res.user);
+        handleRoleRedirect(res.user.role);
+      } else {
+        setError(res.message || 'Invalid or expired OTP. Please try again.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'OTP verification failed. Please try again.');
+    } finally {
+      setOtpLoading(false);
     }
   };
 
@@ -136,6 +196,30 @@ function LoginForm() {
       emailLabel: 'College or Personal Email',
       emailPlaceholder: 'e.g. ss.24u10227@nitdgp.ac.in or student@gmail.com',
     },
+    SERVICE_PROVIDER: {
+      themeBorder: 'border-emerald-200',
+      themeBadge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      themeBtn: 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-md shadow-emerald-700/20',
+      icon: Truck,
+      iconBg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      badgeText: 'Service Provider Terminal',
+      title: 'Provider Portal',
+      subtitle: 'Manage assigned category catalog, orders & preparation status',
+      emailLabel: 'User ID or Registered Email',
+      emailPlaceholder: 'e.g. SP_FOOD_01 or vendor@nitdgp.ac.in',
+    },
+    DELIVERY_BOY: {
+      themeBorder: 'border-sky-200',
+      themeBadge: 'bg-sky-50 text-sky-700 border-sky-200',
+      themeBtn: 'bg-sky-600 hover:bg-sky-700 text-white shadow-md shadow-sky-600/20',
+      icon: Truck,
+      iconBg: 'bg-sky-50 text-sky-600 border-sky-200',
+      badgeText: 'Delivery Partner Console',
+      title: 'Delivery Boy Login',
+      subtitle: 'Pick up assigned orders and drop to student hostel rooms',
+      emailLabel: 'User ID or Registered Email',
+      emailPlaceholder: 'e.g. DB_BOY_01 or delivery@nitdgp.ac.in',
+    },
     ADMIN: {
       themeBorder: 'border-purple-200',
       themeBadge: 'bg-purple-50 text-purple-700 border-purple-200',
@@ -145,21 +229,9 @@ function LoginForm() {
       badgeText: 'Administrative Command Center',
       title: 'Campus Admin Login',
       subtitle: 'Management of campus catalog, deliveries, zones & governance',
-      emailLabel: 'Admin Email Address',
+      emailLabel: 'Admin Email or User ID',
       emailPlaceholder: 'souravsenapati408@gmail.com',
     },
-    SERVICE_PROVIDER: {
-      themeBorder: 'border-emerald-200',
-      themeBadge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      themeBtn: 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-md shadow-emerald-700/20',
-      icon: Truck,
-      iconBg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      badgeText: 'Vendor & Dispatch Console',
-      title: 'Service Provider Login',
-      subtitle: 'Express laundry verification, cafeteria orders & dispatch status',
-      emailLabel: 'Vendor Email ID',
-      emailPlaceholder: 'vendor@nitdgp.ac.in',
-    }
   };
 
   const currentTheme = roleStyles[activeRole];
@@ -231,44 +303,57 @@ function LoginForm() {
   return (
     <div className="max-w-md mx-auto px-4 py-10 sm:py-14">
       {/* Role Selection Tabs */}
-      <div className="flex p-1 bg-white rounded-xl border border-gray-200 mb-5 shadow-sm">
+      <div className="grid grid-cols-4 p-1 bg-white rounded-xl border border-gray-200 mb-5 shadow-sm">
         <button
           type="button"
           onClick={() => handleRoleChange('STUDENT')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-bold transition-all ${
+          className={`flex items-center justify-center gap-1 py-2 rounded-lg text-[11px] font-bold transition-all ${
             activeRole === 'STUDENT'
               ? 'bg-[#689f38] text-white shadow-sm'
               : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
           }`}
         >
-          <GraduationCap className="w-4 h-4" />
+          <GraduationCap className="w-3.5 h-3.5" />
           <span>Student</span>
         </button>
 
         <button
           type="button"
-          onClick={() => handleRoleChange('ADMIN')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-bold transition-all ${
-            activeRole === 'ADMIN'
-              ? 'bg-purple-700 text-white shadow-sm'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-          }`}
-        >
-          <ShieldCheck className="w-4 h-4" />
-          <span>Admin</span>
-        </button>
-
-        <button
-          type="button"
           onClick={() => handleRoleChange('SERVICE_PROVIDER')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-bold transition-all ${
+          className={`flex items-center justify-center gap-1 py-2 rounded-lg text-[11px] font-bold transition-all ${
             activeRole === 'SERVICE_PROVIDER'
               ? 'bg-emerald-700 text-white shadow-sm'
               : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
           }`}
         >
-          <Truck className="w-4 h-4" />
+          <Truck className="w-3.5 h-3.5" />
           <span>Provider</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleRoleChange('DELIVERY_BOY')}
+          className={`flex items-center justify-center gap-1 py-2 rounded-lg text-[11px] font-bold transition-all ${
+            activeRole === 'DELIVERY_BOY'
+              ? 'bg-sky-600 text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          <Truck className="w-3.5 h-3.5" />
+          <span>Delivery</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleRoleChange('ADMIN')}
+          className={`flex items-center justify-center gap-1 py-2 rounded-lg text-[11px] font-bold transition-all ${
+            activeRole === 'ADMIN'
+              ? 'bg-purple-700 text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>Admin</span>
         </button>
       </div>
 
@@ -286,31 +371,41 @@ function LoginForm() {
           </div>
 
           <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
-            {currentTheme.title}
+            {otpStep ? '2-Factor Verification' : currentTheme.title}
           </h1>
           <p className="text-xs text-gray-500 max-w-xs mx-auto">
-            {currentTheme.subtitle}
+            {otpStep
+              ? `Enter the 6-digit OTP dispatched to ${maskedEmail}`
+              : currentTheme.subtitle}
           </p>
         </div>
 
-        {/* Quick Fill Demo Credentials Chip */}
-        <div className="bg-[#f8f8f8] rounded-xl p-2.5 border border-gray-200 flex items-center justify-between gap-2">
-          <div className="text-[11px] text-gray-700 flex items-center gap-1.5 truncate">
-            <KeyRound className="w-3.5 h-3.5 text-[#689f38] shrink-0" />
-            <span className="font-semibold text-gray-500">Preset:</span>
-            <span className="font-mono text-gray-900 font-bold truncate">
-              {activeRole === 'ADMIN' ? 'souravsenapati408@gmail.com' : activeRole === 'SERVICE_PROVIDER' ? 'vendor@nitdgp.ac.in' : 'ss.24u10227@nitdgp.ac.in'}
-            </span>
+        {/* Quick Fill Demo Credentials Chip (Only in credential step) */}
+        {!otpStep && (
+          <div className="bg-[#f8f8f8] rounded-xl p-2.5 border border-gray-200 flex items-center justify-between gap-2">
+            <div className="text-[11px] text-gray-700 flex items-center gap-1.5 truncate">
+              <KeyRound className="w-3.5 h-3.5 text-[#689f38] shrink-0" />
+              <span className="font-semibold text-gray-500">Preset:</span>
+              <span className="font-mono text-gray-900 font-bold truncate">
+                {activeRole === 'ADMIN'
+                  ? 'souravsenapati408@gmail.com'
+                  : activeRole === 'SERVICE_PROVIDER'
+                  ? 'vendor@nitdgp.ac.in'
+                  : activeRole === 'DELIVERY_BOY'
+                  ? 'DB_BOY_01'
+                  : 'ss.24u10227@nitdgp.ac.in'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleQuickFill(activeRole)}
+              className="px-2.5 py-1 rounded-md bg-white hover:bg-gray-100 text-[#689f38] text-[11px] font-bold flex items-center gap-1 shrink-0 border border-gray-300 shadow-2xs transition-colors"
+            >
+              {autoFilled ? <CheckCircle2 className="w-3 h-3 text-[#2e7d32]" /> : <Sparkles className="w-3 h-3 text-[#689f38]" />}
+              {autoFilled ? 'Loaded!' : 'Autofill'}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => handleQuickFill(activeRole)}
-            className="px-2.5 py-1 rounded-md bg-white hover:bg-gray-100 text-[#689f38] text-[11px] font-bold flex items-center gap-1 shrink-0 border border-gray-300 shadow-2xs transition-colors"
-          >
-            {autoFilled ? <CheckCircle2 className="w-3 h-3 text-[#2e7d32]" /> : <Sparkles className="w-3 h-3 text-[#689f38]" />}
-            {autoFilled ? 'Loaded!' : 'Autofill'}
-          </button>
-        </div>
+        )}
 
         {error && (
           <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
@@ -319,69 +414,134 @@ function LoginForm() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="text-xs font-bold text-gray-700 block mb-1">
-              {currentTheme.emailLabel}
-            </label>
-            <div className="relative">
-              <Mail className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+        {/* OTP Step Form */}
+        {otpStep ? (
+          <form onSubmit={handleVerifyOtpSubmit} className="space-y-4 animate-fade-in">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
+              <KeyRound className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">Security OTP Active:</span> Please verify your identity using the one-time code sent to your registered Gmail address.
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-700 block mb-1.5 text-center">
+                Enter 6-Digit One-Time Password
+              </label>
               <input
                 type="text"
-                placeholder={currentTheme.emailPlaceholder}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-white border border-gray-300 rounded-lg pl-10 pr-4 py-2.5 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#84c225] focus:ring-1 focus:ring-[#84c225] transition-colors"
+                maxLength={6}
+                placeholder="••••••"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                className="w-full bg-slate-50 border border-gray-300 rounded-xl py-3 text-center text-2xl font-mono tracking-widest text-gray-900 focus:outline-none focus:border-[#84c225] focus:bg-white transition"
                 required
+                autoFocus
               />
             </div>
-          </div>
 
-          <div>
-            <div className="flex justify-between items-center mb-1">
-              <label className="text-xs font-bold text-gray-700">Password</label>
-              {activeRole === 'STUDENT' && (
-                <Link href="/forgot-password" className="text-[11px] text-[#689f38] font-semibold hover:underline">
-                  Forgot password?
-                </Link>
+            <button
+              type="submit"
+              disabled={otpLoading || otpCode.length !== 6}
+              className={`w-full py-3 ${currentTheme.themeBtn} font-extrabold text-xs uppercase tracking-wider rounded-lg shadow-sm active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2`}
+            >
+              {otpLoading ? (
+                <span>Verifying Security Code...</span>
+              ) : (
+                <>
+                  <span>Verify &amp; Enter Dashboard</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
               )}
-            </div>
-            <div className="relative">
-              <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-white border border-gray-300 rounded-lg pl-10 pr-10 py-2.5 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#84c225] focus:ring-1 focus:ring-[#84c225] transition-colors"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-700"
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
+            </button>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full py-3 ${currentTheme.themeBtn} font-extrabold text-xs uppercase tracking-wider rounded-lg shadow-sm active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 mt-2`}
-          >
-            {loading ? (
-              <span>Signing In...</span>
-            ) : (
-              <>
-                <span>Sign In as {activeRole === 'ADMIN' ? 'Admin' : activeRole === 'SERVICE_PROVIDER' ? 'Provider' : 'Student'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </form>
+            <button
+              type="button"
+              onClick={() => {
+                setOtpStep(false);
+                setOtpCode('');
+                setError(null);
+              }}
+              className="w-full py-2 text-xs font-semibold text-gray-500 hover:text-gray-800 transition"
+            >
+              &larr; Back to credential sign in
+            </button>
+          </form>
+        ) : (
+          /* Standard Login Form */
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="text-xs font-bold text-gray-700 block mb-1">
+                {currentTheme.emailLabel}
+              </label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+                <input
+                  type="text"
+                  placeholder={currentTheme.emailPlaceholder}
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  className="w-full bg-white border border-gray-300 rounded-lg pl-10 pr-4 py-2.5 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#84c225] focus:ring-1 focus:ring-[#84c225] transition-colors"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-xs font-bold text-gray-700">Password</label>
+                {activeRole === 'STUDENT' && (
+                  <Link href="/forgot-password" className="text-[11px] text-[#689f38] font-semibold hover:underline">
+                    Forgot password?
+                  </Link>
+                )}
+              </div>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-white border border-gray-300 rounded-lg pl-10 pr-10 py-2.5 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#84c225] focus:ring-1 focus:ring-[#84c225] transition-colors"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-700"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className={`w-full py-3 ${currentTheme.themeBtn} font-extrabold text-xs uppercase tracking-wider rounded-lg shadow-sm active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 mt-2`}
+            >
+              {loading ? (
+                <span>Signing In...</span>
+              ) : (
+                <>
+                  <span>
+                    Sign In as{' '}
+                    {activeRole === 'ADMIN'
+                      ? 'Admin'
+                      : activeRole === 'SERVICE_PROVIDER'
+                      ? 'Provider'
+                      : activeRole === 'DELIVERY_BOY'
+                      ? 'Delivery Partner'
+                      : 'Student'}
+                  </span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+        )}
 
         {/* Google Sign-In (Optional for Students) */}
         {activeRole === 'STUDENT' && (

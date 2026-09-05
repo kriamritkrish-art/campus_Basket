@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 
-export function rbacGuard(allowedRoles: Array<'STUDENT' | 'ADMIN' | 'SERVICE_PROVIDER'>) {
+export function rbacGuard(allowedRoles: Array<'STUDENT' | 'ADMIN' | 'SERVICE_PROVIDER' | 'DELIVERY_BOY'>) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json({

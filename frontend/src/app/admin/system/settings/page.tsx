@@ -15,7 +15,8 @@ import {
   Truck,
   Power,
   ShieldAlert,
-  Info
+  Info,
+  KeyRound
 } from 'lucide-react';
 import { apiRequest } from '@/lib/api';
 
@@ -386,7 +387,84 @@ export default function AdminSettingsPage() {
             </div>
           </div>
 
-          {/* Group 3: Emergency & Campus Safety Kill-Switch */}
+          {/* Group 3: Role Authentication & OTP Controls (Section 4) */}
+          <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-5">
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div className="p-2 rounded-xl bg-purple-50 text-purple-700">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#17202A]">Role Authentication &amp; Multi-Factor OTP Controls</h3>
+                <p className="text-xs text-slate-500">
+                  Enforce or bypass 6-digit Gmail OTP verification on portal login for campus roles
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Provider OTP Setting */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-[#17202A]">Service Provider Login OTP Verification</h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Sends 6-digit OTP to vendor registered Gmail on sign in
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = settings['PROVIDER_OTP_ENABLED'] === 'true' ? 'false' : 'true';
+                      handleChange('PROVIDER_OTP_ENABLED', next);
+                      handleSaveSetting('PROVIDER_OTP_ENABLED', 'Service Provider login OTP verification');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer shrink-0 ${
+                      settings['PROVIDER_OTP_ENABLED'] === 'true'
+                        ? 'bg-emerald-50 text-[#347A27] border-emerald-200'
+                        : 'bg-slate-200 text-slate-600 border-slate-300'
+                    }`}
+                  >
+                    {settings['PROVIDER_OTP_ENABLED'] === 'true' ? 'OTP ON' : 'OTP OFF'}
+                  </button>
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Status: <strong>{settings['PROVIDER_OTP_ENABLED'] === 'true' ? 'Mandatory 6-Digit Email Verification' : 'Direct Password Login Allowed'}</strong>
+                </div>
+              </div>
+
+              {/* Delivery Boy OTP Setting */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-[#17202A]">Delivery Boy Login OTP Verification</h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Sends 6-digit OTP to runner registered Gmail on sign in
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = settings['DELIVERY_BOY_OTP_ENABLED'] === 'true' ? 'false' : 'true';
+                      handleChange('DELIVERY_BOY_OTP_ENABLED', next);
+                      handleSaveSetting('DELIVERY_BOY_OTP_ENABLED', 'Delivery Boy login OTP verification');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer shrink-0 ${
+                      settings['DELIVERY_BOY_OTP_ENABLED'] === 'true'
+                        ? 'bg-emerald-50 text-[#347A27] border-emerald-200'
+                        : 'bg-slate-200 text-slate-600 border-slate-300'
+                    }`}
+                  >
+                    {settings['DELIVERY_BOY_OTP_ENABLED'] === 'true' ? 'OTP ON' : 'OTP OFF'}
+                  </button>
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Status: <strong>{settings['DELIVERY_BOY_OTP_ENABLED'] === 'true' ? 'Mandatory 6-Digit Email Verification' : 'Direct Password Login Allowed'}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Group 4: Emergency & Campus Safety Kill-Switch */}
           <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
             <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
               <div className="p-2 rounded-xl bg-rose-50 text-rose-600">

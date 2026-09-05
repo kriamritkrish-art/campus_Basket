@@ -24,7 +24,16 @@ export class ProductController {
       const skip = (pageNum - 1) * limitNum;
 
       const where: any = {
-        availability: true
+        availability: true,
+        approvalStatus: 'APPROVED',
+        AND: [
+          {
+            OR: [
+              { providerId: null },
+              { provider: { activeStatus: true } }
+            ]
+          }
+        ]
       };
 
       if (category) {
@@ -32,10 +41,12 @@ export class ProductController {
       }
 
       if (search) {
-        where.OR = [
-          { name: { contains: search as string } },
-          { description: { contains: search as string } }
-        ];
+        where.AND.push({
+          OR: [
+            { name: { contains: search as string } },
+            { description: { contains: search as string } }
+          ]
+        });
       }
 
       if (featured === 'true') {
