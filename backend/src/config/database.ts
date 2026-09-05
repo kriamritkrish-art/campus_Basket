@@ -261,9 +261,9 @@ const fallbackHandlers: Record<string, any> = {
   },
   deliveryBoy: {
     findUnique: async (args: any) => {
-      const userId = args?.where?.userId;
-      const id = args?.where?.id;
-      const user = fallbackUsers.find((u: any) => u.deliveryBoy && (u.deliveryBoy.userId === userId || u.deliveryBoy.id === id));
+      const userId = args?.where?.userId || args?.where?.OR?.find((o: any) => o.userId)?.userId;
+      const id = args?.where?.id || args?.where?.OR?.find((o: any) => o.id)?.id;
+      const user = fallbackUsers.find((u: any) => u.deliveryBoy && ((userId && (u.deliveryBoy.userId === userId || u.id === userId)) || (id && u.deliveryBoy.id === id)));
       if (!user?.deliveryBoy) return null;
       return JSON.parse(JSON.stringify({
         ...user.deliveryBoy,
@@ -271,9 +271,12 @@ const fallbackHandlers: Record<string, any> = {
       }));
     },
     findFirst: async (args: any) => {
-      const userId = args?.where?.userId;
-      const id = args?.where?.id;
-      const user = fallbackUsers.find((u: any) => u.deliveryBoy && (u.deliveryBoy.userId === userId || u.deliveryBoy.id === id));
+      const userId = args?.where?.userId || args?.where?.OR?.find((o: any) => o.userId)?.userId;
+      const id = args?.where?.id || args?.where?.OR?.find((o: any) => o.id)?.id;
+      let user = fallbackUsers.find((u: any) => u.deliveryBoy && ((userId && (u.deliveryBoy.userId === userId || u.id === userId)) || (id && u.deliveryBoy.id === id)));
+      if (!user && !userId && !id) {
+        user = fallbackUsers.find((u: any) => u.deliveryBoy);
+      }
       if (!user?.deliveryBoy) return null;
       return JSON.parse(JSON.stringify({
         ...user.deliveryBoy,
@@ -427,22 +430,85 @@ const fallbackHandlers: Record<string, any> = {
       if (args?.where?.providerId) {
         orders = orders.filter((o) => o.providerId === args.where.providerId);
       }
+      if (args?.where?.studentId) {
+        orders = orders.filter((o) => o.studentId === args.where.studentId);
+      }
+      if (args?.where?.deliveryBoyId === null) {
+        orders = orders.filter((o) => !o.deliveryBoyId);
+      } else if (args?.where?.deliveryBoyId) {
+        orders = orders.filter((o) => o.deliveryBoyId === args.where.deliveryBoyId);
+      }
+      if (args?.where?.status) {
+        if (args.where.status.in && Array.isArray(args.where.status.in)) {
+          orders = orders.filter((o) => args.where.status.in.includes(o.status));
+        } else if (typeof args.where.status === 'string') {
+          orders = orders.filter((o) => o.status === args.where.status);
+        }
+      }
       return JSON.parse(JSON.stringify(orders));
     },
     findUnique: async (args: any) => {
       const id = args?.where?.id;
       return fallbackOrders.find((o) => o.id === id) || null;
     },
-    create: async (args: any) => ({
-      id: `ord_${Date.now()}`,
-      orderNumber: `NIT-ORD-${Math.floor(1000 + Math.random() * 9000)}`,
-      ...args.data,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }),
+    create: async (args: any) => {
+      const itemsData = args.data.items?.create || [];
+      const newOrder = {
+        id: `ord_${Date.now()}`,
+        orderNumber: args.data.orderNumber || `NIT-ORD-${Math.floor(1000 + Math.random() * 9000)}`,
+        studentId: args.data.studentId,
+        providerId: args.data.providerId || null,
+        deliveryBoyId: args.data.deliveryBoyId || null,
+        status: args.data.status || 'CONFIRMED',
+        totalAmount: args.data.totalAmount || 100,
+        subtotal: args.data.subtotal || 100,
+        deliveryFee: args.data.deliveryFee || 0,
+        discountAmount: args.data.discountAmount || 0,
+        paymentMethod: args.data.paymentMethod || 'CASH_ON_DELIVERY',
+        paymentStatus: args.data.paymentStatus || 'PENDING',
+        hallName: args.data.hallName || 'Hall 11',
+        hallNumber: args.data.hallNumber || null,
+        roomNumber: args.data.roomNumber || '123',
+        specialInstructions: args.data.specialInstructions || null,
+        items: itemsData.map((i: any, idx: number) => ({
+          id: `item_${Date.now()}_${idx}`,
+          productName: i.productName || 'Product Item',
+          quantity: i.quantity || 1,
+          unitPrice: i.unitPrice || 50,
+          totalPrice: i.totalPrice || 50
+        })),
+        statusHistory: [
+          {
+            id: `hist_${Date.now()}`,
+            previousStatus: null,
+            newStatus: args.data.status || 'CONFIRMED',
+            changedBy: 'STUDENT',
+            notes: 'Order initiated',
+            createdAt: new Date()
+          }
+        ],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      fallbackOrders.unshift(newOrder as any);
+      return JSON.parse(JSON.stringify(newOrder));
+    },
     update: async (args: any) => {
-      const order = fallbackOrders.find((o) => o.id === args.where.id) || fallbackOrders[0];
-      return { ...order, ...args.data };
+      const order = fallbackOrders.find((o) => o.id === args.where.id) as any;
+      if (order) {
+        Object.assign(order, args.data);
+        if (args.data.statusHistory?.create) {
+          if (!Array.isArray(order.statusHistory)) order.statusHistory = [];
+          order.statusHistory.push({
+            id: `hist_${Date.now()}`,
+            ...args.data.statusHistory.create,
+            createdAt: new Date()
+          });
+        }
+        order.updatedAt = new Date();
+        return JSON.parse(JSON.stringify(order));
+      }
+      return args.data;
     }
   },
   laundryOrder: {

@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useDelivery } from '@/context/DeliveryContext';
+import { useAuth } from '@/context/AuthContext';
 import OrderCard from '@/components/delivery/OrderCard';
 import {
   Package,
@@ -19,6 +20,9 @@ import {
 } from 'lucide-react';
 
 export default function DeliveryDashboardPage() {
+  const { user } = useAuth();
+  const runnerName = user?.deliveryBoy?.fullName || user?.student?.fullName || user?.email?.split('@')[0] || 'Partner';
+
   const {
     isOnline,
     toggleOnline,
@@ -38,7 +42,7 @@ export default function DeliveryDashboardPage() {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-black text-gray-900 tracking-tight">
-              Good evening, Sourav 👋
+              Welcome, {runnerName} 👋
             </h2>
           </div>
           <p className="text-sm text-gray-500 font-medium mt-1">

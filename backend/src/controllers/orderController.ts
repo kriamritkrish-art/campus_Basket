@@ -377,7 +377,8 @@ export class OrderController {
           },
           statusHistory: { orderBy: { createdAt: 'asc' } },
           payment: true,
-          receipt: true
+          receipt: true,
+          deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } }
         },
         orderBy: { createdAt: 'desc' }
       });
@@ -397,6 +398,7 @@ export class OrderController {
           hallName: o.hallName,
           roomNumber: o.roomNumber,
           createdAt: o.createdAt,
+          deliveryBoy: o.deliveryBoy || null,
           items: o.items.map((i) => ({
             id: i.id,
             productName: i.productName,
@@ -435,7 +437,8 @@ export class OrderController {
           statusHistory: { orderBy: { createdAt: 'asc' } },
           payment: true,
           receipt: true,
-          provider: { select: { fullName: true, mobileNumber: true } }
+          provider: { select: { fullName: true, mobileNumber: true } },
+          deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } }
         }
       });
 

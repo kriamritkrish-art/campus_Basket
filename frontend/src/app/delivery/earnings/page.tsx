@@ -17,72 +17,30 @@ import {
 } from 'lucide-react';
 
 export default function DeliveryEarningsPage() {
-  const { todayStats } = useDelivery();
+  const { todayStats, deliveryHistory } = useDelivery();
   const [payoutPeriod, setPayoutPeriod] = useState<'WEEK' | 'MONTH'>('WEEK');
 
   // Weekly earnings day-by-day data
   const weeklyData = [
-    { day: 'Mon', date: '31 Aug', earnings: 380, deliveries: 11 },
-    { day: 'Tue', date: '1 Sep', earnings: 420, deliveries: 12 },
-    { day: 'Wed', date: '2 Sep', earnings: 310, deliveries: 9 },
-    { day: 'Thu', date: '3 Sep', earnings: 460, deliveries: 14 },
-    { day: 'Fri', date: '4 Sep', earnings: 510, deliveries: 15 },
-    { day: 'Sat', date: '5 Sep', earnings: todayStats.earningsToday, deliveries: todayStats.completedToday },
-    { day: 'Sun', date: '6 Sep (Est)', earnings: 350, deliveries: 10 },
+    { day: 'Mon', date: '31 Aug', earnings: 0, deliveries: 0 },
+    { day: 'Tue', date: '1 Sep', earnings: 0, deliveries: 0 },
+    { day: 'Wed', date: '2 Sep', earnings: 0, deliveries: 0 },
+    { day: 'Thu', date: '3 Sep', earnings: 0, deliveries: 0 },
+    { day: 'Fri', date: '4 Sep', earnings: 0, deliveries: 0 },
+    { day: 'Today', date: 'Active', earnings: todayStats.earningsToday, deliveries: todayStats.completedToday },
+    { day: 'Sun', date: 'Target', earnings: todayStats.weekEarnings, deliveries: todayStats.completedToday },
   ];
 
-  const maxEarning = Math.max(...weeklyData.map((d) => d.earnings));
+  const maxEarning = Math.max(100, ...weeklyData.map((d) => d.earnings));
 
-  const payoutHistory = [
-    {
-      orderId: '#CB10276',
-      date: '5 Sep 2026 • 3:40 PM',
-      deliveryFee: 35,
-      bonus: 10,
-      total: 45,
-      status: 'Paid to UPI',
-    },
-    {
-      orderId: '#CB10268',
-      date: '5 Sep 2026 • 2:15 PM',
-      deliveryFee: 35,
-      bonus: 0,
-      total: 35,
-      status: 'Paid to UPI',
-    },
-    {
-      orderId: '#CB10255',
-      date: '5 Sep 2026 • 1:05 PM',
-      deliveryFee: 30,
-      bonus: 10,
-      total: 40,
-      status: 'Paid to UPI',
-    },
-    {
-      orderId: '#CB10242',
-      date: '5 Sep 2026 • 11:30 AM',
-      deliveryFee: 40,
-      bonus: 10,
-      total: 50,
-      status: 'Paid to UPI',
-    },
-    {
-      orderId: '#CB10204',
-      date: '5 Sep 2026 • 8:50 AM',
-      deliveryFee: 35,
-      bonus: 0,
-      total: 35,
-      status: 'Paid to UPI',
-    },
-    {
-      orderId: 'BATCH_4829',
-      date: '4 Sep 2026 • Settlement',
-      deliveryFee: 460,
-      bonus: 50,
-      total: 510,
-      status: 'Direct Bank Transfer',
-    },
-  ];
+  const payoutHistory = deliveryHistory.map((h) => ({
+    orderId: h.orderNumber,
+    date: h.date,
+    deliveryFee: h.earning,
+    bonus: 0,
+    total: h.earning,
+    status: 'Credited to Wallet',
+  }));
 
   return (
     <div className="space-y-6">

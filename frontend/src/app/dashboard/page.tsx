@@ -723,15 +723,13 @@ function DashboardContent() {
                           </button>
                         </div>
 
-                        {isActive && (
-                          <Link
-                            href={`/orders/${order.id}/track`}
-                            className="inline-flex items-center gap-1.5 px-5 py-2 bg-[#689f38] hover:bg-[#5b8c30] text-white text-xs font-extrabold rounded-xl shadow-sm transition-all active:scale-95"
-                          >
-                            <Truck className="w-3.5 h-3.5" />
-                            Track Order
-                          </Link>
-                        )}
+                        <Link
+                          href={`/orders/${order.id}/track`}
+                          className="inline-flex items-center gap-1.5 px-5 py-2 bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-extrabold rounded-xl shadow-sm transition-all active:scale-95"
+                        >
+                          <Truck className="w-3.5 h-3.5" />
+                          Track Order
+                        </Link>
                       </div>
                     </div>
                   );
