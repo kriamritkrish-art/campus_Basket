@@ -1420,6 +1420,56 @@ export class AuthController {
   }
 
   /**
+   * Update Student Profile (roomNumber, mobileNumber, deliveryInstructions, etc.)
+   */
+  public static async updateProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const authUser = (req as any).user;
+      if (!authUser) {
+        res.status(401).json({ success: false, message: 'Not authenticated' });
+        return;
+      }
+
+      const { mobileNumber, roomNumber, hallName } = req.body;
+
+      if (authUser.studentId) {
+        let hallId: string | undefined;
+        if (hallName) {
+          const matchedHall = await prisma.hall.findFirst({ where: { name: hallName } });
+          if (matchedHall) hallId = matchedHall.id;
+        }
+
+        await prisma.student.update({
+          where: { id: authUser.studentId },
+          data: {
+            mobileNumber: mobileNumber || undefined,
+            roomNumber: roomNumber || undefined,
+            hallId: hallId || undefined
+          }
+        });
+      }
+
+      const updatedUser = await prisma.user.findUnique({
+        where: { id: authUser.userId },
+        include: {
+          student: { include: { hall: true } },
+          admin: true,
+          provider: true,
+          deliveryBoy: true
+        }
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Profile updated successfully',
+        user: updatedUser
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
    * Logout
    */
   public static async logout(req: Request, res: Response): Promise<void> {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { CartItem, Product } from '../../types';
 import { useCart } from '../../context/CartContext';
@@ -13,10 +13,20 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product }: ProductCardProps) {
-  const { items, addItem, updateQuantity } = useCart();
+  const { items, addItem, updateQuantity, showToast } = useCart();
   const { isAuthenticated } = useAuth();
   const [isFavorite, setIsFavorite] = useState(false);
   const [isAddedAnim, setIsAddedAnim] = useState(false);
+
+  // Check initial favorite state from localStorage
+  useEffect(() => {
+    try {
+      const favs = JSON.parse(localStorage.getItem('campus_basket_favorites') || '[]');
+      if (Array.isArray(favs) && favs.includes(product.id)) {
+        setIsFavorite(true);
+      }
+    } catch {}
+  }, [product.id]);
 
   // Check if item is already in cart
   const cartItem = items?.find((i: CartItem) => i.productId === product.id);
@@ -48,18 +58,31 @@ export function ProductCard({ product }: ProductCardProps) {
   const handleToggleFavorite = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!isAuthenticated) return;
 
+    const nextState = !isFavorite;
+    setIsFavorite(nextState);
+
+    // Persist in localStorage
     try {
-      const res = await apiRequest('/api/campus/favorites/toggle', {
-        method: 'POST',
-        body: JSON.stringify({ productId: product.id }),
-      });
-      if (res.success) {
-        setIsFavorite(res.isFavorite);
+      const favs = JSON.parse(localStorage.getItem('campus_basket_favorites') || '[]');
+      let updatedFavs = Array.isArray(favs) ? favs : [];
+      if (nextState) {
+        if (!updatedFavs.includes(product.id)) updatedFavs.push(product.id);
+        showToast(`Saved "${product.name}" to your Wishlist`);
+      } else {
+        updatedFavs = updatedFavs.filter((id: string) => id !== product.id);
+        showToast(`Removed from Wishlist`);
       }
-    } catch {
-      setIsFavorite(!isFavorite);
+      localStorage.setItem('campus_basket_favorites', JSON.stringify(updatedFavs));
+    } catch {}
+
+    if (isAuthenticated) {
+      try {
+        await apiRequest('/api/campus/favorites/toggle', {
+          method: 'POST',
+          body: JSON.stringify({ productId: product.id }),
+        });
+      } catch {}
     }
   };
 

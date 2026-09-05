@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
+import { apiRequest } from '../../lib/api';
 import {
   ShoppingBag,
   Search,
@@ -23,7 +24,17 @@ import {
   X,
   Sparkles,
   ShoppingBasket,
-  CheckCircle2
+  CheckCircle2,
+  Package,
+  Truck,
+  RotateCcw,
+  CreditCard,
+  Wallet,
+  Heart,
+  Bell,
+  Gift,
+  HelpCircle,
+  Settings
 } from 'lucide-react';
 
 export function Navbar() {
@@ -40,13 +51,31 @@ export function Navbar() {
 
   const router = useRouter();
   const { user, role, isAuthenticated, logout } = useAuth();
-  const { itemCount, setIsCartOpen } = useCart();
+  const { itemCount, total } = useCart();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
   const [hoveredCategory, setHoveredCategory] = useState<string>('food');
   const [searchQuery, setSearchQuery] = useState('');
   const [hallPickerOpen, setHallPickerOpen] = useState(false);
   const [selectedHall, setSelectedHall] = useState('Hall 11');
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [activeOrder, setActiveOrder] = useState<any>(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(2);
+
+  useEffect(() => {
+    if (isAuthenticated && (!role || role === 'STUDENT')) {
+      apiRequest('/api/orders')
+        .then((res) => {
+          if (res.success && Array.isArray(res.orders)) {
+            const active = res.orders.find((o: any) =>
+              ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'].includes(o.status)
+            );
+            setActiveOrder(active || null);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isAuthenticated, role]);
 
   const halls = [
     'Hall 1', 'Hall 2', 'Hall 3', 'Hall 4', 'Hall 5',
@@ -211,7 +240,7 @@ export function Navbar() {
               )}
             </div>
 
-            {/* Auth Button */}
+            {/* Auth Button & Account Dropdown */}
             {isAuthenticated ? (
               <div className="flex items-center gap-2">
                 {role === 'ADMIN' && (
@@ -239,34 +268,243 @@ export function Navbar() {
                   </Link>
                 )}
 
-                <Link
-                  href={
-                    role === 'ADMIN'
-                      ? '/admin/dashboard'
-                      : role === 'SERVICE_PROVIDER'
-                      ? '/provider/dashboard'
-                      : role === 'DELIVERY_BOY'
-                      ? '/delivery/dashboard'
-                      : '/dashboard'
-                  }
-                  className="flex items-center gap-2 px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-800 border border-gray-300 transition-colors"
-                >
-                  <UserIcon className="w-3.5 h-3.5 text-[#689f38]" />
-                  <span className="hidden sm:inline">
-                    {user?.student?.fullName?.split(' ')[0] ||
-                      user?.admin?.fullName?.split(' ')[0] ||
-                      user?.deliveryBoy?.fullName?.split(' ')[0] ||
-                      user?.email.split('@')[0]}
-                  </span>
-                </Link>
+                {/* Track Order Header Pill if Student has Active Order */}
+                {activeOrder && (!role || role === 'STUDENT') && (
+                  <Link
+                    href={`/orders/${activeOrder.id}/track`}
+                    className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#2e7d32] border border-emerald-200 text-xs font-bold transition-all shadow-xs animate-pulse"
+                    title={`Active Order #${activeOrder.orderNumber}`}
+                  >
+                    <Truck className="w-3.5 h-3.5 text-[#2e7d32]" />
+                    <span>Track Order</span>
+                  </Link>
+                )}
 
-                <button
-                  onClick={logout}
-                  className="p-2 rounded-md text-gray-500 hover:text-red-600 hover:bg-gray-100 transition-colors cursor-pointer"
-                  title="Logout"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
+                {/* Student Profile Dropdown (Requirement 9 & 27) */}
+                {(!role || role === 'STUDENT') ? (
+                  <div className="relative">
+                    <button
+                      onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-800 border border-gray-300 transition-colors cursor-pointer"
+                      aria-expanded={profileDropdownOpen}
+                    >
+                      <UserIcon className="w-3.5 h-3.5 text-[#689f38]" />
+                      <span className="hidden sm:inline">
+                        {user?.student?.fullName?.split(' ')[0] ||
+                          user?.email?.split('@')[0] ||
+                          'Student'}
+                      </span>
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 text-gray-500 transition-transform ${
+                          profileDropdownOpen ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+
+                    {profileDropdownOpen && (
+                      <div
+                        className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl border border-gray-200 shadow-2xl p-2 z-50 divide-y divide-gray-100 animate-in fade-in zoom-in-95 duration-150"
+                        onMouseLeave={() => setProfileDropdownOpen(false)}
+                      >
+                        {/* 1. Student Identity Header */}
+                        <div className="p-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#689f38] to-[#84c225] text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
+                              {user?.student?.fullName?.charAt(0) || 'S'}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-black text-gray-900 truncate">
+                                👤 {user?.student?.fullName || 'Student'}
+                              </div>
+                              <div className="text-[11px] text-gray-500 font-mono truncate">
+                                {user?.email}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 2. Track Current Order (Top of profile menu if active) */}
+                        {activeOrder && (
+                          <div className="p-1">
+                            <Link
+                              href={`/orders/${activeOrder.id}/track`}
+                              onClick={() => setProfileDropdownOpen(false)}
+                              className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#f1f8e9] hover:bg-[#e8f5e9] text-xs font-extrabold text-[#2e7d32] border border-[#dcedc8] transition-colors"
+                            >
+                              <div className="flex items-center gap-2">
+                                <Truck className="w-4 h-4" />
+                                <span>🚚 Track Current Order</span>
+                              </div>
+                              <span className="text-[10px] bg-[#689f38] text-white px-2 py-0.5 rounded-full uppercase">
+                                Active
+                              </span>
+                            </Link>
+                          </div>
+                        )}
+
+                        {/* 3. Account Navigation Items */}
+                        <div className="p-1 space-y-0.5 text-xs text-gray-700">
+                          <Link
+                            href="/dashboard?tab=profile"
+                            onClick={() => setProfileDropdownOpen(false)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
+                          >
+                            <span>📊</span>
+                            <span>My Profile</span>
+                          </Link>
+
+                          <Link
+                            href="/dashboard?tab=orders"
+                            onClick={() => setProfileDropdownOpen(false)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
+                          >
+                            <span>📦</span>
+                            <span>My Orders</span>
+                          </Link>
+
+                          <Link
+                            href={activeOrder ? `/orders/${activeOrder.id}/track` : '/dashboard?tab=orders'}
+                            onClick={() => setProfileDropdownOpen(false)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
+                          >
+                            <span>🚚</span>
+                            <span>Track Active Order</span>
+                          </Link>
+
+                          <Link
+                            href="/dashboard?tab=refunds"
+                            onClick={() => setProfileDropdownOpen(false)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
+                          >
+                            <span>↩</span>
+                            <span>Refunds</span>
+                          </Link>
+
+                          <Link
+                            href="/dashboard?tab=payments"
+                            onClick={() => setProfileDropdownOpen(false)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
+                          >
+                            <span>💳</span>
+                            <span>Payment History</span>
+                          </Link>
+
+                          <Link
+                            href="/dashboard?tab=payment-methods"
+                            onClick={() => setProfileDropdownOpen(false)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
+                          >
+                            <span>💰</span>
+                            <span>Payment Methods</span>
+                          </Link>
+
+                          <Link
+                            href="/dashboard?tab=delivery"
+                            onClick={() => setProfileDropdownOpen(false)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
+                          >
+                            <span>📍</span>
+                            <span>Delivery Details</span>
+                          </Link>
+
+                          <Link
+                            href="/dashboard?tab=wishlist"
+                            onClick={() => setProfileDropdownOpen(false)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
+                          >
+                            <span>❤️</span>
+                            <span>Wishlist</span>
+                          </Link>
+
+                          <Link
+                            href="/dashboard?tab=notifications"
+                            onClick={() => setProfileDropdownOpen(false)}
+                            className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <span>🔔</span>
+                              <span>Notifications</span>
+                            </div>
+                            {unreadNotifications > 0 && (
+                              <span className="bg-[#e53935] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                {unreadNotifications}
+                              </span>
+                            )}
+                          </Link>
+
+                          <Link
+                            href="/dashboard?tab=offers"
+                            onClick={() => setProfileDropdownOpen(false)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
+                          >
+                            <span>🎁</span>
+                            <span>Offers &amp; Coupons</span>
+                          </Link>
+
+                          <Link
+                            href="/dashboard?tab=support"
+                            onClick={() => setProfileDropdownOpen(false)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
+                          >
+                            <span>🛟</span>
+                            <span>Help &amp; Support</span>
+                          </Link>
+
+                          <Link
+                            href="/dashboard?tab=settings"
+                            onClick={() => setProfileDropdownOpen(false)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
+                          >
+                            <span>⚙</span>
+                            <span>Account Settings</span>
+                          </Link>
+                        </div>
+
+                        {/* 4. Logout Item */}
+                        <div className="p-1">
+                          <button
+                            onClick={() => {
+                              setProfileDropdownOpen(false);
+                              logout();
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-red-50 text-red-600 font-bold text-xs transition-colors cursor-pointer"
+                          >
+                            <span>🚪</span>
+                            <span>Logout</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={
+                        role === 'ADMIN'
+                          ? '/admin/dashboard'
+                          : role === 'SERVICE_PROVIDER'
+                          ? '/provider/dashboard'
+                          : '/delivery/dashboard'
+                      }
+                      className="flex items-center gap-2 px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-800 border border-gray-300 transition-colors"
+                    >
+                      <UserIcon className="w-3.5 h-3.5 text-[#689f38]" />
+                      <span className="hidden sm:inline">
+                        {user?.admin?.fullName?.split(' ')[0] ||
+                          user?.deliveryBoy?.fullName?.split(' ')[0] ||
+                          user?.email.split('@')[0]}
+                      </span>
+                    </Link>
+
+                    <button
+                      onClick={logout}
+                      className="p-2 rounded-md text-gray-500 hover:text-red-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                      title="Logout"
+                    >
+                      <LogOut className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <Link
@@ -277,19 +515,25 @@ export function Navbar() {
               </Link>
             )}
 
-            {/* BigBasket Red Shopping Basket Button */}
-            <button
-              onClick={() => setIsCartOpen(true)}
-              className="relative p-2.5 rounded-lg bg-[#e53935] hover:bg-[#d32f2f] text-white shadow-sm flex items-center justify-center transition-all active:scale-95"
+            {/* BigBasket Red Shopping Basket Button (Routes to /cart, shows items + total) */}
+            <Link
+              href="/cart"
+              className="relative flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-xl bg-[#e53935] hover:bg-[#d32f2f] text-white shadow-sm transition-all active:scale-95 group"
               aria-label="Shopping Basket"
             >
-              <ShoppingBasket className="w-5 h-5" />
-              {itemCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-white text-[#e53935] text-[10px] font-extrabold w-5 h-5 rounded-full flex items-center justify-center shadow border border-[#e53935]">
-                  {itemCount}
-                </span>
-              )}
-            </button>
+              <div className="relative flex items-center">
+                <ShoppingBasket className="w-5 h-5" />
+                {itemCount > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-white text-[#e53935] text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow">
+                    {itemCount}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-col text-left leading-tight pr-0.5">
+                <span className="text-[10px] font-black tracking-wider uppercase opacity-90">Basket</span>
+                <span className="text-xs font-black">₹{total}</span>
+              </div>
+            </Link>
 
             {/* Mobile Menu Toggle */}
             <button

@@ -124,7 +124,8 @@ function LoginForm() {
         userRole === 'STUDENT' &&
         !redirectUrl.startsWith('/admin') &&
         !redirectUrl.startsWith('/provider') &&
-        !redirectUrl.startsWith('/delivery')
+        !redirectUrl.startsWith('/delivery') &&
+        redirectUrl !== '/dashboard'
       ) {
         router.push(redirectUrl);
         return;
@@ -138,7 +139,8 @@ function LoginForm() {
     } else if (userRole === 'DELIVERY_BOY') {
       router.push('/delivery/dashboard');
     } else {
-      router.push('/dashboard');
+      // Students land directly on Browse Campus Menu (/food)
+      router.push('/food');
     }
   };
 

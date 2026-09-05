@@ -86,6 +86,47 @@ export class EngagementController {
   }
 
   /**
+   * Get Student Favorite Products
+   */
+  public static async getFavorites(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const studentId = req.user?.studentId;
+      if (!studentId) {
+        res.status(403).json({ success: false, message: 'Student profile required' });
+        return;
+      }
+
+      const favorites = await prisma.favorite.findMany({
+        where: { studentId },
+        include: {
+          product: {
+            include: { images: true, category: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      res.status(200).json({
+        success: true,
+        favorites: favorites.map((f: any) => ({
+          id: f.id,
+          productId: f.productId,
+          product: f.product
+            ? {
+                ...f.product,
+                price: Number(f.product.price),
+                discountPrice: f.product.discountPrice ? Number(f.product.discountPrice) : null,
+                primaryImage: f.product.images?.[0]?.googleDriveUrl || null
+              }
+            : null
+        }))
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
    * Get Active Campus Announcements
    */
   public static async getAnnouncements(req: Request, res: Response, next: NextFunction): Promise<void> {

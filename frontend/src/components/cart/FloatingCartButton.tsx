@@ -1,26 +1,29 @@
 'use client';
 
-import React from 'react';
-import { usePathname } from 'next/navigation';
+import Link from 'next/link';
+import { useRouter, usePathname } from 'next/navigation';
 import { useCart } from '../../context/CartContext';
 import { ShoppingBasket } from 'lucide-react';
 
 export function FloatingCartButton() {
   const pathname = usePathname();
-  const { itemCount, total, setIsCartOpen, isCartOpen } = useCart();
+  const router = useRouter();
+  const { itemCount, total, isCartOpen } = useCart();
 
   if (
     pathname?.startsWith('/admin') ||
     pathname?.startsWith('/provider') ||
     pathname?.startsWith('/delivery') ||
+    pathname === '/cart' ||
+    pathname === '/checkout' ||
     itemCount === 0 ||
     isCartOpen
   ) return null;
 
   return (
-    <button
-      onClick={() => setIsCartOpen(true)}
-      className="fixed bottom-6 right-6 z-30 flex items-center gap-3 bg-[#e53935] hover:bg-[#d32f2f] text-white font-bold py-3 px-5 rounded-full shadow-xl transition-all hover:scale-105 active:scale-95"
+    <Link
+      href="/cart"
+      className="fixed bottom-6 right-6 z-30 flex items-center gap-3 bg-[#e53935] hover:bg-[#d32f2f] text-white font-bold py-3 px-5 rounded-full shadow-2xl transition-all hover:scale-105 active:scale-95"
       aria-label="Open Cart"
     >
       <div className="relative">
@@ -33,6 +36,6 @@ export function FloatingCartButton() {
         <div className="text-[10px] font-bold text-white/90 uppercase tracking-wide">Basket</div>
         <div className="text-xs font-black">₹{total.toFixed(0)}</div>
       </div>
-    </button>
+    </Link>
   );
 }

@@ -12,7 +12,9 @@ interface CartContextType {
   total: number;
   appliedCoupon: string | null;
   itemCount: number;
-  addItem: (product: Product, quantity?: number) => void;
+  toastMessage: string | null;
+  showToast: (msg: string) => void;
+  addItem: (product: Product, quantity?: number, openDrawer?: boolean) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   removeItem: (productId: string) => void;
   clearCart: () => void;
@@ -30,6 +32,8 @@ const CartContext = createContext<CartContextType>({
   total: 0,
   appliedCoupon: null,
   itemCount: 0,
+  toastMessage: null,
+  showToast: () => {},
   addItem: () => {},
   updateQuantity: () => {},
   removeItem: () => {},
@@ -45,6 +49,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((current) => (current === msg ? null : current));
+    }, 2500);
+  };
 
   // Load cart from localStorage on mount
   useEffect(() => {
@@ -68,7 +80,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const total = Math.max(0, subtotal - discountAmount + deliveryFee);
   const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
 
-  const addItem = (product: Product, quantity: number = 1) => {
+  const addItem = (product: Product, quantity: number = 1, openDrawer: boolean = false) => {
     setItems((prev) => {
       const existing = prev.find((i) => i.productId === product.id);
       const effectivePrice = product.discountPrice ? product.discountPrice : product.price;
@@ -103,7 +115,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return [...prev, newItem];
     });
 
-    setIsCartOpen(true);
+    if (openDrawer) {
+      setIsCartOpen(true);
+    }
+    showToast('Product added to your basket.');
   };
 
   const updateQuantity = (productId: string, quantity: number) => {
@@ -169,6 +184,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         total,
         appliedCoupon,
         itemCount,
+        toastMessage,
+        showToast,
         addItem,
         updateQuantity,
         removeItem,
@@ -180,6 +197,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 bg-[#212121] text-white px-4 py-3 rounded-xl shadow-2xl border border-gray-700 animate-in fade-in slide-in-from-bottom-5 duration-200">
+          <div className="w-5 h-5 rounded-full bg-[#689f38] text-white flex items-center justify-center font-bold text-xs shrink-0">
+            ✓
+          </div>
+          <span className="text-xs font-semibold">{toastMessage}</span>
+        </div>
+      )}
     </CartContext.Provider>
   );
 }

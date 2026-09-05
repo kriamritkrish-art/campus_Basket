@@ -15,6 +15,7 @@ router.get('/announcements', EngagementController.getAnnouncements);
 router.post('/coupons/validate', EngagementController.validateCoupon);
 
 // Authenticated Student actions
+router.get('/favorites', authGuard, EngagementController.getFavorites);
 router.post('/favorites/toggle', authGuard, EngagementController.toggleFavorite);
 router.post('/reviews', authGuard, rbacGuard(['STUDENT']), EngagementController.createReview);
 router.post('/support/tickets', authGuard, rbacGuard(['STUDENT']), SupportController.createTicket);

@@ -25,6 +25,7 @@ router.post('/login/verify-otp', AuthController.verifyRoleLoginOtp);
 router.post('/google', AuthController.googleAuth);
 router.post('/logout', AuthController.logout);
 router.get('/me', authGuard, AuthController.getMe);
+router.put('/profile', authGuard, AuthController.updateProfile);
 
 // Password Recovery (Routes to verified personal email)
 router.post('/forgot-password', AuthController.forgotPassword);

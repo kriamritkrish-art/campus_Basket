@@ -131,7 +131,7 @@ export default function CheckoutPage() {
       // CASH ON DELIVERY: Order confirmed immediately
       if (paymentMethod === 'CASH_ON_DELIVERY') {
         clearCart();
-        router.push(`/orders/${order.id}?success=cod`);
+        router.push(`/orders/${order.id}/track?placed=true`);
         return;
       }
 
@@ -180,7 +180,7 @@ export default function CheckoutPage() {
 
               if (verifyRes.success) {
                 clearCart();
-                router.push(`/orders/${order.id}?success=paid`);
+                router.push(`/orders/${order.id}/track?placed=true`);
               } else {
                 setError('Payment verification failed. Please contact campus support.');
               }
