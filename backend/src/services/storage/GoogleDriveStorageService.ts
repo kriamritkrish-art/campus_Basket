@@ -17,7 +17,21 @@ export class GoogleDriveStorageService implements IStorageService {
       fs.mkdirSync(this.localFallbackDir, { recursive: true });
     }
 
-    if (env.GOOGLE_DRIVE_CLIENT_EMAIL && env.GOOGLE_DRIVE_PRIVATE_KEY) {
+    if (env.GOOGLE_DRIVE_REFRESH_TOKEN && env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
+      try {
+        const oauth2Client = new google.auth.OAuth2(
+          env.GOOGLE_CLIENT_ID,
+          env.GOOGLE_CLIENT_SECRET,
+          'https://developers.google.com/oauthplayground'
+        );
+        oauth2Client.setCredentials({ refresh_token: env.GOOGLE_DRIVE_REFRESH_TOKEN });
+        this.driveClient = google.drive({ version: 'v3', auth: oauth2Client });
+        this.isConfigured = true;
+        console.info('[GoogleDriveStorage] Successfully initialized using User OAuth Refresh Token.');
+      } catch (err) {
+        console.warn('[GoogleDriveStorage] Failed to initialize OAuth Drive client:', err);
+      }
+    } else if (env.GOOGLE_DRIVE_CLIENT_EMAIL && env.GOOGLE_DRIVE_PRIVATE_KEY) {
       try {
         const auth = new google.auth.JWT({
           email: env.GOOGLE_DRIVE_CLIENT_EMAIL,
@@ -26,6 +40,7 @@ export class GoogleDriveStorageService implements IStorageService {
         });
         this.driveClient = google.drive({ version: 'v3', auth });
         this.isConfigured = true;
+        console.info('[GoogleDriveStorage] Successfully initialized using Service Account.');
       } catch (err) {
         console.warn('[GoogleDriveStorage] Failed to initialize Google Drive client:', err);
       }
@@ -59,7 +74,8 @@ export class GoogleDriveStorageService implements IStorageService {
         const res = await this.driveClient.files.create({
           requestBody: fileMetadata,
           media,
-          fields: 'id, name, webViewLink, webContentLink, size'
+          fields: 'id, name, webViewLink, webContentLink, size',
+          supportsAllDrives: true
         });
 
         const fileId = res.data.id || crypto.randomUUID();
@@ -71,7 +87,8 @@ export class GoogleDriveStorageService implements IStorageService {
             requestBody: {
               role: 'reader',
               type: 'anyone'
-            }
+            },
+            supportsAllDrives: true
           });
         } catch (permErr) {
           console.warn('[GoogleDriveStorage] Permission grant notice:', permErr);
@@ -107,7 +124,7 @@ export class GoogleDriveStorageService implements IStorageService {
   async deleteFile(fileId: string): Promise<boolean> {
     if (this.isConfigured && this.driveClient && !fileId.startsWith('gdrive_mock_')) {
       try {
-        await this.driveClient.files.delete({ fileId });
+        await this.driveClient.files.delete({ fileId, supportsAllDrives: true });
         return true;
       } catch (err) {
         console.error(`[GoogleDriveStorage] Error deleting file ${fileId}:`, err);
@@ -139,11 +156,12 @@ export class GoogleDriveStorageService implements IStorageService {
       try {
         const meta = await this.driveClient.files.get({
           fileId,
-          fields: 'name, mimeType'
+          fields: 'name, mimeType',
+          supportsAllDrives: true
         });
 
         const res = await this.driveClient.files.get(
-          { fileId, alt: 'media' },
+          { fileId, alt: 'media', supportsAllDrives: true },
           { responseType: 'stream' }
         );
 
