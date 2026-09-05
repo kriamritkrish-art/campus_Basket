@@ -5,11 +5,11 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc && prisma generate",
-    "start": "prisma db push && node dist/server.js",
+    "start": "prisma db push --accept-data-loss && node dist/server.js",
     "dev": "ts-node src/server.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
-    "prisma:push": "prisma db push",
+    "prisma:push": "prisma db push --accept-data-loss",
     "prisma:seed": "ts-node prisma/seed.ts",
     "test": "vitest run"
   },
