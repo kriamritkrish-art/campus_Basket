@@ -676,14 +676,20 @@ export class AuthController {
     try {
       const data = loginSchema.parse(req.body);
       const emailInput = data.email.toLowerCase().trim();
+      const rawInput = data.email.trim();
+      const upperInput = data.email.toUpperCase().trim();
 
       const user = await prisma.user.findFirst({
         where: {
           OR: [
             { email: emailInput },
+            { email: rawInput },
             { username: emailInput },
+            { username: rawInput },
+            { username: upperInput },
             { collegeEmail: emailInput },
             { personalEmail: emailInput },
+            { personalEmail: rawInput },
             { student: { collegeEmail: emailInput } },
             { student: { personalEmail: emailInput } }
           ]

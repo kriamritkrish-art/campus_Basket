@@ -68,10 +68,59 @@ const fallbackHandlers: Record<string, any> = {
   user: {
     findUnique: async (args: any) => {
       const email = args?.where?.email?.toLowerCase()?.trim();
+      const username = args?.where?.username?.toLowerCase()?.trim();
       const id = args?.where?.id;
-      const found = fallbackUsers.find((u) => (email && u.email.toLowerCase() === email) || (id && u.id === id));
+      const found = fallbackUsers.find(
+        (u: any) =>
+          (email && (u.email?.toLowerCase() === email || u.personalEmail?.toLowerCase() === email)) ||
+          (username && u.username?.toLowerCase() === username) ||
+          (id && u.id === id)
+      );
       if (!found) return null;
       return JSON.parse(JSON.stringify(found));
+    },
+    findFirst: async (args: any) => {
+      const orList: any[] = args?.where?.OR;
+      if (Array.isArray(orList) && orList.length > 0) {
+        for (const condition of orList) {
+          const emailVal = (condition.email || '').toLowerCase().trim();
+          const userVal = (condition.username || '').toLowerCase().trim();
+          const colVal = (condition.collegeEmail || '').toLowerCase().trim();
+          const perVal = (condition.personalEmail || '').toLowerCase().trim();
+          const studCol = (condition.student?.collegeEmail || '').toLowerCase().trim();
+          const studPer = (condition.student?.personalEmail || '').toLowerCase().trim();
+
+          const found = fallbackUsers.find((u: any) => {
+            const uEmail = (u.email || '').toLowerCase();
+            const uUser = (u.username || '').toLowerCase();
+            const uCol = (u.collegeEmail || '').toLowerCase();
+            const uPer = (u.personalEmail || '').toLowerCase();
+            const uStudCol = (u.student?.collegeEmail || '').toLowerCase();
+            const uStudPer = (u.student?.personalEmail || '').toLowerCase();
+
+            if (emailVal && (uEmail === emailVal || uPer === emailVal || uCol === emailVal || uUser === emailVal)) return true;
+            if (userVal && (uUser === userVal || uEmail === userVal || uPer === userVal)) return true;
+            if (colVal && (uCol === colVal || uEmail === colVal || uStudCol === colVal)) return true;
+            if (perVal && (uPer === perVal || uStudPer === perVal || uEmail === perVal)) return true;
+            if (studCol && (uStudCol === studCol || uCol === studCol)) return true;
+            if (studPer && (uStudPer === studPer || uPer === studPer)) return true;
+            return false;
+          });
+
+          if (found) return JSON.parse(JSON.stringify(found));
+        }
+      }
+
+      const email = args?.where?.email?.toLowerCase()?.trim();
+      const username = args?.where?.username?.toLowerCase()?.trim();
+      const id = args?.where?.id;
+      const found = fallbackUsers.find(
+        (u: any) =>
+          (email && (u.email?.toLowerCase() === email || u.personalEmail?.toLowerCase() === email)) ||
+          (username && u.username?.toLowerCase() === username) ||
+          (id && u.id === id)
+      );
+      return found ? JSON.parse(JSON.stringify(found)) : null;
     },
     count: async (args: any) => {
       if (args?.where?.role) {
@@ -154,10 +203,70 @@ const fallbackHandlers: Record<string, any> = {
     findUnique: async (args: any) => {
       const userId = args?.where?.userId;
       const id = args?.where?.id;
-      const user = fallbackUsers.find((u) => u.provider && (u.provider.userId === userId || u.provider.id === id));
-      return user?.provider ? JSON.parse(JSON.stringify(user.provider)) : null;
+      const user = fallbackUsers.find((u: any) => u.provider && (u.provider.userId === userId || u.provider.id === id));
+      if (!user?.provider) return null;
+      return JSON.parse(JSON.stringify({
+        ...user.provider,
+        user: { id: user.id, email: user.email, username: user.username, role: user.role, isActive: user.isActive }
+      }));
     },
-    findMany: async () => fallbackUsers.filter((u) => u.provider).map((u) => u.provider)
+    findFirst: async (args: any) => {
+      const userId = args?.where?.userId;
+      const id = args?.where?.id;
+      const user = fallbackUsers.find((u: any) => u.provider && (u.provider.userId === userId || u.provider.id === id));
+      if (!user?.provider) return null;
+      return JSON.parse(JSON.stringify({
+        ...user.provider,
+        user: { id: user.id, email: user.email, username: user.username, role: user.role, isActive: user.isActive }
+      }));
+    },
+    findMany: async () =>
+      fallbackUsers
+        .filter((u: any) => u.provider)
+        .map((u: any) => ({
+          ...u.provider,
+          user: { id: u.id, email: u.email, username: u.username, role: u.role, isActive: u.isActive }
+        })),
+    count: async () => fallbackUsers.filter((u: any) => u.provider).length
+  },
+  deliveryBoy: {
+    findUnique: async (args: any) => {
+      const userId = args?.where?.userId;
+      const id = args?.where?.id;
+      const user = fallbackUsers.find((u: any) => u.deliveryBoy && (u.deliveryBoy.userId === userId || u.deliveryBoy.id === id));
+      if (!user?.deliveryBoy) return null;
+      return JSON.parse(JSON.stringify({
+        ...user.deliveryBoy,
+        user: { id: user.id, email: user.email, username: user.username, role: user.role, isActive: user.isActive }
+      }));
+    },
+    findFirst: async (args: any) => {
+      const userId = args?.where?.userId;
+      const id = args?.where?.id;
+      const user = fallbackUsers.find((u: any) => u.deliveryBoy && (u.deliveryBoy.userId === userId || u.deliveryBoy.id === id));
+      if (!user?.deliveryBoy) return null;
+      return JSON.parse(JSON.stringify({
+        ...user.deliveryBoy,
+        user: { id: user.id, email: user.email, username: user.username, role: user.role, isActive: user.isActive }
+      }));
+    },
+    findMany: async () =>
+      fallbackUsers
+        .filter((u: any) => u.deliveryBoy)
+        .map((u: any) => ({
+          ...u.deliveryBoy,
+          user: { id: u.id, email: u.email, username: u.username, role: u.role, isActive: u.isActive }
+        })),
+    count: async () => fallbackUsers.filter((u: any) => u.deliveryBoy).length,
+    update: async (args: any) => {
+      const id = args?.where?.id;
+      const user = fallbackUsers.find((u: any) => u.deliveryBoy && u.deliveryBoy.id === id);
+      if (user?.deliveryBoy) {
+        Object.assign(user.deliveryBoy, args.data);
+        return JSON.parse(JSON.stringify(user.deliveryBoy));
+      }
+      return args.data;
+    }
   },
   category: {
     findMany: async () => {

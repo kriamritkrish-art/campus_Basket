@@ -4,6 +4,7 @@ const HASH_SOURAV = bcrypt.hashSync('Sourav@12345', 10);
 const HASH_VENDOR = bcrypt.hashSync('Vendor@12345', 10);
 const HASH_PROVIDER = bcrypt.hashSync('Provider@2026', 10);
 const HASH_STUDENT = bcrypt.hashSync('Student@2026', 10);
+const HASH_DELIVERY = bcrypt.hashSync('Delivery@12345', 10);
 
 export const fallbackZones = [
   {
@@ -498,10 +499,12 @@ export const fallbackUsers = [
     student: null,
     provider: null
   },
-  // Service Provider 1 (General Vendor)
+  // Service Provider 1 (Stationery & Essentials)
   {
     id: 'user_prov_general',
+    username: 'SP_ESSNT_01',
     email: 'vendor@nitdgp.ac.in',
+    personalEmail: 'vendor@gmail.com',
     passwordHash: HASH_VENDOR,
     role: 'SERVICE_PROVIDER' as const,
     isActive: true,
@@ -509,12 +512,13 @@ export const fallbackUsers = [
     updatedAt: new Date(),
     admin: null,
     student: null,
+    deliveryBoy: null,
     provider: {
       id: 'prov_general',
       userId: 'user_prov_general',
-      fullName: 'Campus Services Dispatch & Vendor Cell',
+      fullName: 'Campus Services Dispatch & Essentials Cell',
       mobileNumber: '9876543200',
-      serviceCategory: 'ALL',
+      serviceCategory: 'Stationery & Essentials',
       assignedZones: 'ALL',
       activeStatus: true,
       createdAt: new Date('2026-01-10'),
@@ -524,46 +528,130 @@ export const fallbackUsers = [
   // Service Provider 2 (Laundry)
   {
     id: 'user_prov_laundry',
+    username: 'SP_LAUND_01',
     email: 'laundry.vendor@nitdgp.ac.in',
-    passwordHash: HASH_PROVIDER,
+    personalEmail: 'laundry.vendor@gmail.com',
+    passwordHash: HASH_VENDOR,
     role: 'SERVICE_PROVIDER' as const,
     isActive: true,
     createdAt: new Date('2026-01-10'),
     updatedAt: new Date(),
     admin: null,
     student: null,
+    deliveryBoy: null,
     provider: {
       id: 'prov_laundry',
       userId: 'user_prov_laundry',
       fullName: 'NIT Durgapur Campus Laundry Cell',
       mobileNumber: '9876543210',
-      serviceCategory: 'LAUNDRY',
+      serviceCategory: 'Express Laundry',
       assignedZones: 'ALL',
       activeStatus: true,
       createdAt: new Date('2026-01-10'),
       updatedAt: new Date()
     }
   },
-  // Service Provider 3 (Canteen)
+  // Service Provider 3 (Food & Meals - Canteen)
   {
     id: 'user_prov_canteen',
+    username: 'SP_FOOD_01',
     email: 'canteen.vendor@nitdgp.ac.in',
-    passwordHash: HASH_PROVIDER,
+    personalEmail: 'canteen.vendor@gmail.com',
+    passwordHash: HASH_VENDOR,
     role: 'SERVICE_PROVIDER' as const,
     isActive: true,
     createdAt: new Date('2026-01-10'),
     updatedAt: new Date(),
     admin: null,
     student: null,
+    deliveryBoy: null,
     provider: {
       id: 'prov_canteen',
       userId: 'user_prov_canteen',
       fullName: 'Campus Food & Cafeteria Vendor',
       mobileNumber: '9876543211',
-      serviceCategory: 'FOOD',
+      serviceCategory: 'Food & Meals',
       assignedZones: 'ALL',
       activeStatus: true,
       createdAt: new Date('2026-01-10'),
+      updatedAt: new Date()
+    }
+  },
+  // Service Provider 4 (Fresh Fruits)
+  {
+    id: 'user_prov_fruits',
+    username: 'SP_FRUIT_01',
+    email: 'fruits.vendor@nitdgp.ac.in',
+    personalEmail: 'fruits.vendor@gmail.com',
+    passwordHash: HASH_VENDOR,
+    role: 'SERVICE_PROVIDER' as const,
+    isActive: true,
+    createdAt: new Date('2026-01-10'),
+    updatedAt: new Date(),
+    admin: null,
+    student: null,
+    deliveryBoy: null,
+    provider: {
+      id: 'prov_fruits',
+      userId: 'user_prov_fruits',
+      fullName: 'Green Basket Campus Fresh Fruits',
+      mobileNumber: '9876543212',
+      serviceCategory: 'Fresh Fruits',
+      assignedZones: 'ALL',
+      activeStatus: true,
+      createdAt: new Date('2026-01-10'),
+      updatedAt: new Date()
+    }
+  },
+  // Delivery Boy 1 (Lead Runner)
+  {
+    id: 'user_db_boy_1',
+    username: 'DB_BOY_01',
+    email: 'runner.delivery@gmail.com',
+    personalEmail: 'runner.delivery@gmail.com',
+    passwordHash: HASH_DELIVERY,
+    role: 'DELIVERY_BOY' as const,
+    isActive: true,
+    createdAt: new Date('2026-01-15'),
+    updatedAt: new Date(),
+    admin: null,
+    student: null,
+    provider: null,
+    deliveryBoy: {
+      id: 'db_boy_1',
+      userId: 'user_db_boy_1',
+      fullName: 'Bikash Mondal (Lead Runner)',
+      mobileNumber: '9876543220',
+      vehicleType: 'Bicycle / Walk',
+      activeStatus: true,
+      currentZone: 'ALL',
+      createdAt: new Date('2026-01-15'),
+      updatedAt: new Date()
+    }
+  },
+  // Delivery Boy 2 (Express Runner)
+  {
+    id: 'user_db_boy_2',
+    username: 'DB_BOY_02',
+    email: 'campus.runner2@gmail.com',
+    personalEmail: 'campus.runner2@gmail.com',
+    passwordHash: HASH_DELIVERY,
+    role: 'DELIVERY_BOY' as const,
+    isActive: true,
+    createdAt: new Date('2026-01-15'),
+    updatedAt: new Date(),
+    admin: null,
+    student: null,
+    provider: null,
+    deliveryBoy: {
+      id: 'db_boy_2',
+      userId: 'user_db_boy_2',
+      fullName: 'Rajesh Kumar (Express Runner)',
+      mobileNumber: '9876543221',
+      vehicleType: 'Electric Scooter',
+      activeStatus: true,
+      currentZone: 'ALL',
+      createdAt: new Date('2026-01-15'),
       updatedAt: new Date()
     }
   },

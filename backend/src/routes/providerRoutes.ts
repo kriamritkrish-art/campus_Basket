@@ -15,6 +15,8 @@ router.use(authGuard);
 router.use(rbacGuard(['ADMIN', 'SERVICE_PROVIDER']));
 
 router.get('/dashboard', ProviderController.getDashboard);
+router.get('/analytics', ProviderController.getAnalytics);
+router.get('/export', ProviderController.exportData);
 router.get('/products', ProviderController.getProducts);
 router.post('/products', upload.single('image'), ProviderController.createProduct);
 router.patch('/products/:id', ProviderController.updateProduct);

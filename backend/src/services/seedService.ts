@@ -4,12 +4,6 @@ export async function autoSeedDatabase(prisma: any): Promise<void> {
   console.info('[AutoSeed] Checking database seeding requirements...');
 
   try {
-    const existingProducts = await prisma.product.count();
-    if (existingProducts > 0) {
-      console.info(`[AutoSeed] Database already seeded with ${existingProducts} products.`);
-      return;
-    }
-
     console.info('[AutoSeed] Seeding NIT Durgapur Campus Services Platform data...');
 
     const passwordHash = await bcrypt.hash('CampusAdmin@2026', 10);
@@ -17,6 +11,7 @@ export async function autoSeedDatabase(prisma: any): Promise<void> {
     const studentPassHash = await bcrypt.hash('Student@2026', 10);
     const adminPassHash = await bcrypt.hash('Sourav@12345', 10);
     const vendorPassHash = await bcrypt.hash('Vendor@12345', 10);
+    const deliveryPassHash = await bcrypt.hash('Delivery@12345', 10);
 
     // 1. Service Zones
     console.info('[AutoSeed] Creating Campus Service Zones...');
@@ -145,60 +140,140 @@ export async function autoSeedDatabase(prisma: any): Promise<void> {
     // 4. Service Providers
     console.info('[AutoSeed] Creating Service Providers...');
     await prisma.user.upsert({
-      where: { email: 'vendor@nitdgp.ac.in' },
-      update: { passwordHash: vendorPassHash },
+      where: { email: 'canteen.vendor@gmail.com' },
+      update: { passwordHash: vendorPassHash, username: 'SP_FOOD_01', personalEmail: 'canteen.vendor@gmail.com' },
       create: {
-        email: 'vendor@nitdgp.ac.in',
+        email: 'canteen.vendor@gmail.com',
+        username: 'SP_FOOD_01',
+        personalEmail: 'canteen.vendor@gmail.com',
         passwordHash: vendorPassHash,
-        role: 'SERVICE_PROVIDER',
-        isActive: true,
-        provider: {
-          create: {
-            fullName: 'Campus Services Dispatch & Vendor Cell',
-            mobileNumber: '9876543200',
-            serviceCategory: 'ALL',
-            assignedZones: 'ALL',
-            activeStatus: true
-          }
-        }
-      }
-    });
-
-    await prisma.user.upsert({
-      where: { email: 'laundry.vendor@nitdgp.ac.in' },
-      update: {},
-      create: {
-        email: 'laundry.vendor@nitdgp.ac.in',
-        passwordHash: providerPassHash,
-        role: 'SERVICE_PROVIDER',
-        isActive: true,
-        provider: {
-          create: {
-            fullName: 'NIT Durgapur Campus Laundry Cell',
-            mobileNumber: '9876543210',
-            serviceCategory: 'LAUNDRY',
-            assignedZones: 'ALL',
-            activeStatus: true
-          }
-        }
-      }
-    });
-
-    await prisma.user.upsert({
-      where: { email: 'canteen.vendor@nitdgp.ac.in' },
-      update: {},
-      create: {
-        email: 'canteen.vendor@nitdgp.ac.in',
-        passwordHash: providerPassHash,
         role: 'SERVICE_PROVIDER',
         isActive: true,
         provider: {
           create: {
             fullName: 'Campus Food & Cafeteria Vendor',
             mobileNumber: '9876543211',
-            serviceCategory: 'FOOD',
+            serviceCategory: 'Food & Meals',
             assignedZones: 'ALL',
-            activeStatus: true
+            activeStatus: true,
+            plainPassword: 'Vendor@12345'
+          }
+        }
+      }
+    });
+
+    await prisma.user.upsert({
+      where: { email: 'fruits.vendor@gmail.com' },
+      update: { passwordHash: vendorPassHash, username: 'SP_FRUIT_01', personalEmail: 'fruits.vendor@gmail.com' },
+      create: {
+        email: 'fruits.vendor@gmail.com',
+        username: 'SP_FRUIT_01',
+        personalEmail: 'fruits.vendor@gmail.com',
+        passwordHash: vendorPassHash,
+        role: 'SERVICE_PROVIDER',
+        isActive: true,
+        provider: {
+          create: {
+            fullName: 'Green Basket Campus Fresh Fruits',
+            mobileNumber: '9876543212',
+            serviceCategory: 'Fresh Fruits',
+            assignedZones: 'ALL',
+            activeStatus: true,
+            plainPassword: 'Vendor@12345'
+          }
+        }
+      }
+    });
+
+    await prisma.user.upsert({
+      where: { email: 'laundry.vendor@gmail.com' },
+      update: { passwordHash: vendorPassHash, username: 'SP_LAUND_01', personalEmail: 'laundry.vendor@gmail.com' },
+      create: {
+        email: 'laundry.vendor@gmail.com',
+        username: 'SP_LAUND_01',
+        personalEmail: 'laundry.vendor@gmail.com',
+        passwordHash: vendorPassHash,
+        role: 'SERVICE_PROVIDER',
+        isActive: true,
+        provider: {
+          create: {
+            fullName: 'NIT Durgapur Campus Laundry Cell',
+            mobileNumber: '9876543210',
+            serviceCategory: 'Express Laundry',
+            assignedZones: 'ALL',
+            activeStatus: true,
+            plainPassword: 'Vendor@12345'
+          }
+        }
+      }
+    });
+
+    await prisma.user.upsert({
+      where: { email: 'vendor@nitdgp.ac.in' },
+      update: { passwordHash: vendorPassHash, username: 'SP_ESSNT_01', personalEmail: 'vendor@gmail.com' },
+      create: {
+        email: 'vendor@nitdgp.ac.in',
+        username: 'SP_ESSNT_01',
+        personalEmail: 'vendor@gmail.com',
+        passwordHash: vendorPassHash,
+        role: 'SERVICE_PROVIDER',
+        isActive: true,
+        provider: {
+          create: {
+            fullName: 'Campus Services Dispatch & Essentials Cell',
+            mobileNumber: '9876543200',
+            serviceCategory: 'Stationery & Essentials',
+            assignedZones: 'ALL',
+            activeStatus: true,
+            plainPassword: 'Vendor@12345'
+          }
+        }
+      }
+    });
+
+    // 5. Delivery Boys
+    console.info('[AutoSeed] Creating Delivery Boy Fleet...');
+    await prisma.user.upsert({
+      where: { email: 'runner.delivery@gmail.com' },
+      update: { passwordHash: deliveryPassHash, username: 'DB_BOY_01', personalEmail: 'runner.delivery@gmail.com' },
+      create: {
+        email: 'runner.delivery@gmail.com',
+        username: 'DB_BOY_01',
+        personalEmail: 'runner.delivery@gmail.com',
+        passwordHash: deliveryPassHash,
+        role: 'DELIVERY_BOY',
+        isActive: true,
+        deliveryBoy: {
+          create: {
+            fullName: 'Bikash Mondal (Lead Runner)',
+            mobileNumber: '9876543220',
+            vehicleType: 'Bicycle / Walk',
+            activeStatus: true,
+            currentZone: 'ALL',
+            plainPassword: 'Delivery@12345'
+          }
+        }
+      }
+    });
+
+    await prisma.user.upsert({
+      where: { email: 'campus.runner2@gmail.com' },
+      update: { passwordHash: deliveryPassHash, username: 'DB_BOY_02', personalEmail: 'campus.runner2@gmail.com' },
+      create: {
+        email: 'campus.runner2@gmail.com',
+        username: 'DB_BOY_02',
+        personalEmail: 'campus.runner2@gmail.com',
+        passwordHash: deliveryPassHash,
+        role: 'DELIVERY_BOY',
+        isActive: true,
+        deliveryBoy: {
+          create: {
+            fullName: 'Rajesh Kumar (Express Runner)',
+            mobileNumber: '9876543221',
+            vehicleType: 'Electric Scooter',
+            activeStatus: true,
+            currentZone: 'ALL',
+            plainPassword: 'Delivery@12345'
           }
         }
       }
@@ -285,6 +360,12 @@ export async function autoSeedDatabase(prisma: any): Promise<void> {
     });
 
     // 7. Products
+    const existingProducts = await prisma.product.count();
+    if (existingProducts > 0) {
+      console.info(`[AutoSeed] Database already has ${existingProducts} products. Skipping product catalog creation.`);
+      return;
+    }
+
     console.info('[AutoSeed] Creating Products Catalog...');
     const products = [
       // Food

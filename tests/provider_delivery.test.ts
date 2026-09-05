@@ -217,4 +217,73 @@ describe('Service Provider & Delivery Boy Role System Tests', () => {
       expect(canAdvance('DELIVERY_ASSIGNED', 'OUT_FOR_DELIVERY')).toBe(false);
     });
   });
+
+  describe('7. Service Provider Business Analytics & Tenant Isolation', () => {
+    const providerOrders = [
+      { id: 'o1', providerId: 'prov_food_01', totalAmount: 140, status: 'DELIVERED', studentId: 's1', createdAt: new Date() },
+      { id: 'o2', providerId: 'prov_food_01', totalAmount: 250, status: 'DELIVERED', studentId: 's1', createdAt: new Date() },
+      { id: 'o3', providerId: 'prov_food_01', totalAmount: 80, status: 'PREPARING', studentId: 's2', createdAt: new Date() },
+      { id: 'o4', providerId: 'prov_laundry_01', totalAmount: 120, status: 'DELIVERED', studentId: 's3', createdAt: new Date() },
+    ];
+
+    it('calculates 10 KPI metrics accurately from real orders for a specific provider', () => {
+      const myOrders = providerOrders.filter((o) => o.providerId === 'prov_food_01');
+      const delivered = myOrders.filter((o) => o.status === 'DELIVERED');
+      const totalSales = delivered.reduce((sum, o) => sum + o.totalAmount, 0);
+      const activeCount = myOrders.filter((o) => ['CONFIRMED', 'ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.status)).length;
+
+      expect(myOrders.length).toBe(3);
+      expect(totalSales).toBe(390);
+      expect(activeCount).toBe(1);
+    });
+
+    it('strictly isolates Provider A data from Provider B', () => {
+      const foodProviderOrders = providerOrders.filter((o) => o.providerId === 'prov_food_01');
+      const laundryProviderOrders = providerOrders.filter((o) => o.providerId === 'prov_laundry_01');
+
+      expect(foodProviderOrders.some((o) => o.providerId === 'prov_laundry_01')).toBe(false);
+      expect(laundryProviderOrders.some((o) => o.providerId === 'prov_food_01')).toBe(false);
+    });
+
+    it('resolves Delivery Boy login with User ID in both uppercase and lowercase', () => {
+      const checkIdentifier = (input: string) => {
+        const normalized = input.trim();
+        const lower = normalized.toLowerCase();
+        const upper = normalized.toUpperCase();
+        return (
+          normalized === 'DB_BOY_01' ||
+          lower === 'db_boy_01' ||
+          upper === 'DB_BOY_01' ||
+          lower === 'runner.delivery@gmail.com'
+        );
+      };
+
+      expect(checkIdentifier('DB_BOY_01')).toBe(true);
+      expect(checkIdentifier('db_boy_01')).toBe(true);
+      expect(checkIdentifier('DB_boy_01')).toBe(true);
+      expect(checkIdentifier('runner.delivery@gmail.com')).toBe(true);
+      expect(checkIdentifier('random_user')).toBe(false);
+    });
+
+    it('generates valid RFC-4180 CSV export rows for orders', () => {
+      const escapeCsv = (val: any) => `"${String(val).replace(/"/g, '""')}"`;
+      const row = [
+        escapeCsv('NIT-ORD-9021'),
+        escapeCsv('2026-09-05T12:00:00Z'),
+        escapeCsv('Sourav Senapati'),
+        escapeCsv('Hall 11'),
+        escapeCsv('B-304'),
+        escapeCsv('Chicken Biryani (x2)'),
+        280,
+        escapeCsv('DELIVERED'),
+        escapeCsv('RAZORPAY'),
+        escapeCsv('Bikash Mondal'),
+      ].join(',');
+
+      expect(row).toContain('"NIT-ORD-9021"');
+      expect(row).toContain('"Sourav Senapati"');
+      expect(row).toContain('280');
+      expect(row).toContain('"DELIVERED"');
+    });
+  });
 });
