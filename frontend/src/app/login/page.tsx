@@ -271,63 +271,98 @@ function LoginForm() {
   const [unregisteredGoogleModal, setUnregisteredGoogleModal] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // Google Sign-In Handler
+  // Real Google Identity Services (GSI) Client Integration
+  useEffect(() => {
+    const clientId =
+      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+      '202495303011-b9a24kpo8mfh77bqq48a7ao9aoghdhsp.apps.googleusercontent.com';
+
+    if (typeof window === 'undefined') return;
+
+    const handleCredentialResponse = async (response: any) => {
+      if (!response?.credential) return;
+      setGoogleLoading(true);
+      setError(null);
+
+      try {
+        const res = await apiRequest('/api/auth/google', {
+          method: 'POST',
+          body: JSON.stringify({ credential: response.credential })
+        });
+
+        if (res.success && res.token && res.user) {
+          login(res.token, res.user);
+          router.push('/dashboard');
+        } else if (res.code === 'UNREGISTERED_GOOGLE' || res.status === 404) {
+          setUnregisteredGoogleModal(true);
+        } else {
+          setError(res.message || 'Google authentication failed.');
+        }
+      } catch (err: any) {
+        if (err.message?.includes('not registered') || err.message?.includes('UNREGISTERED')) {
+          setUnregisteredGoogleModal(true);
+        } else {
+          setError(err.message || 'Google Sign-In failed.');
+        }
+      } finally {
+        setGoogleLoading(false);
+      }
+    };
+
+    const initGsi = () => {
+      if ((window as any).google?.accounts?.id) {
+        try {
+          (window as any).google.accounts.id.initialize({
+            client_id: clientId,
+            callback: handleCredentialResponse,
+            auto_select: false,
+            cancel_on_tap_outside: true
+          });
+
+          const btnContainer = document.getElementById('googleSignInBtn');
+          if (btnContainer && !btnContainer.hasChildNodes()) {
+            (window as any).google.accounts.id.renderButton(btnContainer, {
+              theme: 'outline',
+              size: 'large',
+              width: 384,
+              text: 'continue_with',
+              shape: 'rectangular',
+              logo_alignment: 'left'
+            });
+          }
+        } catch (e) {
+          console.warn('[GSI] Init warning:', e);
+        }
+      }
+    };
+
+    if ((window as any).google?.accounts?.id) {
+      initGsi();
+    } else {
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = initGsi;
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  // Google Sign-In button click trigger
   const handleGoogleSignIn = async () => {
     setError(null);
     setGoogleLoading(true);
 
-    try {
-      // In web browser with Google Identity Services or fallback client token
-      let credential = '';
-      if (typeof window !== 'undefined' && (window as any).google?.accounts?.id) {
-        // Real Google GSI popup prompt if initialized
-      }
-
-      // If no GSI active or in test mode, prompt for mock Google token or email
-      if (!credential) {
-        const testGoogleEmail = prompt(
-          'Google Sign-In Simulation:\nEnter your Google Account email to authenticate:',
-          'student@gmail.com'
-        );
-        if (!testGoogleEmail) {
+    if (typeof window !== 'undefined' && (window as any).google?.accounts?.id) {
+      (window as any).google.accounts.id.prompt((notification: any) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          // If One Tap is skipped/dismissed, notify user to use the Google button
           setGoogleLoading(false);
-          return;
         }
-
-        // Create a test client credential token containing the email and sub
-        const dummyHeader = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-        const dummyPayload = btoa(
-          JSON.stringify({
-            sub: `google_${testGoogleEmail.replace(/[^a-z0-9]/gi, '')}`,
-            email: testGoogleEmail,
-            email_verified: true,
-            name: 'Google User'
-          })
-        );
-        credential = `${dummyHeader}.${dummyPayload}.sig`;
-      }
-
-      const res = await apiRequest('/api/auth/google', {
-        method: 'POST',
-        body: JSON.stringify({ credential })
       });
-
-      if (res.success && res.token && res.user) {
-        login(res.token, res.user);
-        router.push('/dashboard');
-      } else if (res.code === 'UNREGISTERED_GOOGLE' || res.status === 404) {
-        setUnregisteredGoogleModal(true);
-      } else {
-        setError(res.message || 'Google authentication failed.');
-      }
-    } catch (err: any) {
-      if (err.message?.includes('not registered') || err.message?.includes('UNREGISTERED')) {
-        setUnregisteredGoogleModal(true);
-      } else {
-        setError(err.message || 'Google Sign-In failed.');
-      }
-    } finally {
+    } else {
       setGoogleLoading(false);
+      setError('Google Sign-In is initializing. Please click again.');
     }
   };
 
@@ -611,6 +646,9 @@ function LoginForm() {
                 OR
               </span>
             </div>
+
+            {/* Native Google GSI Button Container */}
+            <div id="googleSignInBtn" className="w-full flex justify-center overflow-hidden" />
 
             <button
               type="button"
