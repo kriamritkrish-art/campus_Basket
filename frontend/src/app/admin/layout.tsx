@@ -67,8 +67,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // Guard Check
   useEffect(() => {
-    if (!isLoading && (!isAuthenticated || role !== 'ADMIN')) {
-      router.push('/login?redirect=' + encodeURIComponent(pathname));
+    if (!isLoading) {
+      if (!isAuthenticated) {
+        router.push('/login?role=ADMIN&redirect=' + encodeURIComponent(pathname));
+      } else if (role !== 'ADMIN') {
+        if (role === 'SERVICE_PROVIDER') {
+          router.push('/provider/dashboard');
+        } else if (role === 'DELIVERY_BOY') {
+          router.push('/delivery/dashboard');
+        } else {
+          router.push('/dashboard');
+        }
+      }
     }
   }, [isAuthenticated, role, isLoading, pathname, router]);
 

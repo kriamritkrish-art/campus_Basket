@@ -120,7 +120,8 @@ export const completeRegistrationSchema = z.object({
  */
 export const loginSchema = z.object({
   email: z.string().min(1, 'Email or User ID is required'),
-  password: z.string().min(1, 'Password is required')
+  password: z.string().min(1, 'Password is required'),
+  role: z.enum(['STUDENT', 'ADMIN', 'SERVICE_PROVIDER', 'DELIVERY_BOY']).optional()
 });
 
 export const verifyRoleLoginOtpSchema = z

@@ -40,8 +40,16 @@ export default function DeliveryDashboardPage() {
 
   // Initial Auth Guard
   useEffect(() => {
-    if (!isLoading && (!isAuthenticated || (role !== 'DELIVERY_BOY' && role !== 'ADMIN'))) {
-      window.location.href = '/login?redirect=/delivery/dashboard';
+    if (!isLoading) {
+      if (!isAuthenticated) {
+        window.location.href = '/login?role=DELIVERY_BOY&redirect=/delivery/dashboard';
+      } else if (role !== 'DELIVERY_BOY' && role !== 'ADMIN') {
+        if (role === 'SERVICE_PROVIDER') {
+          window.location.href = '/provider/dashboard';
+        } else {
+          window.location.href = '/dashboard';
+        }
+      }
     }
   }, [isAuthenticated, role, isLoading]);
 

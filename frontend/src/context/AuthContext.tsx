@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const refreshUser = async () => {
-    const token = localStorage.getItem('nit_token');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
     if (!token) {
       setUser(null);
       setIsLoading(false);
@@ -40,12 +40,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await apiRequest('/api/auth/me');
       if (res.success && res.user) {
         setUser(res.user);
+        if (typeof window !== 'undefined' && res.user.role) {
+          localStorage.setItem('nit_role', res.user.role);
+        }
       } else {
-        localStorage.removeItem('nit_token');
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('nit_token');
+          localStorage.removeItem('nit_role');
+        }
         setUser(null);
       }
     } catch {
-      localStorage.removeItem('nit_token');
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('nit_token');
+        localStorage.removeItem('nit_role');
+      }
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -57,12 +66,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = (token: string, newUser: User) => {
-    localStorage.setItem('nit_token', token);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('nit_token', token);
+      if (newUser?.role) {
+        localStorage.setItem('nit_role', newUser.role);
+      }
+    }
     setUser(newUser);
   };
 
-  const logout = () => {
-    localStorage.removeItem('nit_token');
+  const logout = async () => {
+    try {
+      await apiRequest('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Ignored
+    }
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('nit_token');
+      localStorage.removeItem('nit_role');
+    }
     setUser(null);
     window.location.href = '/login';
   };

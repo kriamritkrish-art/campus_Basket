@@ -72,17 +72,19 @@ const fallbackHandlers: Record<string, any> = {
       const id = args?.where?.id;
       const found = fallbackUsers.find(
         (u: any) =>
-          (email && (u.email?.toLowerCase() === email || u.personalEmail?.toLowerCase() === email)) ||
-          (username && u.username?.toLowerCase() === username) ||
-          (id && u.id === id)
+          (id && u.id === id) ||
+          (email && (u.email?.toLowerCase() === email || u.personalEmail?.toLowerCase() === email || u.collegeEmail?.toLowerCase() === email)) ||
+          (username && u.username?.toLowerCase() === username)
       );
       if (!found) return null;
       return JSON.parse(JSON.stringify(found));
     },
     findFirst: async (args: any) => {
       const orList: any[] = args?.where?.OR;
+      const roleFilter = args?.where?.role;
       if (Array.isArray(orList) && orList.length > 0) {
         for (const condition of orList) {
+          const idVal = condition.id;
           const emailVal = (condition.email || '').toLowerCase().trim();
           const userVal = (condition.username || '').toLowerCase().trim();
           const colVal = (condition.collegeEmail || '').toLowerCase().trim();
@@ -91,6 +93,8 @@ const fallbackHandlers: Record<string, any> = {
           const studPer = (condition.student?.personalEmail || '').toLowerCase().trim();
 
           const found = fallbackUsers.find((u: any) => {
+            if (roleFilter && u.role !== roleFilter) return false;
+            const uId = u.id;
             const uEmail = (u.email || '').toLowerCase();
             const uUser = (u.username || '').toLowerCase();
             const uCol = (u.collegeEmail || '').toLowerCase();
@@ -98,6 +102,7 @@ const fallbackHandlers: Record<string, any> = {
             const uStudCol = (u.student?.collegeEmail || '').toLowerCase();
             const uStudPer = (u.student?.personalEmail || '').toLowerCase();
 
+            if (idVal && uId === idVal) return true;
             if (emailVal && (uEmail === emailVal || uPer === emailVal || uCol === emailVal || uUser === emailVal)) return true;
             if (userVal && (uUser === userVal || uEmail === userVal || uPer === userVal)) return true;
             if (colVal && (uCol === colVal || uEmail === colVal || uStudCol === colVal)) return true;
@@ -115,10 +120,14 @@ const fallbackHandlers: Record<string, any> = {
       const username = args?.where?.username?.toLowerCase()?.trim();
       const id = args?.where?.id;
       const found = fallbackUsers.find(
-        (u: any) =>
-          (email && (u.email?.toLowerCase() === email || u.personalEmail?.toLowerCase() === email)) ||
-          (username && u.username?.toLowerCase() === username) ||
-          (id && u.id === id)
+        (u: any) => {
+          if (roleFilter && u.role !== roleFilter) return false;
+          return (
+            (id && u.id === id) ||
+            (email && (u.email?.toLowerCase() === email || u.personalEmail?.toLowerCase() === email || u.collegeEmail?.toLowerCase() === email)) ||
+            (username && u.username?.toLowerCase() === username)
+          );
+        }
       );
       return found ? JSON.parse(JSON.stringify(found)) : null;
     },
@@ -133,14 +142,30 @@ const fallbackHandlers: Record<string, any> = {
       const newUser = {
         id: `usr_${Date.now()}`,
         email: args.data.email,
+        collegeEmail: args.data.collegeEmail || (args.data.role === 'STUDENT' ? args.data.email : null),
+        personalEmail: args.data.personalEmail || null,
+        username: args.data.username || null,
         passwordHash: args.data.passwordHash,
         role: args.data.role || 'STUDENT',
         isActive: args.data.isActive !== undefined ? args.data.isActive : true,
+        accountStatus: args.data.accountStatus || 'ACTIVE',
+        collegeEmailVerified: args.data.collegeEmailVerified !== undefined ? args.data.collegeEmailVerified : true,
+        personalEmailVerified: args.data.personalEmailVerified !== undefined ? args.data.personalEmailVerified : true,
         createdAt: new Date(),
         updatedAt: new Date()
       };
       fallbackUsers.push(newUser as any);
       return JSON.parse(JSON.stringify(newUser));
+    },
+    update: async (args: any) => {
+      const id = args?.where?.id;
+      const email = args?.where?.email?.toLowerCase()?.trim();
+      const user = fallbackUsers.find((u: any) => (id && u.id === id) || (email && u.email?.toLowerCase() === email));
+      if (user && args.data) {
+        Object.assign(user, args.data, { updatedAt: new Date() });
+        return JSON.parse(JSON.stringify(user));
+      }
+      return args?.data || null;
     }
   },
   admin: {
@@ -185,9 +210,14 @@ const fallbackHandlers: Record<string, any> = {
         rollNumber: args.data.rollNumber,
         registrationNumber: args.data.registrationNumber,
         mobileNumber: args.data.mobileNumber,
+        collegeEmail: args.data.collegeEmail || null,
+        personalEmail: args.data.personalEmail || null,
         hallId: args.data.hallId,
         hallNumber: args.data.hallNumber,
         roomNumber: args.data.roomNumber,
+        department: args.data.department || 'Engineering',
+        programme: args.data.programme || 'B.Tech',
+        year: args.data.year || '1st Year',
         isVerified: true,
         createdAt: new Date(),
         updatedAt: new Date()

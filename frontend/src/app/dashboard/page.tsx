@@ -22,16 +22,30 @@ import {
 } from 'lucide-react';
 
 export default function StudentDashboardPage() {
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, role, isAuthenticated, isLoading } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [laundryOrders, setLaundryOrders] = useState<LaundryOrder[]>([]);
   const [activeTab, setActiveTab] = useState<'ALL' | 'ORDERS' | 'LAUNDRY'>('ALL');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAuthenticated && !isLoading) {
-      window.location.href = '/login';
-      return;
+    if (!isLoading) {
+      if (!isAuthenticated) {
+        window.location.href = '/login?role=STUDENT';
+        return;
+      }
+      if (role === 'ADMIN') {
+        window.location.href = '/admin/dashboard';
+        return;
+      }
+      if (role === 'SERVICE_PROVIDER') {
+        window.location.href = '/provider/dashboard';
+        return;
+      }
+      if (role === 'DELIVERY_BOY') {
+        window.location.href = '/delivery/dashboard';
+        return;
+      }
     }
 
     async function loadStudentData() {

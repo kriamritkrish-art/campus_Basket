@@ -25,7 +25,7 @@ type UserRole = 'STUDENT' | 'ADMIN' | 'SERVICE_PROVIDER' | 'DELIVERY_BOY';
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { login } = useAuth();
+  const { user, role, isAuthenticated, login, logout } = useAuth();
 
   const [activeRole, setActiveRole] = useState<UserRole>('STUDENT');
   const [identifier, setIdentifier] = useState('ss.24u10227@nitdgp.ac.in');
@@ -46,53 +46,55 @@ function LoginForm() {
     const roleParam = searchParams.get('role')?.toUpperCase();
     const redirectParam = searchParams.get('redirect')?.toLowerCase();
 
-    if (roleParam === 'ADMIN' || redirectParam?.includes('admin')) {
+    if (roleParam === 'ADMIN' || (!roleParam && redirectParam?.startsWith('/admin'))) {
       setActiveRole('ADMIN');
       setIdentifier('souravsenapati408@gmail.com');
       setPassword('Sourav@12345');
-    } else if (roleParam === 'DELIVERY_BOY' || roleParam === 'DELIVERY' || redirectParam?.includes('delivery')) {
+    } else if (roleParam === 'DELIVERY_BOY' || roleParam === 'DELIVERY' || (!roleParam && redirectParam?.startsWith('/delivery'))) {
       setActiveRole('DELIVERY_BOY');
       setIdentifier('DB_BOY_01');
       setPassword('Delivery@12345');
-    } else if (roleParam === 'PROVIDER' || roleParam === 'SERVICE_PROVIDER' || redirectParam?.includes('provider')) {
+    } else if (roleParam === 'PROVIDER' || roleParam === 'SERVICE_PROVIDER' || (!roleParam && redirectParam?.startsWith('/provider'))) {
       setActiveRole('SERVICE_PROVIDER');
       setIdentifier('SP_FOOD_01');
       setPassword('Vendor@12345');
-    } else if (roleParam === 'STUDENT' || redirectParam?.includes('student')) {
+    } else if (roleParam === 'STUDENT' || (!roleParam && redirectParam && !redirectParam.startsWith('/admin') && !redirectParam.startsWith('/provider') && !redirectParam.startsWith('/delivery'))) {
       setActiveRole('STUDENT');
       setIdentifier('ss.24u10227@nitdgp.ac.in');
       setPassword('Student@2026');
     }
   }, [searchParams]);
 
-  const handleRoleChange = (role: UserRole) => {
-    setActiveRole(role);
+  const handleRoleChange = (selectedRole: UserRole) => {
+    setActiveRole(selectedRole);
     setError(null);
     setAutoFilled(false);
     setOtpStep(false);
-    if (role === 'ADMIN') {
+    if (selectedRole === 'ADMIN') {
       setIdentifier('souravsenapati408@gmail.com');
       setPassword('Sourav@12345');
-    } else if (role === 'DELIVERY_BOY') {
+    } else if (selectedRole === 'DELIVERY_BOY') {
       setIdentifier('DB_BOY_01');
       setPassword('Delivery@12345');
-    } else if (role === 'SERVICE_PROVIDER') {
+    } else if (selectedRole === 'SERVICE_PROVIDER') {
       setIdentifier('SP_FOOD_01');
       setPassword('Vendor@12345');
     } else {
       setIdentifier('ss.24u10227@nitdgp.ac.in');
       setPassword('Student@2026');
     }
+    // Cleanly update URL without stale redirects from other roles
+    router.replace(`/login?role=${selectedRole}`);
   };
 
-  const handleQuickFill = (role: UserRole) => {
-    if (role === 'ADMIN') {
+  const handleQuickFill = (roleToFill: UserRole) => {
+    if (roleToFill === 'ADMIN') {
       setIdentifier('souravsenapati408@gmail.com');
       setPassword('Sourav@12345');
-    } else if (role === 'DELIVERY_BOY') {
+    } else if (roleToFill === 'DELIVERY_BOY') {
       setIdentifier('DB_BOY_01');
       setPassword('Delivery@12345');
-    } else if (role === 'SERVICE_PROVIDER') {
+    } else if (roleToFill === 'SERVICE_PROVIDER') {
       setIdentifier('SP_FOOD_01');
       setPassword('Vendor@12345');
     } else {
@@ -106,8 +108,27 @@ function LoginForm() {
   const handleRoleRedirect = (userRole: string) => {
     const redirectUrl = searchParams.get('redirect');
     if (redirectUrl) {
-      router.push(redirectUrl);
-      return;
+      if (userRole === 'ADMIN' && redirectUrl.startsWith('/admin')) {
+        router.push(redirectUrl);
+        return;
+      }
+      if (userRole === 'SERVICE_PROVIDER' && redirectUrl.startsWith('/provider')) {
+        router.push(redirectUrl);
+        return;
+      }
+      if (userRole === 'DELIVERY_BOY' && redirectUrl.startsWith('/delivery')) {
+        router.push(redirectUrl);
+        return;
+      }
+      if (
+        userRole === 'STUDENT' &&
+        !redirectUrl.startsWith('/admin') &&
+        !redirectUrl.startsWith('/provider') &&
+        !redirectUrl.startsWith('/delivery')
+      ) {
+        router.push(redirectUrl);
+        return;
+      }
     }
 
     if (userRole === 'ADMIN') {
@@ -129,13 +150,17 @@ function LoginForm() {
     try {
       const res = await apiRequest('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email: identifier.trim(), password }),
+        body: JSON.stringify({
+          email: identifier.trim(),
+          password,
+          role: activeRole,
+        }),
       });
 
       if (res.requiresOtp) {
         setOtpStep(true);
-        setOtpUserId(res.userId);
-        setMaskedEmail(res.targetEmail || 'your registered Gmail');
+        setOtpUserId(res.userId || res.email || identifier.trim());
+        setMaskedEmail(res.targetEmail || res.maskedEmail || 'your registered Gmail');
         setLoading(false);
         return;
       }
@@ -166,7 +191,11 @@ function LoginForm() {
     try {
       const res = await apiRequest('/api/auth/login/verify-otp', {
         method: 'POST',
-        body: JSON.stringify({ userId: otpUserId, otp: otpCode.trim() }),
+        body: JSON.stringify({
+          userId: otpUserId,
+          email: otpUserId,
+          otp: otpCode.trim(),
+        }),
       });
 
       if (res.success && res.token && res.user) {
@@ -302,6 +331,34 @@ function LoginForm() {
 
   return (
     <div className="max-w-md mx-auto px-4 py-10 sm:py-14">
+      {/* Active Session Notification if already logged in */}
+      {isAuthenticated && user && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-900 shadow-xs animate-fade-in">
+          <div className="flex items-center gap-2 truncate">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <span className="truncate">
+              Signed in: <strong className="font-bold text-emerald-950">{user.student?.fullName || user.email}</strong> <span className="text-[10px] bg-emerald-200 text-emerald-800 font-bold px-1.5 py-0.5 rounded uppercase">{user.role}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+            <button
+              type="button"
+              onClick={() => handleRoleRedirect(user.role)}
+              className="text-[11px] font-bold text-emerald-800 bg-white hover:bg-emerald-100 border border-emerald-300 px-2 py-1 rounded transition-colors cursor-pointer"
+            >
+              Go to Dashboard &rarr;
+            </button>
+            <button
+              type="button"
+              onClick={logout}
+              className="text-[11px] font-bold text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 px-2 py-1 rounded transition-colors cursor-pointer"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Role Selection Tabs */}
       <div className="grid grid-cols-4 p-1 bg-white rounded-xl border border-gray-200 mb-5 shadow-sm">
         <button

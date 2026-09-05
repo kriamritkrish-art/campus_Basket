@@ -172,8 +172,16 @@ export default function ProviderDashboardPage() {
 
   // Auth Guard
   useEffect(() => {
-    if (!isLoading && (!isAuthenticated || (role !== 'SERVICE_PROVIDER' && role !== 'ADMIN'))) {
-      window.location.href = '/login?redirect=/provider/dashboard';
+    if (!isLoading) {
+      if (!isAuthenticated) {
+        window.location.href = '/login?role=SERVICE_PROVIDER&redirect=/provider/dashboard';
+      } else if (role !== 'SERVICE_PROVIDER' && role !== 'ADMIN') {
+        if (role === 'DELIVERY_BOY') {
+          window.location.href = '/delivery/dashboard';
+        } else {
+          window.location.href = '/dashboard';
+        }
+      }
     }
   }, [isAuthenticated, role, isLoading]);
 

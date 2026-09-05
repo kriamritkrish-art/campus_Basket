@@ -219,7 +219,7 @@ export function Navbar() {
                     href="/admin/dashboard"
                     className="hidden sm:flex items-center gap-1.5 bg-purple-100 text-purple-800 border border-purple-200 px-3 py-2 rounded-md text-xs font-bold hover:bg-purple-200 transition-colors"
                   >
-                    <ShieldCheck className="w-3.5 h-3.5 text-purple-700" /> Admin
+                    <ShieldCheck className="w-3.5 h-3.5 text-purple-700" /> Admin Portal
                   </Link>
                 )}
                 {role === 'SERVICE_PROVIDER' && (
@@ -227,23 +227,42 @@ export function Navbar() {
                     href="/provider/dashboard"
                     className="hidden sm:flex items-center gap-1.5 bg-emerald-100 text-emerald-800 border border-emerald-200 px-3 py-2 rounded-md text-xs font-bold hover:bg-emerald-200 transition-colors"
                   >
-                    Vendor
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" /> Vendor Portal
+                  </Link>
+                )}
+                {role === 'DELIVERY_BOY' && (
+                  <Link
+                    href="/delivery/dashboard"
+                    className="hidden sm:flex items-center gap-1.5 bg-sky-100 text-sky-800 border border-sky-200 px-3 py-2 rounded-md text-xs font-bold hover:bg-sky-200 transition-colors"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-sky-500" /> Runner Portal
                   </Link>
                 )}
 
                 <Link
-                  href="/dashboard"
+                  href={
+                    role === 'ADMIN'
+                      ? '/admin/dashboard'
+                      : role === 'SERVICE_PROVIDER'
+                      ? '/provider/dashboard'
+                      : role === 'DELIVERY_BOY'
+                      ? '/delivery/dashboard'
+                      : '/dashboard'
+                  }
                   className="flex items-center gap-2 px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-800 border border-gray-300 transition-colors"
                 >
                   <UserIcon className="w-3.5 h-3.5 text-[#689f38]" />
                   <span className="hidden sm:inline">
-                    {user?.student?.fullName?.split(' ')[0] || user?.email.split('@')[0]}
+                    {user?.student?.fullName?.split(' ')[0] ||
+                      user?.admin?.fullName?.split(' ')[0] ||
+                      user?.deliveryBoy?.fullName?.split(' ')[0] ||
+                      user?.email.split('@')[0]}
                   </span>
                 </Link>
 
                 <button
                   onClick={logout}
-                  className="p-2 rounded-md text-gray-500 hover:text-red-600 hover:bg-gray-100 transition-colors"
+                  className="p-2 rounded-md text-gray-500 hover:text-red-600 hover:bg-gray-100 transition-colors cursor-pointer"
                   title="Logout"
                 >
                   <LogOut className="w-4 h-4" />
@@ -545,6 +564,30 @@ export function Navbar() {
             >
               Book Doorstep Laundry
             </Link>
+
+            {isAuthenticated && (
+              <Link
+                href={
+                  role === 'ADMIN'
+                    ? '/admin/dashboard'
+                    : role === 'SERVICE_PROVIDER'
+                    ? '/provider/dashboard'
+                    : role === 'DELIVERY_BOY'
+                    ? '/delivery/dashboard'
+                    : '/dashboard'
+                }
+                onClick={() => setMobileMenuOpen(false)}
+                className="w-full text-center py-2.5 rounded-lg bg-gray-900 font-bold text-white text-xs shadow-sm"
+              >
+                {role === 'ADMIN'
+                  ? 'Admin Command Center'
+                  : role === 'SERVICE_PROVIDER'
+                  ? 'Vendor Portal'
+                  : role === 'DELIVERY_BOY'
+                  ? 'Runner Portal'
+                  : 'Student Dashboard'}
+              </Link>
+            )}
 
             {!isAuthenticated ? (
               <Link

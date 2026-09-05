@@ -678,9 +678,11 @@ export class AuthController {
       const emailInput = data.email.toLowerCase().trim();
       const rawInput = data.email.trim();
       const upperInput = data.email.toUpperCase().trim();
+      const expectedRole = data.role;
 
       const user = await prisma.user.findFirst({
         where: {
+          ...(expectedRole ? { role: expectedRole } : {}),
           OR: [
             { email: emailInput },
             { email: rawInput },
@@ -703,6 +705,38 @@ export class AuthController {
       });
 
       if (!user) {
+        // If an expected role was provided, check if the account exists under a different role
+        if (expectedRole) {
+          const crossRoleUser = await prisma.user.findFirst({
+            where: {
+              OR: [
+                { email: emailInput },
+                { email: rawInput },
+                { username: emailInput },
+                { username: rawInput },
+                { username: upperInput },
+                { collegeEmail: emailInput },
+                { personalEmail: emailInput },
+                { personalEmail: rawInput }
+              ]
+            }
+          });
+
+          if (crossRoleUser && crossRoleUser.role !== expectedRole) {
+            const roleLabels: Record<string, string> = {
+              STUDENT: 'Student',
+              ADMIN: 'Campus Administrator',
+              SERVICE_PROVIDER: 'Service Provider',
+              DELIVERY_BOY: 'Delivery Partner'
+            };
+            res.status(400).json({
+              success: false,
+              message: `This account is registered as a ${roleLabels[crossRoleUser.role] || crossRoleUser.role}. Please select the ${roleLabels[crossRoleUser.role] || crossRoleUser.role} tab above to sign in.`
+            });
+            return;
+          }
+        }
+
         await AuditService.log(prisma, {
           action: 'Login Failure',
           entity: 'User',
@@ -792,6 +826,8 @@ export class AuthController {
           requiresOtp: true,
           role: user.role,
           email: user.email,
+          userId: user.id,
+          targetEmail: masked,
           maskedEmail: masked,
           message: `Security code sent to your registered Gmail: ${masked}`
         });
@@ -1337,16 +1373,18 @@ export class AuthController {
    */
   public static async getMe(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      if (!req.user) {
+      const authUser = (req as any).user;
+      if (!authUser) {
         res.status(401).json({ success: false, message: 'Not authenticated' });
         return;
       }
 
       const user = await prisma.user.findUnique({
-        where: { id: req.user.userId },
+        where: { id: authUser.userId },
         select: {
           id: true,
           email: true,
+          username: true,
           collegeEmail: true,
           personalEmail: true,
           collegeEmailVerified: true,
@@ -1362,7 +1400,8 @@ export class AuthController {
             include: { hall: true }
           },
           admin: true,
-          provider: true
+          provider: true,
+          deliveryBoy: true
         }
       });
 
