@@ -526,20 +526,20 @@ export default function OrderTrackingPage() {
           {/* ==================================================
               3. LIVE GPS TRACK RADAR — Premium Professional Tracker
              ================================================== */}
-          <div className="rounded-2xl border border-slate-100 bg-white shadow-sm overflow-hidden">
+          <div className="rounded-2xl border border-indigo-100 bg-white shadow-sm shadow-indigo-50 overflow-hidden ring-1 ring-indigo-50">
 
             {/* Top accent bar */}
-            <div className="h-1 w-full bg-gradient-to-r from-[#10b981] via-[#34d399] to-slate-100" />
+            <div className="h-[3px] w-full bg-gradient-to-r from-indigo-500 via-violet-400 to-fuchsia-300" />
 
             <div className="px-5 py-4 space-y-4">
 
               {/* Header Row */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                 {/* Live Badge */}
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-extrabold tracking-widest uppercase shrink-0 self-start">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-[10px] font-extrabold tracking-widest uppercase shrink-0 self-start">
                   <span className="relative flex h-1.5 w-1.5 shrink-0">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-500" />
                   </span>
                   LIVE GPS TRACK RADAR
                 </div>
@@ -555,10 +555,11 @@ export default function OrderTrackingPage() {
 
                   {/* Gray inactive rail */}
                   <div className="absolute top-8 left-[8.3333%] right-[8.3333%] h-[2px] bg-slate-100 rounded-full" />
+                  {/* Subtle glow backdrop beneath active rail */}
 
                   {/* Green active rail */}
                   <div
-                    className="absolute top-8 left-[8.3333%] h-[2px] bg-gradient-to-r from-[#10b981] to-[#34d399] rounded-full transition-all duration-700 ease-out"
+                    className="absolute top-8 left-[8.3333%] h-[2px] bg-gradient-to-r from-indigo-500 via-violet-400 to-fuchsia-300 rounded-full transition-all duration-700 ease-out shadow-[0_0_6px_rgba(99,102,241,0.5)]"
                     style={{ width: activeStep >= 0 ? `${(activeStep / 5) * 83.3333}%` : '0%' }}
                   />
 
@@ -573,24 +574,35 @@ export default function OrderTrackingPage() {
 
                           {/* Delivery vehicle floating above current step */}
                           {isActive && (
-                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center">
-                              <div className="bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-md flex items-center gap-1">
-                                <svg className="w-4 h-4 text-[#10b981]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                  <circle cx="18.5" cy="17.5" r="3.5" />
-                                  <circle cx="5.5" cy="17.5" r="3.5" />
-                                  <circle cx="15" cy="5" r="1" />
-                                  <path d="M12 17.5V14l-3-3 4-3 2 3h2" />
+                            <div className="absolute -top-9 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center">
+                              <div className="bg-white border border-indigo-200 rounded-xl px-2.5 py-1.5 shadow-lg shadow-indigo-100 flex items-center gap-1.5">
+                                {/* Premium delivery truck icon */}
+                                <svg className="w-[18px] h-[18px] text-indigo-600" viewBox="0 0 32 32" fill="none">
+                                  {/* Truck body */}
+                                  <rect x="2" y="10" width="18" height="13" rx="2" fill="#e0e7ff" stroke="#6366f1" strokeWidth="1.5"/>
+                                  {/* Truck cab */}
+                                  <path d="M20 15h6l2 4v4h-8V15z" fill="#c7d2fe" stroke="#6366f1" strokeWidth="1.5" strokeLinejoin="round"/>
+                                  {/* Cab window */}
+                                  <path d="M21.5 16.5h3.5l1 2h-4.5v-2z" fill="#6366f1" opacity="0.4"/>
+                                  {/* Wheels */}
+                                  <circle cx="8" cy="23" r="3" fill="#312e81" stroke="#6366f1" strokeWidth="1"/>
+                                  <circle cx="8" cy="23" r="1.2" fill="white"/>
+                                  <circle cx="24" cy="23" r="3" fill="#312e81" stroke="#6366f1" strokeWidth="1"/>
+                                  <circle cx="24" cy="23" r="1.2" fill="white"/>
+                                  {/* Speed lines */}
+                                  <line x1="3" y1="13.5" x2="7" y2="13.5" stroke="#6366f1" strokeWidth="1" strokeLinecap="round" opacity="0.5"/>
+                                  <line x1="3" y1="16" x2="5.5" y2="16" stroke="#6366f1" strokeWidth="1" strokeLinecap="round" opacity="0.3"/>
                                 </svg>
                               </div>
                               {/* Pointer nub */}
-                              <div className="w-0 h-0 border-l-[4px] border-r-[4px] border-t-[4px] border-l-transparent border-r-transparent border-t-slate-200 -mt-px" />
+                              <div className="w-0 h-0 border-l-[4px] border-r-[4px] border-t-[5px] border-l-transparent border-r-transparent border-t-indigo-200 -mt-px" />
                             </div>
                           )}
 
                           {/* Circle */}
                           <div className="h-8 flex items-center justify-center mb-0">
                             {isCompleted ? (
-                              <div className="w-7 h-7 rounded-full bg-[#10b981] flex items-center justify-center shadow-sm">
+                              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center shadow-sm shadow-indigo-200">
                                 <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                                   <polyline points="20 6 9 17 4 12" />
                                 </svg>
@@ -598,9 +610,9 @@ export default function OrderTrackingPage() {
                             ) : isActive ? (
                               <div className="relative">
                                 {/* Outer pulse ring */}
-                                <div className="absolute inset-0 rounded-full bg-emerald-400/20 animate-ping" style={{ animationDuration: '2s' }} />
-                                <div className="relative w-8 h-8 rounded-full bg-[#10b981] flex items-center justify-center shadow-md shadow-emerald-200">
-                                  <div className="w-2.5 h-2.5 rounded-full bg-white" />
+                                <div className="absolute inset-0 rounded-full bg-indigo-400/25 animate-ping" style={{ animationDuration: '2s' }} />
+                                <div className="relative w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-200">
+                                  <div className="w-2.5 h-2.5 rounded-full bg-white shadow-sm" />
                                 </div>
                               </div>
                             ) : (
@@ -613,7 +625,7 @@ export default function OrderTrackingPage() {
                           {/* Label */}
                           <div className={`mt-2 text-[10px] sm:text-[11px] leading-tight font-medium px-0.5 transition-colors ${
                             isActive
-                              ? 'text-[#059669] font-bold'
+                              ? 'text-indigo-600 font-bold'
                               : isCompleted
                               ? 'text-slate-600 font-semibold'
                               : 'text-slate-400'
