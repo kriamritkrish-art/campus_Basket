@@ -1,13 +1,42 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
 
+async function resolveStudentId(user?: any): Promise<string | null> {
+  if (!user) return null;
+  if (user.studentId) return user.studentId;
+
+  let student = await prisma.student.findFirst({
+    where: { userId: user.userId }
+  });
+
+  if (!student && user.role === 'ADMIN') {
+    const defaultHall = (await prisma.hall.findFirst()) || { id: 'default_hall', name: 'Hall 11' };
+    student = await prisma.student.create({
+      data: {
+        userId: user.userId,
+        fullName: user.email?.split('@')[0] || 'Campus Admin',
+        rollNumber: `ADM-${Date.now().toString().slice(-6)}`,
+        registrationNumber: `REG-${Date.now().toString().slice(-6)}`,
+        mobileNumber: '9876543210',
+        collegeEmail: user.email,
+        personalEmail: user.email,
+        hallId: defaultHall.id,
+        roomNumber: 'Admin Wing 101',
+        isVerified: true
+      }
+    });
+  }
+
+  return student ? student.id : null;
+}
+
 export class CartController {
   /**
    * Get student's current cart with server-verified prices & current stock
    */
   public static async getCart(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const studentId = req.user?.studentId;
+      const studentId = await resolveStudentId(req.user);
       if (!studentId) {
         res.status(403).json({ success: false, message: 'Student profile required' });
         return;
@@ -94,7 +123,7 @@ export class CartController {
    */
   public static async addItem(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const studentId = req.user?.studentId;
+      const studentId = await resolveStudentId(req.user);
       const { productId, quantity = 1 } = req.body;
 
       if (!studentId) {
@@ -160,7 +189,7 @@ export class CartController {
    */
   public static async updateQuantity(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const studentId = req.user?.studentId;
+      const studentId = await resolveStudentId(req.user);
       const { id } = req.params;
       const { quantity } = req.body;
 
@@ -222,7 +251,7 @@ export class CartController {
    */
   public static async clearCart(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const studentId = req.user?.studentId;
+      const studentId = await resolveStudentId(req.user);
       if (studentId) {
         const cart = await prisma.cart.findUnique({ where: { studentId } });
         if (cart) {

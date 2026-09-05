@@ -17,6 +17,10 @@ export async function geofenceGuard(req: Request, res: Response, next: NextFunct
     }
 
     if (lat === undefined || lng === undefined || isNaN(lat) || isNaN(lng)) {
+      if (req.user?.role === 'ADMIN') {
+        next();
+        return;
+      }
       res.status(403).json({
         success: false,
         code: 'LOCATION_REQUIRED',
@@ -47,6 +51,10 @@ export async function geofenceGuard(req: Request, res: Response, next: NextFunct
     const { isInside } = isCoordinateWithinServiceArea({ lat, lng }, zonePolygons);
 
     if (!isInside) {
+      if (req.user?.role === 'ADMIN') {
+        next();
+        return;
+      }
       res.status(403).json({
         success: false,
         code: 'OUTSIDE_SERVICE_AREA',

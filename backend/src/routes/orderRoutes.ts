@@ -9,9 +9,9 @@ const router = Router();
 router.use(authGuard);
 
 // Placing an order requires geofence verification within campus
-router.post('/', rbacGuard(['STUDENT']), geofenceGuard, OrderController.createOrder);
-router.get('/', rbacGuard(['STUDENT']), OrderController.getStudentOrders);
+router.post('/', rbacGuard(['STUDENT', 'ADMIN']), geofenceGuard, OrderController.createOrder);
+router.get('/', rbacGuard(['STUDENT', 'ADMIN']), OrderController.getStudentOrders);
 router.get('/:id', OrderController.getOrderById);
-router.post('/:id/cancel', rbacGuard(['STUDENT']), OrderController.cancelOrder);
+router.post('/:id/cancel', rbacGuard(['STUDENT', 'ADMIN']), OrderController.cancelOrder);
 
 export default router;

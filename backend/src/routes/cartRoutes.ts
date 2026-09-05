@@ -5,9 +5,9 @@ import { rbacGuard } from '../middleware/rbacGuard';
 
 const router = Router();
 
-// All cart operations require authenticated student
+// All cart operations require authenticated student or admin
 router.use(authGuard);
-router.use(rbacGuard(['STUDENT']));
+router.use(rbacGuard(['STUDENT', 'ADMIN']));
 
 router.get('/', CartController.getCart);
 router.post('/items', CartController.addItem);

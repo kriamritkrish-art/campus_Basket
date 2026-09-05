@@ -11,30 +11,58 @@ const razorpayService = new RazorpayService();
 const emailService = new EmailService();
 const receiptService = new ReceiptService();
 
+async function resolveStudentProfile(user?: any) {
+  if (!user) return null;
+  if (user.studentId) {
+    const student = await prisma.student.findUnique({
+      where: { id: user.studentId },
+      include: { user: true, hall: true }
+    });
+    if (student) return student;
+  }
+
+  // If user is an ADMIN, find or auto-link a student profile for testing
+  let student = await prisma.student.findFirst({
+    where: { userId: user.userId },
+    include: { user: true, hall: true }
+  });
+
+  if (!student && user.role === 'ADMIN') {
+    const defaultHall = (await prisma.hall.findFirst()) || { id: 'default_hall', name: 'Hall 11' };
+    student = await prisma.student.create({
+      data: {
+        userId: user.userId,
+        fullName: user.email?.split('@')[0] || 'Campus Admin',
+        rollNumber: `ADM-${Date.now().toString().slice(-6)}`,
+        registrationNumber: `REG-${Date.now().toString().slice(-6)}`,
+        mobileNumber: '9876543210',
+        collegeEmail: user.email,
+        personalEmail: user.email,
+        hallId: defaultHall.id,
+        roomNumber: 'Admin Wing 101',
+        isVerified: true
+      },
+      include: { user: true, hall: true }
+    });
+  }
+
+  return student;
+}
+
 export class OrderController {
   /**
    * Create new product order (Food, Fruits, Stationery & Essentials)
    */
   public static async createOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const studentId = req.user?.studentId;
-      if (!studentId) {
+      const student = await resolveStudentProfile(req.user);
+      if (!student) {
         res.status(403).json({ success: false, message: 'Student authorization required' });
         return;
       }
+      const studentId = student.id;
 
       const data = checkoutOrderSchema.parse(req.body);
-
-      // Fetch student details
-      const student = await prisma.student.findUnique({
-        where: { id: studentId },
-        include: { user: true, hall: true }
-      });
-
-      if (!student) {
-        res.status(404).json({ success: false, message: 'Student record not found' });
-        return;
-      }
 
       // Fetch products and verify stock and prices strictly from DB
       const productIds = data.items.map((i) => i.productId);
@@ -325,10 +353,14 @@ export class OrderController {
    */
   public static async getStudentOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const studentId = req.user?.studentId;
+      const student = await resolveStudentProfile(req.user);
+      const studentId = student?.id;
       const { status } = req.query;
 
-      const where: any = { studentId };
+      const where: any = {};
+      if (studentId) {
+        where.studentId = studentId;
+      }
       if (status) {
         where.status = status as any;
       }
@@ -439,7 +471,8 @@ export class OrderController {
   public static async cancelOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const studentId = req.user?.studentId;
+      const student = await resolveStudentProfile(req.user);
+      const studentId = student?.id;
 
       const order = await prisma.order.findUnique({
         where: { id },

@@ -10,14 +10,15 @@ export function rbacGuard(allowedRoles: Array<'STUDENT' | 'ADMIN' | 'SERVICE_PRO
       return;
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
-      res.status(403).json({
-        success: false,
-        message: `Forbidden: Access restricted. You do not have permission to access this resource.`
-      });
+    // Admins have superuser access across all endpoints
+    if (req.user.role === 'ADMIN' || allowedRoles.includes(req.user.role)) {
+      next();
       return;
     }
 
-    next();
+    res.status(403).json({
+      success: false,
+      message: `Forbidden: Access restricted. You do not have permission to access this resource.`
+    });
   };
 }
