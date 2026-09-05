@@ -193,6 +193,7 @@ model ServiceProvider {
   serviceCategory String         // e.g. FOOD, FRUITS, LAUNDRY, ESSENTIALS
   assignedZones   String         @default("ALL") // JSON array or comma separated
   activeStatus    Boolean        @default(true)
+  plainPassword   String?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -204,16 +205,17 @@ model ServiceProvider {
 }
 
 model DeliveryBoy {
-  id           String         @id @default(cuid())
-  userId       String         @unique
-  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fullName     String
-  mobileNumber String         @unique
-  activeStatus Boolean        @default(true)
-  vehicleType  String?        @default("Bicycle / Walk")
-  currentZone  String?        @default("ALL")
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id            String         @id @default(cuid())
+  userId        String         @unique
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName      String
+  mobileNumber  String         @unique
+  activeStatus  Boolean        @default(true)
+  vehicleType   String?        @default("Bicycle / Walk")
+  currentZone   String?        @default("ALL")
+  plainPassword String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   orders        Order[]
   laundryOrders LaundryOrder[]

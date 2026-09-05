@@ -56,7 +56,7 @@ function LoginForm() {
       setPassword('Delivery@12345');
     } else if (roleParam === 'PROVIDER' || roleParam === 'SERVICE_PROVIDER' || redirectParam?.includes('provider')) {
       setActiveRole('SERVICE_PROVIDER');
-      setIdentifier('vendor@nitdgp.ac.in');
+      setIdentifier('SP_FOOD_01');
       setPassword('Vendor@12345');
     } else if (roleParam === 'STUDENT' || redirectParam?.includes('student')) {
       setActiveRole('STUDENT');
@@ -77,7 +77,7 @@ function LoginForm() {
       setIdentifier('DB_BOY_01');
       setPassword('Delivery@12345');
     } else if (role === 'SERVICE_PROVIDER') {
-      setIdentifier('vendor@nitdgp.ac.in');
+      setIdentifier('SP_FOOD_01');
       setPassword('Vendor@12345');
     } else {
       setIdentifier('ss.24u10227@nitdgp.ac.in');
@@ -93,7 +93,7 @@ function LoginForm() {
       setIdentifier('DB_BOY_01');
       setPassword('Delivery@12345');
     } else if (role === 'SERVICE_PROVIDER') {
-      setIdentifier('vendor@nitdgp.ac.in');
+      setIdentifier('SP_FOOD_01');
       setPassword('Vendor@12345');
     } else {
       setIdentifier('ss.24u10227@nitdgp.ac.in');
@@ -205,8 +205,8 @@ function LoginForm() {
       badgeText: 'Service Provider Terminal',
       title: 'Provider Portal',
       subtitle: 'Manage assigned category catalog, orders & preparation status',
-      emailLabel: 'User ID or Registered Email',
-      emailPlaceholder: 'e.g. SP_FOOD_01 or vendor@nitdgp.ac.in',
+      emailLabel: 'User ID or Personal Gmail',
+      emailPlaceholder: 'e.g. SP_FOOD_01 or canteen.vendor@gmail.com',
     },
     DELIVERY_BOY: {
       themeBorder: 'border-sky-200',
@@ -217,8 +217,8 @@ function LoginForm() {
       badgeText: 'Delivery Partner Console',
       title: 'Delivery Boy Login',
       subtitle: 'Pick up assigned orders and drop to student hostel rooms',
-      emailLabel: 'User ID or Registered Email',
-      emailPlaceholder: 'e.g. DB_BOY_01 or delivery@nitdgp.ac.in',
+      emailLabel: 'User ID or Personal Gmail',
+      emailPlaceholder: 'e.g. DB_BOY_01 or runner.delivery@gmail.com',
     },
     ADMIN: {
       themeBorder: 'border-purple-200',
@@ -230,7 +230,7 @@ function LoginForm() {
       title: 'Campus Admin Login',
       subtitle: 'Management of campus catalog, deliveries, zones & governance',
       emailLabel: 'Admin Email or User ID',
-      emailPlaceholder: 'souravsenapati408@gmail.com',
+      emailPlaceholder: 'souravsenapati408@gmail.com or ADMIN_SOURAV',
     },
   };
 
@@ -390,7 +390,7 @@ function LoginForm() {
                 {activeRole === 'ADMIN'
                   ? 'souravsenapati408@gmail.com'
                   : activeRole === 'SERVICE_PROVIDER'
-                  ? 'vendor@nitdgp.ac.in'
+                  ? 'SP_FOOD_01'
                   : activeRole === 'DELIVERY_BOY'
                   ? 'DB_BOY_01'
                   : 'ss.24u10227@nitdgp.ac.in'}

@@ -101,11 +101,12 @@ async function main() {
   // 3. Admin Account
   console.info('Bootstrapping Admin Account (souravsenapati408@gmail.com)...');
   const adminPassHash = await bcrypt.hash('Sourav@12345', 10);
-  const adminUser = await prisma.user.upsert({
+  await prisma.user.upsert({
     where: { email: 'souravsenapati408@gmail.com' },
-    update: { passwordHash: adminPassHash },
+    update: { passwordHash: adminPassHash, username: 'ADMIN_SOURAV' },
     create: {
       email: 'souravsenapati408@gmail.com',
+      username: 'ADMIN_SOURAV',
       passwordHash: adminPassHash,
       role: 'ADMIN',
       isActive: true,
@@ -121,9 +122,10 @@ async function main() {
   // Secondary admin
   await prisma.user.upsert({
     where: { email: 'admin@nitdgp.ac.in' },
-    update: { passwordHash: adminPassHash },
+    update: { passwordHash: adminPassHash, username: 'ADMIN_NITDGP' },
     create: {
       email: 'admin@nitdgp.ac.in',
+      username: 'ADMIN_NITDGP',
       passwordHash: adminPassHash,
       role: 'ADMIN',
       isActive: true,
@@ -136,64 +138,119 @@ async function main() {
     }
   });
 
-  // 4. Service Providers
+  // 4. Service Providers (Using Personal Gmail)
   console.info('Creating Campus Service Providers...');
   const vendorPassHash = await bcrypt.hash('Vendor@12345', 10);
+  
   await prisma.user.upsert({
-    where: { email: 'vendor@nitdgp.ac.in' },
-    update: { passwordHash: vendorPassHash },
+    where: { email: 'canteen.vendor@gmail.com' },
+    update: { passwordHash: vendorPassHash, username: 'SP_FOOD_01' },
     create: {
-      email: 'vendor@nitdgp.ac.in',
+      email: 'canteen.vendor@gmail.com',
+      username: 'SP_FOOD_01',
       passwordHash: vendorPassHash,
-      role: 'SERVICE_PROVIDER',
-      isActive: true,
-      provider: {
-        create: {
-          fullName: 'Campus Services Dispatch & Vendor Cell',
-          mobileNumber: '9876543200',
-          serviceCategory: 'ALL',
-          assignedZones: 'ALL',
-          activeStatus: true
-        }
-      }
-    }
-  });
-
-  const laundryProviderUser = await prisma.user.upsert({
-    where: { email: 'laundry.vendor@nitdgp.ac.in' },
-    update: {},
-    create: {
-      email: 'laundry.vendor@nitdgp.ac.in',
-      passwordHash: providerPassHash,
-      role: 'SERVICE_PROVIDER',
-      isActive: true,
-      provider: {
-        create: {
-          fullName: 'NIT Durgapur Campus Laundry Cell',
-          mobileNumber: '9876543210',
-          serviceCategory: 'LAUNDRY',
-          assignedZones: 'ALL',
-          activeStatus: true
-        }
-      }
-    }
-  });
-
-  const foodProviderUser = await prisma.user.upsert({
-    where: { email: 'canteen.vendor@nitdgp.ac.in' },
-    update: {},
-    create: {
-      email: 'canteen.vendor@nitdgp.ac.in',
-      passwordHash: providerPassHash,
       role: 'SERVICE_PROVIDER',
       isActive: true,
       provider: {
         create: {
           fullName: 'Campus Food & Cafeteria Vendor',
           mobileNumber: '9876543211',
-          serviceCategory: 'FOOD',
+          serviceCategory: 'Food & Meals',
           assignedZones: 'ALL',
-          activeStatus: true
+          activeStatus: true,
+          plainPassword: 'Vendor@12345'
+        }
+      }
+    }
+  });
+
+  await prisma.user.upsert({
+    where: { email: 'laundry.vendor@gmail.com' },
+    update: { passwordHash: vendorPassHash, username: 'SP_LAUNDRY_01' },
+    create: {
+      email: 'laundry.vendor@gmail.com',
+      username: 'SP_LAUNDRY_01',
+      passwordHash: vendorPassHash,
+      role: 'SERVICE_PROVIDER',
+      isActive: true,
+      provider: {
+        create: {
+          fullName: 'NIT Durgapur Campus Laundry Cell',
+          mobileNumber: '9876543210',
+          serviceCategory: 'Express Laundry',
+          assignedZones: 'ALL',
+          activeStatus: true,
+          plainPassword: 'Vendor@12345'
+        }
+      }
+    }
+  });
+
+  await prisma.user.upsert({
+    where: { email: 'campus.dispatch@gmail.com' },
+    update: { passwordHash: vendorPassHash, username: 'SP_ESSENTIALS_01' },
+    create: {
+      email: 'campus.dispatch@gmail.com',
+      username: 'SP_ESSENTIALS_01',
+      passwordHash: vendorPassHash,
+      role: 'SERVICE_PROVIDER',
+      isActive: true,
+      provider: {
+        create: {
+          fullName: 'Campus Services Dispatch & Essentials Cell',
+          mobileNumber: '9876543200',
+          serviceCategory: 'Stationery & Essentials',
+          assignedZones: 'ALL',
+          activeStatus: true,
+          plainPassword: 'Vendor@12345'
+        }
+      }
+    }
+  });
+
+  // 5. Delivery Boys (Using Personal Gmail)
+  console.info('Creating Campus Delivery Fleet Partners...');
+  const deliveryPassHash = await bcrypt.hash('Delivery@12345', 10);
+
+  await prisma.user.upsert({
+    where: { email: 'runner.delivery@gmail.com' },
+    update: { passwordHash: deliveryPassHash, username: 'DB_BOY_01' },
+    create: {
+      email: 'runner.delivery@gmail.com',
+      username: 'DB_BOY_01',
+      passwordHash: deliveryPassHash,
+      role: 'DELIVERY_BOY',
+      isActive: true,
+      deliveryBoy: {
+        create: {
+          fullName: 'Bikash Mondal (Lead Runner)',
+          mobileNumber: '9876543220',
+          vehicleType: 'Bicycle / Walk',
+          activeStatus: true,
+          currentZone: 'ALL',
+          plainPassword: 'Delivery@12345'
+        }
+      }
+    }
+  });
+
+  await prisma.user.upsert({
+    where: { email: 'campus.runner2@gmail.com' },
+    update: { passwordHash: deliveryPassHash, username: 'DB_BOY_02' },
+    create: {
+      email: 'campus.runner2@gmail.com',
+      username: 'DB_BOY_02',
+      passwordHash: deliveryPassHash,
+      role: 'DELIVERY_BOY',
+      isActive: true,
+      deliveryBoy: {
+        create: {
+          fullName: 'Rajesh Kumar (Express Runner)',
+          mobileNumber: '9876543221',
+          vehicleType: 'Electric Scooter',
+          activeStatus: true,
+          currentZone: 'ALL',
+          plainPassword: 'Delivery@12345'
         }
       }
     }

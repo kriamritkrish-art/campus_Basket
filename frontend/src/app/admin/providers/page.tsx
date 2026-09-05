@@ -10,6 +10,9 @@ import {
   Search,
   Filter,
   Eye,
+  EyeOff,
+  Copy,
+  Check,
   Edit2,
   Trash2,
   CheckCircle2,
@@ -21,7 +24,8 @@ import {
   IndianRupee,
   Package,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  KeyRound
 } from 'lucide-react';
 
 const CATEGORY_OPTIONS = [
@@ -36,6 +40,11 @@ export default function AdminProvidersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
+
+  // Password visibility & clipboard state
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showAllPasswords, setShowAllPasswords] = useState(false);
 
   // Create Modal
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -58,6 +67,8 @@ export default function AdminProvidersPage() {
   const [editForm, setEditForm] = useState({
     businessName: '',
     contactPerson: '',
+    username: '',
+    email: '',
     phone: '',
     serviceCategory: 'Food & Meals',
     activeStatus: true,
@@ -89,6 +100,16 @@ export default function AdminProvidersPage() {
   useEffect(() => {
     fetchProviders();
   }, []);
+
+  const handleCopyPassword = (id: string, pass: string) => {
+    navigator.clipboard.writeText(pass);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const togglePasswordVisibility = (id: string) => {
+    setVisiblePasswords((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const handleToggleStatus = async (providerId: string, currentStatus: boolean) => {
     try {
@@ -143,12 +164,14 @@ export default function AdminProvidersPage() {
   const openEditModal = (provider: any) => {
     setEditingProvider(provider);
     setEditForm({
-      businessName: provider.businessName || '',
-      contactPerson: provider.contactPerson || '',
-      phone: provider.phone || '',
+      businessName: provider.businessName || provider.fullName || '',
+      contactPerson: provider.contactPerson || provider.fullName || '',
+      username: provider.username || provider.user?.username || '',
+      email: provider.email || provider.user?.email || '',
+      phone: provider.phone || provider.mobileNumber || '',
       serviceCategory: provider.serviceCategory || provider.serviceType || 'Food & Meals',
       activeStatus: provider.activeStatus ?? true,
-      password: '',
+      password: provider.plainPassword || '',
     });
     setEditError(null);
     setEditModalOpen(true);
@@ -164,6 +187,8 @@ export default function AdminProvidersPage() {
       const payload: any = {
         businessName: editForm.businessName,
         contactPerson: editForm.contactPerson,
+        username: editForm.username,
+        email: editForm.email,
         phone: editForm.phone,
         serviceCategory: editForm.serviceCategory,
         activeStatus: editForm.activeStatus,
@@ -324,6 +349,19 @@ export default function AdminProvidersPage() {
                   <th className="py-3.5 px-4">Business Entity &amp; User ID</th>
                   <th className="py-3.5 px-4">Contact Person &amp; Phone</th>
                   <th className="py-3.5 px-4">Registered Gmail</th>
+                  <th className="py-3.5 px-4">
+                    <div className="flex items-center gap-1.5">
+                      <span>Login Password</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowAllPasswords(!showAllPasswords)}
+                        title={showAllPasswords ? 'Hide all passwords' : 'Show all passwords'}
+                        className="text-slate-400 hover:text-slate-700 p-0.5 rounded transition cursor-pointer"
+                      >
+                        {showAllPasswords ? <EyeOff className="w-3.5 h-3.5 text-purple-700" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </th>
                   <th className="py-3.5 px-4">Service Category</th>
                   <th className="py-3.5 px-4">Operating Status</th>
                   <th className="py-3.5 px-4 text-right">Actions</th>
@@ -331,31 +369,63 @@ export default function AdminProvidersPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredProviders.map((p) => {
+                  const businessName = p.businessName || p.fullName || 'Campus Service Provider';
+                  const contactPerson = p.contactPerson || p.fullName || 'Manager';
+                  const phone = p.phone || p.mobileNumber || '9876543210';
                   const category = p.serviceCategory || p.serviceType || 'Food & Meals';
-                  const userId = p.user?.username || p.user?.id?.slice(0, 10) || 'N/A';
-                  const email = p.user?.email || p.email || 'N/A';
+                  const userId = p.username || p.user?.username || 'SP_FOOD_01';
+                  const email = p.email || p.user?.email || 'canteen.vendor@gmail.com';
+                  const password = p.plainPassword || 'Vendor@12345';
+                  const isPassVisible = showAllPasswords || !!visiblePasswords[p.id];
 
                   return (
                     <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3.5 px-4 font-bold text-[#17202A]">
-                        <div>{p.businessName}</div>
-                        <div className="text-[10px] text-purple-700 font-mono font-bold mt-0.5">
-                          User ID: {userId}
+                        <div>{businessName}</div>
+                        <div className="text-[10px] text-purple-700 font-mono font-bold mt-0.5 flex items-center gap-1">
+                          <span>User ID:</span>
+                          <span className="bg-purple-50 text-purple-800 px-1.5 py-0.5 rounded border border-purple-200">
+                            {userId}
+                          </span>
                         </div>
                       </td>
 
                       <td className="py-3.5 px-4">
-                        <div className="font-semibold text-slate-800">{p.contactPerson}</div>
+                        <div className="font-semibold text-slate-800">{contactPerson}</div>
                         <div className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5 font-mono">
                           <Phone className="w-3 h-3 text-slate-400" />
-                          <span>{p.phone || 'N/A'}</span>
+                          <span>{phone}</span>
                         </div>
                       </td>
 
                       <td className="py-3.5 px-4 font-mono text-slate-600 text-[11px]">
                         <div className="flex items-center gap-1.5">
-                          <Mail className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{email}</span>
+                          <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate max-w-[170px]">{email}</span>
+                        </div>
+                      </td>
+
+                      <td className="py-3.5 px-4 font-mono">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-xs font-bold text-slate-800 tracking-wider select-all">
+                            {isPassVisible ? password : '••••••••'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => togglePasswordVisibility(p.id)}
+                            title={isPassVisible ? 'Hide password' : 'Show password'}
+                            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition cursor-pointer"
+                          >
+                            {isPassVisible ? <EyeOff className="w-3.5 h-3.5 text-purple-700" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyPassword(p.id, password)}
+                            title="Copy password"
+                            className="p-1 text-slate-400 hover:text-[#4F9D32] hover:bg-slate-100 rounded transition cursor-pointer"
+                          >
+                            {copiedId === p.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
                         </div>
                       </td>
 
@@ -432,7 +502,10 @@ export default function AdminProvidersPage() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Store className="w-5 h-5 text-[#4F9D32]" />
-                <h3 className="text-base font-bold text-[#17202A]">Create New Service Provider</h3>
+                <div>
+                  <h3 className="text-base font-bold text-[#17202A]">Create New Service Provider</h3>
+                  <p className="text-[11px] text-slate-500">Service providers use personal Gmail. College @nitdgp.ac.in is not required.</p>
+                </div>
               </div>
               <button
                 onClick={() => setCreateModalOpen(false)}
@@ -488,29 +561,30 @@ export default function AdminProvidersPage() {
                   />
                 </div>
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Password *</label>
+                  <label className="font-bold text-slate-700 block mb-1">Initial Password *</label>
                   <input
-                    type="password"
+                    type="text"
                     required
-                    placeholder="••••••••"
+                    placeholder="e.g. Vendor@12345"
                     value={createForm.password}
                     onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-[#4F9D32] focus:bg-white"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono focus:outline-none focus:border-[#4F9D32] focus:bg-white"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Registered Gmail (for OTP) *</label>
+                  <label className="font-bold text-slate-700 block mb-1">Personal Gmail (for 2FA OTP) *</label>
                   <input
                     type="email"
                     required
-                    placeholder="vendor@nitdgp.ac.in"
+                    placeholder="e.g. canteen.vendor@gmail.com"
                     value={createForm.email}
                     onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-[#4F9D32] focus:bg-white"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono focus:outline-none focus:border-[#4F9D32] focus:bg-white"
                   />
+                  <p className="text-[10px] text-slate-400 mt-1">Personal Gmail supported</p>
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 block mb-1">Phone Number *</label>
@@ -562,14 +636,14 @@ export default function AdminProvidersPage() {
                 <button
                   type="button"
                   onClick={() => setCreateModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={createLoading}
-                  className="px-4 py-2 bg-[#4F9D32] hover:bg-[#347A27] text-white rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+                  className="px-4 py-2 bg-[#4F9D32] hover:bg-[#347A27] text-white rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                 >
                   {createLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                   <span>Create Provider</span>
@@ -583,7 +657,7 @@ export default function AdminProvidersPage() {
       {/* EDIT SERVICE PROVIDER MODAL */}
       {editModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-fade-in max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <Edit2 className="w-5 h-5 text-[#4F9D32]" />
@@ -591,7 +665,7 @@ export default function AdminProvidersPage() {
               </div>
               <button
                 onClick={() => setEditModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-700"
+                className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -605,7 +679,7 @@ export default function AdminProvidersPage() {
 
             <form onSubmit={handleEditSubmit} className="space-y-3.5 text-xs">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Business Name</label>
+                <label className="font-bold text-slate-700 block mb-1">Business Name *</label>
                 <input
                   type="text"
                   required
@@ -617,7 +691,30 @@ export default function AdminProvidersPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Contact Person</label>
+                  <label className="font-bold text-slate-700 block mb-1">User ID / Username *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.username}
+                    onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Personal Gmail *</label>
+                  <input
+                    type="email"
+                    required
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Contact Person *</label>
                   <input
                     type="text"
                     required
@@ -627,7 +724,7 @@ export default function AdminProvidersPage() {
                   />
                 </div>
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Phone</label>
+                  <label className="font-bold text-slate-700 block mb-1">Phone *</label>
                   <input
                     type="text"
                     required
@@ -654,14 +751,15 @@ export default function AdminProvidersPage() {
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Reset Password (Optional)</label>
+                <label className="font-bold text-slate-700 block mb-1">Login Password</label>
                 <input
-                  type="password"
-                  placeholder="Leave blank to keep unchanged"
+                  type="text"
+                  placeholder="Leave blank or enter new password"
                   value={editForm.password}
                   onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono"
                 />
+                <p className="text-[10px] text-slate-400 mt-1">Visible &amp; editable by administrator</p>
               </div>
 
               <div className="flex items-center gap-2 pt-2">

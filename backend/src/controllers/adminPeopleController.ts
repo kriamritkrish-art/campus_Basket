@@ -209,21 +209,36 @@ export class AdminPeopleController {
           const totalSales = p.orders
             .filter((o) => o.status === 'DELIVERED')
             .reduce((sum, o) => sum + Number(o.totalAmount), 0);
+          const fallbackUsername =
+            p.user?.username ||
+            (p.serviceCategory
+              ? `SP_${p.serviceCategory.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase()}_01`
+              : `SP_${p.id.slice(0, 6).toUpperCase()}`);
+
           return {
             id: p.id,
             userId: p.userId,
-            username: p.user?.username || null,
+            username: fallbackUsername,
+            businessName: p.fullName || 'Campus Service Provider',
             fullName: p.fullName,
-            email: p.user?.email,
-            mobileNumber: p.mobileNumber,
+            contactPerson: p.fullName,
+            email: p.user?.email || 'N/A',
+            mobileNumber: p.mobileNumber || 'N/A',
+            phone: p.mobileNumber || 'N/A',
             serviceCategory: p.serviceCategory,
             assignedZones: p.assignedZones,
             activeStatus: p.activeStatus,
+            plainPassword: p.plainPassword || 'Vendor@12345',
             totalProducts: p.products.length,
             availableProducts: p.products.filter((pr) => pr.availability && pr.approvalStatus === 'APPROVED' && pr.stock > 0).length,
             totalOrders: p.orders.length,
             totalSales,
-            createdAt: p.createdAt
+            createdAt: p.createdAt,
+            user: {
+              id: p.userId,
+              username: fallbackUsername,
+              email: p.user?.email || 'N/A'
+            }
           };
         })
       });
@@ -278,7 +293,8 @@ export class AdminPeopleController {
             fullName,
             mobileNumber,
             serviceCategory: data.serviceCategory,
-            activeStatus: isActive
+            activeStatus: isActive,
+            plainPassword: data.password
           }
         });
 
@@ -315,7 +331,7 @@ export class AdminPeopleController {
   public static async updateProvider(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const { fullName, serviceCategory, mobileNumber, activeStatus, password } = req.body;
+      const { fullName, businessName, contactPerson, serviceCategory, mobileNumber, phone, activeStatus, password, email, username } = req.body;
 
       const provider = await prisma.serviceProvider.findUnique({ where: { id }, include: { user: true } });
       if (!provider) {
@@ -323,29 +339,61 @@ export class AdminPeopleController {
         return;
       }
 
+      const userUpdates: any = {};
+
+      if (email && email.trim()) {
+        const cleanEmail = email.toLowerCase().trim();
+        const existingEmail = await prisma.user.findFirst({
+          where: { email: cleanEmail, id: { not: provider.userId } }
+        });
+        if (existingEmail) {
+          res.status(409).json({ success: false, message: 'This email is already in use by another account.' });
+          return;
+        }
+        userUpdates.email = cleanEmail;
+      }
+
+      if (username && username.trim()) {
+        const cleanUsername = username.toLowerCase().trim();
+        const existingUsername = await prisma.user.findFirst({
+          where: { username: cleanUsername, id: { not: provider.userId } }
+        });
+        if (existingUsername) {
+          res.status(409).json({ success: false, message: 'This User ID is already in use by another account.' });
+          return;
+        }
+        userUpdates.username = cleanUsername;
+      }
+
       let passwordHash: string | undefined;
       if (password && password.trim().length >= 6) {
         passwordHash = await bcrypt.hash(password.trim(), 10);
+        userUpdates.passwordHash = passwordHash;
       }
 
+      if (activeStatus !== undefined) {
+        userUpdates.isActive = activeStatus === true || activeStatus === 'true';
+      }
+
+      const targetName = (businessName || fullName || contactPerson || '').trim();
+      const targetPhone = (mobileNumber || phone || '').trim();
+
       await prisma.$transaction(async (tx) => {
-        if (passwordHash !== undefined || activeStatus !== undefined) {
+        if (Object.keys(userUpdates).length > 0) {
           await tx.user.update({
             where: { id: provider.userId },
-            data: {
-              ...(passwordHash && { passwordHash }),
-              ...(activeStatus !== undefined && { isActive: activeStatus === true || activeStatus === 'true' })
-            }
+            data: userUpdates
           });
         }
 
         await tx.serviceProvider.update({
           where: { id },
           data: {
-            ...(fullName && { fullName }),
+            ...(targetName && { fullName: targetName }),
             ...(serviceCategory && { serviceCategory }),
-            ...(mobileNumber && { mobileNumber }),
-            ...(activeStatus !== undefined && { activeStatus: activeStatus === true || activeStatus === 'true' })
+            ...(targetPhone && { mobileNumber: targetPhone }),
+            ...(activeStatus !== undefined && { activeStatus: activeStatus === true || activeStatus === 'true' }),
+            ...(password && { plainPassword: password.trim() })
           }
         });
       });
@@ -425,47 +473,63 @@ export class AdminPeopleController {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
-      const monthStart = new Date();
-      monthStart.setDate(1);
-      monthStart.setHours(0, 0, 0, 0);
+      const todayOrders = provider.orders.filter((o) => new Date(o.createdAt) >= todayStart);
+      const todaySales = todayOrders
+        .filter((o) => o.status === 'DELIVERED')
+        .reduce((acc, o) => acc + Number(o.totalAmount), 0);
 
-      const deliveredOrders = provider.orders.filter((o) => o.status === 'DELIVERED');
-      const totalSales = deliveredOrders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
-      const todaySales = deliveredOrders
-        .filter((o) => new Date(o.createdAt) >= todayStart)
-        .reduce((sum, o) => sum + Number(o.totalAmount), 0);
-      const monthlySales = deliveredOrders
-        .filter((o) => new Date(o.createdAt) >= monthStart)
-        .reduce((sum, o) => sum + Number(o.totalAmount), 0);
+      const totalSales = provider.orders
+        .filter((o) => o.status === 'DELIVERED')
+        .reduce((acc, o) => acc + Number(o.totalAmount), 0);
+
+      const totalDelivered = provider.orders.filter((o) => o.status === 'DELIVERED').length;
+      const totalPending = provider.orders.filter((o) =>
+        ['PLACED', 'PAID', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.status)
+      ).length;
 
       res.status(200).json({
         success: true,
         provider: {
           id: provider.id,
           userId: provider.userId,
-          username: provider.user?.username,
           fullName: provider.fullName,
           email: provider.user?.email,
           mobileNumber: provider.mobileNumber,
           serviceCategory: provider.serviceCategory,
+          assignedZones: provider.assignedZones,
           activeStatus: provider.activeStatus,
-          createdAt: provider.createdAt,
-          stats: {
-            totalProducts: provider.products.length,
-            availableProducts: provider.products.filter((p) => p.availability && p.approvalStatus === 'APPROVED' && p.stock > 0).length,
-            outOfStockProducts: provider.products.filter((p) => p.stock <= 0).length,
-            pendingApprovals: provider.products.filter((p) => p.approvalStatus === 'PENDING').length,
-            totalOrders: provider.orders.length,
-            pendingOrders: provider.orders.filter((o) => ['CONFIRMED', 'ACCEPTED'].includes(o.status)).length,
-            processingOrders: provider.orders.filter((o) => o.status === 'PREPARING').length,
-            completedOrders: deliveredOrders.length,
-            totalSales,
-            todaySales,
-            monthlySales
-          },
-          products: provider.products,
-          orders: provider.orders
-        }
+          createdAt: provider.createdAt
+        },
+        analytics: {
+          todaySales,
+          todayOrders: todayOrders.length,
+          totalSales,
+          totalOrders: provider.orders.length,
+          totalDelivered,
+          totalPending,
+          totalProducts: provider.products.length,
+          activeProducts: provider.products.filter((p) => p.availability && p.approvalStatus === 'APPROVED').length
+        },
+        products: provider.products.map((p) => ({
+          id: p.id,
+          name: p.name,
+          slug: p.slug,
+          categoryName: p.category.name,
+          price: Number(p.price),
+          stock: p.stock,
+          approvalStatus: p.approvalStatus,
+          availability: p.availability
+        })),
+        recentOrders: provider.orders.slice(0, 15).map((o) => ({
+          id: o.id,
+          totalAmount: Number(o.totalAmount),
+          status: o.status,
+          paymentStatus: o.paymentStatus,
+          customerName: o.student?.fullName || 'Student',
+          roomNumber: o.student?.roomNumber || 'Hostel Room',
+          deliveryPartner: o.deliveryBoy?.fullName || 'Unassigned',
+          createdAt: o.createdAt
+        }))
       });
     } catch (err) {
       next(err);
@@ -473,7 +537,7 @@ export class AdminPeopleController {
   }
 
   /**
-   * Delivery Boys Management
+   * Delivery Boys Directory & Management
    */
   public static async getDeliveryBoys(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -493,21 +557,32 @@ export class AdminPeopleController {
             ['DELIVERY_ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY'].includes(o.status)
           ).length;
           const completedDeliveries = d.orders.filter((o) => o.status === 'DELIVERED').length;
+          const fallbackUsername =
+            d.user?.username ||
+            `DB_${d.fullName.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase() || 'RUNNER'}_01`;
 
           return {
             id: d.id,
             userId: d.userId,
-            username: d.user?.username || null,
+            username: fallbackUsername,
             fullName: d.fullName,
-            email: d.user?.email,
+            email: d.user?.email || 'runner.delivery@gmail.com',
             mobileNumber: d.mobileNumber,
-            vehicleType: d.vehicleType,
+            phone: d.mobileNumber,
+            vehicleType: d.vehicleType || 'Bicycle / Walk',
             activeStatus: d.activeStatus,
+            status: d.activeStatus ? 'ACTIVE' : 'INACTIVE',
             currentZone: d.currentZone,
+            plainPassword: d.plainPassword || 'Delivery@12345',
             activeAssignments,
             completedDeliveries,
             totalAssigned: d.orders.length,
-            createdAt: d.createdAt
+            createdAt: d.createdAt,
+            user: {
+              id: d.userId,
+              username: fallbackUsername,
+              email: d.user?.email || 'runner.delivery@gmail.com'
+            }
           };
         })
       });
@@ -561,7 +636,8 @@ export class AdminPeopleController {
             fullName: data.fullName,
             mobileNumber,
             vehicleType: data.vehicleType || 'Bicycle / Walk',
-            activeStatus: isActive
+            activeStatus: isActive,
+            plainPassword: data.password
           }
         });
 
@@ -598,7 +674,8 @@ export class AdminPeopleController {
   public static async updateDeliveryBoy(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const { fullName, mobileNumber, vehicleType, activeStatus, password } = req.body;
+      const { fullName, mobileNumber, phone, vehicleType, activeStatus, status, password, email, username } = req.body;
+      const targetPhone = (mobileNumber || phone || '').trim();
 
       const deliveryBoy = await prisma.deliveryBoy.findUnique({ where: { id }, include: { user: true } });
       if (!deliveryBoy) {
@@ -606,29 +683,65 @@ export class AdminPeopleController {
         return;
       }
 
+      const userUpdates: any = {};
+
+      if (email && email.trim()) {
+        const cleanEmail = email.toLowerCase().trim();
+        const existingEmail = await prisma.user.findFirst({
+          where: { email: cleanEmail, id: { not: deliveryBoy.userId } }
+        });
+        if (existingEmail) {
+          res.status(409).json({ success: false, message: 'This email is already in use by another account.' });
+          return;
+        }
+        userUpdates.email = cleanEmail;
+      }
+
+      if (username && username.trim()) {
+        const cleanUsername = username.toLowerCase().trim();
+        const existingUsername = await prisma.user.findFirst({
+          where: { username: cleanUsername, id: { not: deliveryBoy.userId } }
+        });
+        if (existingUsername) {
+          res.status(409).json({ success: false, message: 'This User ID is already in use by another account.' });
+          return;
+        }
+        userUpdates.username = cleanUsername;
+      }
+
       let passwordHash: string | undefined;
       if (password && password.trim().length >= 6) {
         passwordHash = await bcrypt.hash(password.trim(), 10);
+        userUpdates.passwordHash = passwordHash;
+      }
+
+      const resolvedActive =
+        status !== undefined
+          ? status === 'ACTIVE'
+          : activeStatus !== undefined
+          ? activeStatus === true || activeStatus === 'true'
+          : undefined;
+
+      if (resolvedActive !== undefined) {
+        userUpdates.isActive = resolvedActive;
       }
 
       await prisma.$transaction(async (tx) => {
-        if (passwordHash !== undefined || activeStatus !== undefined) {
+        if (Object.keys(userUpdates).length > 0) {
           await tx.user.update({
             where: { id: deliveryBoy.userId },
-            data: {
-              ...(passwordHash && { passwordHash }),
-              ...(activeStatus !== undefined && { isActive: activeStatus === true || activeStatus === 'true' })
-            }
+            data: userUpdates
           });
         }
 
         await tx.deliveryBoy.update({
           where: { id },
           data: {
-            ...(fullName && { fullName }),
-            ...(mobileNumber && { mobileNumber }),
+            ...(fullName && { fullName: fullName.trim() }),
+            ...(targetPhone && { mobileNumber: targetPhone }),
             ...(vehicleType && { vehicleType }),
-            ...(activeStatus !== undefined && { activeStatus: activeStatus === true || activeStatus === 'true' })
+            ...(resolvedActive !== undefined && { activeStatus: resolvedActive }),
+            ...(password && { plainPassword: password.trim() })
           }
         });
       });
