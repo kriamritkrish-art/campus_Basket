@@ -8,8 +8,12 @@ import { Phone, Mail, MapPin, ShieldCheck, Heart, Zap } from 'lucide-react';
 export function Footer() {
   const pathname = usePathname();
 
-  // Hide User Footer on Admin Portal
-  if (pathname?.startsWith('/admin')) {
+  // Hide User Footer on Admin, Provider, and Delivery Portals
+  if (
+    pathname?.startsWith('/admin') ||
+    pathname?.startsWith('/provider') ||
+    pathname?.startsWith('/delivery')
+  ) {
     return null;
   }
 

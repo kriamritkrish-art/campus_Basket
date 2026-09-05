@@ -9,7 +9,11 @@ export function CampusBanner() {
   const pathname = usePathname();
   const { isInsideCampus, isChecking, errorMessage, requestLocation } = useGeolocation();
 
-  if (pathname?.startsWith('/admin')) {
+  if (
+    pathname?.startsWith('/admin') ||
+    pathname?.startsWith('/provider') ||
+    pathname?.startsWith('/delivery')
+  ) {
     return null;
   }
 

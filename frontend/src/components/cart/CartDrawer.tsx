@@ -29,7 +29,12 @@ export function CartDrawer() {
   const [couponMsg, setCouponMsg] = useState<{ text: string; isError: boolean } | null>(null);
   const [isApplying, setIsApplying] = useState(false);
 
-  if (pathname?.startsWith('/admin') || !isCartOpen) return null;
+  if (
+    pathname?.startsWith('/admin') ||
+    pathname?.startsWith('/provider') ||
+    pathname?.startsWith('/delivery') ||
+    !isCartOpen
+  ) return null;
 
   const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();

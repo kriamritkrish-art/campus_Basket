@@ -935,27 +935,27 @@ export default function ProviderDashboardPage() {
       </aside>
 
       {/* RIGHT WORKSPACE */}
-      <div className="lg:pl-64 xl:pl-72 flex-1 min-w-0 flex flex-col min-h-screen bg-slate-50">
+      <div className="lg:pl-64 xl:pl-72 flex-1 min-w-0 flex flex-col min-h-screen bg-[#F8FAFC]">
         {/* Sticky Top Header on Workspace */}
-        <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-20 shadow-md">
+        <header className="bg-white border-b border-slate-200/90 sticky top-0 z-20 shadow-xs">
           <div className="px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
             {/* Left: Hamburger (mobile) + Breadcrumb */}
             <div className="flex items-center gap-3 min-w-0">
               <button
                 onClick={() => setIsMobileSidebarOpen(true)}
-                className="lg:hidden p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white"
+                className="lg:hidden p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
                 aria-label="Open sidebar menu"
               >
                 <Menu className="w-5 h-5" />
               </button>
               <div className="min-w-0">
-                <div className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                <div className="text-[11px] font-bold text-[#4F9D32] uppercase tracking-wider flex items-center gap-1.5">
                   <span>Service Provider Console</span>
-                  <span className="text-slate-500">/</span>
-                  <span className="text-slate-300 font-medium truncate">{activeTabTitle}</span>
+                  <span className="text-slate-300">/</span>
+                  <span className="text-slate-500 font-semibold truncate">{activeTabTitle}</span>
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <h2 className="text-base font-bold text-white tracking-tight truncate">
+                  <h2 className="text-lg font-black text-slate-900 tracking-tight truncate">
                     {activeTabTitle}
                   </h2>
                   {demoMode && (
@@ -965,10 +965,10 @@ export default function ProviderDashboardPage() {
                         loadAnalytics(false);
                         showToast('Switched to Live Database Data');
                       }}
-                      className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full transition-colors"
+                      className="hidden sm:inline-flex items-center gap-1 text-[11px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-0.5 rounded-full transition-colors shadow-xs"
                       title="Click to switch to Live Database Data"
                     >
-                      <Sparkles className="w-3 h-3 text-amber-400" />
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                       Sample Graph Data Active (Click to switch to Live)
                     </button>
                   )}
@@ -990,7 +990,7 @@ export default function ProviderDashboardPage() {
                       setTimeframe(e.target.value);
                     }
                   }}
-                  className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-2 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer hover:bg-slate-700/80 transition-colors"
+                  className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl px-3 py-2 font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none cursor-pointer hover:bg-slate-100 transition-colors shadow-xs"
                 >
                   <option value="today">Today</option>
                   <option value="yesterday">Yesterday</option>
@@ -1008,7 +1008,7 @@ export default function ProviderDashboardPage() {
               {/* Monthly Report PDF Generator */}
               <button
                 onClick={() => setMonthlyReportModalOpen(true)}
-                className="hidden md:flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors shadow-sm"
+                className="hidden md:flex items-center gap-1.5 bg-[#4F9D32] hover:bg-[#3d8324] text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all shadow-xs shadow-[#4F9D32]/20 active:scale-95"
                 title="Download Monthly Business Analytics PDF"
               >
                 <FileText className="w-3.5 h-3.5" />
@@ -1017,60 +1017,64 @@ export default function ProviderDashboardPage() {
 
               {/* Export Dropdown */}
               <div className="relative group">
-                <button className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-medium px-3 py-2 rounded-lg transition-colors">
-                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <button className="flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl transition-colors shadow-xs">
+                  <Download className="w-3.5 h-3.5 text-emerald-600" />
                   <span className="hidden sm:inline">Export</span>
                 </button>
-                <div className="absolute right-0 mt-1 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl hidden group-hover:block z-50 overflow-hidden">
-                  <button
-                    onClick={() => setMonthlyReportModalOpen(true)}
-                    className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-emerald-400" />
-                    Download PDF Report
-                  </button>
-                  <button
-                    onClick={() => handleExportCsv('orders')}
-                    className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-blue-400" />
-                    Export Orders CSV
-                  </button>
-                  <button
-                    onClick={() => handleExportCsv('customers')}
-                    className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
-                  >
-                    <Users className="w-3.5 h-3.5 text-indigo-400" />
-                    Export Customers CSV
-                  </button>
-                  <button
-                    onClick={() => handleExportCsv('products')}
-                    className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
-                  >
-                    <Boxes className="w-3.5 h-3.5 text-amber-400" />
-                    Export Products CSV
-                  </button>
-                  <button
-                    onClick={() => handleExportCsv('sales')}
-                    className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2"
-                  >
-                    <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-                    Export Sales CSV
-                  </button>
-                  <button
-                    onClick={() => window.print()}
-                    className="w-full text-left px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-700 flex items-center gap-2 border-t border-slate-700"
-                  >
-                    <Printer className="w-3.5 h-3.5 text-slate-300" />
-                    Print Report
-                  </button>
+                <div className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-xl hidden group-hover:block z-50 overflow-hidden divide-y divide-slate-100">
+                  <div className="py-1">
+                    <button
+                      onClick={() => setMonthlyReportModalOpen(true)}
+                      className="w-full text-left px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 font-medium"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                      Download PDF Report
+                    </button>
+                    <button
+                      onClick={() => handleExportCsv('orders')}
+                      className="w-full text-left px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 font-medium"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" />
+                      Export Orders CSV
+                    </button>
+                    <button
+                      onClick={() => handleExportCsv('customers')}
+                      className="w-full text-left px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 font-medium"
+                    >
+                      <Users className="w-3.5 h-3.5 text-indigo-600" />
+                      Export Customers CSV
+                    </button>
+                    <button
+                      onClick={() => handleExportCsv('products')}
+                      className="w-full text-left px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 font-medium"
+                    >
+                      <Boxes className="w-3.5 h-3.5 text-amber-600" />
+                      Export Products CSV
+                    </button>
+                    <button
+                      onClick={() => handleExportCsv('sales')}
+                      className="w-full text-left px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 font-medium"
+                    >
+                      <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                      Export Sales CSV
+                    </button>
+                  </div>
+                  <div className="py-1">
+                    <button
+                      onClick={() => window.print()}
+                      className="w-full text-left px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 font-medium"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-slate-500" />
+                      Print Report
+                    </button>
+                  </div>
                 </div>
               </div>
 
               {/* Refresh */}
               <button
                 onClick={() => { refreshAll(demoMode); showToast('Refreshed console analytics'); }}
-                className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition-colors"
+                className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 transition-colors shadow-xs"
                 title="Refresh Business Analytics"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${analyticsLoading ? 'animate-spin' : ''}`} />
@@ -1080,28 +1084,28 @@ export default function ProviderDashboardPage() {
 
           {/* Custom Date Range Sub-bar */}
           {isCustomDateOpen && (
-            <div className="bg-slate-800/90 border-t border-slate-700/60 px-4 py-2.5">
+            <div className="bg-slate-50 border-t border-slate-200 px-4 py-2.5">
               <div className="flex items-center gap-3 text-xs">
-                <span className="text-slate-300 font-medium">Custom Range:</span>
+                <span className="text-slate-700 font-semibold">Custom Range:</span>
                 <input
                   type="date"
                   value={customStartDate}
                   onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-slate-200"
+                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-800"
                 />
                 <span className="text-slate-400">to</span>
                 <input
                   type="date"
                   value={customEndDate}
                   onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-slate-200"
+                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-800"
                 />
                 <button
                   onClick={() => {
                     setTimeframe('custom');
                     loadAnalytics(demoMode);
                   }}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-1 rounded"
+                  className="bg-[#4F9D32] hover:bg-[#3d8324] text-white font-bold px-3 py-1 rounded-lg"
                 >
                   Apply
                 </button>
@@ -1112,229 +1116,225 @@ export default function ProviderDashboardPage() {
 
         {/* MAIN WORKSPACE BODY */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
-        {/* =======================================================
-            SECTION 2: 10 TOP KPI CARDS
-            ======================================================= */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-emerald-600" />
-              Enterprise Key Performance Indicators (KPIs)
-            </h2>
-            <span className="text-xs text-slate-500 font-medium">Real-time aggregate calculations</span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-            {/* 1. Today's Sales */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-                <span>Today's Sales</span>
-                <IndianRupee className="w-3.5 h-3.5 text-emerald-600" />
-              </div>
-              <div className="mt-2 text-xl font-bold text-slate-900 tracking-tight">
-                ₹{Number(kpis?.todaySales?.value || 0).toLocaleString('en-IN')}
-              </div>
-              <div className="mt-1.5 flex items-center text-xs">
-                {kpis?.todaySales?.trend === 'up' ? (
-                  <span className="text-emerald-700 font-semibold flex items-center">
-                    <ArrowUpRight className="w-3.5 h-3.5" /> +{kpis?.todaySales?.percentChange}%
-                  </span>
-                ) : kpis?.todaySales?.trend === 'down' ? (
-                  <span className="text-rose-600 font-semibold flex items-center">
-                    <ArrowDownRight className="w-3.5 h-3.5" /> -{kpis?.todaySales?.percentChange}%
-                  </span>
-                ) : (
-                  <span className="text-slate-400 font-medium">0%</span>
-                )}
-                <span className="text-slate-400 ml-1 text-[11px]">{kpis?.todaySales?.subtitle || 'vs yesterday'}</span>
-              </div>
-            </div>
-
-            {/* 2. This Week's Sales */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-                <span>This Week's Sales</span>
-                <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
-              </div>
-              <div className="mt-2 text-xl font-bold text-slate-900 tracking-tight">
-                ₹{Number(kpis?.thisWeekSales?.value || 0).toLocaleString('en-IN')}
-              </div>
-              <div className="mt-1.5 flex items-center text-xs">
-                {kpis?.thisWeekSales?.trend === 'up' ? (
-                  <span className="text-emerald-700 font-semibold flex items-center">
-                    <ArrowUpRight className="w-3.5 h-3.5" /> +{kpis?.thisWeekSales?.percentChange}%
-                  </span>
-                ) : kpis?.thisWeekSales?.trend === 'down' ? (
-                  <span className="text-rose-600 font-semibold flex items-center">
-                    <ArrowDownRight className="w-3.5 h-3.5" /> -{kpis?.thisWeekSales?.percentChange}%
-                  </span>
-                ) : (
-                  <span className="text-slate-400 font-medium">0%</span>
-                )}
-                <span className="text-slate-400 ml-1 text-[11px]">{kpis?.thisWeekSales?.subtitle || 'vs last week'}</span>
-              </div>
-            </div>
-
-            {/* 3. This Month's Sales */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-                <span>This Month's Sales</span>
-                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-              </div>
-              <div className="mt-2 text-xl font-bold text-slate-900 tracking-tight">
-                ₹{Number(kpis?.thisMonthSales?.value || 0).toLocaleString('en-IN')}
-              </div>
-              <div className="mt-1.5 flex items-center text-xs">
-                {kpis?.thisMonthSales?.trend === 'up' ? (
-                  <span className="text-emerald-700 font-semibold flex items-center">
-                    <ArrowUpRight className="w-3.5 h-3.5" /> +{kpis?.thisMonthSales?.percentChange}%
-                  </span>
-                ) : kpis?.thisMonthSales?.trend === 'down' ? (
-                  <span className="text-rose-600 font-semibold flex items-center">
-                    <ArrowDownRight className="w-3.5 h-3.5" /> -{kpis?.thisMonthSales?.percentChange}%
-                  </span>
-                ) : (
-                  <span className="text-slate-400 font-medium">0%</span>
-                )}
-                <span className="text-slate-400 ml-1 text-[11px]">{kpis?.thisMonthSales?.subtitle || 'vs last month'}</span>
-              </div>
-            </div>
-
-            {/* 4. Total Sales */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-                <span>Total Sales</span>
-                <Award className="w-3.5 h-3.5 text-amber-500" />
-              </div>
-              <div className="mt-2 text-xl font-bold text-emerald-700 tracking-tight">
-                ₹{Number(kpis?.totalSales?.value || 0).toLocaleString('en-IN')}
-              </div>
-              <div className="mt-1.5 text-xs text-slate-400 truncate">
-                {kpis?.totalSales?.subtitle || 'All-time gross volume'}
-              </div>
-            </div>
-
-            {/* 5. Total Orders */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-                <span>Total Orders</span>
-                <ShoppingBag className="w-3.5 h-3.5 text-blue-600" />
-              </div>
-              <div className="mt-2 text-xl font-bold text-slate-900 tracking-tight">
-                {kpis?.totalOrders?.value || 0}
-              </div>
-              <div className="mt-1.5 flex items-center text-xs">
-                {kpis?.totalOrders?.trend === 'up' ? (
-                  <span className="text-emerald-700 font-semibold flex items-center">
-                    <ArrowUpRight className="w-3.5 h-3.5" /> +{kpis?.totalOrders?.percentChange}%
-                  </span>
-                ) : (
-                  <span className="text-slate-400 font-medium">--</span>
-                )}
-                <span className="text-slate-400 ml-1 text-[11px]">{kpis?.totalOrders?.subtitle || 'vs prior 7 days'}</span>
-              </div>
-            </div>
-
-            {/* 6. Completed Orders */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-                <span>Completed Orders</span>
-                <PackageCheck className="w-3.5 h-3.5 text-emerald-600" />
-              </div>
-              <div className="mt-2 text-xl font-bold text-slate-900 tracking-tight">
-                {kpis?.completedOrders?.value || 0}
-              </div>
-              <div className="mt-1.5 text-xs text-emerald-700 font-medium">
-                {kpis?.completedOrders?.subtitle || '100% fulfillment rate'}
-              </div>
-            </div>
-
-            {/* 7. Active Orders */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-                <span>Active Orders</span>
-                <Clock className="w-3.5 h-3.5 text-amber-500" />
-              </div>
-              <div className="mt-2 text-xl font-bold text-amber-600 tracking-tight">
-                {kpis?.activeOrders?.value || 0}
-              </div>
-              <div className="mt-1.5 text-xs text-slate-500 truncate">
-                {kpis?.activeOrders?.subtitle || '0 currently being prepared'}
-              </div>
-            </div>
-
-            {/* 8. Total Products */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-                <span>Total Products</span>
-                <Boxes className="w-3.5 h-3.5 text-indigo-600" />
-              </div>
-              <div className="mt-2 text-xl font-bold text-slate-900 tracking-tight">
-                {kpis?.totalProducts?.value || 0}
-              </div>
-              <div className="mt-1.5 text-xs text-slate-400">
-                {kpis?.totalProducts?.subtitle || 'Catalog items'}
-              </div>
-            </div>
-
-            {/* 9. Available Products */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-                <span>Available Products</span>
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              </div>
-              <div className="mt-2 text-xl font-bold text-emerald-700 tracking-tight">
-                {kpis?.availableProducts?.value || 0}
-              </div>
-              <div className="mt-1.5 text-xs text-emerald-600 font-medium">
-                {kpis?.availableProducts?.subtitle || 'Live & in stock'}
-              </div>
-            </div>
-
-            {/* 10. Out-of-Stock Products */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
-                <span>Out of Stock</span>
-                <PackageX className="w-3.5 h-3.5 text-rose-500" />
-              </div>
-              <div className="mt-2 text-xl font-bold text-rose-600 tracking-tight">
-                {kpis?.outOfStockProducts?.value || 0}
-              </div>
-              <div className="mt-1.5 text-xs text-rose-500 font-medium">
-                {kpis?.outOfStockProducts?.subtitle || 'Needs restocking'}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* =======================================================
-            SECTION 20: BUSINESS INSIGHTS CHIPS
-            ======================================================= */}
-        {analytics?.businessInsights && analytics.businessInsights.length > 0 && (
-          <section className="bg-gradient-to-r from-emerald-900/90 to-slate-900 rounded-xl p-4 text-white shadow-sm border border-emerald-800/40">
-            <div className="flex items-center gap-2 mb-2 text-xs font-bold uppercase tracking-wider text-emerald-300">
-              <Sparkles className="w-4 h-4 text-yellow-300" />
-              Automated Business Intelligence & Insights
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
-              {analytics.businessInsights.map((insight: string, idx: number) => (
-                <div
-                  key={idx}
-                  className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-100 flex items-start gap-2"
-                >
-                  <span className="text-emerald-400 font-bold">•</span>
-                  <span>{insight}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
 
         {/* =======================================================
             TAB 1: OVERVIEW & POWER BI STYLE CHARTS
             ======================================================= */}
         {activeTab === 'OVERVIEW' && (
           <div className="space-y-6">
+            {/* SECTION 2: 10 TOP KPI CARDS */}
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-emerald-600" />
+                  Enterprise Key Performance Indicators (KPIs)
+                </h2>
+                <span className="text-xs text-slate-500 font-medium">Real-time aggregate calculations</span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+                {/* 1. Today's Sales */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+                    <span>Today's Sales</span>
+                    <IndianRupee className="w-3.5 h-3.5 text-emerald-600" />
+                  </div>
+                  <div className="mt-2 text-xl font-bold text-slate-900 tracking-tight">
+                    ₹{Number(kpis?.todaySales?.value || 0).toLocaleString('en-IN')}
+                  </div>
+                  <div className="mt-1.5 flex items-center text-xs">
+                    {kpis?.todaySales?.trend === 'up' ? (
+                      <span className="text-emerald-700 font-semibold flex items-center">
+                        <ArrowUpRight className="w-3.5 h-3.5" /> +{kpis?.todaySales?.percentChange}%
+                      </span>
+                    ) : kpis?.todaySales?.trend === 'down' ? (
+                      <span className="text-rose-600 font-semibold flex items-center">
+                        <ArrowDownRight className="w-3.5 h-3.5" /> -{kpis?.todaySales?.percentChange}%
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 font-medium">0%</span>
+                    )}
+                    <span className="text-slate-400 ml-1 text-[11px]">{kpis?.todaySales?.subtitle || 'vs yesterday'}</span>
+                  </div>
+                </div>
+
+                {/* 2. This Week's Sales */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+                    <span>This Week's Sales</span>
+                    <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                  </div>
+                  <div className="mt-2 text-xl font-bold text-slate-900 tracking-tight">
+                    ₹{Number(kpis?.thisWeekSales?.value || 0).toLocaleString('en-IN')}
+                  </div>
+                  <div className="mt-1.5 flex items-center text-xs">
+                    {kpis?.thisWeekSales?.trend === 'up' ? (
+                      <span className="text-emerald-700 font-semibold flex items-center">
+                        <ArrowUpRight className="w-3.5 h-3.5" /> +{kpis?.thisWeekSales?.percentChange}%
+                      </span>
+                    ) : kpis?.thisWeekSales?.trend === 'down' ? (
+                      <span className="text-rose-600 font-semibold flex items-center">
+                        <ArrowDownRight className="w-3.5 h-3.5" /> -{kpis?.thisWeekSales?.percentChange}%
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 font-medium">0%</span>
+                    )}
+                    <span className="text-slate-400 ml-1 text-[11px]">{kpis?.thisWeekSales?.subtitle || 'vs last week'}</span>
+                  </div>
+                </div>
+
+                {/* 3. This Month's Sales */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+                    <span>This Month's Sales</span>
+                    <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                  </div>
+                  <div className="mt-2 text-xl font-bold text-slate-900 tracking-tight">
+                    ₹{Number(kpis?.thisMonthSales?.value || 0).toLocaleString('en-IN')}
+                  </div>
+                  <div className="mt-1.5 flex items-center text-xs">
+                    {kpis?.thisMonthSales?.trend === 'up' ? (
+                      <span className="text-emerald-700 font-semibold flex items-center">
+                        <ArrowUpRight className="w-3.5 h-3.5" /> +{kpis?.thisMonthSales?.percentChange}%
+                      </span>
+                    ) : kpis?.thisMonthSales?.trend === 'down' ? (
+                      <span className="text-rose-600 font-semibold flex items-center">
+                        <ArrowDownRight className="w-3.5 h-3.5" /> -{kpis?.thisMonthSales?.percentChange}%
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 font-medium">0%</span>
+                    )}
+                    <span className="text-slate-400 ml-1 text-[11px]">{kpis?.thisMonthSales?.subtitle || 'vs last month'}</span>
+                  </div>
+                </div>
+
+                {/* 4. Total Sales */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+                    <span>Total Sales</span>
+                    <Award className="w-3.5 h-3.5 text-amber-500" />
+                  </div>
+                  <div className="mt-2 text-xl font-bold text-emerald-700 tracking-tight">
+                    ₹{Number(kpis?.totalSales?.value || 0).toLocaleString('en-IN')}
+                  </div>
+                  <div className="mt-1.5 text-xs text-slate-400 truncate">
+                    {kpis?.totalSales?.subtitle || 'All-time gross volume'}
+                  </div>
+                </div>
+
+                {/* 5. Total Orders */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+                    <span>Total Orders</span>
+                    <ShoppingBag className="w-3.5 h-3.5 text-blue-600" />
+                  </div>
+                  <div className="mt-2 text-xl font-bold text-slate-900 tracking-tight">
+                    {kpis?.totalOrders?.value || 0}
+                  </div>
+                  <div className="mt-1.5 flex items-center text-xs">
+                    {kpis?.totalOrders?.trend === 'up' ? (
+                      <span className="text-emerald-700 font-semibold flex items-center">
+                        <ArrowUpRight className="w-3.5 h-3.5" /> +{kpis?.totalOrders?.percentChange}%
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 font-medium">--</span>
+                    )}
+                    <span className="text-slate-400 ml-1 text-[11px]">{kpis?.totalOrders?.subtitle || 'vs prior 7 days'}</span>
+                  </div>
+                </div>
+
+                {/* 6. Completed Orders */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+                    <span>Completed Orders</span>
+                    <PackageCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  </div>
+                  <div className="mt-2 text-xl font-bold text-slate-900 tracking-tight">
+                    {kpis?.completedOrders?.value || 0}
+                  </div>
+                  <div className="mt-1.5 text-xs text-emerald-700 font-medium">
+                    {kpis?.completedOrders?.subtitle || '100% fulfillment rate'}
+                  </div>
+                </div>
+
+                {/* 7. Active Orders */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+                    <span>Active Orders</span>
+                    <Clock className="w-3.5 h-3.5 text-amber-500" />
+                  </div>
+                  <div className="mt-2 text-xl font-bold text-amber-600 tracking-tight">
+                    {kpis?.activeOrders?.value || 0}
+                  </div>
+                  <div className="mt-1.5 text-xs text-slate-500 truncate">
+                    {kpis?.activeOrders?.subtitle || '0 currently being prepared'}
+                  </div>
+                </div>
+
+                {/* 8. Total Products */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+                    <span>Total Products</span>
+                    <Boxes className="w-3.5 h-3.5 text-indigo-600" />
+                  </div>
+                  <div className="mt-2 text-xl font-bold text-slate-900 tracking-tight">
+                    {kpis?.totalProducts?.value || 0}
+                  </div>
+                  <div className="mt-1.5 text-xs text-slate-400">
+                    {kpis?.totalProducts?.subtitle || 'Catalog items'}
+                  </div>
+                </div>
+
+                {/* 9. Available Products */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+                    <span>Available Products</span>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  </div>
+                  <div className="mt-2 text-xl font-bold text-emerald-700 tracking-tight">
+                    {kpis?.availableProducts?.value || 0}
+                  </div>
+                  <div className="mt-1.5 text-xs text-emerald-600 font-medium">
+                    {kpis?.availableProducts?.subtitle || 'Live & in stock'}
+                  </div>
+                </div>
+
+                {/* 10. Out-of-Stock Products */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between text-slate-500 text-xs font-medium">
+                    <span>Out of Stock</span>
+                    <PackageX className="w-3.5 h-3.5 text-rose-500" />
+                  </div>
+                  <div className="mt-2 text-xl font-bold text-rose-600 tracking-tight">
+                    {kpis?.outOfStockProducts?.value || 0}
+                  </div>
+                  <div className="mt-1.5 text-xs text-rose-500 font-medium">
+                    {kpis?.outOfStockProducts?.subtitle || 'Needs restocking'}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* SECTION 20: BUSINESS INSIGHTS CHIPS */}
+            {analytics?.businessInsights && analytics.businessInsights.length > 0 && (
+              <section className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 rounded-2xl p-5 text-white shadow-md border border-emerald-900/60">
+                <div className="flex items-center gap-2 mb-3 text-xs font-black uppercase tracking-wider text-emerald-300">
+                  <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                  Automated Business Intelligence & Insights
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {analytics.businessInsights.map((insight: string, idx: number) => (
+                    <div
+                      key={idx}
+                      className="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 flex items-start gap-2 shadow-xs"
+                    >
+                      <span className="text-emerald-400 font-bold">•</span>
+                      <span>{insight}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
             {/* Chart Grid: Sales Trends & Monthly Revenue */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Power BI Sales Trend Line / Area Chart */}
@@ -1736,6 +1736,53 @@ export default function ProviderDashboardPage() {
             ======================================================= */}
         {activeTab === 'LIVE_OPERATIONS' && (
           <div className="space-y-6">
+            {/* Live Operations Queue Metric Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+              <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+                <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
+                  <span>Incoming / New</span>
+                  <ShoppingBag className="w-4 h-4 text-blue-600" />
+                </div>
+                <div className="mt-2 text-2xl font-black text-blue-700">
+                  {orders.filter((o: any) => o.status === 'CONFIRMED' || o.status === 'PENDING').length}
+                </div>
+                <div className="mt-1 text-xs text-blue-600 font-medium">Awaiting kitchen action</div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+                <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
+                  <span>In Preparation</span>
+                  <ChefHat className="w-4 h-4 text-amber-500" />
+                </div>
+                <div className="mt-2 text-2xl font-black text-amber-600">
+                  {orders.filter((o: any) => o.status === 'PREPARING').length}
+                </div>
+                <div className="mt-1 text-xs text-amber-600 font-medium">Cooking / Packaging</div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+                <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
+                  <span>Ready for Pickup</span>
+                  <PackageCheck className="w-4 h-4 text-purple-600" />
+                </div>
+                <div className="mt-2 text-2xl font-black text-purple-700">
+                  {orders.filter((o: any) => o.status === 'READY_FOR_PICKUP').length}
+                </div>
+                <div className="mt-1 text-xs text-purple-600 font-medium">Delivery runner dispatched</div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+                <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
+                  <span>Out for Delivery</span>
+                  <Bike className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div className="mt-2 text-2xl font-black text-emerald-700">
+                  {orders.filter((o: any) => o.status === 'OUT_FOR_DELIVERY').length}
+                </div>
+                <div className="mt-1 text-xs text-emerald-600 font-medium">On hostel route</div>
+              </div>
+            </div>
+
             {/* Real-Time Queue Header */}
             <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-wrap items-center justify-between gap-4">
               <div>
@@ -2054,6 +2101,53 @@ export default function ProviderDashboardPage() {
             ======================================================= */}
         {activeTab === 'PRODUCTS' && (
           <div className="space-y-6">
+            {/* Catalog Overview Metric Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+              <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+                <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
+                  <span>Total Catalog Items</span>
+                  <Boxes className="w-4 h-4 text-indigo-600" />
+                </div>
+                <div className="mt-2 text-2xl font-black text-slate-900">
+                  {products.length || analytics?.productPerformance?.products?.length || 0}
+                </div>
+                <div className="mt-1 text-xs text-slate-400">Registered offerings</div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+                <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
+                  <span>Approved & Live</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div className="mt-2 text-2xl font-black text-emerald-700">
+                  {products.filter((p: any) => p.isAvailable && p.approvalStatus !== 'PENDING').length || kpis?.availableProducts?.value || 0}
+                </div>
+                <div className="mt-1 text-xs text-emerald-600 font-medium">Visible on campus store</div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+                <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
+                  <span>Pending Admin Review</span>
+                  <Clock className="w-4 h-4 text-amber-500" />
+                </div>
+                <div className="mt-2 text-2xl font-black text-amber-600">
+                  {products.filter((p: any) => p.approvalStatus === 'PENDING').length}
+                </div>
+                <div className="mt-1 text-xs text-amber-600 font-medium">Awaiting approval</div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
+                <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
+                  <span>Out of Stock</span>
+                  <PackageX className="w-4 h-4 text-rose-500" />
+                </div>
+                <div className="mt-2 text-2xl font-black text-rose-600">
+                  {products.filter((p: any) => (p.stock || 0) === 0).length || kpis?.outOfStockProducts?.value || 0}
+                </div>
+                <div className="mt-1 text-xs text-rose-500 font-medium">Restocking required</div>
+              </div>
+            </div>
+
             {/* Top Bar: Add Product & Search */}
             <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-wrap items-center justify-between gap-4">
               <div>

@@ -29,8 +29,12 @@ import {
 export function Navbar() {
   const pathname = usePathname();
 
-  // Hide User Navbar completely on Admin Portal
-  if (pathname?.startsWith('/admin')) {
+  // Hide User Navbar completely on Admin, Provider, and Delivery Portals
+  if (
+    pathname?.startsWith('/admin') ||
+    pathname?.startsWith('/provider') ||
+    pathname?.startsWith('/delivery')
+  ) {
     return null;
   }
 

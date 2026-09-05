@@ -9,7 +9,13 @@ export function FloatingCartButton() {
   const pathname = usePathname();
   const { itemCount, total, setIsCartOpen, isCartOpen } = useCart();
 
-  if (pathname?.startsWith('/admin') || itemCount === 0 || isCartOpen) return null;
+  if (
+    pathname?.startsWith('/admin') ||
+    pathname?.startsWith('/provider') ||
+    pathname?.startsWith('/delivery') ||
+    itemCount === 0 ||
+    isCartOpen
+  ) return null;
 
   return (
     <button

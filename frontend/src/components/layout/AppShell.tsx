@@ -10,10 +10,13 @@ import { FloatingCartButton } from '../cart/FloatingCartButton';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isAdminRoute = pathname?.startsWith('/admin');
+  const isPortalRoute =
+    pathname?.startsWith('/admin') ||
+    pathname?.startsWith('/provider') ||
+    pathname?.startsWith('/delivery');
 
-  if (isAdminRoute) {
-    // Pure Enterprise Admin Portal Shell: no student banner, no user navbar, no student footer, no consumer cart widgets
+  if (isPortalRoute) {
+    // Pure Enterprise Portal Shell: no student banner, no consumer navbar, no student footer, no consumer cart widgets
     return <div className="min-h-screen w-full">{children}</div>;
   }
 
