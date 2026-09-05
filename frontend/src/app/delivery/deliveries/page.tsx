@@ -23,6 +23,7 @@ export default function AvailableDeliveriesPage() {
   const {
     isOnline,
     toggleOnline,
+    activeOrders,
     activeOrder,
     availableOrders,
     acceptAvailableOrder,
@@ -105,24 +106,24 @@ export default function AvailableDeliveriesPage() {
         </div>
       )}
 
-      {/* Active Delivery Warning if already holding one */}
-      {activeOrder && (
-        <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-between gap-4 text-xs text-blue-900">
-          <div className="flex items-center gap-2.5">
-            <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />
-            <span>
-              Active delivery in progress: <span className="font-bold">{activeOrder.orderNumber}</span> ({activeOrder.destination}). Please complete it before accepting another.
-            </span>
-          </div>
+      {/* Active Slots Capacity Banner */}
+      <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-between gap-4 text-xs text-blue-900">
+        <div className="flex items-center gap-2.5">
+          <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />
+          <span>
+            Active Deliveries: <span className="font-bold">{activeOrders.length} / 5</span> ({Math.max(0, 5 - activeOrders.length)} slots available to accept).
+          </span>
+        </div>
+        {activeOrders.length > 0 && (
           <Link
             href="/delivery/active"
-            className="px-3 py-1.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition flex items-center gap-1"
+            className="px-3 py-1.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition flex items-center gap-1 flex-shrink-0"
           >
-            <span>View Active</span>
+            <span>View Active ({activeOrders.length})</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Available Orders Grid */}
       {filteredOrders.length > 0 ? (
@@ -197,15 +198,15 @@ export default function AvailableDeliveriesPage() {
                 </button>
                 <button
                   onClick={() => acceptAvailableOrder(order.id)}
-                  disabled={!!activeOrder || !isOnline}
+                  disabled={activeOrders.length >= 5 || !isOnline}
                   className={`btn-primary flex-1 py-2.5 text-xs justify-center ${
-                    activeOrder || !isOnline ? 'opacity-50 cursor-not-allowed' : ''
+                    activeOrders.length >= 5 || !isOnline ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                   title={
                     !isOnline
                       ? 'Go online to accept'
-                      : activeOrder
-                      ? 'Finish current delivery first'
+                      : activeOrders.length >= 5
+                      ? 'Max active capacity reached (5/5)'
                       : 'Accept this delivery'
                   }
                 >

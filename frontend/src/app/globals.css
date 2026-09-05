@@ -372,6 +372,68 @@
   100% { background-position: -200% 0; }
 }
 
+/* One-Tap Order Card (Section 15) */
+.order-card {
+  background: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  border-radius: 14px;
+  padding: 18px;
+  transition: all 0.2s ease;
+}
+
+.order-card:hover {
+  border-color: rgba(79, 157, 47, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+.order-action-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.status-action {
+  flex: 1;
+  min-height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: #4F9D2F;
+  color: #FFFFFF;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.status-action:hover {
+  background: #36751F;
+  transform: translateY(-1px);
+}
+
+.more-button {
+  width: 44px;
+  height: 44px;
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+  background: #FFFFFF;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748B;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.more-button:hover {
+  background: #F7F8F6;
+  color: #111827;
+}
+
 /* Responsive CSS (Requirement 27) */
 @media (max-width: 1199px) {
   .sidebar {

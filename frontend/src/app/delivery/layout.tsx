@@ -7,6 +7,7 @@ import {
   DeliveryProvider,
   useDelivery,
 } from '@/context/DeliveryContext';
+import OtpModal from '@/components/delivery/OtpModal';
 import {
   LayoutDashboard,
   Package,
@@ -39,6 +40,7 @@ function DeliveryLayoutInner({ children }: { children: React.ReactNode }) {
     showOfflineConfirmModal,
     setShowOfflineConfirmModal,
     confirmGoOffline,
+    activeOrders,
     activeOrder,
     notifications,
     sidebarCollapsed,
@@ -89,8 +91,8 @@ function DeliveryLayoutInner({ children }: { children: React.ReactNode }) {
           label: 'Active Delivery',
           href: '/delivery/active',
           icon: Bike,
-          badge: activeOrder ? '1' : null,
-          badgeColor: 'bg-emerald-500 text-white',
+          badge: activeOrders.length > 0 ? `${activeOrders.length}` : null,
+          badgeColor: 'bg-emerald-500 text-white font-bold',
         },
         {
           label: 'Available Deliveries',
@@ -219,6 +221,9 @@ function DeliveryLayoutInner({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       )}
+
+      {/* LIGHTWEIGHT ONE-TAP OTP MODAL */}
+      <OtpModal />
 
       {/* MOBILE DRAWER BACKDROP */}
       {mobileDrawerOpen && (
