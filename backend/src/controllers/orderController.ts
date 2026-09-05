@@ -5,6 +5,7 @@ import { generateOrderNumber } from '../utils/crypto';
 import { RazorpayService } from '../services/payment/RazorpayService';
 import { EmailService } from '../services/email/EmailService';
 import { ReceiptService } from '../services/receipt/ReceiptService';
+import { env } from '../config/environment';
 
 const razorpayService = new RazorpayService();
 const emailService = new EmailService();
@@ -239,7 +240,7 @@ export class OrderController {
           razorpayOrderId: rzpOrder.id,
           amount: rzpOrder.amount,
           currency: rzpOrder.currency,
-          keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_nitdgp_services'
+          keyId: env.RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID || ''
         };
       } else {
         // Record COD payment

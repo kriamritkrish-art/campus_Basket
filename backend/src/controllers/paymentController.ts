@@ -99,7 +99,7 @@ export class PaymentController {
   public static async webhook(req: Request, res: Response): Promise<void> {
     try {
       const signature = req.headers['x-razorpay-signature'] as string;
-      const rawBody = JSON.stringify(req.body);
+      const rawBody = (req as any).rawBody || JSON.stringify(req.body);
 
       if (!signature) {
         res.status(400).json({ status: 'Signature missing' });

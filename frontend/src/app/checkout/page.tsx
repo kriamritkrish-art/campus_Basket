@@ -137,7 +137,7 @@ export default function CheckoutPage() {
         }
 
         const rzpConfig = {
-          key: res.razorpay.keyId,
+          key: res.razorpay.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '',
           amount: res.razorpay.amount,
           currency: res.razorpay.currency,
           name: 'NIT Durgapur Campus Services',

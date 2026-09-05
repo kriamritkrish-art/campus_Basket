@@ -45,19 +45,24 @@ export class RazorpayService {
     const amountInPaise = Math.round(params.amountInRupees * 100);
 
     if (this.razorpayInstance && !this.isTestMode) {
-      const order = await this.razorpayInstance.orders.create({
-        amount: amountInPaise,
-        currency: 'INR',
-        receipt: params.receiptId,
-        notes: params.notes || {}
-      });
-      return {
-        id: order.id,
-        amount: Number(order.amount),
-        currency: order.currency,
-        receipt: order.receipt || params.receiptId,
-        status: order.status
-      };
+      try {
+        const order = await this.razorpayInstance.orders.create({
+          amount: amountInPaise,
+          currency: 'INR',
+          receipt: (params.receiptId || '').substring(0, 40),
+          notes: params.notes || {}
+        });
+        return {
+          id: order.id,
+          amount: Number(order.amount),
+          currency: order.currency,
+          receipt: order.receipt || params.receiptId,
+          status: order.status
+        };
+      } catch (err: any) {
+        console.error('[RazorpayService] Order creation error:', err?.error?.description || err?.message || err);
+        throw new Error(err?.error?.description || 'Failed to initialize payment gateway order');
+      }
     }
 
     // High-fidelity sandbox order generation for local and staging environments
@@ -106,10 +111,10 @@ export class RazorpayService {
     }
 
     try {
-      return crypto.timingSafeEqual(
-        Buffer.from(expectedSignature),
-        Buffer.from(razorpaySignature)
-      );
+      const expBuf = Buffer.from(expectedSignature);
+      const sigBuf = Buffer.from(razorpaySignature);
+      if (expBuf.length !== sigBuf.length) return false;
+      return crypto.timingSafeEqual(expBuf, sigBuf);
     } catch {
       return false;
     }
@@ -127,10 +132,18 @@ export class RazorpayService {
       .update(rawBody)
       .digest('hex');
 
-    return crypto.timingSafeEqual(
-      Buffer.from(expectedSignature),
-      Buffer.from(signature)
-    );
+    if (expectedSignature === signature) {
+      return true;
+    }
+
+    try {
+      const expBuf = Buffer.from(expectedSignature);
+      const sigBuf = Buffer.from(signature);
+      if (expBuf.length !== sigBuf.length) return false;
+      return crypto.timingSafeEqual(expBuf, sigBuf);
+    } catch {
+      return false;
+    }
   }
 
   /**
