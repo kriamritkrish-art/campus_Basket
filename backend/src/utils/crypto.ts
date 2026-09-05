@@ -52,3 +52,16 @@ export function generateTicketNumber(): string {
   const randomSuffix = crypto.randomBytes(2).toString('hex').toUpperCase();
   return `TKT-${year}-${randomSuffix}`;
 }
+
+/**
+ * Masks an email address for privacy (e.g. ss.24u10227@nitdgp.ac.in -> ss.****@nitdgp.ac.in, student@gmail.com -> stu****@gmail.com)
+ */
+export function maskEmail(email: string): string {
+  if (!email || !email.includes('@')) return email;
+  const [local, domain] = email.split('@');
+  if (local.length <= 3) {
+    return `${local[0]}****@${domain}`;
+  }
+  const prefix = local.slice(0, 3);
+  return `${prefix}****@${domain}`;
+}

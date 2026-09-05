@@ -44,6 +44,11 @@ export class AdminPeopleController {
           userId: s.userId,
           fullName: s.fullName,
           email: s.user?.email,
+          collegeEmail: s.collegeEmail || s.user?.collegeEmail || s.user?.email,
+          personalEmail: s.personalEmail || s.user?.personalEmail || null,
+          department: s.department || 'Computer Science & Engineering',
+          programme: s.programme || 'B.Tech',
+          year: s.year || '1st Year',
           rollNumber: s.rollNumber,
           registrationNumber: s.registrationNumber,
           mobileNumber: s.mobileNumber,
@@ -87,6 +92,93 @@ export class AdminPeopleController {
       });
 
       res.status(200).json({ success: true, message: `Student status updated to ${isActive ? 'Active' : 'Deactivated'}` });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Delete Student Account (Admin Action)
+   * Prompt Rule: Once admin deletes any account, student can do fresh registration.
+   */
+  public static async deleteStudent(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const student = await prisma.student.findUnique({
+        where: { id },
+        include: { user: true }
+      });
+
+      if (!student) {
+        res.status(404).json({ success: false, message: 'Student account not found' });
+        return;
+      }
+
+      const userId = student.userId;
+      const collegeEmail = student.collegeEmail || student.user.collegeEmail || student.user.email;
+      const personalEmail = student.personalEmail || student.user.personalEmail;
+
+      // Transactionally cascade delete student records
+      await prisma.$transaction(async (tx) => {
+        // Delete cart and items
+        await tx.cartItem.deleteMany({ where: { cart: { studentId: student.id } } });
+        await tx.cart.deleteMany({ where: { studentId: student.id } });
+
+        // Delete favorites, reviews, coupon usages, tickets
+        await tx.favorite.deleteMany({ where: { studentId: student.id } });
+        await tx.review.deleteMany({ where: { studentId: student.id } });
+        await tx.couponUsage.deleteMany({ where: { studentId: student.id } });
+        await tx.supportTicket.deleteMany({ where: { studentId: student.id } });
+
+        // Delete receipts
+        await tx.receipt.deleteMany({ where: { studentId: student.id } });
+
+        // Delete laundry orders
+        const laundryOrders = await tx.laundryOrder.findMany({ where: { studentId: student.id } });
+        for (const lo of laundryOrders) {
+          await tx.laundryItem.deleteMany({ where: { laundryOrderId: lo.id } });
+          await tx.laundryItemPhoto.deleteMany({ where: { laundryOrderId: lo.id } });
+          await tx.laundryOtp.deleteMany({ where: { laundryOrderId: lo.id } });
+          await tx.laundryStatusHistory.deleteMany({ where: { laundryOrderId: lo.id } });
+        }
+        await tx.laundryOrder.deleteMany({ where: { studentId: student.id } });
+
+        // Delete store orders
+        const orders = await tx.order.findMany({ where: { studentId: student.id } });
+        for (const o of orders) {
+          await tx.orderItem.deleteMany({ where: { orderId: o.id } });
+          await tx.orderStatusHistory.deleteMany({ where: { orderId: o.id } });
+        }
+        await tx.order.deleteMany({ where: { studentId: student.id } });
+
+        // Invalidate OTP verifications
+        const emailList = [collegeEmail, personalEmail, student.user.email].filter(Boolean) as string[];
+        await tx.otpVerification.deleteMany({
+          where: { email: { in: emailList } }
+        });
+
+        // Delete notifications and sessions
+        await tx.notification.deleteMany({ where: { userId } });
+        await tx.session.deleteMany({ where: { userId } });
+
+        // Delete Student and User records
+        await tx.student.delete({ where: { id: student.id } });
+        await tx.user.delete({ where: { id: userId } });
+      });
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'STUDENT_ACCOUNT_DELETED',
+        entity: 'Student',
+        entityId: student.id,
+        oldValue: { rollNumber: student.rollNumber, collegeEmail, personalEmail },
+        ipAddress: req.ip
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `Student account for ${student.fullName} has been deleted. The student can now register freshly.`
+      });
     } catch (err) {
       next(err);
     }

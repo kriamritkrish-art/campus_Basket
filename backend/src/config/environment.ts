@@ -35,6 +35,11 @@ export const env = {
   GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY || '',
   REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',
 
+  // Google OAuth Configuration
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
+  GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/auth/google/callback',
+
   // NIT Durgapur Campus Center
   CAMPUS_LAT: parseFloat(process.env.CAMPUS_LAT || '23.5484'),
   CAMPUS_LNG: parseFloat(process.env.CAMPUS_LNG || '87.2931'),

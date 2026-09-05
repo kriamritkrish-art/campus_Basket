@@ -206,15 +206,25 @@ async function main() {
     update: {},
     create: {
       email: 'ss.24u10227@nitdgp.ac.in',
+      collegeEmail: 'ss.24u10227@nitdgp.ac.in',
+      personalEmail: 'student@gmail.com',
+      collegeEmailVerified: true,
+      personalEmailVerified: true,
       passwordHash: studentPassHash,
       role: 'STUDENT',
       isActive: true,
+      accountStatus: 'ACTIVE',
       student: {
         create: {
           fullName: 'Sourav Senapati',
           rollNumber: '24U10227',
           registrationNumber: '202410227',
           mobileNumber: '9876501234',
+          collegeEmail: 'ss.24u10227@nitdgp.ac.in',
+          personalEmail: 'student@gmail.com',
+          department: 'Computer Science & Engineering',
+          programme: 'B.Tech',
+          year: '2nd Year',
           hallId: createdHalls[9].id, // Hall 11
           hallNumber: '11',
           roomNumber: 'B-304',

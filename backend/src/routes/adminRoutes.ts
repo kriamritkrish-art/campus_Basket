@@ -60,6 +60,7 @@ router.get('/reports/export-csv', AdminReportController.exportCsv);
 // 7. People: Students, Providers, Halls
 router.get('/students', AdminPeopleController.getStudents);
 router.patch('/students/:id/status', AdminPeopleController.toggleStudentActive);
+router.delete('/students/:id', AdminPeopleController.deleteStudent);
 
 router.get('/providers', AdminPeopleController.getProviders);
 router.patch('/providers/:id/status', AdminPeopleController.toggleProviderActive);

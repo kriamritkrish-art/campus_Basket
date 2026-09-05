@@ -91,22 +91,35 @@ enum DiscountType {
 }
 
 model User {
-  id           String           @id @default(cuid())
-  email        String           @unique
-  passwordHash String
-  role         Role             @default(STUDENT)
-  isActive     Boolean          @default(true)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id                    String           @id @default(cuid())
+  email                 String           @unique
+  collegeEmail          String?          @unique
+  personalEmail         String?          @unique
+  collegeEmailVerified  Boolean          @default(false)
+  personalEmailVerified Boolean          @default(false)
+  passwordHash          String
+  role                  Role             @default(STUDENT)
+  isActive              Boolean          @default(true)
+  accountStatus         String           @default("ACTIVE")
+  googleSub             String?          @unique
+  googleEmail           String?
+  googleLinked          Boolean          @default(false)
+  googleLinkedAt        DateTime?
+  lastLoginAt           DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
 
-  student      Student?
-  admin        Admin?
-  provider     ServiceProvider?
-  notifications Notification[]
-  sessions     Session[]
-  auditLogs    AuditLog[]
+  student               Student?
+  admin                 Admin?
+  provider              ServiceProvider?
+  notifications         Notification[]
+  sessions              Session[]
+  auditLogs             AuditLog[]
 
   @@index([email])
+  @@index([collegeEmail])
+  @@index([personalEmail])
+  @@index([googleSub])
   @@index([role])
 }
 
@@ -118,6 +131,11 @@ model Student {
   rollNumber         String           @unique
   registrationNumber String           @unique
   mobileNumber       String           @unique
+  collegeEmail       String?          @unique
+  personalEmail      String?          @unique
+  department         String?
+  programme          String?
+  year               String?
   hallId             String?
   hall               Hall?            @relation(fields: [hallId], references: [id])
   hallNumber         String?
@@ -138,6 +156,8 @@ model Student {
   @@index([rollNumber])
   @@index([registrationNumber])
   @@index([mobileNumber])
+  @@index([collegeEmail])
+  @@index([personalEmail])
 }
 
 model Admin {
@@ -637,6 +657,7 @@ model OtpVerification {
   createdAt  DateTime @default(now())
 
   @@index([email])
+  @@index([email, purpose])
 }
 
 model Session {

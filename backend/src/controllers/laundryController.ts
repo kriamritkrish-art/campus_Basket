@@ -5,6 +5,7 @@ import { generateLaundryOrderNumber } from '../utils/crypto';
 import { LaundryOtpService } from '../services/laundry/LaundryOtpService';
 import { EmailService } from '../services/email/EmailService';
 import { ReceiptService } from '../services/receipt/ReceiptService';
+import { AuditService } from '../services/audit/AuditService';
 
 const laundryOtpService = new LaundryOtpService();
 const emailService = new EmailService();
@@ -167,9 +168,10 @@ export class LaundryController {
         }
       });
 
-      // Dispatch notification
+      // Dispatch notification strictly to student's verified personal email
+      const targetPersonalEmail = student.personalEmail || student.user.personalEmail || student.user.email;
       emailService.sendLaundryNotification(
-        student.user.email,
+        targetPersonalEmail,
         orderNumber,
         'Laundry Pickup Requested',
         `Your 6-digit Pickup verification code is ${pickupOtpData.plainOtp}. Show this to the provider when they arrive.`
@@ -283,11 +285,21 @@ export class LaundryController {
         })
       ]);
 
+      const targetPersonalEmail = order.student.personalEmail || order.student.user.personalEmail || order.student.user.email;
       emailService.sendLaundryNotification(
-        order.student.user.email,
+        targetPersonalEmail,
         order.orderNumber,
         'Clothes Collected & In Process'
       );
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'Laundry Pickup OTP Verified',
+        entity: 'LaundryOrder',
+        entityId: order.id,
+        newValue: { orderNumber: order.orderNumber, status: 'CLOTHES_COLLECTED' },
+        ipAddress: req.ip
+      });
 
       res.status(200).json({
         success: true,
@@ -356,11 +368,21 @@ export class LaundryController {
         })
       ]);
 
+      const targetPersonalEmail = order.student.personalEmail || order.student.user.personalEmail || order.student.user.email;
       emailService.sendLaundryNotification(
-        order.student.user.email,
+        targetPersonalEmail,
         order.orderNumber,
         'Order Completed & Delivered'
       );
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'Laundry Return OTP Verified',
+        entity: 'LaundryOrder',
+        entityId: order.id,
+        newValue: { orderNumber: order.orderNumber, status: 'COMPLETED' },
+        ipAddress: req.ip
+      });
 
       res.status(200).json({
         success: true,
@@ -430,6 +452,35 @@ export class LaundryController {
           }
         }
       });
+
+      // When laundry is ready or out for return, dispatch Return OTP to student's verified personal email
+      if (status === 'READY' || status === 'DELIVERY_SCHEDULED') {
+        const fullOrder = await prisma.laundryOrder.findUnique({
+          where: { id },
+          include: { student: { include: { user: true } } }
+        });
+        if (fullOrder) {
+          const targetPersonalEmail = fullOrder.student.personalEmail || fullOrder.student.user.personalEmail || fullOrder.student.user.email;
+          const returnOtpData = laundryOtpService.generateOtp(fullOrder.orderNumber, 'DELIVERY');
+          await prisma.laundryOtp.deleteMany({
+            where: { laundryOrderId: fullOrder.id, otpType: 'DELIVERY' }
+          });
+          await prisma.laundryOtp.create({
+            data: {
+              laundryOrderId: fullOrder.id,
+              otpType: 'DELIVERY',
+              otpHash: returnOtpData.otpHash,
+              expiresAt: returnOtpData.expiresAt
+            }
+          });
+          emailService.sendLaundryNotification(
+            targetPersonalEmail,
+            fullOrder.orderNumber,
+            'Ready for Return & Delivery',
+            `Your 6-digit Return verification code is ${returnOtpData.plainOtp}. Show this to the service provider when they return your clean laundry.`
+          );
+        }
+      }
 
       res.status(200).json({
         success: true,
