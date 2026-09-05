@@ -524,94 +524,104 @@ export default function OrderTrackingPage() {
           </div>
 
           {/* ==================================================
-              3. LIVE GPS TRACK RADAR (Dark Navy Glowing Bar)
+              3. LIVE GPS TRACK RADAR (Refined Modern Campus Tracker)
              ================================================== */}
-          <div className="bg-[#071326] rounded-2xl p-6 sm:p-7 border border-[#1e293b] text-white shadow-xl space-y-7 relative overflow-hidden">
+          <div className="bg-gradient-to-b from-[#0b1626] via-[#091322] to-[#070e1a] rounded-[20px] p-4 sm:p-5 border border-slate-800/80 shadow-lg shadow-black/20 text-white relative overflow-hidden space-y-3.5 sm:space-y-4">
 
-            {/* Radar Header: Badge + Dynamic Subtitle */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#0d233a] border border-[#0284c7]/50 text-[#38bdf8] text-[11px] font-extrabold uppercase tracking-wider shadow-inner shrink-0">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+            {/* Header: Compact Pill Badge + Status Text */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 text-[10px] font-bold tracking-wider uppercase shadow-[0_0_8px_rgba(6,182,212,0.2)] shrink-0 self-start sm:self-auto">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
                 <span>LIVE GPS TRACK RADAR</span>
               </div>
-              <span className="text-sm sm:text-base font-extrabold text-slate-100 tracking-wide">
+              <span className="text-xs sm:text-sm font-medium text-slate-200 tracking-normal leading-snug">
                 {getRadarHeadline(order.status)}
               </span>
             </div>
 
             {/* Horizontal Timeline Track */}
-            <div className="relative pt-6 pb-2 px-2 sm:px-6">
+            <div className="overflow-x-auto scrollbar-none pt-7 pb-1">
+              <div className="relative min-w-[500px] sm:min-w-0">
 
-              {/* Background Inactive Track Line */}
-              <div className="absolute top-[37px] left-6 right-6 h-1.5 bg-slate-800 rounded-full" />
+                {/* Background Inactive Track Line (Passes exactly through circle centers) */}
+                <div className="absolute top-4 -translate-y-1/2 left-[8.3333%] right-[8.3333%] h-[3px] bg-slate-800 rounded-full" />
 
-              {/* Glowing Neon Green Active Track Line */}
-              <div
-                className="absolute top-[37px] left-6 h-1.5 bg-[#00e676] rounded-full shadow-[0_0_12px_#00e676] transition-all duration-700 ease-out"
-                style={{
-                  width: activeStep >= 0 ? `${(activeStep / (CHECKPOINTS.length - 1)) * 92}%` : '0%'
-                }}
-              />
+                {/* Completed/Active Track Line with subtle glow */}
+                <div
+                  className="absolute top-4 -translate-y-1/2 left-[8.3333%] h-[3px] bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.35)] transition-all duration-500 ease-out"
+                  style={{
+                    width: activeStep >= 0 ? `${(activeStep / 5) * 83.3333}%` : '0%'
+                  }}
+                />
 
-              {/* Checkpoints Grid */}
-              <div className="relative z-10 grid grid-cols-6 gap-2">
-                {CHECKPOINTS.map((step, idx) => {
-                  const isCompleted = activeStep >= idx;
-                  const isActive = activeStep === idx;
+                {/* Checkpoints Grid */}
+                <div className="relative z-10 grid grid-cols-6">
+                  {CHECKPOINTS.map((step, idx) => {
+                    const isCompleted = activeStep > idx;
+                    const isActive = activeStep === idx;
 
-                  return (
-                    <div key={step.id} className="flex flex-col items-center text-center relative group">
+                    return (
+                      <div key={step.id} className="flex flex-col items-center text-center relative group">
 
-                      {/* Scooter Vector Illustration on Active/Delivered checkpoint */}
-                      {isActive && (
-                        <div className="absolute -top-9 flex flex-col items-center animate-bounce duration-1000 z-20">
-                          {/* Vector Scooter / Bike SVG */}
-                          <svg className="w-8 h-8 drop-shadow-[0_0_8px_#38bdf8]" viewBox="0 0 48 48" fill="none">
-                            {/* Package cargo box */}
-                            <rect x="6" y="14" width="12" height="11" rx="2" fill="#0284c7" stroke="#38bdf8" strokeWidth="1.5" />
-                            <path d="M12 17V22M9.5 19.5H14.5" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" />
-                            {/* Scooter Body */}
-                            <path d="M14 28H28L32 18H38" stroke="#00e676" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                            {/* Handlebars */}
-                            <path d="M37 15H39M38 15V19" stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
-                            {/* Rear Wheel with neon spoke */}
-                            <circle cx="12" cy="31" r="5" fill="#0f172a" stroke="#00e676" strokeWidth="2" />
-                            <circle cx="12" cy="31" r="2" fill="#38bdf8" />
-                            {/* Front Wheel with neon spoke */}
-                            <circle cx="34" cy="31" r="5" fill="#0f172a" stroke="#00e676" strokeWidth="2" />
-                            <circle cx="34" cy="31" r="2" fill="#38bdf8" />
-                          </svg>
-                        </div>
-                      )}
-
-                      {/* Checkpoint Node Circle */}
-                      <div
-                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all duration-500 shrink-0 ${
-                          isCompleted
-                            ? 'bg-[#00e676] text-[#071326] shadow-[0_0_12px_#00e676]'
-                            : 'bg-slate-800 text-slate-500 border border-slate-700'
-                        } ${isActive ? 'ring-4 ring-[#00e676]/40 scale-110' : ''}`}
-                      >
-                        {isCompleted ? (
-                          <Check className="w-4 h-4 stroke-[3]" />
-                        ) : (
-                          <span className="text-[10px]">{idx + 1}</span>
+                        {/* Floating minimal delivery vehicle badge above active step */}
+                        {isActive && (
+                          <div className="absolute -top-7 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-none">
+                            <div className="w-6 h-6 rounded-full bg-[#0d1b2e] border border-emerald-400/50 shadow-[0_2px_8px_rgba(0,0,0,0.5),0_0_8px_rgba(16,185,129,0.25)] flex items-center justify-center transition-all duration-300">
+                              <svg className="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="18.5" cy="17.5" r="3.5" />
+                                <circle cx="5.5" cy="17.5" r="3.5" />
+                                <circle cx="15" cy="5" r="1" />
+                                <path d="M12 17.5V14l-3-3 4-3 2 3h2" />
+                              </svg>
+                            </div>
+                            <div className="w-1 h-1 rounded-full bg-emerald-400/70 mt-0.5" />
+                          </div>
                         )}
-                      </div>
 
-                      {/* Checkpoint Label */}
-                      <div className="mt-3 space-y-0.5">
-                        <div
-                          className={`text-[10px] sm:text-xs font-black tracking-tight leading-tight ${
-                            isCompleted ? 'text-white' : 'text-slate-500'
-                          }`}
-                        >
-                          {step.label}
+                        {/* Subtle radial glow behind active step */}
+                        {isActive && (
+                          <div className="absolute top-4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-emerald-500/15 rounded-full blur-md pointer-events-none -z-10" />
+                        )}
+
+                        {/* Center Circle (height 32px to ensure line passes exactly through the middle) */}
+                        <div className="h-8 flex items-center justify-center">
+                          <div
+                            className={`rounded-full flex items-center justify-center font-semibold text-xs transition-all duration-300 shrink-0 ${
+                              isCompleted
+                                ? 'w-6 h-6 bg-emerald-500 text-white shadow-[0_0_6px_rgba(16,185,129,0.3)]'
+                                : isActive
+                                ? 'w-7 h-7 bg-emerald-500 text-white ring-4 ring-emerald-500/20 shadow-[0_0_12px_rgba(16,185,129,0.4)]'
+                                : 'w-6 h-6 bg-slate-800/90 text-slate-400 border border-slate-700/60'
+                            }`}
+                          >
+                            {isCompleted || (isActive && activeStep === 5) ? (
+                              <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                            ) : isActive ? (
+                              <span className="w-2 h-2 rounded-full bg-white" />
+                            ) : (
+                              <span className="text-[10px] font-medium text-slate-400">{idx + 1}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Step Label */}
+                        <div className="mt-1.5 px-0.5">
+                          <div
+                            className={`text-[10px] sm:text-[11px] tracking-tight leading-tight transition-colors ${
+                              isActive
+                                ? 'font-bold text-white'
+                                : isCompleted
+                                ? 'font-medium text-slate-200'
+                                : 'font-normal text-slate-500'
+                            }`}
+                          >
+                            {step.label}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
