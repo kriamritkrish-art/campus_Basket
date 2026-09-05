@@ -360,10 +360,18 @@ export default function OrderTrackingPage() {
   const countDelivered = ordersList.filter((o) => o.status === 'DELIVERED').length;
   const countCancelled = ordersList.filter((o) => o.status === 'CANCELLED').length;
 
-  const purchasedItemsText = order.items.map((i) => i.productName).join(', ') || 'Campus Meal & Snack';
-  const deliveryAddressText = `${order.roomNumber ? `Room ${order.roomNumber}, ` : ''}${order.hallName || 'Hall 11'}, NIT Durgapur Campus`;
+  const purchasedItemsText =
+    order.items && order.items.length > 0
+      ? order.items.map((i) => i.productName).join(', ')
+      : 'Cough Syrup, Antifungal Cream 20g, Insulin Pen';
+  const deliveryAddressText =
+    order.roomNumber || order.hallName
+      ? `${order.roomNumber ? `Room ${order.roomNumber}, ` : ''}${order.hallName || 'Hall 11'}, NIT Durgapur Campus`
+      : '45/A Park Street, Sector 5, Salt Lake, Kolkata, West Bengal';
   const partnerName = order.deliveryBoy?.fullName || 'Ravi Kumar';
-  const partnerId = order.deliveryBoy?.id ? `DEL${order.deliveryBoy.id.slice(-4).toUpperCase()}` : 'DEL1001';
+  const partnerId = order.deliveryBoy?.id
+    ? (order.deliveryBoy.id.startsWith('DEL') ? order.deliveryBoy.id : `DEL${order.deliveryBoy.id.slice(-4).toUpperCase()}`)
+    : 'DEL1001';
   const partnerPhone = order.deliveryBoy?.mobileNumber || '9876543210';
   const orderDate = new Date(order.createdAt).toLocaleDateString('en-GB');
 
@@ -524,112 +532,143 @@ export default function OrderTrackingPage() {
           </div>
 
           {/* ==================================================
-              3. LIVE GPS TRACK RADAR — Premium Professional Tracker
+              3. LIVE GPS TRACK RADAR — Refined Whitish High-Tech Tracker
              ================================================== */}
-          <div className="rounded-2xl border border-indigo-100 bg-white shadow-sm shadow-indigo-50 overflow-hidden ring-1 ring-indigo-50">
+          <div
+            className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-[#f8fafc] shadow-xs overflow-hidden relative"
+            style={{
+              backgroundImage: 'radial-gradient(#cbd5e1 1.2px, transparent 1.2px)',
+              backgroundSize: '20px 20px'
+            }}
+          >
+            {/* Very subtle top gradient hairline */}
+            <div className="h-[2px] w-full bg-gradient-to-r from-sky-400 via-emerald-400 to-sky-400 opacity-60" />
 
-            {/* Top accent bar */}
-            <div className="h-[3px] w-full bg-gradient-to-r from-indigo-500 via-violet-400 to-fuchsia-300" />
+            <div className="px-5 py-5 sm:px-7 sm:py-6 space-y-6">
 
-            <div className="px-5 py-4 space-y-4">
-
-              {/* Header Row */}
+              {/* Header Row: Live Radar Badge & Status Headline */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                 {/* Live Badge */}
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-[10px] font-extrabold tracking-widest uppercase shrink-0 self-start">
-                  <span className="relative flex h-1.5 w-1.5 shrink-0">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-500" />
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 border border-sky-300 text-sky-700 text-[10px] font-black tracking-wider uppercase shrink-0 self-start shadow-xs">
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#0284c7]" />
                   </span>
                   LIVE GPS TRACK RADAR
                 </div>
+
                 {/* Status text */}
-                <p className="text-[13px] font-semibold text-slate-700 leading-snug">
+                <p className="text-xs sm:text-[13px] font-bold text-slate-800 leading-snug">
                   {getRadarHeadline(order.status)}
                 </p>
               </div>
 
-              {/* Timeline */}
-              <div className="overflow-x-auto scrollbar-none pb-1">
-                <div className="relative min-w-[520px] sm:min-w-0 pt-8">
+              {/* Timeline Container */}
+              <div className="overflow-x-auto scrollbar-none pb-2 pt-6">
+                <div className="relative min-w-[560px] sm:min-w-0 pt-6">
 
                   {/* Gray inactive rail */}
-                  <div className="absolute top-8 left-[8.3333%] right-[8.3333%] h-[2px] bg-slate-100 rounded-full" />
-                  {/* Subtle glow backdrop beneath active rail */}
+                  <div className="absolute top-[38px] left-[8.3333%] right-[8.3333%] h-[3px] bg-slate-200 rounded-full" />
 
-                  {/* Green active rail */}
+                  {/* Vibrant Glowing Green active rail */}
                   <div
-                    className="absolute top-8 left-[8.3333%] h-[2px] bg-gradient-to-r from-indigo-500 via-violet-400 to-fuchsia-300 rounded-full transition-all duration-700 ease-out shadow-[0_0_6px_rgba(99,102,241,0.5)]"
+                    className="absolute top-[38px] left-[8.3333%] h-[3px] bg-gradient-to-r from-emerald-400 via-emerald-500 to-green-500 rounded-full transition-all duration-700 ease-out shadow-[0_0_12px_rgba(16,185,129,0.55)]"
                     style={{ width: activeStep >= 0 ? `${(activeStep / 5) * 83.3333}%` : '0%' }}
                   />
 
-                  {/* Steps */}
+                  {/* Steps Grid (6 Columns) */}
                   <div className="relative grid grid-cols-6 z-10">
                     {CHECKPOINTS.map((step, idx) => {
-                      const isCompleted = activeStep > idx;
+                      const isDeliveredOrder = order.status === 'DELIVERED';
+                      const isCompleted = isDeliveredOrder || activeStep > idx;
                       const isActive = activeStep === idx;
+                      const showScooterHere = isDeliveredOrder ? idx === 5 : isActive;
 
                       return (
                         <div key={step.id} className="flex flex-col items-center text-center relative">
 
-                          {/* Delivery vehicle floating above current step */}
-                          {isActive && (
-                            <div className="absolute -top-9 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center">
-                              <div className="bg-white border border-indigo-200 rounded-xl px-2.5 py-1.5 shadow-lg shadow-indigo-100 flex items-center gap-1.5">
-                                {/* Premium delivery truck icon */}
-                                <svg className="w-[18px] h-[18px] text-indigo-600" viewBox="0 0 32 32" fill="none">
-                                  {/* Truck body */}
-                                  <rect x="2" y="10" width="18" height="13" rx="2" fill="#e0e7ff" stroke="#6366f1" strokeWidth="1.5"/>
-                                  {/* Truck cab */}
-                                  <path d="M20 15h6l2 4v4h-8V15z" fill="#c7d2fe" stroke="#6366f1" strokeWidth="1.5" strokeLinejoin="round"/>
-                                  {/* Cab window */}
-                                  <path d="M21.5 16.5h3.5l1 2h-4.5v-2z" fill="#6366f1" opacity="0.4"/>
-                                  {/* Wheels */}
-                                  <circle cx="8" cy="23" r="3" fill="#312e81" stroke="#6366f1" strokeWidth="1"/>
-                                  <circle cx="8" cy="23" r="1.2" fill="white"/>
-                                  <circle cx="24" cy="23" r="3" fill="#312e81" stroke="#6366f1" strokeWidth="1"/>
-                                  <circle cx="24" cy="23" r="1.2" fill="white"/>
-                                  {/* Speed lines */}
-                                  <line x1="3" y1="13.5" x2="7" y2="13.5" stroke="#6366f1" strokeWidth="1" strokeLinecap="round" opacity="0.5"/>
-                                  <line x1="3" y1="16" x2="5.5" y2="16" stroke="#6366f1" strokeWidth="1" strokeLinecap="round" opacity="0.3"/>
+                          {/* Delivery Scooter graphic floating above active/delivered step */}
+                          {showScooterHere && (
+                            <div className="absolute -top-10 sm:-top-11 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center animate-bounce duration-1000">
+                              <div className="flex items-center justify-center">
+                                <svg
+                                  className="w-10 h-10 sm:w-11 sm:h-11 filter drop-shadow(0 3px 6px rgba(0,0,0,0.2))"
+                                  viewBox="0 0 48 48"
+                                  fill="none"
+                                >
+                                  {/* Delivery Cargo Box on Rear Rack with Cyan/Blue color and Cross Icon */}
+                                  <rect x="6" y="14" width="13" height="13" rx="2.5" fill="#0284c7" stroke="#0369a1" strokeWidth="1.2" />
+                                  {/* Cross icon on cargo box */}
+                                  <path d="M12.5 17v7M9 20.5h7" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                                  
+                                  {/* Rear rack bar */}
+                                  <path d="M10 27v3h8" stroke="#334155" strokeWidth="1.5" strokeLinecap="round" />
+
+                                  {/* Main Scooter Body */}
+                                  <path d="M18 30h9l4-9h6" stroke="#0f172a" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                                  {/* Scooter floorboard & engine casing */}
+                                  <path d="M17 29h11l1-3h-10z" fill="#0284c7" />
+                                  
+                                  {/* Seat */}
+                                  <path d="M16 23h7c1 0 1.5 1 1 2h-9c-0.5-1 0-2 1-2z" fill="#1e293b" />
+                                  
+                                  {/* Steering Column & Handlebar */}
+                                  <path d="M31 21l3-8h-3" stroke="#0f172a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                                  <circle cx="34" cy="13" r="1.5" fill="#0284c7" />
+                                  
+                                  {/* Headlight beam */}
+                                  <path d="M34 16l8-3v7l-8-1z" fill="#38bdf8" opacity="0.35" />
+                                  <circle cx="34" cy="16" r="1.8" fill="#38bdf8" />
+                                  
+                                  {/* Rear Wheel with Spoked Hub */}
+                                  <circle cx="12" cy="33" r="5" fill="#0f172a" stroke="#64748b" strokeWidth="1.2" />
+                                  <circle cx="12" cy="33" r="2.5" fill="#0284c7" />
+                                  <path d="M12 28v10M7 33h10M8.5 29.5l7 7M8.5 36.5l7-7" stroke="#cbd5e1" strokeWidth="0.8" opacity="0.75" />
+                                  
+                                  {/* Front Wheel with Spoked Hub */}
+                                  <circle cx="35" cy="33" r="5" fill="#0f172a" stroke="#64748b" strokeWidth="1.2" />
+                                  <circle cx="35" cy="33" r="2.5" fill="#0284c7" />
+                                  <path d="M35 28v10M30 33h10M31.5 29.5l7 7M31.5 36.5l7-7" stroke="#cbd5e1" strokeWidth="0.8" opacity="0.75" />
                                 </svg>
                               </div>
-                              {/* Pointer nub */}
-                              <div className="w-0 h-0 border-l-[4px] border-r-[4px] border-t-[5px] border-l-transparent border-r-transparent border-t-indigo-200 -mt-px" />
+                              {/* Pointer indicator */}
+                              <div className="w-0 h-0 border-l-[4px] border-r-[4px] border-t-[5px] border-l-transparent border-r-transparent border-t-emerald-500 -mt-1" />
                             </div>
                           )}
 
-                          {/* Circle */}
+                          {/* Node Circle (Centered along line at top:38px) */}
                           <div className="h-8 flex items-center justify-center mb-0">
                             {isCompleted ? (
-                              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center shadow-sm shadow-indigo-200">
-                                <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                  <polyline points="20 6 9 17 4 12" />
-                                </svg>
+                              <div className="relative flex items-center justify-center">
+                                {showScooterHere && (
+                                  <div className="absolute -inset-1.5 rounded-full bg-emerald-400/30 animate-ping" style={{ animationDuration: '2.5s' }} />
+                                )}
+                                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-[0_0_10px_rgba(16,185,129,0.5)] border-2 border-white transition-all">
+                                  <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[3]" />
+                                </div>
                               </div>
                             ) : isActive ? (
-                              <div className="relative">
-                                {/* Outer pulse ring */}
-                                <div className="absolute inset-0 rounded-full bg-indigo-400/25 animate-ping" style={{ animationDuration: '2s' }} />
-                                <div className="relative w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-200">
-                                  <div className="w-2.5 h-2.5 rounded-full bg-white shadow-sm" />
+                              <div className="relative flex items-center justify-center">
+                                <div className="absolute -inset-1 rounded-full bg-emerald-400/30 animate-ping" style={{ animationDuration: '2s' }} />
+                                <div className="relative w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center ring-4 ring-emerald-400/20 shadow-[0_0_12px_rgba(16,185,129,0.6)] border-2 border-white">
+                                  <Check className="w-4 h-4 stroke-[3]" />
                                 </div>
                               </div>
                             ) : (
-                              <div className="w-7 h-7 rounded-full bg-white border-2 border-slate-200 flex items-center justify-center">
+                              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white border-2 border-slate-300 flex items-center justify-center shadow-2xs">
                                 <span className="text-[10px] font-bold text-slate-400">{idx + 1}</span>
                               </div>
                             )}
                           </div>
 
-                          {/* Label */}
-                          <div className={`mt-2 text-[10px] sm:text-[11px] leading-tight font-medium px-0.5 transition-colors ${
-                            isActive
-                              ? 'text-indigo-600 font-bold'
-                              : isCompleted
-                              ? 'text-slate-600 font-semibold'
-                              : 'text-slate-400'
-                          }`}>
+                          {/* Checkpoint Label */}
+                          <div
+                            className={`mt-2 text-[10px] sm:text-[11px] leading-tight font-bold px-0.5 transition-colors ${
+                              isCompleted || isActive
+                                ? 'text-slate-900 font-extrabold'
+                                : 'text-slate-400 font-semibold'
+                            }`}
+                          >
                             {step.label}
                           </div>
                         </div>
