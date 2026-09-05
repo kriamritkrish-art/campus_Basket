@@ -526,29 +526,32 @@ export default function OrderTrackingPage() {
           {/* ==================================================
               3. LIVE GPS TRACK RADAR (Refined Modern Campus Tracker)
              ================================================== */}
-          <div className="bg-gradient-to-b from-[#0b1626] via-[#091322] to-[#070e1a] rounded-[20px] p-4 sm:p-5 border border-slate-800/80 shadow-lg shadow-black/20 text-white relative overflow-hidden space-y-3.5 sm:space-y-4">
+          <div className="bg-gradient-to-b from-[#0e1b33] via-[#091427] to-[#060d1b] rounded-[20px] p-4 sm:p-5 border border-[#1d3356] shadow-xl shadow-black/25 text-white relative overflow-hidden space-y-3.5 sm:space-y-4">
+
+            {/* Subtle background matrix texture */}
+            <div className="absolute inset-0 bg-[radial-gradient(#1e365d_1px,transparent_1px)] [background-size:16px_16px] opacity-35 pointer-events-none" />
 
             {/* Header: Compact Pill Badge + Status Text */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 text-[10px] font-bold tracking-wider uppercase shadow-[0_0_8px_rgba(6,182,212,0.2)] shrink-0 self-start sm:self-auto">
-                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+            <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0c223c]/90 border border-[#1e5088] text-[#38bdf8] text-[10px] font-bold tracking-wider uppercase shadow-[0_0_10px_rgba(56,189,248,0.18)] shrink-0 self-start sm:self-auto">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#38bdf8] animate-pulse shadow-[0_0_6px_#38bdf8]" />
                 <span>LIVE GPS TRACK RADAR</span>
               </div>
-              <span className="text-xs sm:text-sm font-medium text-slate-200 tracking-normal leading-snug">
+              <span className="text-xs sm:text-[13px] font-medium text-slate-100 tracking-normal leading-snug">
                 {getRadarHeadline(order.status)}
               </span>
             </div>
 
             {/* Horizontal Timeline Track */}
-            <div className="overflow-x-auto scrollbar-none pt-7 pb-1">
+            <div className="overflow-x-auto scrollbar-none pt-7 pb-1 relative z-10">
               <div className="relative min-w-[500px] sm:min-w-0">
 
                 {/* Background Inactive Track Line (Passes exactly through circle centers) */}
-                <div className="absolute top-4 -translate-y-1/2 left-[8.3333%] right-[8.3333%] h-[3px] bg-slate-800 rounded-full" />
+                <div className="absolute top-4 -translate-y-1/2 left-[8.3333%] right-[8.3333%] h-[3px] bg-[#1b2d49] rounded-full" />
 
                 {/* Completed/Active Track Line with subtle glow */}
                 <div
-                  className="absolute top-4 -translate-y-1/2 left-[8.3333%] h-[3px] bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.35)] transition-all duration-500 ease-out"
+                  className="absolute top-4 -translate-y-1/2 left-[8.3333%] h-[3px] bg-[#10b981] rounded-full shadow-[0_0_8px_rgba(16,185,129,0.35)] transition-all duration-500 ease-out"
                   style={{
                     width: activeStep >= 0 ? `${(activeStep / 5) * 83.3333}%` : '0%'
                   }}
@@ -566,21 +569,21 @@ export default function OrderTrackingPage() {
                         {/* Floating minimal delivery vehicle badge above active step */}
                         {isActive && (
                           <div className="absolute -top-7 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-none">
-                            <div className="w-6 h-6 rounded-full bg-[#0d1b2e] border border-emerald-400/50 shadow-[0_2px_8px_rgba(0,0,0,0.5),0_0_8px_rgba(16,185,129,0.25)] flex items-center justify-center transition-all duration-300">
-                              <svg className="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <div className="w-6 h-6 rounded-full bg-[#0b1d36] border border-[#34d399]/60 shadow-[0_2px_8px_rgba(0,0,0,0.6),0_0_8px_rgba(52,211,153,0.25)] flex items-center justify-center transition-all duration-300">
+                              <svg className="w-3.5 h-3.5 text-[#34d399]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <circle cx="18.5" cy="17.5" r="3.5" />
                                 <circle cx="5.5" cy="17.5" r="3.5" />
                                 <circle cx="15" cy="5" r="1" />
                                 <path d="M12 17.5V14l-3-3 4-3 2 3h2" />
                               </svg>
                             </div>
-                            <div className="w-1 h-1 rounded-full bg-emerald-400/70 mt-0.5" />
+                            <div className="w-1 h-1 rounded-full bg-[#34d399]/80 mt-0.5" />
                           </div>
                         )}
 
                         {/* Subtle radial glow behind active step */}
                         {isActive && (
-                          <div className="absolute top-4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-emerald-500/15 rounded-full blur-md pointer-events-none -z-10" />
+                          <div className="absolute top-4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-14 h-14 bg-[#10b981]/15 rounded-full blur-md pointer-events-none -z-10" />
                         )}
 
                         {/* Center Circle (height 32px to ensure line passes exactly through the middle) */}
@@ -588,18 +591,18 @@ export default function OrderTrackingPage() {
                           <div
                             className={`rounded-full flex items-center justify-center font-semibold text-xs transition-all duration-300 shrink-0 ${
                               isCompleted
-                                ? 'w-6 h-6 bg-emerald-500 text-white shadow-[0_0_6px_rgba(16,185,129,0.3)]'
+                                ? 'w-6 h-6 bg-[#10b981] text-white shadow-[0_2px_6px_rgba(0,0,0,0.3)]'
                                 : isActive
-                                ? 'w-7 h-7 bg-emerald-500 text-white ring-4 ring-emerald-500/20 shadow-[0_0_12px_rgba(16,185,129,0.4)]'
-                                : 'w-6 h-6 bg-slate-800/90 text-slate-400 border border-slate-700/60'
+                                ? 'w-7 h-7 bg-[#10b981] text-white ring-4 ring-[#10b981]/25 shadow-[0_0_14px_rgba(16,185,129,0.45)]'
+                                : 'w-6 h-6 bg-[#0c182b] text-slate-400 border border-[#1f3554]'
                             }`}
                           >
                             {isCompleted || (isActive && activeStep === 5) ? (
                               <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                             ) : isActive ? (
-                              <span className="w-2 h-2 rounded-full bg-white" />
+                              <span className="w-2 h-2 rounded-full bg-white shadow-xs" />
                             ) : (
-                              <span className="text-[10px] font-medium text-slate-400">{idx + 1}</span>
+                              <span className="text-[10px] font-semibold text-slate-400">{idx + 1}</span>
                             )}
                           </div>
                         </div>
@@ -612,7 +615,7 @@ export default function OrderTrackingPage() {
                                 ? 'font-bold text-white'
                                 : isCompleted
                                 ? 'font-medium text-slate-200'
-                                : 'font-normal text-slate-500'
+                                : 'font-normal text-slate-400'
                             }`}
                           >
                             {step.label}
