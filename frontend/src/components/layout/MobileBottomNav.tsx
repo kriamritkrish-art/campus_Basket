@@ -7,14 +7,14 @@ import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import {
   Home,
-  LayoutGrid,
-  Zap,
+  Search,
+  ShoppingBag,
   Package,
   User
 } from 'lucide-react';
 
 interface MobileBottomNavProps {
-  onOpenCategories: () => void;
+  onOpenCategories?: () => void;
 }
 
 export function MobileBottomNav({ onOpenCategories }: MobileBottomNavProps) {
@@ -22,7 +22,7 @@ export function MobileBottomNav({ onOpenCategories }: MobileBottomNavProps) {
   const { isAuthenticated } = useAuth();
   const { itemCount } = useCart();
 
-  // Hide on Enterprise & Partner Portals
+  // Hide on Enterprise Portals
   if (
     pathname?.startsWith('/admin') ||
     pathname?.startsWith('/provider') ||
@@ -32,20 +32,21 @@ export function MobileBottomNav({ onOpenCategories }: MobileBottomNavProps) {
   }
 
   const isHome = pathname === '/';
-  const isExpress = pathname === '/food' || pathname === '/fruits';
-  const isOrders = pathname?.startsWith('/orders');
-  const isAccount = pathname === '/dashboard' || pathname === '/login' || pathname === '/register';
+  const isSearch = pathname === '/food' || pathname === '/fruits' || pathname === '/essentials';
+  const isBasket = pathname === '/cart' || pathname === '/checkout';
+  const isOrders = pathname?.startsWith('/orders') || pathname === '/dashboard?tab=orders';
+  const isProfile = pathname === '/dashboard' || pathname === '/login' || pathname === '/register';
 
   return (
     <nav
       aria-label="Mobile Navigation"
-      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200 px-2 py-1 flex items-center justify-around shadow-[0_-4px_16px_rgba(0,0,0,0.06)] select-none pb-safe"
+      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#E5E7EB] px-2 py-1 flex items-center justify-around shadow-[0_-2px_10px_rgba(0,0,0,0.04)] select-none pb-safe"
     >
       {/* 1. Home */}
       <Link
         href="/"
         className={`flex flex-col items-center justify-center py-1 px-3 min-w-[54px] rounded-lg transition-colors ${
-          isHome ? 'text-[#689f38]' : 'text-gray-500 hover:text-gray-900'
+          isHome ? 'text-[#4F9D2F]' : 'text-gray-500 hover:text-gray-900'
         }`}
       >
         <Home className={`w-5 h-5 ${isHome ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
@@ -54,41 +55,44 @@ export function MobileBottomNav({ onOpenCategories }: MobileBottomNavProps) {
         </span>
       </Link>
 
-      {/* 2. Categories Sheet Trigger */}
-      <button
-        type="button"
-        onClick={onOpenCategories}
-        className="flex flex-col items-center justify-center py-1 px-3 min-w-[54px] rounded-lg transition-colors text-gray-500 hover:text-[#689f38]"
-      >
-        <LayoutGrid className="w-5 h-5 stroke-[1.8]" />
-        <span className="text-[10px] mt-0.5 font-medium">
-          Categories
-        </span>
-      </button>
-
-      {/* 3. Express Delivery */}
+      {/* 2. Search */}
       <Link
         href="/food"
-        className={`flex flex-col items-center justify-center py-1 px-3 min-w-[54px] rounded-lg relative transition-colors ${
-          isExpress ? 'text-[#689f38]' : 'text-gray-500 hover:text-gray-900'
+        className={`flex flex-col items-center justify-center py-1 px-3 min-w-[54px] rounded-lg transition-colors ${
+          isSearch ? 'text-[#4F9D2F]' : 'text-gray-500 hover:text-gray-900'
+        }`}
+      >
+        <Search className={`w-5 h-5 ${isSearch ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
+        <span className={`text-[10px] mt-0.5 ${isSearch ? 'font-black' : 'font-medium'}`}>
+          Search
+        </span>
+      </Link>
+
+      {/* 3. Basket */}
+      <Link
+        href="/cart"
+        className={`flex flex-col items-center justify-center py-1 px-3 min-w-[54px] rounded-lg transition-colors relative ${
+          isBasket ? 'text-[#4F9D2F]' : 'text-gray-500 hover:text-gray-900'
         }`}
       >
         <div className="relative">
-          <Zap className={`w-5 h-5 ${isExpress ? 'fill-[#689f38] stroke-[#689f38]' : 'stroke-[1.8]'}`} />
-          <span className="absolute -top-1 -right-2 bg-amber-500 text-white text-[8px] font-black px-1 rounded-full animate-pulse leading-tight">
-            15m
-          </span>
+          <ShoppingBag className={`w-5 h-5 ${isBasket ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
+          {itemCount > 0 && (
+            <span className="absolute -top-1.5 -right-2 bg-[#4F9D2F] text-white text-[9px] font-black w-3.5 h-3.5 rounded-full flex items-center justify-center">
+              {itemCount}
+            </span>
+          )}
         </div>
-        <span className={`text-[10px] mt-0.5 ${isExpress ? 'font-black' : 'font-medium'}`}>
-          Express
+        <span className={`text-[10px] mt-0.5 ${isBasket ? 'font-black' : 'font-medium'}`}>
+          Basket
         </span>
       </Link>
 
       {/* 4. Orders */}
       <Link
-        href="/orders"
+        href="/dashboard?tab=orders"
         className={`flex flex-col items-center justify-center py-1 px-3 min-w-[54px] rounded-lg transition-colors ${
-          isOrders ? 'text-[#689f38]' : 'text-gray-500 hover:text-gray-900'
+          isOrders ? 'text-[#4F9D2F]' : 'text-gray-500 hover:text-gray-900'
         }`}
       >
         <Package className={`w-5 h-5 ${isOrders ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
@@ -97,16 +101,16 @@ export function MobileBottomNav({ onOpenCategories }: MobileBottomNavProps) {
         </span>
       </Link>
 
-      {/* 5. Account / Profile */}
+      {/* 5. Profile */}
       <Link
-        href={isAuthenticated ? '/dashboard' : '/login'}
+        href={isAuthenticated ? '/dashboard?tab=profile' : '/login'}
         className={`flex flex-col items-center justify-center py-1 px-3 min-w-[54px] rounded-lg transition-colors ${
-          isAccount ? 'text-[#689f38]' : 'text-gray-500 hover:text-gray-900'
+          isProfile ? 'text-[#4F9D2F]' : 'text-gray-500 hover:text-gray-900'
         }`}
       >
-        <User className={`w-5 h-5 ${isAccount ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
-        <span className={`text-[10px] mt-0.5 ${isAccount ? 'font-black' : 'font-medium'}`}>
-          {isAuthenticated ? 'Account' : 'Login'}
+        <User className={`w-5 h-5 ${isProfile ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
+        <span className={`text-[10px] mt-0.5 ${isProfile ? 'font-black' : 'font-medium'}`}>
+          Profile
         </span>
       </Link>
     </nav>

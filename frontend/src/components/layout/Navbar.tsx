@@ -2,45 +2,30 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { apiRequest } from '../../lib/api';
+import { CampusLocationModal } from './CampusLocationModal';
 import {
-  ShoppingBag,
   Search,
-  Zap,
   MapPin,
-  ChevronDown,
-  ChevronRight,
-  Utensils,
-  Apple,
-  Shirt,
-  BookOpen,
+  ShoppingBag,
+  Bell,
   User as UserIcon,
+  ChevronDown,
   LogOut,
+  Truck,
   ShieldCheck,
   Menu,
   X,
-  Sparkles,
-  ShoppingBasket,
-  CheckCircle2,
-  Package,
-  Truck,
-  RotateCcw,
-  CreditCard,
-  Wallet,
-  Heart,
-  Bell,
-  Gift,
-  HelpCircle,
-  Settings
+  Package
 } from 'lucide-react';
 
 export function Navbar() {
   const pathname = usePathname();
 
-  // Hide User Navbar completely on Admin, Provider, and Delivery Portals
+  // Hide entirely on Enterprise Portal views
   if (
     pathname?.startsWith('/admin') ||
     pathname?.startsWith('/provider') ||
@@ -53,15 +38,30 @@ export function Navbar() {
   const { user, role, isAuthenticated, logout } = useAuth();
   const { itemCount, total } = useCart();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
-  const [hoveredCategory, setHoveredCategory] = useState<string>('food');
   const [searchQuery, setSearchQuery] = useState('');
-  const [hallPickerOpen, setHallPickerOpen] = useState(false);
   const [selectedHall, setSelectedHall] = useState('Hall 11');
+  const [roomNumber, setRoomNumber] = useState('Room 123');
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [activeOrder, setActiveOrder] = useState<any>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(2);
 
+  // Sync Location from localStorage and listen to updates
+  useEffect(() => {
+    const syncLocation = () => {
+      if (typeof window !== 'undefined') {
+        const h = localStorage.getItem('cb_selected_hall') || user?.student?.hall?.name || 'Hall 11';
+        const r = localStorage.getItem('cb_room_number') || user?.student?.roomNumber || 'Room 123';
+        setSelectedHall(h);
+        setRoomNumber(r);
+      }
+    };
+    syncLocation();
+    window.addEventListener('cb_location_updated', syncLocation);
+    return () => window.removeEventListener('cb_location_updated', syncLocation);
+  }, [user]);
+
+  // Check for active orders for the student
   useEffect(() => {
     if (isAuthenticated && (!role || role === 'STUDENT')) {
       apiRequest('/api/orders')
@@ -77,68 +77,6 @@ export function Navbar() {
     }
   }, [isAuthenticated, role]);
 
-  const halls = [
-    'Hall 1', 'Hall 2', 'Hall 3', 'Hall 4', 'Hall 5',
-    'Hall 7', 'Hall 8', 'Hall 9', 'Hall 10', 'Hall 11',
-    'Hall 12', 'Hall 13', 'Hall 14', 'Mother Teresa Hall',
-    'Sister Nivedita Hall', 'Gargi Hall'
-  ];
-
-  const categories = [
-    {
-      id: 'food',
-      name: 'Food & Meals',
-      href: '/food',
-      icon: Utensils,
-      desc: 'Biryani, Thali, Snacks & Beverages',
-      subOptions: [
-        { name: 'Hot Meals & Biryani', desc: 'Kolkata chicken biryani & egg curry with steamed rice', href: '/food' },
-        { name: 'Hostel Night Snacks', desc: 'Chicken kathi rolls, samosas & ginger masala chai', href: '/food', badge: 'Till 2 AM' },
-        { name: 'Student Thali & Curries', desc: 'Paneer butter masala, butter rotis & fresh salad', href: '/food' },
-        { name: 'South Indian Specials', desc: 'Crispy ghee roast masala dosa with fresh coconut chutney', href: '/food' }
-      ]
-    },
-    {
-      id: 'fruits',
-      name: 'Fresh Fruits',
-      href: '/fruits',
-      icon: Apple,
-      desc: 'Apples, Bananas, Seasonal Orchards',
-      subOptions: [
-        { name: 'Fresh Farm Fruits', desc: 'Daily handpicked orchard-fresh fruits for hostel rooms', href: '/fruits' },
-        { name: 'Crisp Apples & Bananas', desc: 'Sweet Kashmiri red apples & Robusta ripe bananas', href: '/fruits' },
-        { name: 'Nagpur Sweet Oranges', desc: 'Juicy, vitamin-C rich hand-sorted Nagpur mandarins', href: '/fruits' },
-        { name: 'Ruby Pomegranate & Grapes', desc: 'Nutrient-rich antioxidant fruits for daily health', href: '/fruits' }
-      ]
-    },
-    {
-      id: 'laundry',
-      name: 'Express Laundry',
-      href: '/laundry',
-      icon: Shirt,
-      desc: 'Room pickup & Dual-OTP steam iron',
-      subOptions: [
-        { name: 'Dual-OTP Laundry', desc: 'Automated wash, steam press & room pickup across Halls 1–14', href: '/laundry', badge: 'Verified' },
-        { name: 'Book Doorstep Wash', desc: 'Schedule contactless room pickup with dual security OTPs', href: '/laundry/book', badge: 'Fast Slot' },
-        { name: '12-Hour Urgent Express Wash', desc: 'Priority queue wash & press for exams & presentations', href: '/laundry' },
-        { name: 'Heavy Blanket & Winterwear', desc: 'Deep drum wash & sanitization for duvets and comforters', href: '/laundry' }
-      ]
-    },
-    {
-      id: 'essentials',
-      name: 'Stationery & Essentials',
-      href: '/essentials',
-      icon: BookOpen,
-      desc: 'Casio Calculators, Notes & Lab Paper',
-      subOptions: [
-        { name: 'Casio & Scientific Calculators', desc: 'Casio fx-991EX Classwiz 552 functions for engineering', href: '/essentials', badge: 'Exam Ready' },
-        { name: 'Notebooks & Lab Printing Paper', desc: 'Classmate exercise notebooks & JK Cedar A4 copier sheets', href: '/essentials' },
-        { name: 'Engineering Drafters & Instruments', desc: 'Heavy-duty steel mini-drafter & compass drawing set', href: '/essentials' },
-        { name: 'Pens & Exam Essentials', desc: 'Gel pens, graph paper sheets and laboratory stationary', href: '/essentials' }
-      ]
-    }
-  ];
-
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
@@ -147,782 +85,379 @@ export function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm">
-      {/* Tier 1: Main Header (BigBasket Style) */}
-      <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-14 sm:h-20 gap-1.5 sm:gap-3 md:gap-6">
-          {/* Logo & Sub-brand */}
-          <Link href="/" className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 group">
-            <div className="flex items-center">
-              <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-[#689f38] to-[#84c225] flex items-center justify-center text-white font-extrabold text-sm sm:text-lg shadow-sm">
-                bb
+    <>
+      <header className="sticky top-0 z-40 bg-white border-b border-[#E5E7EB] shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+        {/* Tier 1: Main Campus Header */}
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16 gap-3 sm:gap-6">
+            {/* LEFT: Campus Basket Logo & Subtitle */}
+            <Link href="/" className="flex items-center gap-2.5 shrink-0 group">
+              <div className="w-9 h-9 rounded-xl bg-[#4F9D2F] flex items-center justify-center text-white font-extrabold text-sm shadow-xs group-hover:bg-[#36751F] transition-colors">
+                cb
               </div>
-            </div>
-            <div>
-              <div className="font-extrabold text-[#212121] text-sm xs:text-base sm:text-xl tracking-tight leading-none flex items-center gap-0.5 sm:gap-1">
-                <span>campus</span>
-                <span className="text-[#689f38]">basket</span>
+              <div>
+                <div className="font-extrabold text-[#172033] text-base sm:text-lg tracking-tight leading-none flex items-center gap-1">
+                  <span>campus</span>
+                  <span className="text-[#4F9D2F]">basket</span>
+                </div>
+                <div className="text-[9px] sm:text-[10px] font-semibold tracking-wide text-[#667085] uppercase mt-0.5">
+                  A NIT Durgapur Campus Marketplace
+                </div>
               </div>
-              <div className="text-[8.5px] sm:text-[9.5px] font-semibold tracking-wider text-gray-500 uppercase mt-0.5 hidden xs:block">
-                A NIT Durgapur Initiative
-              </div>
-            </div>
-          </Link>
+            </Link>
 
-          {/* Center Search Bar (Desktop/Tablet) */}
-          <form onSubmit={handleSearch} className="flex-1 max-w-2xl hidden md:block">
+            {/* CENTER: Large Contextual Search */}
+            <form onSubmit={handleSearch} className="flex-1 max-w-xl hidden md:block">
+              <div className="relative flex items-center">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3.5" />
+                <input
+                  type="text"
+                  placeholder="Search food, laundry, stationery, essentials..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full h-10 pl-10 pr-20 rounded-xl bg-[#F7F8F6] border border-[#E5E7EB] text-xs text-[#172033] placeholder:text-gray-400 focus:outline-none focus:border-[#4F9D2F] focus:bg-white focus:ring-1 focus:ring-[#4F9D2F] transition-all"
+                />
+                <button
+                  type="submit"
+                  className="absolute right-1.5 h-7 px-3 bg-[#4F9D2F] hover:bg-[#36751F] text-white text-[11px] font-bold rounded-lg transition-colors"
+                >
+                  Search
+                </button>
+              </div>
+            </form>
+
+            {/* RIGHT: Campus Location + Compact Professional Basket + Notifications + Profile */}
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              {/* Campus Location Button */}
+              <button
+                type="button"
+                onClick={() => setIsLocationModalOpen(true)}
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F7F8F6] hover:bg-[#EEF7E9] border border-[#E5E7EB] text-left transition-colors group cursor-pointer"
+                title="Change Campus Delivery Location"
+              >
+                <MapPin className="w-3.5 h-3.5 text-[#4F9D2F] shrink-0" />
+                <div className="leading-tight">
+                  <div className="text-[11px] font-black text-[#172033] flex items-center gap-1">
+                    <span>{selectedHall}</span>
+                    <span className="text-gray-300">•</span>
+                    <span className="text-gray-600 font-semibold">{roomNumber}</span>
+                  </div>
+                  <div className="text-[10px] font-bold text-[#4F9D2F] group-hover:underline">
+                    Change
+                  </div>
+                </div>
+              </button>
+
+              {/* Compact Professional Basket Button */}
+              <Link
+                href="/cart"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white hover:bg-[#F7F8F6] border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] shadow-xs transition-all active:scale-95 shrink-0 group"
+                aria-label="View Shopping Basket"
+              >
+                <div className="relative">
+                  <ShoppingBag className="w-4 h-4 text-[#4F9D2F]" />
+                  {itemCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-[#4F9D2F] text-white text-[9px] font-black w-3.5 h-3.5 rounded-full flex items-center justify-center">
+                      {itemCount}
+                    </span>
+                  )}
+                </div>
+                <div className="text-left text-xs leading-tight flex items-center gap-1.5">
+                  <span className="text-gray-600 text-[11px] font-semibold">{itemCount} {itemCount === 1 ? 'item' : 'items'}</span>
+                  <span className="text-gray-300">•</span>
+                  <span className="text-[#172033] font-black">₹{total.toFixed(0)}</span>
+                </div>
+              </Link>
+
+              {/* Notifications Bell */}
+              <Link
+                href="/dashboard?tab=notifications"
+                className="relative p-2 rounded-xl text-gray-500 hover:text-gray-900 hover:bg-[#F7F8F6] border border-transparent hover:border-[#E5E7EB] transition-colors"
+                title="Notifications"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadNotifications > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#4F9D2F] rounded-full ring-2 ring-white" />
+                )}
+              </Link>
+
+              {/* Auth / Profile Dropdown */}
+              {isAuthenticated ? (
+                <div className="relative">
+                  <button
+                    onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                    className="flex items-center gap-1.5 sm:gap-2 px-2.5 py-1.5 rounded-xl bg-[#F7F8F6] hover:bg-gray-100 border border-[#E5E7EB] text-xs font-bold text-[#172033] transition-colors cursor-pointer"
+                  >
+                    <div className="w-6 h-6 rounded-lg bg-[#4F9D2F] text-white flex items-center justify-center text-xs font-black">
+                      {user?.student?.fullName?.charAt(0) || user?.email?.charAt(0) || 'U'}
+                    </div>
+                    <span className="hidden sm:inline">
+                      {user?.student?.fullName?.split(' ')[0] || user?.email?.split('@')[0] || 'Profile'}
+                    </span>
+                    <ChevronDown className={`w-3 h-3 text-gray-500 transition-transform ${profileDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {/* Profile Menu */}
+                  {profileDropdownOpen && (
+                    <div
+                      className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl border border-gray-200 shadow-2xl p-2 z-50 divide-y divide-gray-100 animate-in fade-in zoom-in-95 duration-150"
+                      onMouseLeave={() => setProfileDropdownOpen(false)}
+                    >
+                      <div className="p-3">
+                        <div className="text-xs font-black text-gray-900">
+                          {user?.student?.fullName || 'Student'}
+                        </div>
+                        <div className="text-[11px] text-gray-500 font-mono truncate">
+                          {user?.email}
+                        </div>
+                        <div className="text-[10px] text-[#4F9D2F] font-bold mt-1">
+                          📍 {selectedHall} • {roomNumber}
+                        </div>
+                      </div>
+
+                      {activeOrder && (
+                        <div className="p-1">
+                          <Link
+                            href={`/orders/${activeOrder.id}/track`}
+                            onClick={() => setProfileDropdownOpen(false)}
+                            className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#EEF7E9] text-xs font-bold text-[#36751F] border border-[#dcedc8]"
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <Truck className="w-3.5 h-3.5 text-[#4F9D2F]" />
+                              Track Active Order
+                            </span>
+                            <span className="text-[10px] bg-[#4F9D2F] text-white px-2 py-0.5 rounded-full">
+                              Active
+                            </span>
+                          </Link>
+                        </div>
+                      )}
+
+                      <div className="p-1 space-y-0.5 text-xs text-gray-700">
+                        <Link
+                          href="/dashboard?tab=profile"
+                          onClick={() => setProfileDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-50 font-medium"
+                        >
+                          <span>📊</span>
+                          <span>Overview &amp; Profile</span>
+                        </Link>
+                        <Link
+                          href="/dashboard?tab=orders"
+                          onClick={() => setProfileDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-50 font-medium"
+                        >
+                          <span>📦</span>
+                          <span>My Orders</span>
+                        </Link>
+                        <Link
+                          href="/dashboard?tab=refunds"
+                          onClick={() => setProfileDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-50 font-medium"
+                        >
+                          <span>↩</span>
+                          <span>Refunds &amp; Cancellations</span>
+                        </Link>
+                        <Link
+                          href="/dashboard?tab=payments"
+                          onClick={() => setProfileDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-50 font-medium"
+                        >
+                          <span>💳</span>
+                          <span>Campus Wallet &amp; Payments</span>
+                        </Link>
+                        <Link
+                          href="/dashboard?tab=support"
+                          onClick={() => setProfileDropdownOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-50 font-medium"
+                        >
+                          <span>🛟</span>
+                          <span>Help &amp; Support</span>
+                        </Link>
+                      </div>
+
+                      <div className="p-1">
+                        <button
+                          onClick={() => {
+                            setProfileDropdownOpen(false);
+                            logout();
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-red-50 text-red-600 font-bold text-xs cursor-pointer"
+                        >
+                          <LogOut className="w-3.5 h-3.5" />
+                          <span>Logout</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Link
+                  href="/login"
+                  className="px-3.5 py-1.5 rounded-xl bg-[#172033] hover:bg-black text-white text-xs font-bold shadow-xs transition-transform active:scale-95"
+                >
+                  Login
+                </Link>
+              )}
+
+              {/* Mobile Hamburger Toggle */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden p-1.5 rounded-lg text-gray-700 hover:bg-gray-100"
+                aria-label="Toggle mobile menu"
+              >
+                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile Contextual Search Field */}
+          <form onSubmit={handleSearch} className="pb-2.5 md:hidden">
             <div className="relative flex items-center">
+              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3" />
               <input
                 type="text"
-                placeholder="Search for Meals, Fresh Fruits, Laundry, Casio Calculators, Snacks..."
+                placeholder="Search food, laundry, stationery, essentials..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-11 pl-11 pr-24 rounded-lg bg-gray-50 border border-gray-300 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#84c225] focus:bg-white focus:ring-1 focus:ring-[#84c225] transition-all shadow-inner"
+                className="w-full h-9 pl-9 pr-16 rounded-xl bg-[#F7F8F6] border border-[#E5E7EB] text-xs text-[#172033] placeholder:text-gray-400 focus:outline-none focus:border-[#4F9D2F] focus:bg-white"
               />
-              <Search className="w-4 h-4 text-gray-400 absolute left-4" />
               <button
                 type="submit"
-                className="absolute right-1.5 h-8 px-4 bg-[#689f38] hover:bg-[#5b8c30] text-white text-xs font-semibold rounded-md transition-colors"
+                className="absolute right-1 h-7 px-2.5 bg-[#4F9D2F] text-white text-xs font-bold rounded-lg"
               >
                 Search
               </button>
             </div>
           </form>
+        </div>
 
-          {/* Right Section: Delivery Badge, Auth & Cart */}
-          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-            {/* Delivery Location Pill (Mobile & Desktop) */}
-            <div className="relative">
+        {/* Tier 2: Sub-Navigation Bar */}
+        <div className="border-t border-[#E5E7EB] bg-[#FCFDFB]">
+          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-10 text-xs">
+              <div className="flex items-center gap-5 sm:gap-7 overflow-x-auto no-scrollbar font-semibold">
+                <Link
+                  href="/"
+                  className={`transition-colors py-1 ${pathname === '/' ? 'text-[#4F9D2F] font-bold border-b-2 border-[#4F9D2F]' : 'text-gray-600 hover:text-[#172033]'}`}
+                >
+                  Home
+                </Link>
+                <a
+                  href="/#campus-services"
+                  className="text-gray-600 hover:text-[#172033] transition-colors py-1"
+                >
+                  Campus Services
+                </a>
+                <Link
+                  href="/dashboard?tab=orders"
+                  className={`transition-colors py-1 ${pathname?.includes('orders') && !pathname?.includes('track') ? 'text-[#4F9D2F] font-bold border-b-2 border-[#4F9D2F]' : 'text-gray-600 hover:text-[#172033]'}`}
+                >
+                  Orders
+                </Link>
+                <Link
+                  href={activeOrder ? `/orders/${activeOrder.id}/track` : '/dashboard?tab=orders'}
+                  className="text-gray-600 hover:text-[#172033] transition-colors py-1 flex items-center gap-1"
+                >
+                  <span>Track Order</span>
+                  {activeOrder && (
+                    <span className="w-2 h-2 rounded-full bg-[#4F9D2F] animate-pulse" />
+                  )}
+                </Link>
+                <Link
+                  href="/dashboard?tab=support"
+                  className="text-gray-600 hover:text-[#172033] transition-colors py-1"
+                >
+                  Support
+                </Link>
+              </div>
+
+              {/* Location Selector Trigger on Mobile/Compact */}
               <button
                 type="button"
-                onClick={() => setHallPickerOpen(!hallPickerOpen)}
-                className="flex items-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-[#f1f8e9] border border-[#dcedc8] text-left hover:bg-[#e8f5e9] transition-colors max-w-[95px] xs:max-w-[125px] sm:max-w-none"
+                onClick={() => setIsLocationModalOpen(true)}
+                className="sm:hidden flex items-center gap-1 text-[11px] text-[#4F9D2F] font-bold"
               >
-                <div className="w-4 h-4 sm:w-6 sm:h-6 rounded-full bg-[#689f38] flex items-center justify-center text-white shrink-0">
-                  <Zap className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 fill-white" />
-                </div>
-                <div className="truncate">
-                  <div className="text-[9px] sm:text-[10px] font-bold text-[#2e7d32] uppercase tracking-wide leading-none hidden sm:block">
-                    Delivery in 10-15 mins
-                  </div>
-                  <div className="text-[10.5px] sm:text-xs font-bold text-gray-800 flex items-center gap-0.5 leading-tight truncate">
-                    <span className="truncate">{selectedHall}</span>
-                    <ChevronDown className="w-2.5 h-2.5 text-gray-500 shrink-0" />
-                  </div>
-                </div>
+                <MapPin className="w-3 h-3" />
+                <span>{selectedHall}</span>
               </button>
-              {/* Hall Selector Dropdown */}
-              {hallPickerOpen && (
-                <div className="absolute top-full mt-2 right-0 w-56 bg-white border border-gray-200 rounded-xl shadow-xl p-2 z-50">
-                  <div className="text-[11px] font-bold text-gray-500 uppercase px-2.5 py-1">
-                    Select Residence Hall
-                  </div>
-                  <div className="max-h-48 overflow-y-auto space-y-0.5">
-                    {halls.map((hall) => (
-                      <button
-                        key={hall}
-                        onClick={() => {
-                          setSelectedHall(hall);
-                          setHallPickerOpen(false);
-                        }}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                          selectedHall === hall
-                            ? 'bg-[#f1f8e9] text-[#2e7d32] font-bold'
-                            : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                      >
-                        {hall}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
 
-            {/* Auth Button & Account Dropdown */}
-            {isAuthenticated ? (
+              {/* Verified Campus Hub Status */}
+              <div className="hidden sm:flex items-center gap-2 text-[11px] text-gray-500 font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#4F9D2F]" />
+                <span>NIT Durgapur Verified Campus Hub</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile Slide-down Drawer */}
+        {mobileMenuOpen && (
+          <div className="md:hidden bg-white border-b border-[#E5E7EB] px-4 py-4 space-y-3">
+            <button
+              onClick={() => {
+                setIsLocationModalOpen(true);
+                setMobileMenuOpen(false);
+              }}
+              className="w-full flex items-center justify-between p-3 rounded-xl bg-[#F7F8F6] text-xs font-bold text-[#172033]"
+            >
               <div className="flex items-center gap-2">
-                {role === 'ADMIN' && (
-                  <Link
-                    href="/admin/dashboard"
-                    className="hidden sm:flex items-center gap-1.5 bg-purple-100 text-purple-800 border border-purple-200 px-3 py-2 rounded-md text-xs font-bold hover:bg-purple-200 transition-colors"
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5 text-purple-700" /> Admin Portal
-                  </Link>
-                )}
-                {role === 'SERVICE_PROVIDER' && (
-                  <Link
-                    href="/provider/dashboard"
-                    className="hidden sm:flex items-center gap-1.5 bg-emerald-100 text-emerald-800 border border-emerald-200 px-3 py-2 rounded-md text-xs font-bold hover:bg-emerald-200 transition-colors"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" /> Vendor Portal
-                  </Link>
-                )}
-                {role === 'DELIVERY_BOY' && (
-                  <Link
-                    href="/delivery/dashboard"
-                    className="hidden sm:flex items-center gap-1.5 bg-sky-100 text-sky-800 border border-sky-200 px-3 py-2 rounded-md text-xs font-bold hover:bg-sky-200 transition-colors"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-sky-500" /> Runner Portal
-                  </Link>
-                )}
-
-                {/* Track Order Header Pill if Student has Active Order */}
-                {activeOrder && (!role || role === 'STUDENT') && (
-                  <Link
-                    href={`/orders/${activeOrder.id}/track`}
-                    className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#2e7d32] border border-emerald-200 text-xs font-bold transition-all shadow-xs animate-pulse"
-                    title={`Active Order #${activeOrder.orderNumber}`}
-                  >
-                    <Truck className="w-3.5 h-3.5 text-[#2e7d32]" />
-                    <span>Track Order</span>
-                  </Link>
-                )}
-
-                {/* Student Profile Dropdown (Requirement 9 & 27) */}
-                {(!role || role === 'STUDENT') ? (
-                  <div className="relative">
-                    <button
-                      onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                      className="flex items-center gap-1 sm:gap-2 p-1.5 sm:px-3 sm:py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-800 border border-gray-300 transition-colors cursor-pointer"
-                      aria-expanded={profileDropdownOpen}
-                    >
-                      <UserIcon className="w-3.5 h-3.5 text-[#689f38]" />
-                      <span className="hidden sm:inline">
-                        {user?.student?.fullName?.split(' ')[0] ||
-                          user?.email?.split('@')[0] ||
-                          'Student'}
-                      </span>
-                      <ChevronDown
-                        className={`w-3 h-3 text-gray-500 transition-transform ${
-                          profileDropdownOpen ? 'rotate-180' : ''
-                        }`}
-                      />
-                    </button>
-
-                    {profileDropdownOpen && (
-                      <div
-                        className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl border border-gray-200 shadow-2xl p-2 z-50 divide-y divide-gray-100 animate-in fade-in zoom-in-95 duration-150"
-                        onMouseLeave={() => setProfileDropdownOpen(false)}
-                      >
-                        {/* 1. Student Identity Header */}
-                        <div className="p-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#689f38] to-[#84c225] text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
-                              {user?.student?.fullName?.charAt(0) || 'S'}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="text-xs font-black text-gray-900 truncate">
-                                👤 {user?.student?.fullName || 'Student'}
-                              </div>
-                              <div className="text-[11px] text-gray-500 font-mono truncate">
-                                {user?.email}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 2. Track Current Order (Top of profile menu if active) */}
-                        {activeOrder && (
-                          <div className="p-1">
-                            <Link
-                              href={`/orders/${activeOrder.id}/track`}
-                              onClick={() => setProfileDropdownOpen(false)}
-                              className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#f1f8e9] hover:bg-[#e8f5e9] text-xs font-extrabold text-[#2e7d32] border border-[#dcedc8] transition-colors"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Truck className="w-4 h-4" />
-                                <span>🚚 Track Current Order</span>
-                              </div>
-                              <span className="text-[10px] bg-[#689f38] text-white px-2 py-0.5 rounded-full uppercase">
-                                Active
-                              </span>
-                            </Link>
-                          </div>
-                        )}
-
-                        {/* 3. Account Navigation Items */}
-                        <div className="p-1 space-y-0.5 text-xs text-gray-700">
-                          <Link
-                            href="/dashboard?tab=profile"
-                            onClick={() => setProfileDropdownOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
-                          >
-                            <span>📊</span>
-                            <span>My Profile</span>
-                          </Link>
-
-                          <Link
-                            href="/dashboard?tab=orders"
-                            onClick={() => setProfileDropdownOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
-                          >
-                            <span>📦</span>
-                            <span>My Orders</span>
-                          </Link>
-
-                          <Link
-                            href={activeOrder ? `/orders/${activeOrder.id}/track` : '/dashboard?tab=orders'}
-                            onClick={() => setProfileDropdownOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
-                          >
-                            <span>🚚</span>
-                            <span>Track Active Order</span>
-                          </Link>
-
-                          <Link
-                            href="/dashboard?tab=refunds"
-                            onClick={() => setProfileDropdownOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
-                          >
-                            <span>↩</span>
-                            <span>Refunds</span>
-                          </Link>
-
-                          <Link
-                            href="/dashboard?tab=payments"
-                            onClick={() => setProfileDropdownOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
-                          >
-                            <span>💳</span>
-                            <span>Payment History</span>
-                          </Link>
-
-                          <Link
-                            href="/dashboard?tab=payment-methods"
-                            onClick={() => setProfileDropdownOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
-                          >
-                            <span>💰</span>
-                            <span>Payment Methods</span>
-                          </Link>
-
-                          <Link
-                            href="/dashboard?tab=delivery"
-                            onClick={() => setProfileDropdownOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
-                          >
-                            <span>📍</span>
-                            <span>Delivery Details</span>
-                          </Link>
-
-                          <Link
-                            href="/dashboard?tab=wishlist"
-                            onClick={() => setProfileDropdownOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
-                          >
-                            <span>❤️</span>
-                            <span>Wishlist</span>
-                          </Link>
-
-                          <Link
-                            href="/dashboard?tab=notifications"
-                            onClick={() => setProfileDropdownOpen(false)}
-                            className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <span>🔔</span>
-                              <span>Notifications</span>
-                            </div>
-                            {unreadNotifications > 0 && (
-                              <span className="bg-[#e53935] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                                {unreadNotifications}
-                              </span>
-                            )}
-                          </Link>
-
-                          <Link
-                            href="/dashboard?tab=offers"
-                            onClick={() => setProfileDropdownOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
-                          >
-                            <span>🎁</span>
-                            <span>Offers &amp; Coupons</span>
-                          </Link>
-
-                          <Link
-                            href="/dashboard?tab=support"
-                            onClick={() => setProfileDropdownOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
-                          >
-                            <span>🛟</span>
-                            <span>Help &amp; Support</span>
-                          </Link>
-
-                          <Link
-                            href="/dashboard?tab=settings"
-                            onClick={() => setProfileDropdownOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 font-medium transition-colors"
-                          >
-                            <span>⚙</span>
-                            <span>Account Settings</span>
-                          </Link>
-                        </div>
-
-                        {/* 4. Logout Item */}
-                        <div className="p-1">
-                          <button
-                            onClick={() => {
-                              setProfileDropdownOpen(false);
-                              logout();
-                            }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-red-50 text-red-600 font-bold text-xs transition-colors cursor-pointer"
-                          >
-                            <span>🚪</span>
-                            <span>Logout</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <Link
-                      href={
-                        role === 'ADMIN'
-                          ? '/admin/dashboard'
-                          : role === 'SERVICE_PROVIDER'
-                          ? '/provider/dashboard'
-                          : '/delivery/dashboard'
-                      }
-                      className="flex items-center gap-2 px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-800 border border-gray-300 transition-colors"
-                    >
-                      <UserIcon className="w-3.5 h-3.5 text-[#689f38]" />
-                      <span className="hidden sm:inline">
-                        {user?.admin?.fullName?.split(' ')[0] ||
-                          user?.deliveryBoy?.fullName?.split(' ')[0] ||
-                          user?.email.split('@')[0]}
-                      </span>
-                    </Link>
-
-                    <button
-                      onClick={logout}
-                      className="p-2 rounded-md text-gray-500 hover:text-red-600 hover:bg-gray-100 transition-colors cursor-pointer"
-                      title="Logout"
-                    >
-                      <LogOut className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
+                <MapPin className="w-4 h-4 text-[#4F9D2F]" />
+                <span>{selectedHall} • {roomNumber}</span>
               </div>
-            ) : (
-              <>
-                <Link
-                  href="/login"
-                  className="hidden sm:inline-flex px-4 py-2 rounded-md bg-[#212121] hover:bg-black text-white text-xs font-bold shadow-sm transition-transform active:scale-95"
-                >
-                  Login / Sign Up
-                </Link>
-                <Link
-                  href="/login"
-                  className="sm:hidden p-1.5 rounded-lg text-gray-700 hover:bg-gray-100 hover:text-black transition-colors"
-                  aria-label="Login"
-                  title="Login / Sign Up"
-                >
-                  <UserIcon className="w-5 h-5 text-gray-700" />
-                </Link>
-              </>
-            )}
-
-            {/* BigBasket Red Shopping Basket Button */}
-            <Link
-              href="/cart"
-              className="relative flex items-center gap-1 sm:gap-2 p-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-[#e53935] hover:bg-[#d32f2f] text-white shadow-sm transition-all active:scale-95 group shrink-0"
-              aria-label="Shopping Basket"
-            >
-              <div className="relative flex items-center">
-                <ShoppingBasket className="w-4 h-4 sm:w-5 sm:h-5" />
-                {itemCount > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-white text-[#e53935] text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow">
-                    {itemCount}
-                  </span>
-                )}
-              </div>
-              <div className="hidden sm:flex flex-col text-left leading-tight pr-0.5">
-                <span className="text-[10px] font-black tracking-wider uppercase opacity-90">Basket</span>
-                <span className="text-xs font-black">₹{total}</span>
-              </div>
-            </Link>
-
-            {/* Mobile Menu Toggle */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-1.5 rounded-md text-gray-700 hover:bg-gray-100 shrink-0"
-              aria-label="Toggle navigation menu"
-            >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              <span className="text-[#4F9D2F]">Change</span>
             </button>
-          </div>
-        </div>
 
-        {/* Mobile Search Input */}
-        <form onSubmit={handleSearch} className="pt-1 pb-2 md:hidden">
-          <div className="relative flex items-center">
-            <input
-              type="text"
-              placeholder="Search chicken biryani, fruits, notebooks..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-10 pl-9 pr-20 rounded-xl bg-gray-50 border border-gray-300 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#84c225] focus:bg-white shadow-2xs"
-            />
-            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3" />
-            <button
-              type="submit"
-              className="absolute right-1 h-8 px-3 bg-[#689f38] hover:bg-[#5b8c30] text-white text-xs font-bold rounded-lg transition-colors"
-            >
-              Search
-            </button>
-          </div>
-        </form>
-
-        {/* Mobile Quick Category Chips Bar (BigBasket style quick pills) */}
-        <div className="md:hidden flex items-center gap-2 overflow-x-auto no-scrollbar pb-2.5 pt-0.5 px-0.5">
-          <Link
-            href="/"
-            className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${
-              pathname === '/'
-                ? 'bg-[#689f38] text-white shadow-2xs'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            All
-          </Link>
-          <Link
-            href="/food"
-            className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 transition-colors ${
-              pathname === '/food'
-                ? 'bg-[#689f38] text-white shadow-2xs'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            <span>🍲</span>
-            <span>Food & Canteen</span>
-          </Link>
-          <Link
-            href="/fruits"
-            className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 transition-colors ${
-              pathname === '/fruits'
-                ? 'bg-[#689f38] text-white shadow-2xs'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            <span>🍎</span>
-            <span>Fresh Fruits</span>
-          </Link>
-          <Link
-            href="/laundry"
-            className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 transition-colors ${
-              pathname === '/laundry'
-                ? 'bg-[#689f38] text-white shadow-2xs'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            <span>🧺</span>
-            <span>Laundry</span>
-          </Link>
-          <Link
-            href="/essentials"
-            className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 transition-colors ${
-              pathname === '/essentials'
-                ? 'bg-[#689f38] text-white shadow-2xs'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            <span>📚</span>
-            <span>Stationery</span>
-          </Link>
-        </div>
-      </div>
-
-      {/* Tier 2: Category Bar (BigBasket Signature Green "Shop by Category") */}
-      <div className="border-t border-gray-200 bg-white hidden md:block">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-11 text-xs">
-            <div className="flex items-center gap-6">
-              {/* Green "Shop by Category" Button with Vertical 2-Column Mega Dropdown */}
-              <div
-                className="relative"
-                onMouseEnter={() => setCategoryDropdownOpen(true)}
-                onMouseLeave={() => setCategoryDropdownOpen(false)}
+            <div className="space-y-1 text-xs font-bold text-gray-700">
+              <Link
+                href="/"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block p-2 rounded-lg hover:bg-gray-50"
               >
-                <button
-                  type="button"
-                  onClick={() => setCategoryDropdownOpen(!categoryDropdownOpen)}
-                  className="bg-[#689f38] hover:bg-[#5b8c30] text-white font-bold px-4 py-2 rounded flex items-center gap-2 tracking-wide shadow-sm"
-                >
-                  <span>Shop by Category</span>
-                  <ChevronDown
-                    className={`w-3.5 h-3.5 transition-transform duration-200 ${
-                      categoryDropdownOpen ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
-
-                {/* Vertical Category Dropdown: Left column = 4 Main Categories, Right column = Vertical Sub-options */}
-                {categoryDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-1 w-[660px] bg-white border border-gray-200 rounded-2xl shadow-2xl overflow-hidden flex z-50 animate-in fade-in slide-in-from-top-1 duration-150">
-                    {/* Left Column: Exactly 4 Main Categories Vertically (Matching Screenshot) */}
-                    <div className="w-72 bg-white border-r border-gray-100 py-2 divide-y divide-gray-50 shrink-0">
-                      <div className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                        4 Main Categories
-                      </div>
-                      {categories.map((cat) => {
-                        const Icon = cat.icon;
-                        const isHovered = hoveredCategory === cat.id;
-
-                        return (
-                          <Link
-                            key={cat.id}
-                            href={cat.href}
-                            onMouseEnter={() => setHoveredCategory(cat.id)}
-                            onClick={() => setCategoryDropdownOpen(false)}
-                            className={`w-full flex items-center gap-3 px-4 py-3.5 transition-all text-left group relative ${
-                              isHovered
-                                ? 'bg-[#f1f8e9] border-l-4 border-l-[#689f38]'
-                                : 'hover:bg-gray-50 border-l-4 border-l-transparent'
-                            }`}
-                          >
-                            <div
-                              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
-                                isHovered
-                                  ? 'bg-[#e8f5e9] text-[#2e7d32] ring-1 ring-[#c8e6c9]'
-                                  : 'bg-[#f4f9ed] text-[#689f38] group-hover:bg-[#e8f5e9]'
-                              }`}
-                            >
-                              <Icon className="w-5 h-5 stroke-[1.8]" />
-                            </div>
-
-                            <div className="flex-1 min-w-0">
-                              <div
-                                className={`text-xs font-bold leading-snug truncate ${
-                                  isHovered ? 'text-[#1b5e20]' : 'text-gray-900 group-hover:text-[#689f38]'
-                                }`}
-                              >
-                                {cat.name}
-                              </div>
-                              <div className="text-[10px] text-gray-500 font-normal leading-tight mt-0.5 line-clamp-1">
-                                {cat.desc}
-                              </div>
-                            </div>
-
-                            <ChevronRight
-                              className={`w-4 h-4 shrink-0 transition-transform ${
-                                isHovered
-                                  ? 'text-[#689f38] translate-x-1 stroke-[2.5]'
-                                  : 'text-gray-300 group-hover:text-gray-500'
-                              }`}
-                            />
-                          </Link>
-                        );
-                      })}
-                    </div>
-
-                    {/* Right Column: Sub-Options Displayed Vertically Under Selected Main Category */}
-                    {(() => {
-                      const activeCat =
-                        categories.find((c) => c.id === hoveredCategory) || categories[0];
-                      return (
-                        <div className="flex-1 bg-[#fafafa] p-5 flex flex-col justify-between">
-                          <div>
-                            <div className="flex items-center justify-between border-b border-gray-200 pb-2.5 mb-3">
-                              <div>
-                                <div className="text-xs font-black text-gray-900">
-                                  {activeCat.name}
-                                </div>
-                                <div className="text-[10px] text-gray-500">
-                                  Vertical Options &amp; Services
-                                </div>
-                              </div>
-                              <Link
-                                href={activeCat.href}
-                                onClick={() => setCategoryDropdownOpen(false)}
-                                className="text-[11px] font-bold text-[#689f38] hover:underline flex items-center gap-0.5"
-                              >
-                                <span>View All</span>
-                                <ChevronRight className="w-3.5 h-3.5" />
-                              </Link>
-                            </div>
-
-                            {/* The Sub-Options Shown Vertically */}
-                            <div className="space-y-2">
-                              {activeCat.subOptions.map((sub) => (
-                                <Link
-                                  key={sub.name}
-                                  href={sub.href}
-                                  onClick={() => setCategoryDropdownOpen(false)}
-                                  className="block p-2.5 rounded-xl bg-white border border-gray-200/80 hover:border-[#689f38] hover:shadow-sm transition-all group"
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <div className="text-xs font-bold text-gray-800 group-hover:text-[#689f38] transition-colors flex items-center gap-1.5">
-                                      <span>{sub.name}</span>
-                                      {sub.badge && (
-                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-[#f1f8e9] text-[#2e7d32] border border-[#dcedc8]">
-                                          {sub.badge}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <ChevronRight className="w-3.5 h-3.5 text-gray-400 group-hover:text-[#689f38] group-hover:translate-x-0.5 transition-all" />
-                                  </div>
-                                  <div className="text-[10.5px] text-gray-500 leading-snug mt-0.5">
-                                    {sub.desc}
-                                  </div>
-                                </Link>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="pt-3 border-t border-gray-200 mt-4 flex items-center justify-between text-[11px] text-gray-500">
-                            <span className="flex items-center gap-1 text-[#2e7d32] font-semibold">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-[#689f38]" /> 10-Min Hostel Delivery
-                            </span>
-                            <span className="font-medium text-gray-400">Halls 1–14 Covered</span>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-              </div>
-
-              {/* Verified Campus Service Badges (replacing the cluttered horizontal text links) */}
-              <div className="hidden lg:flex items-center gap-5 text-xs text-gray-600 font-medium">
-                <span className="flex items-center gap-1.5 text-gray-700">
-                  <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                  <span>10–15 Min Room Delivery</span>
-                </span>
-                <span className="text-gray-300">|</span>
-                <span className="flex items-center gap-1.5 text-gray-700">
-                  <ShieldCheck className="w-3.5 h-3.5 text-[#689f38]" />
-                  <span>Subsidized Campus Tariffs</span>
-                </span>
-                <span className="text-gray-300">|</span>
-                <span className="flex items-center gap-1.5 text-gray-700">
-                  <Shirt className="w-3.5 h-3.5 text-sky-600" />
-                  <span>Dual-OTP Doorstep Laundry</span>
-                </span>
-                <span className="text-gray-300">|</span>
-                <span className="flex items-center gap-1.5 text-gray-700">
-                  <MapPin className="w-3.5 h-3.5 text-red-500" />
-                  <span>Halls 1 to 14</span>
-                </span>
-              </div>
+                Home
+              </Link>
+              <a
+                href="/#campus-services"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block p-2 rounded-lg hover:bg-gray-50"
+              >
+                Campus Services
+              </a>
+              <Link
+                href="/dashboard?tab=orders"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block p-2 rounded-lg hover:bg-gray-50"
+              >
+                My Orders
+              </Link>
+              <Link
+                href={activeOrder ? `/orders/${activeOrder.id}/track` : '/dashboard?tab=orders'}
+                onClick={() => setMobileMenuOpen(false)}
+                className="block p-2 rounded-lg hover:bg-gray-50 text-[#4F9D2F]"
+              >
+                Track Active Order {activeOrder ? `(#${activeOrder.orderNumber})` : ''}
+              </Link>
+              <Link
+                href="/dashboard?tab=support"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block p-2 rounded-lg hover:bg-gray-50"
+              >
+                Help &amp; Support
+              </Link>
             </div>
-
-            {/* Smart Basket Badge */}
-            <Link
-              href="/food"
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-gray-300 text-gray-700 hover:border-[#689f38] hover:text-[#689f38] transition-colors font-bold text-[11px] bg-gray-50"
-            >
-              <div className="w-4 h-4 rounded-full bg-[#84c225] flex items-center justify-center text-white">
-                <Sparkles className="w-2.5 h-2.5" />
-              </div>
-              <span>Smart Basket</span>
-            </Link>
           </div>
-        </div>
-      </div>
+        )}
+      </header>
 
-      {/* Mobile Menu Dropdown */}
-      {mobileMenuOpen && (
-        <div className="md:hidden bg-white border-b border-gray-200 px-4 pt-3 pb-6 space-y-4">
-          <div className="text-[11px] font-extrabold text-gray-400 uppercase tracking-wider">
-            4 Main Categories
-          </div>
-
-          <div className="space-y-3">
-            {categories.map((cat) => {
-              const Icon = cat.icon;
-              return (
-                <div key={cat.id} className="rounded-xl border border-gray-200 overflow-hidden bg-white">
-                  <Link
-                    href={cat.href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-3 p-3 bg-gray-50/70 hover:bg-[#f1f8e9] transition-colors"
-                  >
-                    <div className="w-9 h-9 rounded-xl bg-[#f4f9ed] text-[#689f38] flex items-center justify-center shrink-0">
-                      <Icon className="w-4 h-4 stroke-[1.8]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-gray-900 text-xs">{cat.name}</div>
-                      <div className="text-[10px] text-gray-500 truncate">{cat.desc}</div>
-                    </div>
-                    <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
-                  </Link>
-
-                  {/* Vertical sub-options on mobile */}
-                  <div className="p-2.5 bg-white space-y-1.5 border-t border-gray-100">
-                    {cat.subOptions.map((sub) => (
-                      <Link
-                        key={sub.name}
-                        href={sub.href}
-                        onClick={() => setMobileMenuOpen(false)}
-                        className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-gray-50 text-[11px] text-gray-700 font-medium"
-                      >
-                        <span>{sub.name}</span>
-                        <ChevronRight className="w-3 h-3 text-gray-300" />
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="pt-2 flex flex-col gap-2">
-            <Link
-              href="/laundry/book"
-              onClick={() => setMobileMenuOpen(false)}
-              className="w-full text-center py-2.5 rounded-lg bg-[#689f38] font-bold text-white text-xs shadow-sm"
-            >
-              Book Doorstep Laundry
-            </Link>
-
-            {isAuthenticated && (
-              <Link
-                href={
-                  role === 'ADMIN'
-                    ? '/admin/dashboard'
-                    : role === 'SERVICE_PROVIDER'
-                    ? '/provider/dashboard'
-                    : role === 'DELIVERY_BOY'
-                    ? '/delivery/dashboard'
-                    : '/dashboard'
-                }
-                onClick={() => setMobileMenuOpen(false)}
-                className="w-full text-center py-2.5 rounded-lg bg-gray-900 font-bold text-white text-xs shadow-sm"
-              >
-                {role === 'ADMIN'
-                  ? 'Admin Command Center'
-                  : role === 'SERVICE_PROVIDER'
-                  ? 'Vendor Portal'
-                  : role === 'DELIVERY_BOY'
-                  ? 'Runner Portal'
-                  : 'Student Dashboard'}
-              </Link>
-            )}
-
-            {!isAuthenticated ? (
-              <Link
-                href="/login"
-                onClick={() => setMobileMenuOpen(false)}
-                className="w-full py-2 text-center rounded-lg bg-[#212121] text-white text-xs font-bold"
-              >
-                Login / Sign Up
-              </Link>
-            ) : (
-              <button
-                onClick={() => {
-                  logout();
-                  setMobileMenuOpen(false);
-                }}
-                className="w-full py-2 text-center rounded-lg bg-gray-100 text-gray-700 text-xs font-bold"
-              >
-                Logout
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </header>
+      {/* Campus Location Selection Modal */}
+      <CampusLocationModal
+        isOpen={isLocationModalOpen}
+        onClose={() => setIsLocationModalOpen(false)}
+        onLocationChange={(hall, room) => {
+          setSelectedHall(hall);
+          setRoomNumber(room);
+        }}
+      />
+    </>
   );
 }

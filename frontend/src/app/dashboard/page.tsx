@@ -447,7 +447,7 @@ function DashboardContent() {
               onClick={() => handleTabChange('orders')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
                 activeTab === 'orders'
-                  ? 'bg-[#689f38] text-white shadow-sm'
+                  ? 'bg-[#4F9D2F] text-white shadow-sm'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -460,7 +460,7 @@ function DashboardContent() {
               onClick={() => handleTabChange('profile')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
                 activeTab === 'profile'
-                  ? 'bg-[#689f38] text-white shadow-sm'
+                  ? 'bg-[#4F9D2F] text-white shadow-sm'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -473,7 +473,7 @@ function DashboardContent() {
                 onClick={() => handleTabChange('active-order')}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
                   activeTab === 'active-order'
-                    ? 'bg-[#689f38] text-white shadow-sm'
+                    ? 'bg-[#4F9D2F] text-white shadow-sm'
                     : 'text-[#2e7d32] bg-[#f1f8e9] hover:bg-[#e8f5e9]'
                 }`}
               >
@@ -486,7 +486,7 @@ function DashboardContent() {
               onClick={() => handleTabChange('refunds')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
                 activeTab === 'refunds'
-                  ? 'bg-[#689f38] text-white shadow-sm'
+                  ? 'bg-[#4F9D2F] text-white shadow-sm'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -498,7 +498,7 @@ function DashboardContent() {
               onClick={() => handleTabChange('payments')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
                 activeTab === 'payments'
-                  ? 'bg-[#689f38] text-white shadow-sm'
+                  ? 'bg-[#4F9D2F] text-white shadow-sm'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -510,7 +510,7 @@ function DashboardContent() {
               onClick={() => handleTabChange('payment-methods')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
                 activeTab === 'payment-methods'
-                  ? 'bg-[#689f38] text-white shadow-sm'
+                  ? 'bg-[#4F9D2F] text-white shadow-sm'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -522,7 +522,7 @@ function DashboardContent() {
               onClick={() => handleTabChange('delivery')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
                 activeTab === 'delivery'
-                  ? 'bg-[#689f38] text-white shadow-sm'
+                  ? 'bg-[#4F9D2F] text-white shadow-sm'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -534,7 +534,7 @@ function DashboardContent() {
               onClick={() => handleTabChange('wishlist')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
                 activeTab === 'wishlist'
-                  ? 'bg-[#689f38] text-white shadow-sm'
+                  ? 'bg-[#4F9D2F] text-white shadow-sm'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -549,7 +549,7 @@ function DashboardContent() {
               onClick={() => handleTabChange('notifications')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
                 activeTab === 'notifications'
-                  ? 'bg-[#689f38] text-white shadow-sm'
+                  ? 'bg-[#4F9D2F] text-white shadow-sm'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -561,7 +561,7 @@ function DashboardContent() {
               onClick={() => handleTabChange('offers')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
                 activeTab === 'offers'
-                  ? 'bg-[#689f38] text-white shadow-sm'
+                  ? 'bg-[#4F9D2F] text-white shadow-sm'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -573,7 +573,7 @@ function DashboardContent() {
               onClick={() => handleTabChange('support')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
                 activeTab === 'support'
-                  ? 'bg-[#689f38] text-white shadow-sm'
+                  ? 'bg-[#4F9D2F] text-white shadow-sm'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -585,7 +585,7 @@ function DashboardContent() {
               onClick={() => handleTabChange('settings')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
                 activeTab === 'settings'
-                  ? 'bg-[#689f38] text-white shadow-sm'
+                  ? 'bg-[#4F9D2F] text-white shadow-sm'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >

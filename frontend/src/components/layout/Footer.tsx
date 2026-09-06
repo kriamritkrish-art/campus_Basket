@@ -23,19 +23,24 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Col 1: Institutional Info */}
           <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-[#689f38] flex items-center justify-center font-extrabold text-white text-sm shadow-sm">
-                bb
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-[#4F9D2F] flex items-center justify-center font-extrabold text-white text-xs shadow-xs">
+                cb
               </div>
-              <div className="font-extrabold text-gray-900 text-base">
-                campus<span className="text-[#689f38]">basket</span>
+              <div>
+                <div className="font-extrabold text-[#172033] text-base leading-none">
+                  campus<span className="text-[#4F9D2F]">basket</span>
+                </div>
+                <div className="text-[9.5px] font-semibold text-gray-400 uppercase mt-0.5">
+                  A NIT Durgapur Campus Marketplace
+                </div>
               </div>
             </div>
             <p className="text-xs leading-relaxed text-gray-500">
-              National Institute of Technology Durgapur's dedicated student marketplace. Delivering fresh cafeteria meals, seasonal farm fruits, dual-OTP express laundry, and engineering notebooks directly to your hostel room.
+              National Institute of Technology Durgapur&apos;s dedicated student marketplace. Fast campus delivery across all residence halls in 10–15 minutes.
             </p>
-            <div className="flex items-center gap-1.5 text-xs text-[#2e7d32] font-bold">
-              <ShieldCheck className="w-4 h-4 text-[#689f38]" /> Restricted strictly to @nitdgp.ac.in
+            <div className="flex items-center gap-1.5 text-xs text-[#36751F] font-bold">
+              <ShieldCheck className="w-4 h-4 text-[#4F9D2F]" /> Verified NIT Durgapur Campus Platform
             </div>
           </div>
 
