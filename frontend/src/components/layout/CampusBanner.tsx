@@ -46,11 +46,14 @@ export function CampusBanner() {
   }
 
   return (
-    <div className="bg-[#f1f8e9] border-b border-[#dcedc8] px-4 py-1 text-[11px] text-[#33691e] flex items-center justify-center gap-2 font-medium">
-      <Zap className="w-3 h-3 text-[#689f38] fill-[#689f38]" />
-      <span>
-        Express 10–15 Min Hostel Delivery Active across Halls 1 to 14, MTH, SNH & Gargi Hall &bull;
-        <strong className="text-[#1b5e20] ml-1 font-bold">NIT Durgapur Verified Campus</strong>
+    <div className="bg-[#f1f8e9] border-b border-[#dcedc8] px-3 sm:px-4 py-1 text-[10.5px] sm:text-[11px] text-[#33691e] flex items-center justify-center gap-1.5 sm:gap-2 font-medium text-center overflow-hidden">
+      <Zap className="w-3 h-3 text-[#689f38] fill-[#689f38] shrink-0" />
+      <span className="truncate sm:whitespace-normal">
+        <span className="sm:hidden font-semibold">10–15 Min Room Delivery • Halls 1 to 14</span>
+        <span className="hidden sm:inline">
+          Express 10–15 Min Hostel Delivery Active across Halls 1 to 14, MTH, SNH &amp; Gargi Hall &bull;
+          <strong className="text-[#1b5e20] ml-1 font-bold">NIT Durgapur Verified Campus</strong>
+        </span>
       </span>
     </div>
   );

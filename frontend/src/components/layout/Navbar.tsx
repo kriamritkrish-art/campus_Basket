@@ -149,17 +149,17 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm">
       {/* Tier 1: Main Header (BigBasket Style) */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 sm:h-20 gap-2 sm:gap-3 md:gap-6">
+      <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-14 sm:h-20 gap-1.5 sm:gap-3 md:gap-6">
           {/* Logo & Sub-brand */}
-          <Link href="/" className="flex items-center gap-2 sm:gap-2.5 shrink-0 group">
+          <Link href="/" className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 group">
             <div className="flex items-center">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-[#689f38] to-[#84c225] flex items-center justify-center text-white font-extrabold text-base sm:text-lg shadow-sm">
+              <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-[#689f38] to-[#84c225] flex items-center justify-center text-white font-extrabold text-sm sm:text-lg shadow-sm">
                 bb
               </div>
             </div>
             <div>
-              <div className="font-extrabold text-[#212121] text-base sm:text-xl tracking-tight leading-none flex items-center gap-1">
+              <div className="font-extrabold text-[#212121] text-sm xs:text-base sm:text-xl tracking-tight leading-none flex items-center gap-0.5 sm:gap-1">
                 <span>campus</span>
                 <span className="text-[#689f38]">basket</span>
               </div>
@@ -190,24 +190,24 @@ export function Navbar() {
           </form>
 
           {/* Right Section: Delivery Badge, Auth & Cart */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             {/* Delivery Location Pill (Mobile & Desktop) */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setHallPickerOpen(!hallPickerOpen)}
-                className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-[#f1f8e9] border border-[#dcedc8] text-left hover:bg-[#e8f5e9] transition-colors max-w-[135px] sm:max-w-none"
+                className="flex items-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-[#f1f8e9] border border-[#dcedc8] text-left hover:bg-[#e8f5e9] transition-colors max-w-[95px] xs:max-w-[125px] sm:max-w-none"
               >
-                <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-[#689f38] flex items-center justify-center text-white shrink-0">
-                  <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-white" />
+                <div className="w-4 h-4 sm:w-6 sm:h-6 rounded-full bg-[#689f38] flex items-center justify-center text-white shrink-0">
+                  <Zap className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 fill-white" />
                 </div>
                 <div className="truncate">
                   <div className="text-[9px] sm:text-[10px] font-bold text-[#2e7d32] uppercase tracking-wide leading-none hidden sm:block">
                     Delivery in 10-15 mins
                   </div>
-                  <div className="text-[11px] sm:text-xs font-bold text-gray-800 flex items-center gap-0.5 leading-tight truncate">
+                  <div className="text-[10.5px] sm:text-xs font-bold text-gray-800 flex items-center gap-0.5 leading-tight truncate">
                     <span className="truncate">{selectedHall}</span>
-                    <ChevronDown className="w-3 h-3 text-gray-500 shrink-0" />
+                    <ChevronDown className="w-2.5 h-2.5 text-gray-500 shrink-0" />
                   </div>
                 </div>
               </button>
@@ -284,7 +284,7 @@ export function Navbar() {
                   <div className="relative">
                     <button
                       onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-800 border border-gray-300 transition-colors cursor-pointer"
+                      className="flex items-center gap-1 sm:gap-2 p-1.5 sm:px-3 sm:py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-800 border border-gray-300 transition-colors cursor-pointer"
                       aria-expanded={profileDropdownOpen}
                     >
                       <UserIcon className="w-3.5 h-3.5 text-[#689f38]" />
@@ -294,7 +294,7 @@ export function Navbar() {
                           'Student'}
                       </span>
                       <ChevronDown
-                        className={`w-3.5 h-3.5 text-gray-500 transition-transform ${
+                        className={`w-3 h-3 text-gray-500 transition-transform ${
                           profileDropdownOpen ? 'rotate-180' : ''
                         }`}
                       />
@@ -506,22 +506,32 @@ export function Navbar() {
                 )}
               </div>
             ) : (
-              <Link
-                href="/login"
-                className="px-4 py-2 rounded-md bg-[#212121] hover:bg-black text-white text-xs font-bold shadow-sm transition-transform active:scale-95"
-              >
-                Login / Sign Up
-              </Link>
+              <>
+                <Link
+                  href="/login"
+                  className="hidden sm:inline-flex px-4 py-2 rounded-md bg-[#212121] hover:bg-black text-white text-xs font-bold shadow-sm transition-transform active:scale-95"
+                >
+                  Login / Sign Up
+                </Link>
+                <Link
+                  href="/login"
+                  className="sm:hidden p-1.5 rounded-lg text-gray-700 hover:bg-gray-100 hover:text-black transition-colors"
+                  aria-label="Login"
+                  title="Login / Sign Up"
+                >
+                  <UserIcon className="w-5 h-5 text-gray-700" />
+                </Link>
+              </>
             )}
 
             {/* BigBasket Red Shopping Basket Button */}
             <Link
               href="/cart"
-              className="relative flex items-center gap-1.5 sm:gap-2 p-2 sm:px-3.5 sm:py-2 rounded-xl bg-[#e53935] hover:bg-[#d32f2f] text-white shadow-sm transition-all active:scale-95 group shrink-0"
+              className="relative flex items-center gap-1 sm:gap-2 p-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-[#e53935] hover:bg-[#d32f2f] text-white shadow-sm transition-all active:scale-95 group shrink-0"
               aria-label="Shopping Basket"
             >
               <div className="relative flex items-center">
-                <ShoppingBasket className="w-5 h-5" />
+                <ShoppingBasket className="w-4 h-4 sm:w-5 sm:h-5" />
                 {itemCount > 0 && (
                   <span className="absolute -top-2 -right-2 bg-white text-[#e53935] text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow">
                     {itemCount}
@@ -537,9 +547,10 @@ export function Navbar() {
             {/* Mobile Menu Toggle */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-md text-gray-700 hover:bg-gray-100"
+              className="md:hidden p-1.5 rounded-md text-gray-700 hover:bg-gray-100 shrink-0"
+              aria-label="Toggle navigation menu"
             >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </div>

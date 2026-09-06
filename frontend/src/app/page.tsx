@@ -13,13 +13,17 @@ import {
   Shirt,
   BookOpen,
   ChevronRight,
+  ChevronDown,
   Zap,
   ShieldCheck,
   MapPin,
   CheckCircle2,
   Sparkles,
   Search,
-  ShoppingBag
+  ShoppingBag,
+  Menu,
+  Check,
+  X
 } from 'lucide-react';
 
 type CategoryKey = 'food' | 'fruits' | 'laundry' | 'essentials';
@@ -149,6 +153,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedSubfilter, setSelectedSubfilter] = useState('all');
+  const [isSubcategoryDrawerOpen, setIsSubcategoryDrawerOpen] = useState(false);
 
   useEffect(() => {
     async function loadCatalog() {
@@ -242,23 +247,26 @@ export default function HomePage() {
   return (
     <div className="bg-[#f8f8f8] min-h-screen pb-20">
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2 text-gray-700">
-              <span className="w-2 h-2 rounded-full bg-[#689f38] animate-pulse" />
-              <span className="font-bold text-gray-900">NIT Durgapur Campus Superstore</span>
-              <span className="text-gray-400">|</span>
-              <span className="text-gray-600 flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-[#689f38]" /> Delivering to all 14 Residence Halls in 10-15 mins
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 sm:py-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2 text-[11px] sm:text-xs">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-gray-700">
+              <span className="flex items-center gap-1.5 font-bold text-gray-900">
+                <span className="w-2 h-2 rounded-full bg-[#689f38] animate-pulse shrink-0" />
+                NIT Durgapur Superstore
+              </span>
+              <span className="hidden sm:inline text-gray-300">|</span>
+              <span className="text-gray-600 flex items-center gap-1 text-[10.5px] sm:text-xs">
+                <MapPin className="w-3 h-3 text-[#689f38] shrink-0" />
+                <span>Delivering to all 14 Residence Halls in 10-15 mins</span>
               </span>
             </div>
 
-            <div className="flex items-center gap-4 font-semibold text-gray-600">
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 font-semibold text-gray-600 text-[10.5px] sm:text-xs">
               <span className="flex items-center gap-1 text-[#2e7d32]">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#689f38]" /> Subsidized Campus Pricing
+                <ShieldCheck className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#689f38] shrink-0" /> Subsidized Campus Pricing
               </span>
               <span className="flex items-center gap-1 text-gray-600">
-                <Zap className="w-3.5 h-3.5 text-amber-500" /> Room Doorstep Delivery
+                <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-500 shrink-0" /> Room Doorstep Delivery
               </span>
             </div>
           </div>
@@ -473,9 +481,9 @@ export default function HomePage() {
               )}
             </div>
 
-            {/* Options in Active Category (Displaying sub-options vertically / in responsive cards) */}
+            {/* Options in Active Category (Desktop View: Grid of Cards) */}
             {activeCategory !== 'laundry' && (
-              <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-5 shadow-sm space-y-3">
+              <div className="hidden sm:block bg-white rounded-2xl border border-gray-200 p-4 sm:p-5 shadow-sm space-y-3">
                 <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-[#689f38]" />
@@ -589,6 +597,116 @@ export default function HomePage() {
               </div>
             )}
 
+            {/* Mobile 3-Lines Subcategory Selector Bar (User Request: Select Subcategory from 3 lines in mobile) */}
+            {activeCategory !== 'laundry' && (
+              <div className="sm:hidden bg-white rounded-xl border border-gray-200 p-2.5 shadow-2xs space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsSubcategoryDrawerOpen(true)}
+                    className="flex-1 flex items-center justify-between px-3 py-2 rounded-xl bg-[#f4f9ed] border border-[#dcedc8] text-[#1b5e20] hover:bg-[#e8f5e9] transition-all active:scale-[0.98] shadow-2xs"
+                    id="mobile-subcategory-3lines-btn"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {/* Visual 3 Horizontal Lines (Hamburger Icon) */}
+                      <div className="w-6 h-6 rounded-lg bg-[#689f38] text-white flex flex-col justify-center items-center gap-[3px] shrink-0 shadow-xs">
+                        <span className="w-3.5 h-[1.8px] bg-white rounded-full" />
+                        <span className="w-3.5 h-[1.8px] bg-white rounded-full" />
+                        <span className="w-2.5 h-[1.8px] bg-white rounded-full self-start ml-1.5" />
+                      </div>
+                      <div className="text-left min-w-0">
+                        <div className="text-[9px] uppercase tracking-wider text-[#2e7d32] font-black leading-none flex items-center gap-1">
+                          <span>Subcategory</span>
+                          <span className="text-[9px] text-gray-400 font-normal">☰ Tap to change</span>
+                        </div>
+                        <div className="text-xs font-black text-gray-900 truncate leading-tight mt-0.5">
+                          {selectedSubfilter === 'all'
+                            ? `All ${activeCategoryObj.name}`
+                            : selectedSubfilter === 'discount'
+                            ? '🏷️ Deals & Discounts'
+                            : selectedSubfilter === 'veg'
+                            ? '🌱 Pure Veg Items'
+                            : selectedSubfilter === 'non-veg'
+                            ? '🍗 Non-Veg & Biryani'
+                            : (activeCategoryObj.subOptions.find((s) => s.filterKey === selectedSubfilter)?.name || selectedSubfilter)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-[#2e7d32] shrink-0">
+                      <span className="text-[10px] font-bold bg-white px-1.5 py-0.5 rounded-md border border-[#c8e6c9]">
+                        {activeCategoryObj.subOptions.length}
+                      </span>
+                      <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
+                    </div>
+                  </button>
+
+                  {selectedSubfilter !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSubfilter('all')}
+                      className="px-2.5 py-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 text-[11px] font-bold shrink-0 border border-red-200 transition-colors"
+                      title="Clear Subcategory Filter"
+                    >
+                      ✕ Reset
+                    </button>
+                  )}
+                </div>
+
+                {/* Quick horizontal filter chips for instant access */}
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSubfilter('all')}
+                    className={`px-2.5 py-1 rounded-full font-bold shrink-0 transition-colors ${
+                      selectedSubfilter === 'all'
+                        ? 'bg-[#689f38] text-white shadow-2xs'
+                        : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    All ({categoryProducts.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSubfilter(selectedSubfilter === 'discount' ? 'all' : 'discount')}
+                    className={`px-2.5 py-1 rounded-full font-bold shrink-0 transition-colors ${
+                      selectedSubfilter === 'discount'
+                        ? 'bg-[#689f38] text-white shadow-2xs'
+                        : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    🏷️ Offers
+                  </button>
+                  {activeCategory === 'food' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSubfilter(selectedSubfilter === 'veg' ? 'all' : 'veg')}
+                        className={`px-2.5 py-1 rounded-full font-bold shrink-0 transition-colors ${
+                          selectedSubfilter === 'veg'
+                            ? 'bg-[#2e7d32] text-white shadow-2xs'
+                            : 'bg-emerald-50 text-[#2e7d32] border border-emerald-200'
+                        }`}
+                      >
+                        🌱 Pure Veg
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSubfilter(selectedSubfilter === 'non-veg' ? 'all' : 'non-veg')}
+                        className={`px-2.5 py-1 rounded-full font-bold shrink-0 transition-colors ${
+                          selectedSubfilter === 'non-veg'
+                            ? 'bg-[#c62828] text-white shadow-2xs'
+                            : 'bg-red-50 text-[#c62828] border border-red-200'
+                        }`}
+                      >
+                        🍗 Non-Veg
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
             {activeCategory === 'laundry' ? (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -685,6 +803,211 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+      {/* Mobile Subcategory Selection Bottom Sheet (Triggered by the 3 lines button) */}
+      {isSubcategoryDrawerOpen && (
+        <div className="fixed inset-0 z-50 sm:hidden">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in"
+            onClick={() => setIsSubcategoryDrawerOpen(false)}
+          />
+
+          {/* Bottom Sheet */}
+          <div className="fixed inset-x-0 bottom-0 max-h-[85vh] bg-white rounded-t-3xl shadow-2xl z-10 flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-250">
+            {/* Drag Handle */}
+            <div className="w-full pt-3 pb-1 flex justify-center">
+              <div className="w-12 h-1.5 bg-gray-300 rounded-full" />
+            </div>
+
+            {/* Header */}
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-[#689f38] text-white flex flex-col justify-center items-center gap-[3px] shrink-0 shadow-xs">
+                  <span className="w-4 h-[1.8px] bg-white rounded-full" />
+                  <span className="w-4 h-[1.8px] bg-white rounded-full" />
+                  <span className="w-2.5 h-[1.8px] bg-white rounded-full self-start ml-1.5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-gray-900">
+                    Select Subcategory
+                  </h3>
+                  <p className="text-[11px] text-gray-500">
+                    In {activeCategoryObj.name} • 10–15 Min Room Delivery
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsSubcategoryDrawerOpen(false)}
+                className="p-1.5 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Subcategory Options List */}
+            <div className="p-4 overflow-y-auto space-y-2 pb-safe">
+              {/* 'All Items' option */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSubfilter('all');
+                  setIsSubcategoryDrawerOpen(false);
+                }}
+                className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all ${
+                  selectedSubfilter === 'all'
+                    ? 'bg-[#f1f8e9] border-[#689f38] shadow-xs ring-1 ring-[#689f38]'
+                    : 'bg-gray-50 hover:bg-gray-100 border-gray-200'
+                }`}
+              >
+                <div>
+                  <div className="text-xs font-bold text-gray-900 flex items-center gap-2">
+                    <span>All {activeCategoryObj.name} Items</span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-[#689f38] text-white">
+                      {categoryProducts.length} items
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">
+                    Browse complete catalog without subcategory filters
+                  </div>
+                </div>
+                {selectedSubfilter === 'all' && (
+                  <Check className="w-4 h-4 text-[#2e7d32] stroke-[3]" />
+                )}
+              </button>
+
+              <div className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400 pt-2 pb-1">
+                {activeCategoryObj.name} Subcategories
+              </div>
+
+              {activeCategoryObj.subOptions.map((sub) => {
+                const isSelected = selectedSubfilter === sub.filterKey;
+                return (
+                  <button
+                    key={sub.name}
+                    type="button"
+                    onClick={() => {
+                      if (sub.filterKey) setSelectedSubfilter(sub.filterKey);
+                      setIsSubcategoryDrawerOpen(false);
+                    }}
+                    className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all ${
+                      isSelected
+                        ? 'bg-[#f1f8e9] border-[#689f38] shadow-xs ring-1 ring-[#689f38]'
+                        : 'bg-white hover:bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <div className="flex-1 pr-2">
+                      <div className="text-xs font-bold text-gray-900 flex items-center gap-2">
+                        <span>{sub.name}</span>
+                        {sub.badge && (
+                          <span className="px-1.5 py-0.5 rounded text-[9.5px] font-extrabold bg-[#f1f8e9] text-[#2e7d32] border border-[#dcedc8]">
+                            {sub.badge}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">
+                        {sub.desc}
+                      </div>
+                    </div>
+                    {isSelected ? (
+                      <Check className="w-4 h-4 text-[#2e7d32] stroke-[3] shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* Special Filters */}
+              <div className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400 pt-2 pb-1">
+                Special Filters
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSubfilter('discount');
+                  setIsSubcategoryDrawerOpen(false);
+                }}
+                className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all ${
+                  selectedSubfilter === 'discount'
+                    ? 'bg-[#f1f8e9] border-[#689f38] shadow-xs ring-1 ring-[#689f38]'
+                    : 'bg-white hover:bg-gray-50 border-gray-200'
+                }`}
+              >
+                <div>
+                  <div className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                    <span>🏷️ Campus Deals & Discounts</span>
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">
+                    Special subsidized rates and student savings
+                  </div>
+                </div>
+                {selectedSubfilter === 'discount' && (
+                  <Check className="w-4 h-4 text-[#2e7d32] stroke-[3] shrink-0" />
+                )}
+              </button>
+
+              {activeCategory === 'food' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedSubfilter('veg');
+                      setIsSubcategoryDrawerOpen(false);
+                    }}
+                    className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all ${
+                      selectedSubfilter === 'veg'
+                        ? 'bg-[#f1f8e9] border-[#689f38] shadow-xs ring-1 ring-[#689f38]'
+                        : 'bg-white hover:bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <div>
+                      <div className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                        <div className="veg-icon" />
+                        <span>100% Pure Veg Canteen Items</span>
+                      </div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">
+                        Paneer dishes, veg thali, parathas & snacks
+                      </div>
+                    </div>
+                    {selectedSubfilter === 'veg' && (
+                      <Check className="w-4 h-4 text-[#2e7d32] stroke-[3] shrink-0" />
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedSubfilter('non-veg');
+                      setIsSubcategoryDrawerOpen(false);
+                    }}
+                    className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-all ${
+                      selectedSubfilter === 'non-veg'
+                        ? 'bg-[#f1f8e9] border-[#689f38] shadow-xs ring-1 ring-[#689f38]'
+                        : 'bg-white hover:bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <div>
+                      <div className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                        <div className="non-veg-icon" />
+                        <span>Non-Veg & Biryani Special</span>
+                      </div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">
+                        Chicken biryani, egg curry, chicken rolls
+                      </div>
+                    </div>
+                    {selectedSubfilter === 'non-veg' && (
+                      <Check className="w-4 h-4 text-[#2e7d32] stroke-[3] shrink-0" />
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
