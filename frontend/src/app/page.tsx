@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { apiRequest } from '../lib/api';
 import { Product, Order } from '../types';
 import { FALLBACK_STORE_PRODUCTS } from '../lib/fallbackCatalog';
@@ -30,58 +31,72 @@ import {
   ChevronDown
 } from 'lucide-react';
 
-type CategoryKey = 'all' | 'food' | 'fruits' | 'laundry' | 'essentials';
+type CategoryKey = 'all' | 'food' | 'fruits' | 'laundry' | 'stationery' | 'essentials';
 
 interface ServiceCard {
   id: CategoryKey;
+  key: string;
   icon: string;
   title: string;
   desc: string;
   badge?: string;
+  href: string;
 }
 
 const CAMPUS_SERVICES: ServiceCard[] = [
   {
     id: 'food',
+    key: 'food',
     icon: '🍱',
     title: 'Food & Meals',
     desc: 'Fresh campus meals',
-    badge: '10–15 min'
+    badge: '10–15 min',
+    href: '/food'
   },
   {
     id: 'fruits',
+    key: 'fruits',
     icon: '🍎',
     title: 'Fresh Produce',
     desc: 'Fruits & essentials',
-    badge: 'Orchard Fresh'
+    badge: 'Orchard Fresh',
+    href: '/fruits'
   },
   {
     id: 'laundry',
+    key: 'laundry',
     icon: '👕',
     title: 'Laundry',
     desc: 'Doorstep laundry',
-    badge: 'Dual-OTP'
+    badge: 'Dual-OTP',
+    href: '/laundry'
   },
   {
-    id: 'essentials',
+    id: 'stationery',
+    key: 'stationery',
     icon: '📚',
     title: 'Stationery',
     desc: 'Academic supplies',
-    badge: 'Lab Ready'
+    badge: 'Lab Ready',
+    href: '/essentials?category=stationery'
   },
   {
     id: 'essentials',
+    key: 'essentials',
     icon: '🧴',
     title: 'Daily Essentials',
     desc: 'Hostel essentials',
-    badge: 'In Stock'
+    badge: 'In Stock',
+    href: '/essentials'
   },
   {
     id: 'all',
+    key: 'all',
     icon: '🏫',
     title: 'Campus Services',
     desc: 'Student services',
-    badge: 'Verified'
+    badge: 'Verified',
+    href: '/#campus-services'
   }
 ];
 
@@ -129,6 +144,7 @@ const LAUNDRY_SERVICES_LIST = [
 ];
 
 export default function HomePage() {
+  const router = useRouter();
   const { user } = useAuth();
   const { addItem, showToast } = useCart();
 
@@ -171,7 +187,7 @@ export default function HomePage() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const cat = params.get('category') as CategoryKey;
-      if (cat && ['food', 'fruits', 'laundry', 'essentials', 'all'].includes(cat)) {
+      if (cat && ['food', 'fruits', 'laundry', 'stationery', 'essentials', 'all'].includes(cat)) {
         setActiveCategory(cat);
       }
     }
@@ -198,9 +214,22 @@ export default function HomePage() {
     let list = products;
 
     if (activeCategory !== 'all' && activeCategory !== 'laundry') {
-      list = list.filter(
-        (p) => p.category?.slug === activeCategory || p.categoryId === 'cat_' + activeCategory
-      );
+      if (activeCategory === 'stationery') {
+        list = list.filter(
+          (p) =>
+            p.category?.slug === 'stationery' ||
+            p.categoryId === 'cat_stationery' ||
+            p.name.toLowerCase().includes('pen') ||
+            p.name.toLowerCase().includes('notebook') ||
+            p.name.toLowerCase().includes('calculator') ||
+            p.name.toLowerCase().includes('sheet') ||
+            p.name.toLowerCase().includes('drafter')
+        );
+      } else {
+        list = list.filter(
+          (p) => p.category?.slug === activeCategory || p.categoryId === 'cat_' + activeCategory
+        );
+      }
     }
 
     if (searchFilter.trim()) {
@@ -234,6 +263,20 @@ export default function HomePage() {
     return list;
   }, [products, activeCategory, searchFilter, selectedSubfilter]);
 
+  const handleCategoryClick = (svc: ServiceCard) => {
+    // If already active, tapping navigates to dedicated store
+    if (activeCategory === svc.id && svc.href && svc.href !== '/#campus-services') {
+      router.push(svc.href);
+      return;
+    }
+    setActiveCategory(svc.id);
+    setSelectedSubfilter('all');
+    if (svc.id === 'laundry') {
+      const el = document.getElementById('laundry-booking-section');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
   // Specific student favorites for "Order Again" section
   const orderAgainItems = useMemo(() => {
     return products.slice(0, 3);
@@ -252,13 +295,13 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F8F6] pb-24 text-[#172033]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 space-y-8">
+    <div className="min-h-screen bg-[#F7F8F6] pb-24 text-[#172033] overflow-x-hidden">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 sm:pt-8 space-y-4 sm:space-y-8">
         
         {/* ==================================================== */}
-        {/* 1. WELCOME SECTION & CONTEXTUAL SEARCH               */}
+        {/* 1. WELCOME SECTION & CONTEXTUAL SEARCH (DESKTOP ONLY) */}
         {/* ==================================================== */}
-        <section className="bg-white border border-[#E5E7EB] rounded-2xl p-6 sm:p-8 shadow-xs relative overflow-hidden">
+        <section className="hidden md:block bg-white border border-[#E5E7EB] rounded-2xl p-6 sm:p-8 shadow-xs relative overflow-hidden">
           <div className="max-w-2xl space-y-2">
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#172033]">
               {getGreeting()}, {studentName} 👋
@@ -342,42 +385,95 @@ export default function HomePage() {
         )}
 
         {/* ==================================================== */}
-        {/* 3. CAMPUS SERVICES (6 Modern SaaS-Style Cards)       */}
+        {/* 3. CAMPUS SERVICES (Service Categories)              */}
         {/* ==================================================== */}
-        <section id="campus-services" className="space-y-3">
+        <section id="campus-services" className="space-y-2 sm:space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm sm:text-base font-black uppercase tracking-wider text-[#172033]">
-              Campus Services
-            </h2>
-            <span className="text-xs text-gray-500">Fast delivery across all 14 Halls</span>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs sm:text-base font-black uppercase tracking-wider text-[#172033]">
+                Service Categories
+              </h2>
+              <span className="md:hidden text-[10px] font-bold text-[#4F9D2F] bg-[#EFF8EA] px-2 py-0.5 rounded-full border border-[#D0EBC2]">
+                Swipe &rarr;
+              </span>
+            </div>
+            <span className="text-[11px] sm:text-xs text-gray-500 font-medium">
+              10–15 min hostel delivery across 14 Halls
+            </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {CAMPUS_SERVICES.map((svc, idx) => {
+          {/* MOBILE ONLY: Compact Horizontally Scrollable Category Carousel */}
+          <div className="md:hidden -mx-4 px-4 overflow-x-auto no-scrollbar scroll-smooth">
+            <div className="flex gap-2.5 pb-1">
+              {CAMPUS_SERVICES.map((svc) => {
+                const isActive = activeCategory === svc.id;
+                return (
+                  <button
+                    key={svc.key}
+                    type="button"
+                    onClick={() => handleCategoryClick(svc)}
+                    className={`w-[136px] min-w-[136px] h-[116px] p-3 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between shrink-0 cursor-pointer ${
+                      isActive
+                        ? 'bg-[#EFF8EA] border-[#4F9D2F] ring-1 ring-[#4F9D2F] shadow-xs'
+                        : 'bg-white hover:bg-[#FCFDFB] border-[#E5E7EB] hover:border-gray-300 shadow-2xs'
+                    }`}
+                  >
+                    <div>
+                      <div className="text-2xl leading-none mb-1.5 flex items-center justify-between">
+                        <span>{svc.icon}</span>
+                        {isActive && (
+                          <span className="w-2 h-2 rounded-full bg-[#4F9D2F]" />
+                        )}
+                      </div>
+                      <div className={`font-bold text-xs leading-tight line-clamp-1 ${isActive ? 'text-[#36751F]' : 'text-[#172033]'}`}>
+                        {svc.title}
+                      </div>
+                      <div className="text-[10.5px] text-[#667085] mt-0.5 line-clamp-1 font-medium">
+                        {svc.desc}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-auto pt-1">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                        isActive
+                          ? 'bg-[#36751F] text-white'
+                          : 'text-[#4F9D2F] bg-[#EEF7E9]'
+                      }`}>
+                        {svc.badge}
+                      </span>
+                      <span className={`text-[11px] font-bold ${isActive ? 'text-[#36751F]' : 'text-gray-400'}`}>
+                        &rarr;
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* DESKTOP: 6 Modern SaaS-Style Cards Grid */}
+          <div className="hidden md:grid md:grid-cols-3 lg:grid-cols-6 gap-3">
+            {CAMPUS_SERVICES.map((svc) => {
               const isActive = activeCategory === svc.id;
               return (
                 <button
-                  key={idx}
+                  key={svc.key}
                   type="button"
-                  onClick={() => {
-                    setActiveCategory(svc.id);
-                    setSelectedSubfilter('all');
-                    if (svc.id === 'laundry') {
-                      const el = document.getElementById('laundry-booking-section');
-                      if (el) el.scrollIntoView({ behavior: 'smooth' });
-                    }
-                  }}
+                  onClick={() => handleCategoryClick(svc)}
                   className={`p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between group cursor-pointer ${
                     isActive
-                      ? 'bg-white border-[#4F9D2F] ring-1 ring-[#4F9D2F] shadow-sm'
-                      : 'bg-white hover:bg-[#fcfdfa] border-[#E5E7EB] hover:border-gray-300 hover:shadow-xs'
+                      ? 'bg-[#EFF8EA] border-[#4F9D2F] ring-1 ring-[#4F9D2F] shadow-sm'
+                      : 'bg-white hover:bg-[#FCFDFB] border-[#E5E7EB] hover:border-gray-300 hover:shadow-xs'
                   }`}
                 >
                   <div>
-                    <div className="text-2xl mb-2 group-hover:scale-110 transition-transform">
-                      {svc.icon}
+                    <div className="text-2xl mb-2 group-hover:scale-110 transition-transform flex items-center justify-between">
+                      <span>{svc.icon}</span>
+                      {isActive && (
+                        <span className="text-[10px] font-bold text-[#36751F] bg-[#dcedc8] px-1.5 py-0.5 rounded-md">Active</span>
+                      )}
                     </div>
-                    <div className="font-bold text-xs sm:text-sm text-[#172033] leading-snug">
+                    <div className={`font-bold text-xs sm:text-sm leading-snug ${isActive ? 'text-[#36751F]' : 'text-[#172033]'}`}>
                       {svc.title}
                     </div>
                     <div className="text-[11px] text-[#667085] mt-0.5 line-clamp-1">
@@ -386,9 +482,16 @@ export default function HomePage() {
                   </div>
 
                   {svc.badge && (
-                    <div className="mt-3">
-                      <span className="text-[10px] font-bold text-[#4F9D2F] bg-[#eef7e9] px-2 py-0.5 rounded-md">
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                        isActive
+                          ? 'bg-[#36751F] text-white'
+                          : 'text-[#4F9D2F] bg-[#EEF7E9]'
+                      }`}>
                         {svc.badge}
+                      </span>
+                      <span className={`text-xs font-bold ${isActive ? 'text-[#36751F]' : 'text-gray-400 group-hover:text-[#4F9D2F]'}`}>
+                        &rarr;
                       </span>
                     </div>
                   )}
@@ -432,7 +535,7 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() => {
-                setActiveCategory('essentials');
+                setActiveCategory('stationery');
                 setSelectedSubfilter('all');
               }}
               className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
@@ -616,6 +719,20 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => {
+                  setActiveCategory('stationery');
+                  setSelectedSubfilter('all');
+                }}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-colors shrink-0 ${
+                  activeCategory === 'stationery'
+                    ? 'bg-[#172033] text-white'
+                    : 'bg-white border border-[#E5E7EB] text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Stationery
+              </button>
+              <button
+                type="button"
+                onClick={() => {
                   setActiveCategory('essentials');
                   setSelectedSubfilter('all');
                 }}
@@ -625,10 +742,26 @@ export default function HomePage() {
                     : 'bg-white border border-[#E5E7EB] text-gray-600 hover:text-gray-900'
                 }`}
               >
-                Stationery
+                Hostel Essentials
               </button>
             </div>
           </div>
+
+          {/* Active Category Direct Store Link */}
+          {activeCategory !== 'all' && (
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-[#EFF8EA] border border-[#D0EBC2] shadow-2xs text-xs">
+              <span className="font-bold text-[#172033] flex items-center gap-1.5">
+                <span className="text-gray-500 font-medium">Filtered:</span>
+                <span className="text-[#36751F] font-black">{CAMPUS_SERVICES.find(s => s.id === activeCategory)?.title}</span>
+              </span>
+              <Link
+                href={CAMPUS_SERVICES.find(s => s.id === activeCategory)?.href || '/'}
+                className="text-xs font-black text-[#36751F] hover:text-[#4F9D2F] flex items-center gap-1 hover:underline"
+              >
+                <span>Open dedicated store &rarr;</span>
+              </Link>
+            </div>
+          )}
 
           {/* Quick Dietary / Offer Filter Chips */}
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar text-xs pt-1">
