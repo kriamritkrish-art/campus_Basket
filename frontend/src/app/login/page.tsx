@@ -139,8 +139,8 @@ function LoginForm() {
     } else if (userRole === 'DELIVERY_BOY') {
       router.push('/delivery/dashboard');
     } else {
-      // Students land directly on Browse Campus Menu (/food)
-      router.push('/food');
+      // Students land directly on Campus Marketplace Homepage (https://campus-basket-gray.vercel.app/)
+      router.push('/');
     }
   };
 
@@ -465,7 +465,7 @@ function LoginForm() {
               onClick={() => handleRoleRedirect(user.role)}
               className="text-[11px] font-bold text-emerald-800 bg-white hover:bg-emerald-100 border border-emerald-300 px-2 py-1 rounded transition-colors cursor-pointer"
             >
-              Go to Dashboard &rarr;
+              Go to {user.role === 'STUDENT' ? 'Marketplace' : 'Dashboard'} &rarr;
             </button>
             <button
               type="button"

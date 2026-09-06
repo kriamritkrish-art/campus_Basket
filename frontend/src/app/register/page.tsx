@@ -985,10 +985,10 @@ export default function RegisterPage() {
             </div>
 
             <button
-              onClick={() => router.push('/dashboard')}
-              className="w-full py-3.5 bg-[#689f38] hover:bg-[#5b8c30] text-white font-extrabold text-xs uppercase tracking-wider rounded-lg shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+              onClick={() => router.push('/')}
+              className="w-full py-3.5 bg-[#4F9D2F] hover:bg-[#36751F] text-white font-extrabold text-xs uppercase tracking-wider rounded-lg shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
-              <span>Go to Student Dashboard</span>
+              <span>Go to Campus Marketplace</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
