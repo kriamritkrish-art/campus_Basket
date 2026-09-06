@@ -1030,33 +1030,52 @@ export class AuthController {
    */
   public static async googleAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { credential } = googleAuthSchema.parse(req.body);
+      const { credential, accessToken } = googleAuthSchema.parse(req.body);
 
       let googleSub: string | undefined;
       let googleEmail: string | undefined;
 
-      // Verify token with googleapis
-      try {
-        const client = new google.auth.OAuth2(env.GOOGLE_CLIENT_ID);
-        const ticket = await client.verifyIdToken({
-          idToken: credential,
-          audience: env.GOOGLE_CLIENT_ID || undefined
-        });
-        const payload = ticket.getPayload();
-        googleSub = payload?.sub;
-        googleEmail = payload?.email?.toLowerCase().trim();
-      } catch (tokenErr) {
-        // Fallback decoder for mock/development testing
-        const decoded = jwt.decode(credential) as any;
-        if (decoded && (decoded.sub || decoded.email)) {
-          googleSub = decoded.sub;
-          googleEmail = decoded.email?.toLowerCase().trim();
-        } else {
-          res.status(400).json({
-            success: false,
-            message: 'Invalid Google authentication credential.'
+      // Check if accessToken is provided (e.g. from Google OAuth2 Token Client popup)
+      const bearerToken = accessToken || (credential && credential.startsWith('ya29.') ? credential : undefined);
+      if (bearerToken) {
+        try {
+          const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${bearerToken}` }
           });
-          return;
+          if (userinfoRes.ok) {
+            const profile = (await userinfoRes.json()) as any;
+            googleSub = profile.sub;
+            googleEmail = profile.email?.toLowerCase().trim();
+          }
+        } catch (tokenErr) {
+          console.warn('[GoogleAuth] Google access token verification failed:', tokenErr);
+        }
+      }
+
+      // Check if credential ID token is provided
+      if (!googleEmail && credential && !credential.startsWith('ya29.')) {
+        try {
+          const client = new google.auth.OAuth2(env.GOOGLE_CLIENT_ID);
+          const ticket = await client.verifyIdToken({
+            idToken: credential,
+            audience: env.GOOGLE_CLIENT_ID || undefined
+          });
+          const payload = ticket.getPayload();
+          googleSub = payload?.sub;
+          googleEmail = payload?.email?.toLowerCase().trim();
+        } catch (tokenErr) {
+          // Fallback decoder for mock/development testing
+          const decoded = jwt.decode(credential) as any;
+          if (decoded && (decoded.sub || decoded.email)) {
+            googleSub = decoded.sub;
+            googleEmail = decoded.email?.toLowerCase().trim();
+          } else {
+            res.status(400).json({
+              success: false,
+              message: 'Invalid Google authentication credential.'
+            });
+            return;
+          }
         }
       }
 

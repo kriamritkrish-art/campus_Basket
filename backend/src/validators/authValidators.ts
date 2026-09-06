@@ -185,9 +185,14 @@ export const createDeliveryBoySchema = z
 /**
  * Google Sign-In Schema
  */
-export const googleAuthSchema = z.object({
-  credential: z.string().min(1, 'Google credential token is required')
-});
+export const googleAuthSchema = z
+  .object({
+    credential: z.string().optional(),
+    accessToken: z.string().optional()
+  })
+  .refine((data) => Boolean(data.credential || data.accessToken), {
+    message: 'Google credential token or access token is required'
+  });
 
 /**
  * Password Recovery: Can provide either College Email OR Personal Email
