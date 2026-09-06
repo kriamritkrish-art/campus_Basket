@@ -91,8 +91,8 @@ export function Navbar() {
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-3 sm:gap-6">
             {/* LEFT: Campus Basket Logo & Subtitle */}
-            <Link href="/" className="flex items-center gap-2.5 shrink-0 group">
-              <div className="w-9 h-9 rounded-xl bg-[#4F9D2F] flex items-center justify-center text-white font-extrabold text-sm shadow-xs group-hover:bg-[#36751F] transition-colors">
+            <Link href="/" className="flex items-center gap-2 shrink-0 group">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#4F9D2F] flex items-center justify-center text-white font-extrabold text-xs sm:text-sm shadow-xs group-hover:bg-[#36751F] transition-colors">
                 cb
               </div>
               <div>
@@ -100,7 +100,7 @@ export function Navbar() {
                   <span>campus</span>
                   <span className="text-[#4F9D2F]">basket</span>
                 </div>
-                <div className="text-[9px] sm:text-[10px] font-semibold tracking-wide text-[#667085] uppercase mt-0.5">
+                <div className="hidden sm:block text-[9px] sm:text-[10px] font-semibold tracking-wide text-[#667085] uppercase mt-0.5">
                   A NIT Durgapur Campus Marketplace
                 </div>
               </div>
@@ -127,22 +127,22 @@ export function Navbar() {
             </form>
 
             {/* RIGHT: Campus Location + Compact Professional Basket + Notifications + Profile */}
-            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
               {/* Campus Location Button */}
               <button
                 type="button"
                 onClick={() => setIsLocationModalOpen(true)}
-                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F7F8F6] hover:bg-[#EEF7E9] border border-[#E5E7EB] text-left transition-colors group cursor-pointer"
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-[#F7F8F6] hover:bg-[#EEF7E9] border border-[#E5E7EB] text-left transition-colors group cursor-pointer shrink-0"
                 title="Change Campus Delivery Location"
               >
                 <MapPin className="w-3.5 h-3.5 text-[#4F9D2F] shrink-0" />
                 <div className="leading-tight">
                   <div className="text-[11px] font-black text-[#172033] flex items-center gap-1">
-                    <span>{selectedHall}</span>
-                    <span className="text-gray-300">•</span>
-                    <span className="text-gray-600 font-semibold">{roomNumber}</span>
+                    <span className="truncate max-w-[60px] sm:max-w-none">{selectedHall}</span>
+                    <span className="hidden sm:inline text-gray-300">•</span>
+                    <span className="hidden sm:inline text-gray-600 font-semibold">{roomNumber}</span>
                   </div>
-                  <div className="text-[10px] font-bold text-[#4F9D2F] group-hover:underline">
+                  <div className="text-[9px] sm:text-[10px] font-bold text-[#4F9D2F] group-hover:underline">
                     Change
                   </div>
                 </div>
@@ -151,7 +151,7 @@ export function Navbar() {
               {/* Compact Professional Basket Button */}
               <Link
                 href="/cart"
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white hover:bg-[#F7F8F6] border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] shadow-xs transition-all active:scale-95 shrink-0 group"
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-white hover:bg-[#F7F8F6] border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] shadow-xs transition-all active:scale-95 shrink-0 group"
                 aria-label="View Shopping Basket"
               >
                 <div className="relative">
@@ -162,17 +162,17 @@ export function Navbar() {
                     </span>
                   )}
                 </div>
-                <div className="text-left text-xs leading-tight flex items-center gap-1.5">
-                  <span className="text-gray-600 text-[11px] font-semibold">{itemCount} {itemCount === 1 ? 'item' : 'items'}</span>
-                  <span className="text-gray-300">•</span>
+                <div className="text-left text-xs leading-tight flex items-center gap-1">
+                  <span className="hidden sm:inline text-gray-600 text-[11px] font-semibold">{itemCount} {itemCount === 1 ? 'item' : 'items'}</span>
+                  <span className="hidden sm:inline text-gray-300">•</span>
                   <span className="text-[#172033] font-black">₹{total.toFixed(0)}</span>
                 </div>
               </Link>
 
-              {/* Notifications Bell */}
+              {/* Notifications Bell (Desktop) */}
               <Link
                 href="/dashboard?tab=notifications"
-                className="relative p-2 rounded-xl text-gray-500 hover:text-gray-900 hover:bg-[#F7F8F6] border border-transparent hover:border-[#E5E7EB] transition-colors"
+                className="hidden sm:flex relative p-2 rounded-xl text-gray-500 hover:text-gray-900 hover:bg-[#F7F8F6] border border-transparent hover:border-[#E5E7EB] transition-colors"
                 title="Notifications"
               >
                 <Bell className="w-4 h-4" />
@@ -332,8 +332,8 @@ export function Navbar() {
           </form>
         </div>
 
-        {/* Tier 2: Sub-Navigation Bar */}
-        <div className="border-t border-[#E5E7EB] bg-[#FCFDFB]">
+        {/* Tier 2: Sub-Navigation Bar (DESKTOP ONLY) */}
+        <div className="hidden md:block border-t border-[#E5E7EB] bg-[#FCFDFB]">
           <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-10 text-xs">
               <div className="flex items-center gap-5 sm:gap-7 overflow-x-auto no-scrollbar font-semibold">
@@ -372,18 +372,8 @@ export function Navbar() {
                 </Link>
               </div>
 
-              {/* Location Selector Trigger on Mobile/Compact */}
-              <button
-                type="button"
-                onClick={() => setIsLocationModalOpen(true)}
-                className="sm:hidden flex items-center gap-1 text-[11px] text-[#4F9D2F] font-bold"
-              >
-                <MapPin className="w-3 h-3" />
-                <span>{selectedHall}</span>
-              </button>
-
               {/* Verified Campus Hub Status */}
-              <div className="hidden sm:flex items-center gap-2 text-[11px] text-gray-500 font-medium">
+              <div className="flex items-center gap-2 text-[11px] text-gray-500 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#4F9D2F]" />
                 <span>NIT Durgapur Verified Campus Hub</span>
               </div>
