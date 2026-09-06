@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, UploadCloud, Image as ImageIcon, CheckCircle, AlertCircle, Sparkles } from 'lucide-react';
+import { X, UploadCloud, Image as ImageIcon, CheckCircle, AlertCircle, Sparkles, Store } from 'lucide-react';
+import { getApiBase, apiRequest } from '../../lib/api';
 
 interface ProductFormModalProps {
   isOpen: boolean;
@@ -31,6 +32,10 @@ export function ProductFormModal({
   const [isFeatured, setIsFeatured] = useState(false);
   const [availability, setAvailability] = useState(true);
 
+  // Provider selection state
+  const [providerId, setProviderId] = useState('');
+  const [providersList, setProvidersList] = useState<Array<{ id: string; fullName: string; businessName?: string; serviceCategory: string }>>([]);
+
   // Image Upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -38,6 +43,24 @@ export function ProductFormModal({
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Fetch campus providers for assignment
+  useEffect(() => {
+    if (isOpen) {
+      apiRequest('/api/admin/providers')
+        .then((res) => {
+          if (res.success && res.providers) {
+            setProvidersList(res.providers);
+            if (!providerId && !initialProduct?.providerId && res.providers.length > 0) {
+              setProviderId(res.providers[0].id);
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn('Failed to load providers list:', err);
+        });
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (initialProduct) {
@@ -53,10 +76,12 @@ export function ProductFormModal({
       setDeliveryTime(initialProduct.deliveryTime || '20-30 mins');
       setIsFeatured(initialProduct.isFeatured || false);
       setAvailability(initialProduct.availability !== undefined ? initialProduct.availability : true);
+      setProviderId(initialProduct.providerId || '');
       setImagePreviewUrl(initialProduct.primaryImage || null);
     } else {
       setName('');
       setCategoryId(categories[0]?.id || 'cat_food');
+      setProviderId(providersList[0]?.id || '');
       setDescription('');
       setPrice('');
       setDiscountPrice('');
@@ -71,7 +96,7 @@ export function ProductFormModal({
       setImagePreviewUrl(null);
     }
     setErrorMsg(null);
-  }, [initialProduct, categories, isOpen]);
+  }, [initialProduct, categories, isOpen, providersList]);
 
   if (!isOpen) return null;
 
@@ -95,9 +120,16 @@ export function ProductFormModal({
     setLoading(true);
     setErrorMsg(null);
 
+    if (!providerId) {
+      setErrorMsg('Please select which Service Provider / Shop sells this product.');
+      setLoading(false);
+      return;
+    }
+
     const formData = new FormData();
     formData.append('name', name);
     formData.append('categoryId', categoryId);
+    formData.append('providerId', providerId);
     formData.append('description', description);
     formData.append('price', price);
     if (discountPrice) formData.append('discountPrice', discountPrice);
@@ -114,23 +146,35 @@ export function ProductFormModal({
     }
 
     try {
-      const token = localStorage.getItem('nit_token');
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
+      const apiBase = getApiBase();
       const endpoint = initialProduct
-        ? `${backendUrl}/api/admin/products/${initialProduct.id}`
-        : `${backendUrl}/api/admin/products`;
+        ? `${apiBase}/api/admin/products/${initialProduct.id}`
+        : `${apiBase}/api/admin/products`;
 
       const res = await fetch(endpoint, {
         method: initialProduct ? 'PATCH' : 'POST',
         headers: {
-          Authorization: `Bearer ${token}`
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
         body: formData
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Failed to save product');
+      let data: any = null;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json().catch(() => null);
+      } else {
+        const text = await res.text().catch(() => '');
+        if (!res.ok) {
+          throw new Error(
+            `Server returned status ${res.status}: ${res.statusText || 'Unable to complete request'}. Please verify your Railway backend URL.`
+          );
+        }
+      }
+
+      if (!res.ok || (data && !data.success)) {
+        throw new Error(data?.message || `Failed to save product (Status ${res.status})`);
       }
 
       onSuccess();
@@ -172,8 +216,8 @@ export function ProductFormModal({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Row 1: Name & Category */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Row 1: Name, Category & Service Provider */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-xs font-semibold text-slate-700 block mb-1.5">
                 Product Name *
@@ -201,6 +245,25 @@ export function ProductFormModal({
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                Assigned Service Provider / Shop *
+              </label>
+              <select
+                value={providerId}
+                onChange={(e) => setProviderId(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-[#17202A] focus:outline-none focus:border-[#4F9D32] focus:bg-white transition"
+                required
+              >
+                <option value="">-- Select Campus Shop --</option>
+                {providersList.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.fullName || p.businessName} ({p.serviceCategory})
                   </option>
                 ))}
               </select>

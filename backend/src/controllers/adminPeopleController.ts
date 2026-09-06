@@ -228,6 +228,7 @@ export class AdminPeopleController {
             serviceCategory: p.serviceCategory,
             assignedZones: p.assignedZones,
             activeStatus: p.activeStatus,
+            autoAssignDelivery: p.autoAssignDelivery ?? false,
             plainPassword: p.plainPassword || 'Vendor@12345',
             totalProducts: p.products.length,
             availableProducts: p.products.filter((pr) => pr.availability && pr.approvalStatus === 'APPROVED' && pr.stock > 0).length,
@@ -287,6 +288,7 @@ export class AdminPeopleController {
           }
         });
 
+        const autoAssignDelivery = req.body.autoAssignDelivery === true || req.body.autoAssignDelivery === 'true';
         const provider = await tx.serviceProvider.create({
           data: {
             userId: user.id,
@@ -294,6 +296,7 @@ export class AdminPeopleController {
             mobileNumber,
             serviceCategory: data.serviceCategory,
             activeStatus: isActive,
+            autoAssignDelivery,
             plainPassword: data.password
           }
         });
@@ -386,6 +389,7 @@ export class AdminPeopleController {
           });
         }
 
+        const autoAssign = req.body.autoAssignDelivery !== undefined ? (req.body.autoAssignDelivery === true || req.body.autoAssignDelivery === 'true') : undefined;
         await tx.serviceProvider.update({
           where: { id },
           data: {
@@ -393,6 +397,7 @@ export class AdminPeopleController {
             ...(serviceCategory && { serviceCategory }),
             ...(targetPhone && { mobileNumber: targetPhone }),
             ...(activeStatus !== undefined && { activeStatus: activeStatus === true || activeStatus === 'true' }),
+            ...(autoAssign !== undefined && { autoAssignDelivery: autoAssign }),
             ...(password && { plainPassword: password.trim() })
           }
         });
@@ -498,6 +503,7 @@ export class AdminPeopleController {
           serviceCategory: provider.serviceCategory,
           assignedZones: provider.assignedZones,
           activeStatus: provider.activeStatus,
+          autoAssignDelivery: provider.autoAssignDelivery ?? false,
           createdAt: provider.createdAt
         },
         analytics: {

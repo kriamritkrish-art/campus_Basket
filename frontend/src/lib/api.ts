@@ -1,11 +1,31 @@
-const getApiBase = () => {
-  let raw = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000').trim();
+export const getApiBase = () => {
+  let raw = (
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    ''
+  ).trim();
+
+  // If executing in browser
+  if (typeof window !== 'undefined') {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    // When deployed on Vercel or custom domain without a valid remote backend URL,
+    // return '' so relative requests are routed via Next.js rewrites to Railway.
+    if (!isLocal && (!raw || raw.includes('localhost') || raw.includes('127.0.0.1'))) {
+      return '';
+    }
+  }
+
+  if (!raw) {
+    return 'http://localhost:5000';
+  }
+
   if (!raw.startsWith('http://') && !raw.startsWith('https://')) {
     raw = `https://${raw}`;
   }
   return raw.replace(/\/+$/, '');
 };
-const API_BASE = getApiBase();
+
+export const API_BASE = getApiBase();
 
 export interface ApiResponse<T = any> {
   success: boolean;
@@ -18,7 +38,8 @@ export async function apiRequest<T = any>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
-  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint}`;
+  const base = getApiBase();
+  const url = endpoint.startsWith('http') ? endpoint : `${base}${endpoint}`;
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
   const coordsStr = typeof window !== 'undefined' ? localStorage.getItem('nit_student_coords') : null;

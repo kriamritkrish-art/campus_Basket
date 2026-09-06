@@ -378,14 +378,53 @@ export class AdminController {
       } = req.body;
 
       const file = req.file;
-      const productSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-      // Create product in MySQL
+      if (!providerId || !String(providerId).trim()) {
+        res.status(400).json({
+          success: false,
+          message: 'Service Provider is strictly required. Please select which vendor/shop sells this product.'
+        });
+        return;
+      }
+
+      const cleanProviderId = String(providerId).trim();
+      const targetProvider = await prisma.serviceProvider.findUnique({
+        where: { id: cleanProviderId }
+      });
+      if (!targetProvider) {
+        res.status(404).json({
+          success: false,
+          message: 'Selected Service Provider was not found. Please choose an active campus provider.'
+        });
+        return;
+      }
+
+      // Resolve category by ID or slug
+      let resolvedCategoryId = categoryId;
+      const targetCategory = await prisma.category.findFirst({
+        where: {
+          OR: [
+            { id: categoryId },
+            { slug: categoryId }
+          ]
+        }
+      });
+      if (targetCategory) {
+        resolvedCategoryId = targetCategory.id;
+      } else {
+        // Fallback: check first category or keep provided
+        const anyCat = await prisma.category.findFirst();
+        if (anyCat) resolvedCategoryId = anyCat.id;
+      }
+
+      const productSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + `-${Date.now().toString().slice(-4)}`;
+
+      // Create product in MySQL or Fallback Engine
       const product = await prisma.product.create({
         data: {
           name,
           slug: productSlug,
-          categoryId,
+          categoryId: resolvedCategoryId,
           description,
           price: parseFloat(price),
           discountPrice: discountPrice ? parseFloat(discountPrice) : null,
@@ -396,7 +435,7 @@ export class AdminController {
           availability: true,
           isFeatured: isFeatured === 'true' || isFeatured === true,
           availableToday: availableToday === 'true' || availableToday === true,
-          providerId: providerId || undefined,
+          providerId: cleanProviderId,
           approvalStatus: 'APPROVED',
           approvedBy: req.user?.email || 'ADMIN',
           approvedAt: new Date(),

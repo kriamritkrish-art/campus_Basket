@@ -307,18 +307,28 @@ export default function ProviderDashboardPage() {
         formData.append('image', productImageFile);
       }
 
-      const token = localStorage.getItem('nit_token');
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
-      const res = await fetch(`${backendUrl}/api/provider/products`, {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
+      const apiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '');
+      const res = await fetch(`${apiBase}/api/provider/products`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${token}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: formData,
       });
 
-      const data = await res.json();
-      if (data.success) {
+      let data: any = null;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json().catch(() => null);
+      } else {
+        const text = await res.text().catch(() => '');
+        if (!res.ok) {
+          throw new Error(`Server returned status ${res.status}: ${res.statusText || 'Unable to process product'}. Please verify backend deployment on Railway.`);
+        }
+      }
+
+      if (data?.success) {
         setAddProductModalOpen(false);
         setProductForm({
           name: '',
@@ -1890,26 +1900,50 @@ export default function ProviderDashboardPage() {
                             )}
                           </td>
                           <td className="py-3.5 px-4 text-right space-x-1.5 whitespace-nowrap">
-                            {/* Workflow buttons */}
-                            {['CONFIRMED', 'ACCEPTED'].includes(ord.status) && (
+                            {/* 1. If waiting for provider acceptance */}
+                            {ord.status === 'CONFIRMED' && (
+                              <button
+                                onClick={() => handleUpdateOrderStatus(ord.id, 'ACCEPTED')}
+                                className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded-lg font-bold text-[11px] shadow-xs inline-flex items-center gap-1 cursor-pointer transition active:scale-95"
+                                title="Accept order and assign delivery runner"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Accept Order</span>
+                              </button>
+                            )}
+
+                            {/* 2. Mark Preparing */}
+                            {ord.status === 'ACCEPTED' && (
                               <button
                                 onClick={() => handleUpdateOrderStatus(ord.id, 'PREPARING')}
-                                className="bg-amber-600 hover:bg-amber-500 text-white px-2.5 py-1 rounded font-semibold text-[11px]"
+                                className="bg-amber-600 hover:bg-amber-500 text-white px-2.5 py-1 rounded-lg font-semibold text-[11px] cursor-pointer"
                               >
                                 Mark Preparing
                               </button>
                             )}
-                            {ord.status === 'PREPARING' && (
+
+                            {/* 3. Hand Over to Delivery Boy */}
+                            {(ord.status === 'DELIVERY_ASSIGNED' || ord.status === 'PREPARING') && (
                               <button
                                 onClick={() => handleUpdateOrderStatus(ord.id, 'READY_FOR_PICKUP')}
-                                className="bg-purple-600 hover:bg-purple-500 text-white px-2.5 py-1 rounded font-semibold text-[11px]"
+                                className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded-lg font-bold text-[11px] shadow-xs inline-flex items-center gap-1 cursor-pointer transition active:scale-95"
+                                title="Physical hand-off of items to delivery partner"
                               >
-                                Ready for Pickup
+                                <Bike className="w-3.5 h-3.5" />
+                                <span>Hand Over to Delivery Boy</span>
                               </button>
                             )}
+
+                            {/* 4. Handed Over status badge */}
+                            {['READY_FOR_PICKUP', 'PICKED_UP', 'OUT_FOR_DELIVERY'].includes(ord.status) && (
+                              <span className="inline-block text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-md font-semibold">
+                                ✓ Handed Over
+                              </span>
+                            )}
+
                             <button
                               onClick={() => setSelectedOrder(ord)}
-                              className="p-1 text-slate-500 hover:text-slate-900 rounded hover:bg-slate-200"
+                              className="p-1 text-slate-500 hover:text-slate-900 rounded hover:bg-slate-200 cursor-pointer"
                               title="Inspect Full Timeline & Items"
                             >
                               <Eye className="w-4 h-4" />

@@ -257,7 +257,16 @@ const fallbackHandlers: Record<string, any> = {
           ...u.provider,
           user: { id: u.id, email: u.email, username: u.username, role: u.role, isActive: u.isActive }
         })),
-    count: async () => fallbackUsers.filter((u: any) => u.provider).length
+    count: async () => fallbackUsers.filter((u: any) => u.provider).length,
+    update: async (args: any) => {
+      const id = args?.where?.id;
+      const user = fallbackUsers.find((u: any) => u.provider && u.provider.id === id);
+      if (user?.provider) {
+        Object.assign(user.provider, args.data);
+        return JSON.parse(JSON.stringify(user.provider));
+      }
+      return args?.data || null;
+    }
   },
   deliveryBoy: {
     findUnique: async (args: any) => {
@@ -390,7 +399,65 @@ const fallbackHandlers: Record<string, any> = {
         reviews: (p as any).reviews || []
       }));
     },
-    upsert: async (args: any) => args.create
+    upsert: async (args: any) => args.create,
+    create: async (args: any) => {
+      const prodData = args?.data || {};
+      const newId = `prod_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+      const newProduct: any = {
+        id: newId,
+        name: prodData.name,
+        slug: prodData.slug || prodData.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+        categoryId: prodData.categoryId,
+        description: prodData.description || '',
+        price: Number(prodData.price) || 0,
+        discountPrice: prodData.discountPrice ? Number(prodData.discountPrice) : null,
+        unit: prodData.unit || 'piece',
+        sku: prodData.sku || `SKU-${Date.now().toString().slice(-6)}`,
+        stock: parseInt(prodData.stock, 10) || 0,
+        lowStockThreshold: parseInt(prodData.lowStockThreshold, 10) || 5,
+        availability: prodData.availability !== undefined ? Boolean(prodData.availability) : true,
+        isFeatured: Boolean(prodData.isFeatured),
+        availableToday: prodData.availableToday !== undefined ? Boolean(prodData.availableToday) : true,
+        providerId: prodData.providerId || null,
+        approvalStatus: prodData.approvalStatus || 'APPROVED',
+        approvedBy: prodData.approvedBy || 'ADMIN',
+        approvedAt: new Date(),
+        images: [],
+        inventory: {
+          id: `inv_${Date.now()}`,
+          productId: newId,
+          currentStock: parseInt(prodData.stock, 10) || 0,
+          lowStockThreshold: parseInt(prodData.lowStockThreshold, 10) || 5,
+          isOutOfStock: (parseInt(prodData.stock, 10) || 0) <= 0
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      fallbackProducts.unshift(newProduct);
+      return JSON.parse(JSON.stringify(newProduct));
+    },
+    update: async (args: any) => {
+      const id = args?.where?.id;
+      const prod = fallbackProducts.find((p: any) => p.id === id);
+      if (prod && args.data) {
+        Object.assign(prod, args.data, { updatedAt: new Date() });
+        if (args.data.stock !== undefined && prod.inventory) {
+          prod.inventory.currentStock = parseInt(args.data.stock, 10);
+          (prod.inventory as any).isOutOfStock = prod.inventory.currentStock <= 0;
+        }
+        return JSON.parse(JSON.stringify(prod));
+      }
+      return args?.data || null;
+    },
+    delete: async (args: any) => {
+      const id = args?.where?.id;
+      const idx = fallbackProducts.findIndex((p: any) => p.id === id);
+      if (idx !== -1) {
+        const deleted = fallbackProducts.splice(idx, 1)[0];
+        return JSON.parse(JSON.stringify(deleted));
+      }
+      return { id };
+    }
   },
   serviceZone: {
     findMany: async () => {
@@ -445,11 +512,35 @@ const fallbackHandlers: Record<string, any> = {
           orders = orders.filter((o) => o.status === args.where.status);
         }
       }
-      return JSON.parse(JSON.stringify(orders));
+      const mapped = orders.map((o: any) => {
+        const studentUser = fallbackUsers.find((u: any) => u.student?.id === o.studentId);
+        const provUser = fallbackUsers.find((u: any) => u.provider?.id === o.providerId);
+        const dbUser = fallbackUsers.find((u: any) => u.deliveryBoy?.id === o.deliveryBoyId);
+        return {
+          ...o,
+          student: studentUser?.student ? { fullName: studentUser.student.fullName, mobileNumber: studentUser.student.mobileNumber, roomNumber: studentUser.student.roomNumber } : (o.student || { fullName: 'Student', mobileNumber: '', roomNumber: o.roomNumber }),
+          provider: provUser?.provider ? { fullName: provUser.provider.fullName, mobileNumber: provUser.provider.mobileNumber } : (o.provider || null),
+          deliveryBoy: dbUser?.deliveryBoy ? { id: dbUser.deliveryBoy.id, fullName: dbUser.deliveryBoy.fullName, mobileNumber: dbUser.deliveryBoy.mobileNumber, vehicleType: dbUser.deliveryBoy.vehicleType } : (o.deliveryBoy || null),
+          items: o.items || []
+        };
+      });
+      return JSON.parse(JSON.stringify(mapped));
     },
     findUnique: async (args: any) => {
       const id = args?.where?.id;
-      return fallbackOrders.find((o) => o.id === id) || null;
+      const o = fallbackOrders.find((item) => item.id === id);
+      if (!o) return null;
+      const studentUser = fallbackUsers.find((u: any) => u.student?.id === o.studentId);
+      const provUser = fallbackUsers.find((u: any) => u.provider?.id === o.providerId);
+      const dbUser = fallbackUsers.find((u: any) => u.deliveryBoy?.id === o.deliveryBoyId);
+      const ordAny = o as any;
+      return JSON.parse(JSON.stringify({
+        ...o,
+        student: studentUser?.student ? { fullName: studentUser.student.fullName, mobileNumber: studentUser.student.mobileNumber, roomNumber: studentUser.student.roomNumber } : (ordAny.student || { fullName: 'Student', mobileNumber: '', roomNumber: o.roomNumber }),
+        provider: provUser?.provider ? { fullName: provUser.provider.fullName, mobileNumber: provUser.provider.mobileNumber } : (ordAny.provider || null),
+        deliveryBoy: dbUser?.deliveryBoy ? { id: dbUser.deliveryBoy.id, fullName: dbUser.deliveryBoy.fullName, mobileNumber: dbUser.deliveryBoy.mobileNumber, vehicleType: dbUser.deliveryBoy.vehicleType } : (ordAny.deliveryBoy || null),
+        items: o.items || []
+      }));
     },
     create: async (args: any) => {
       const itemsData = args.data.items?.create || [];

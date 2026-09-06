@@ -537,6 +537,7 @@ export const fallbackUsers = [
       serviceCategory: 'Stationery & Essentials',
       assignedZones: 'ALL',
       activeStatus: true,
+      autoAssignDelivery: false,
       createdAt: new Date('2026-01-10'),
       updatedAt: new Date()
     }
@@ -563,6 +564,7 @@ export const fallbackUsers = [
       serviceCategory: 'Express Laundry',
       assignedZones: 'ALL',
       activeStatus: true,
+      autoAssignDelivery: false,
       createdAt: new Date('2026-01-10'),
       updatedAt: new Date()
     }
@@ -589,6 +591,7 @@ export const fallbackUsers = [
       serviceCategory: 'Food & Meals',
       assignedZones: 'ALL',
       activeStatus: true,
+      autoAssignDelivery: false,
       createdAt: new Date('2026-01-10'),
       updatedAt: new Date()
     }
@@ -615,6 +618,7 @@ export const fallbackUsers = [
       serviceCategory: 'Fresh Fruits',
       assignedZones: 'ALL',
       activeStatus: true,
+      autoAssignDelivery: false,
       createdAt: new Date('2026-01-10'),
       updatedAt: new Date()
     }

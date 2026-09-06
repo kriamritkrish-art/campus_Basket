@@ -388,34 +388,61 @@ export class ProviderController {
         return;
       }
 
-      const allowedStatuses = ['PREPARING', 'READY', 'READY_FOR_PICKUP'];
+      const allowedStatuses = ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP'];
       if (!allowedStatuses.includes(status)) {
         res.status(400).json({
           success: false,
-          message: `Service providers can only update status to Preparing or Ready for Pickup.`
+          message: `Service providers can update status to: Accepted, Preparing, Ready, or Handed Over / Ready for Pickup.`
         });
         return;
       }
 
-      await prisma.order.update({
+      let newStatus: any = status;
+      let assignedRunnerId = order.deliveryBoyId;
+      let defaultNote = notes || `Provider updated status to ${status.replace(/_/g, ' ')}`;
+
+      // If provider is accepting the order and no runner is assigned yet, dispatch an active runner
+      if (status === 'ACCEPTED' && !order.deliveryBoyId) {
+        const activeRunner = await prisma.deliveryBoy.findFirst({
+          where: { activeStatus: true }
+        });
+        if (activeRunner) {
+          assignedRunnerId = activeRunner.id;
+          newStatus = 'DELIVERY_ASSIGNED';
+          defaultNote = notes || `Order accepted by provider. Delivery partner ${activeRunner.fullName} (${activeRunner.mobileNumber}) assigned for pickup at shop.`;
+        } else {
+          defaultNote = notes || `Order accepted by provider. Preparing item; awaiting delivery runner check-in.`;
+        }
+      } else if (status === 'READY_FOR_PICKUP') {
+        defaultNote = notes || `Order handed over to delivery partner at shop. Ready for campus delivery.`;
+      }
+
+      const updated = await prisma.order.update({
         where: { id },
         data: {
-          status,
+          status: newStatus,
           providerId: order.providerId || providerId,
+          ...(assignedRunnerId ? { deliveryBoyId: assignedRunnerId } : {}),
           statusHistory: {
             create: {
               previousStatus: order.status,
-              newStatus: status,
+              newStatus: newStatus,
               changedBy: req.user?.email || 'PROVIDER',
-              notes: notes || `Provider updated status to ${status}`
+              notes: defaultNote
             }
           }
+        },
+        include: {
+          deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true } }
         }
       });
 
       res.status(200).json({
         success: true,
-        message: `Order status updated to ${status}`
+        message: status === 'READY_FOR_PICKUP'
+          ? 'Product marked as handed over to delivery partner!'
+          : `Order status updated to ${newStatus.replace(/_/g, ' ')}`,
+        order: updated
       });
     } catch (err) {
       next(err);

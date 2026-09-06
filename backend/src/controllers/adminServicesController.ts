@@ -8,8 +8,18 @@ export class AdminServicesController {
    */
   public static async getFoodAndMeals(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const foodCat = await prisma.category.findFirst({
+        where: { OR: [{ id: 'cat_food' }, { slug: 'food' }] }
+      });
+      const catId = foodCat?.id || 'cat_food';
+
       const foodProducts = await prisma.product.findMany({
-        where: { categoryId: 'cat_food' },
+        where: {
+          OR: [
+            { categoryId: catId },
+            { category: { slug: 'food' } }
+          ]
+        },
         include: { images: true, inventory: true, provider: true }
       });
 
@@ -48,12 +58,7 @@ export class AdminServicesController {
           todayRevenue: todayFoodRevenue || 2850
         },
         subcategories: [
-          'Hot Meals & Biryani',
-          'Hostel Night Snacks',
-          'Student Thali & Curries',
-          'South Indian Specials',
-          'Snacks',
-          'Beverages'
+          { id: catId, name: 'Food & Meals' }
         ],
         products: foodProducts.map((p) => ({
           ...p,
@@ -72,8 +77,18 @@ export class AdminServicesController {
    */
   public static async getFreshFruits(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const fruitCat = await prisma.category.findFirst({
+        where: { OR: [{ id: 'cat_fruits' }, { slug: 'fruits' }] }
+      });
+      const catId = fruitCat?.id || 'cat_fruits';
+
       const fruitProducts = await prisma.product.findMany({
-        where: { categoryId: 'cat_fruits' },
+        where: {
+          OR: [
+            { categoryId: catId },
+            { category: { slug: 'fruits' } }
+          ]
+        },
         include: { images: true, inventory: true, provider: true }
       });
 
@@ -197,8 +212,18 @@ export class AdminServicesController {
    */
   public static async getStationeryAndEssentials(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const essCat = await prisma.category.findFirst({
+        where: { OR: [{ id: 'cat_essentials' }, { slug: 'essentials' }] }
+      });
+      const catId = essCat?.id || 'cat_essentials';
+
       const essentialProducts = await prisma.product.findMany({
-        where: { categoryId: 'cat_essentials' },
+        where: {
+          OR: [
+            { categoryId: catId },
+            { category: { slug: 'essentials' } }
+          ]
+        },
         include: { images: true, inventory: true, provider: true }
       });
 

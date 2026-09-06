@@ -52,7 +52,18 @@ app.use(
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-student-lat', 'x-student-lng', 'x-razorpay-signature', 'x-razorpay-event-id']
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+      'Cache-Control',
+      'x-student-lat',
+      'x-student-lng',
+      'x-razorpay-signature',
+      'x-razorpay-event-id'
+    ]
   })
 );
 

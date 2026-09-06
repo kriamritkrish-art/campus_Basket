@@ -66,17 +66,38 @@ export class PaymentController {
         });
 
         if (payment.orderId) {
+          const currentOrder = await tx.order.findUnique({
+            where: { id: payment.orderId },
+            include: { provider: true }
+          });
+
+          let newStatus: any = 'CONFIRMED';
+          let autoAssignedRunnerId: string | null = null;
+          let paymentNote = `Online payment verified via Razorpay ID: ${razorpayPaymentId}`;
+
+          if (currentOrder?.provider?.autoAssignDelivery) {
+            const runner = await tx.deliveryBoy.findFirst({
+              where: { activeStatus: true }
+            });
+            if (runner) {
+              autoAssignedRunnerId = runner.id;
+              newStatus = 'DELIVERY_ASSIGNED';
+              paymentNote += ` & auto-assigned to delivery runner ${runner.fullName}`;
+            }
+          }
+
           await tx.order.update({
             where: { id: payment.orderId },
             data: {
-              status: 'CONFIRMED',
+              status: newStatus,
+              ...(autoAssignedRunnerId ? { deliveryBoyId: autoAssignedRunnerId } : {}),
               paymentStatus: 'SUCCESS',
               statusHistory: {
                 create: {
                   previousStatus: 'PENDING_PAYMENT',
-                  newStatus: 'CONFIRMED',
+                  newStatus,
                   changedBy: 'RAZORPAY_GATEWAY',
-                  notes: `Online payment verified via Razorpay ID: ${razorpayPaymentId}`
+                  notes: paymentNote
                 }
               }
             }

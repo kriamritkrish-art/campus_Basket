@@ -175,6 +175,47 @@ export class OrderController {
 
       const orderNumber = generateOrderNumber();
 
+      // Determine provider from ordered products
+      const firstProductWithProvider = products.find((p) => p.providerId);
+      let targetProviderId: string | null = firstProductWithProvider?.providerId || null;
+
+      // If products don't have providerId yet, map from category as fallback
+      if (!targetProviderId && products[0]?.categoryId) {
+        const cat = await prisma.category.findUnique({ where: { id: products[0].categoryId } });
+        const provCategory = cat?.name?.toLowerCase() || '';
+        const matchProv = await prisma.serviceProvider.findFirst({
+          where: {
+            OR: [
+              { serviceCategory: { contains: 'Food' } },
+              { serviceCategory: { contains: 'Fruit' } },
+              { serviceCategory: { contains: 'Essential' } }
+            ]
+          }
+        });
+        if (matchProv) targetProviderId = matchProv.id;
+      }
+
+      let targetProvider: any = null;
+      if (targetProviderId) {
+        targetProvider = await prisma.serviceProvider.findUnique({ where: { id: targetProviderId } });
+      }
+
+      // Check auto-assignment policy
+      let initialStatus: any = data.paymentMethod === 'CASH_ON_DELIVERY' ? 'CONFIRMED' : 'PENDING_PAYMENT';
+      let assignedDeliveryBoyId: string | null = null;
+      let initialStatusNote = 'Order initiated at checkout';
+
+      if (data.paymentMethod === 'CASH_ON_DELIVERY' && targetProvider?.autoAssignDelivery) {
+        const activeRunner = await prisma.deliveryBoy.findFirst({
+          where: { activeStatus: true }
+        });
+        if (activeRunner) {
+          assignedDeliveryBoyId = activeRunner.id;
+          initialStatus = 'DELIVERY_ASSIGNED';
+          initialStatusNote = `Auto-assigned to delivery partner ${activeRunner.fullName} (${activeRunner.mobileNumber})`;
+        }
+      }
+
       // Transactionally deduct stock, create order, order items, status history
       const createdOrder = await prisma.$transaction(async (tx) => {
         // Decrement stock
@@ -189,7 +230,9 @@ export class OrderController {
           data: {
             orderNumber,
             studentId,
-            status: data.paymentMethod === 'CASH_ON_DELIVERY' ? 'CONFIRMED' : 'PENDING_PAYMENT',
+            providerId: targetProviderId,
+            deliveryBoyId: assignedDeliveryBoyId,
+            status: initialStatus,
             subtotal,
             deliveryFee,
             discountAmount,
@@ -212,9 +255,9 @@ export class OrderController {
             statusHistory: {
               create: {
                 previousStatus: null,
-                newStatus: data.paymentMethod === 'CASH_ON_DELIVERY' ? 'CONFIRMED' : 'PENDING_PAYMENT',
+                newStatus: initialStatus,
                 changedBy: 'STUDENT',
-                notes: 'Order initiated at checkout'
+                notes: initialStatusNote
               }
             }
           },

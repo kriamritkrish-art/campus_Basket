@@ -193,6 +193,7 @@ model ServiceProvider {
   serviceCategory String         // e.g. FOOD, FRUITS, LAUNDRY, ESSENTIALS
   assignedZones   String         @default("ALL") // JSON array or comma separated
   activeStatus    Boolean        @default(true)
+  autoAssignDelivery Boolean     @default(false)
   plainPassword   String?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt

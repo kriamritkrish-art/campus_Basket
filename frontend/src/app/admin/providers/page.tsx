@@ -57,6 +57,7 @@ export default function AdminProvidersPage() {
     phone: '',
     serviceCategory: 'Food & Meals',
     activeStatus: true,
+    autoAssignDelivery: false,
   });
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -72,6 +73,7 @@ export default function AdminProvidersPage() {
     phone: '',
     serviceCategory: 'Food & Meals',
     activeStatus: true,
+    autoAssignDelivery: false,
     password: '',
   });
   const [editLoading, setEditLoading] = useState(false);
@@ -149,6 +151,7 @@ export default function AdminProvidersPage() {
           phone: '',
           serviceCategory: 'Food & Meals',
           activeStatus: true,
+          autoAssignDelivery: false,
         });
         fetchProviders();
       } else {
@@ -171,6 +174,7 @@ export default function AdminProvidersPage() {
       phone: provider.phone || provider.mobileNumber || '',
       serviceCategory: provider.serviceCategory || provider.serviceType || 'Food & Meals',
       activeStatus: provider.activeStatus ?? true,
+      autoAssignDelivery: provider.autoAssignDelivery ?? false,
       password: provider.plainPassword || '',
     });
     setEditError(null);
@@ -363,6 +367,7 @@ export default function AdminProvidersPage() {
                     </div>
                   </th>
                   <th className="py-3.5 px-4">Service Category</th>
+                  <th className="py-3.5 px-4">Dispatch Policy</th>
                   <th className="py-3.5 px-4">Operating Status</th>
                   <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
@@ -430,9 +435,21 @@ export default function AdminProvidersPage() {
                       </td>
 
                       <td className="py-3.5 px-4">
-                        <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-[#347A27] text-[10px] font-bold border border-emerald-200">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-[#347A27] border border-emerald-200">
                           {category}
                         </span>
+                      </td>
+
+                      <td className="py-3.5 px-4">
+                        {p.autoAssignDelivery ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full font-bold">
+                            ⚡ Auto-Assign Runner
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] bg-sky-50 text-sky-800 border border-sky-200 px-2 py-0.5 rounded-full font-bold">
+                            🛡️ Requires Approval
+                          </span>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-4">
@@ -619,6 +636,42 @@ export default function AdminProvidersPage() {
                 </p>
               </div>
 
+              {/* Order Dispatch & Delivery Policy */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                <label className="font-bold text-slate-800 block text-xs">
+                  Order Dispatch &amp; Delivery Workflow Policy
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="createFulfillment"
+                      checked={!createForm.autoAssignDelivery}
+                      onChange={() => setCreateForm({ ...createForm, autoAssignDelivery: false })}
+                      className="mt-0.5 text-[#4F9D32] focus:ring-[#4F9D32]"
+                    />
+                    <div>
+                      <span className="font-bold text-slate-800 block">Require Provider Acceptance Before Delivery Assignment</span>
+                      <span className="text-[10px] text-slate-500 block">When student orders, provider must accept the order first, after which a delivery runner is assigned.</span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2 cursor-pointer pt-1 border-t border-slate-200/60">
+                    <input
+                      type="radio"
+                      name="createFulfillment"
+                      checked={createForm.autoAssignDelivery}
+                      onChange={() => setCreateForm({ ...createForm, autoAssignDelivery: true })}
+                      className="mt-0.5 text-[#4F9D32] focus:ring-[#4F9D32]"
+                    />
+                    <div>
+                      <span className="font-bold text-slate-800 block">Auto-Assign Delivery Boy Instantly</span>
+                      <span className="text-[10px] text-slate-500 block">When student orders, system automatically dispatches an active delivery boy to the shop. Provider can view order and mark &ldquo;Hand Over to Delivery Boy&rdquo;.</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
               <div className="flex items-center gap-2 pt-2">
                 <input
                   type="checkbox"
@@ -760,6 +813,42 @@ export default function AdminProvidersPage() {
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">Visible &amp; editable by administrator</p>
+              </div>
+
+              {/* Order Dispatch & Delivery Policy */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                <label className="font-bold text-slate-800 block text-xs">
+                  Order Dispatch &amp; Delivery Workflow Policy
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="editFulfillment"
+                      checked={!editForm.autoAssignDelivery}
+                      onChange={() => setEditForm({ ...editForm, autoAssignDelivery: false })}
+                      className="mt-0.5 text-[#4F9D32] focus:ring-[#4F9D32]"
+                    />
+                    <div>
+                      <span className="font-bold text-slate-800 block">Require Provider Acceptance Before Delivery Assignment</span>
+                      <span className="text-[10px] text-slate-500 block">Provider must accept the order before a delivery partner is assigned.</span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2 cursor-pointer pt-1 border-t border-slate-200/60">
+                    <input
+                      type="radio"
+                      name="editFulfillment"
+                      checked={editForm.autoAssignDelivery}
+                      onChange={() => setEditForm({ ...editForm, autoAssignDelivery: true })}
+                      className="mt-0.5 text-[#4F9D32] focus:ring-[#4F9D32]"
+                    />
+                    <div>
+                      <span className="font-bold text-slate-800 block">Auto-Assign Delivery Boy Instantly</span>
+                      <span className="text-[10px] text-slate-500 block">Automatically dispatches delivery boy to the shop upon order placement. Provider views order and marks &ldquo;Hand Over to Delivery Boy&rdquo;.</span>
+                    </div>
+                  </label>
+                </div>
               </div>
 
               <div className="flex items-center gap-2 pt-2">

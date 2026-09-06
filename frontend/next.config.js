@@ -15,7 +15,12 @@ const nextConfig = {
     ],
   },
   async rewrites() {
-    let rawUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000').trim();
+    let rawUrl = (
+      process.env.BACKEND_URL ||
+      process.env.NEXT_PUBLIC_BACKEND_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      'http://localhost:5000'
+    ).trim();
     if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://') && !rawUrl.startsWith('/')) {
       rawUrl = `https://${rawUrl}`;
     }
