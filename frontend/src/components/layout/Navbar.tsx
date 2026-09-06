@@ -128,21 +128,21 @@ export function Navbar() {
 
             {/* RIGHT: Campus Location + Compact Professional Basket + Notifications + Profile */}
             <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-              {/* Campus Location Button */}
+              {/* Campus Location Button (DESKTOP ONLY - On mobile, it's displayed directly below in CampusBanner) */}
               <button
                 type="button"
                 onClick={() => setIsLocationModalOpen(true)}
-                className="flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-[#F7F8F6] hover:bg-[#EEF7E9] border border-[#E5E7EB] text-left transition-colors group cursor-pointer shrink-0"
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F7F8F6] hover:bg-[#EEF7E9] border border-[#E5E7EB] text-left transition-colors group cursor-pointer shrink-0"
                 title="Change Campus Delivery Location"
               >
                 <MapPin className="w-3.5 h-3.5 text-[#4F9D2F] shrink-0" />
                 <div className="leading-tight">
                   <div className="text-[11px] font-black text-[#172033] flex items-center gap-1">
-                    <span className="truncate max-w-[60px] sm:max-w-none">{selectedHall}</span>
-                    <span className="hidden sm:inline text-gray-300">•</span>
-                    <span className="hidden sm:inline text-gray-600 font-semibold">{roomNumber}</span>
+                    <span>{selectedHall}</span>
+                    <span className="text-gray-300">•</span>
+                    <span className="text-gray-600 font-semibold">{roomNumber}</span>
                   </div>
-                  <div className="text-[9px] sm:text-[10px] font-bold text-[#4F9D2F] group-hover:underline">
+                  <div className="text-[10px] font-bold text-[#4F9D2F] group-hover:underline">
                     Change
                   </div>
                 </div>
@@ -294,20 +294,11 @@ export function Navbar() {
               ) : (
                 <Link
                   href="/login"
-                  className="px-3.5 py-1.5 rounded-xl bg-[#172033] hover:bg-black text-white text-xs font-bold shadow-xs transition-transform active:scale-95"
+                  className="px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-[#172033] hover:bg-black text-white text-xs font-bold shadow-xs transition-transform active:scale-95 shrink-0"
                 >
                   Login
                 </Link>
               )}
-
-              {/* Mobile Hamburger Toggle */}
-              <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="md:hidden p-1.5 rounded-lg text-gray-700 hover:bg-gray-100"
-                aria-label="Toggle mobile menu"
-              >
-                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              </button>
             </div>
           </div>
 

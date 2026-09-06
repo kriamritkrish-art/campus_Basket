@@ -18,8 +18,8 @@ export function Footer() {
   }
 
   return (
-    <footer className="bg-white border-t border-gray-200 text-gray-600 text-xs mt-auto">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <footer className="bg-white border-t border-gray-200 text-gray-600 text-xs mt-auto w-full max-w-full overflow-hidden">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 w-full min-w-0">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Col 1: Institutional Info */}
           <div className="space-y-3">

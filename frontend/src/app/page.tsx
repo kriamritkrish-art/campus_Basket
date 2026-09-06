@@ -295,8 +295,8 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F8F6] pb-24 text-[#172033] overflow-x-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 sm:pt-8 space-y-4 sm:space-y-8">
+    <div className="w-full max-w-full min-h-screen bg-[#F7F8F6] pb-28 md:pb-24 text-[#172033] overflow-x-hidden">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-2 sm:pt-8 space-y-4 sm:space-y-8 w-full max-w-full min-w-0">
         
         {/* ==================================================== */}
         {/* 1. WELCOME SECTION & CONTEXTUAL SEARCH (DESKTOP ONLY) */}
@@ -345,28 +345,28 @@ export default function HomePage() {
         {/* 2. LIVE ORDER SECTION (Prominent if order is active) */}
         {/* ==================================================== */}
         {activeOrder && (
-          <section className="bg-white rounded-2xl border border-[#c8e6c9] p-5 sm:p-6 shadow-xs bg-gradient-to-r from-white via-[#fcfdfa] to-[#eef7e9]/50 animate-in fade-in">
+          <section className="bg-white rounded-2xl border border-[#c8e6c9] p-4 sm:p-6 shadow-xs bg-gradient-to-r from-white via-[#fcfdfa] to-[#eef7e9]/50 animate-in fade-in w-full min-w-0">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#4F9D2F] animate-ping" />
-                <span className="text-xs font-black uppercase tracking-wider text-[#36751F]">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#4F9D2F] animate-ping shrink-0" />
+                <span className="text-xs font-black uppercase tracking-wider text-[#36751F] shrink-0">
                   Your Active Order
                 </span>
-                <span className="text-xs font-mono font-bold text-gray-500">
+                <span className="text-xs font-mono font-bold text-gray-500 truncate">
                   #{activeOrder.orderNumber || activeOrder.id?.slice(0, 8)}
                 </span>
               </div>
-              <span className="text-xs font-bold text-[#36751F] bg-[#eef7e9] px-2.5 py-0.5 rounded-full border border-[#dcedc8]">
+              <span className="text-xs font-bold text-[#36751F] bg-[#eef7e9] px-2.5 py-0.5 rounded-full border border-[#dcedc8] shrink-0">
                 🟢 {activeOrder.status.replace(/_/g, ' ')}
               </span>
             </div>
 
             <div className="pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="space-y-1 text-xs">
-                <div className="font-bold text-[#172033] flex items-center gap-2">
-                  <span>🍱 Campus Order</span>
+              <div className="space-y-1 text-xs min-w-0">
+                <div className="font-bold text-[#172033] flex items-center gap-2 min-w-0">
+                  <span className="shrink-0">🍱 Campus Order</span>
                   <span className="text-gray-300">•</span>
-                  <span>Campus Cafeteria &rarr; {activeOrder.hallName || 'Hall 11'} • {activeOrder.roomNumber || 'Room 123'}</span>
+                  <span className="truncate">Campus Cafeteria &rarr; {activeOrder.hallName || 'Hall 11'} • {activeOrder.roomNumber || 'Room 123'}</span>
                 </div>
                 <div className="text-gray-500 text-[11px]">
                   Estimated Delivery Time: <strong className="text-[#172033]">8–12 minutes</strong>
@@ -387,24 +387,19 @@ export default function HomePage() {
         {/* ==================================================== */}
         {/* 3. CAMPUS SERVICES (Service Categories)              */}
         {/* ==================================================== */}
-        <section id="campus-services" className="space-y-2 sm:space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <h2 className="text-xs sm:text-base font-black uppercase tracking-wider text-[#172033]">
-                Service Categories
-              </h2>
-              <span className="md:hidden text-[10px] font-bold text-[#4F9D2F] bg-[#EFF8EA] px-2 py-0.5 rounded-full border border-[#D0EBC2]">
-                Swipe &rarr;
-              </span>
-            </div>
-            <span className="text-[11px] sm:text-xs text-gray-500 font-medium">
-              10–15 min hostel delivery across 14 Halls
+        <section id="campus-services" className="space-y-2 sm:space-y-3 w-full min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-xs sm:text-base font-black uppercase tracking-wider text-[#172033] shrink-0">
+              Service Categories
+            </h2>
+            <span className="text-[10px] sm:text-xs font-semibold text-[#4F9D2F] bg-[#EFF8EA] px-2 py-0.5 rounded-full border border-[#D0EBC2] shrink-0">
+              ⚡ 10–15 min delivery
             </span>
           </div>
 
           {/* MOBILE ONLY: Compact Horizontally Scrollable Category Carousel */}
-          <div className="md:hidden -mx-4 px-4 overflow-x-auto no-scrollbar scroll-smooth">
-            <div className="flex gap-2.5 pb-1">
+          <div className="md:hidden -mx-3 px-3 overflow-x-auto no-scrollbar scroll-smooth touch-pan-x w-full">
+            <div className="flex gap-2.5 pb-1 w-max">
               {CAMPUS_SERVICES.map((svc) => {
                 const isActive = activeCategory === svc.id;
                 return (
@@ -412,7 +407,7 @@ export default function HomePage() {
                     key={svc.key}
                     type="button"
                     onClick={() => handleCategoryClick(svc)}
-                    className={`w-[136px] min-w-[136px] h-[116px] p-3 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between shrink-0 cursor-pointer ${
+                    className={`w-[130px] min-w-[130px] h-[114px] p-3 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between shrink-0 cursor-pointer ${
                       isActive
                         ? 'bg-[#EFF8EA] border-[#4F9D2F] ring-1 ring-[#4F9D2F] shadow-xs'
                         : 'bg-white hover:bg-[#FCFDFB] border-[#E5E7EB] hover:border-gray-300 shadow-2xs'
@@ -452,7 +447,7 @@ export default function HomePage() {
           </div>
 
           {/* DESKTOP: 6 Modern SaaS-Style Cards Grid */}
-          <div className="hidden md:grid md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="hidden md:grid md:grid-cols-3 lg:grid-cols-6 gap-3 w-full">
             {CAMPUS_SERVICES.map((svc) => {
               const isActive = activeCategory === svc.id;
               return (
@@ -504,77 +499,79 @@ export default function HomePage() {
         {/* ==================================================== */}
         {/* 4. QUICK ACTIONS BAR                                 */}
         {/* ==================================================== */}
-        <section className="space-y-2">
+        <section className="space-y-2 w-full min-w-0">
           <div className="text-xs font-bold uppercase tracking-wider text-gray-400">
             Quick Actions
           </div>
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 text-xs">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveCategory('food');
-                setSelectedSubfilter('all');
-              }}
-              className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
-            >
-              <span>🍱</span>
-              <span>Order Food</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveCategory('laundry');
-                const el = document.getElementById('laundry-booking-section');
-                if (el) el.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
-            >
-              <span>👕</span>
-              <span>Send Laundry</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveCategory('stationery');
-                setSelectedSubfilter('all');
-              }}
-              className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
-            >
-              <span>📚</span>
-              <span>Buy Stationery</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveCategory('essentials');
-                setSelectedSubfilter('all');
-              }}
-              className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
-            >
-              <span>🧴</span>
-              <span>Hostel Essentials</span>
-            </button>
-            <Link
-              href={activeOrder ? `/orders/${activeOrder.id}/track` : '/dashboard?tab=orders'}
-              className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
-            >
-              <span>📦</span>
-              <span>Track Order</span>
-            </Link>
-            <a
-              href="#order-again"
-              className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
-            >
-              <span>🔄</span>
-              <span>Order Again</span>
-            </a>
+          <div className="overflow-x-auto no-scrollbar -mx-3 px-3 touch-pan-x w-full">
+            <div className="flex items-center gap-2 pb-1 text-xs w-max">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveCategory('food');
+                  setSelectedSubfilter('all');
+                }}
+                className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>🍱</span>
+                <span>Order Food</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveCategory('laundry');
+                  const el = document.getElementById('laundry-booking-section');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>👕</span>
+                <span>Send Laundry</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveCategory('stationery');
+                  setSelectedSubfilter('all');
+                }}
+                className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>📚</span>
+                <span>Buy Stationery</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveCategory('essentials');
+                  setSelectedSubfilter('all');
+                }}
+                className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>🧴</span>
+                <span>Hostel Essentials</span>
+              </button>
+              <Link
+                href={activeOrder ? `/orders/${activeOrder.id}/track` : '/dashboard?tab=orders'}
+                className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
+              >
+                <span>📦</span>
+                <span>Track Order</span>
+              </Link>
+              <a
+                href="#order-again"
+                className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
+              >
+                <span>🔄</span>
+                <span>Order Again</span>
+              </a>
+            </div>
           </div>
         </section>
 
         {/* ==================================================== */}
         {/* 5. PERSONALIZED SECTION: ORDER AGAIN                 */}
         {/* ==================================================== */}
-        <section id="order-again" className="space-y-3">
+        <section id="order-again" className="space-y-3 w-full min-w-0">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-sm sm:text-base font-black uppercase tracking-wider text-[#172033]">
@@ -584,13 +581,13 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
             {orderAgainItems.map((prod) => (
               <div
                 key={prod.id}
-                className="bg-white border border-[#E5E7EB] rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-xs hover:border-gray-300 transition-colors"
+                className="bg-white border border-[#E5E7EB] rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-xs hover:border-gray-300 transition-colors w-full min-w-0"
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className="w-12 h-12 bg-[#F7F8F6] rounded-xl flex items-center justify-center p-1 shrink-0 overflow-hidden">
                     <img
                       src={prod.primaryImage || prod.images?.[0]?.googleDriveUrl}
@@ -598,7 +595,7 @@ export default function HomePage() {
                       className="max-h-full max-w-full object-contain"
                     />
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <h3 className="font-bold text-xs sm:text-sm text-[#172033] truncate">
                       {prod.name}
                     </h3>
@@ -616,7 +613,7 @@ export default function HomePage() {
                     addItem(prod, 1);
                     showToast(`✓ Added to basket: ${prod.name}`);
                   }}
-                  className="px-3 py-1.5 rounded-lg border border-[#4F9D2F] text-[#4F9D2F] hover:bg-[#4F9D2F] hover:text-white font-bold text-xs transition-colors shrink-0 shadow-2xs"
+                  className="px-3 py-1.5 rounded-lg border border-[#4F9D2F] text-[#4F9D2F] hover:bg-[#4F9D2F] hover:text-white font-bold text-xs transition-colors shrink-0 shadow-2xs cursor-pointer"
                 >
                   Add Again
                 </button>
@@ -629,19 +626,19 @@ export default function HomePage() {
         {/* 6. SMART PICK RECOMMENDATION                         */}
         {/* ==================================================== */}
         {smartPickItem && (
-          <section className="bg-white border border-[#E5E7EB] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-white via-white to-[#EEF7E9]/40">
-            <div className="flex items-center gap-3">
+          <section className="bg-white border border-[#E5E7EB] rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-white via-white to-[#EEF7E9]/40 w-full min-w-0">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
               <div className="w-10 h-10 rounded-xl bg-[#eef7e9] text-[#4F9D2F] flex items-center justify-center text-lg shrink-0">
                 ✨
               </div>
-              <div>
+              <div className="min-w-0 flex-1">
                 <div className="text-[10px] font-extrabold uppercase tracking-wider text-[#4F9D2F]">
                   Smart Pick
                 </div>
-                <div className="text-xs sm:text-sm font-bold text-[#172033]">
+                <div className="text-xs sm:text-sm font-bold text-[#172033] truncate">
                   Complete your order with: <span className="font-extrabold">{smartPickItem.name}</span>
                 </div>
-                <div className="text-[11px] text-gray-500">
+                <div className="text-[11px] text-gray-500 truncate">
                   Popular pair with hostel meals &bull; 10 min room delivery
                 </div>
               </div>
@@ -650,7 +647,7 @@ export default function HomePage() {
             <button
               type="button"
               onClick={handleAddSmartPick}
-              className="px-4 py-2 rounded-xl bg-[#4F9D2F] hover:bg-[#36751F] text-white text-xs font-bold shadow-xs transition-transform active:scale-95 shrink-0 flex items-center gap-1.5 justify-center"
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-[#4F9D2F] hover:bg-[#36751F] text-white text-xs font-bold shadow-xs transition-transform active:scale-95 shrink-0 flex items-center gap-1.5 justify-center cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add ₹{smartPickItem.discountPrice || smartPickItem.price}</span>
@@ -661,7 +658,7 @@ export default function HomePage() {
         {/* ==================================================== */}
         {/* 7. POPULAR ON CAMPUS (Product Discovery)             */}
         {/* ==================================================== */}
-        <section className="space-y-4">
+        <section className="space-y-4 w-full min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <h2 className="text-sm sm:text-base font-black uppercase tracking-wider text-[#172033] flex items-center gap-1.5">
@@ -673,77 +670,79 @@ export default function HomePage() {
             </div>
 
             {/* Category Filter Tabs */}
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveCategory('all');
-                  setSelectedSubfilter('all');
-                }}
-                className={`px-3 py-1.5 rounded-xl font-bold transition-colors shrink-0 ${
-                  activeCategory === 'all'
-                    ? 'bg-[#172033] text-white'
-                    : 'bg-white border border-[#E5E7EB] text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                All Items
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveCategory('food');
-                  setSelectedSubfilter('all');
-                }}
-                className={`px-3 py-1.5 rounded-xl font-bold transition-colors shrink-0 ${
-                  activeCategory === 'food'
-                    ? 'bg-[#172033] text-white'
-                    : 'bg-white border border-[#E5E7EB] text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Food &amp; Meals
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveCategory('fruits');
-                  setSelectedSubfilter('all');
-                }}
-                className={`px-3 py-1.5 rounded-xl font-bold transition-colors shrink-0 ${
-                  activeCategory === 'fruits'
-                    ? 'bg-[#172033] text-white'
-                    : 'bg-white border border-[#E5E7EB] text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Fresh Produce
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveCategory('stationery');
-                  setSelectedSubfilter('all');
-                }}
-                className={`px-3 py-1.5 rounded-xl font-bold transition-colors shrink-0 ${
-                  activeCategory === 'stationery'
-                    ? 'bg-[#172033] text-white'
-                    : 'bg-white border border-[#E5E7EB] text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Stationery
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveCategory('essentials');
-                  setSelectedSubfilter('all');
-                }}
-                className={`px-3 py-1.5 rounded-xl font-bold transition-colors shrink-0 ${
-                  activeCategory === 'essentials'
-                    ? 'bg-[#172033] text-white'
-                    : 'bg-white border border-[#E5E7EB] text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Hostel Essentials
-              </button>
+            <div className="overflow-x-auto no-scrollbar -mx-3 px-3 touch-pan-x w-full sm:w-auto">
+              <div className="flex items-center gap-1.5 text-xs w-max pb-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveCategory('all');
+                    setSelectedSubfilter('all');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-colors shrink-0 cursor-pointer ${
+                    activeCategory === 'all'
+                      ? 'bg-[#172033] text-white'
+                      : 'bg-white border border-[#E5E7EB] text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  All Items
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveCategory('food');
+                    setSelectedSubfilter('all');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-colors shrink-0 cursor-pointer ${
+                    activeCategory === 'food'
+                      ? 'bg-[#172033] text-white'
+                      : 'bg-white border border-[#E5E7EB] text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Food &amp; Meals
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveCategory('fruits');
+                    setSelectedSubfilter('all');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-colors shrink-0 cursor-pointer ${
+                    activeCategory === 'fruits'
+                      ? 'bg-[#172033] text-white'
+                      : 'bg-white border border-[#E5E7EB] text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Fresh Produce
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveCategory('stationery');
+                    setSelectedSubfilter('all');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-colors shrink-0 cursor-pointer ${
+                    activeCategory === 'stationery'
+                      ? 'bg-[#172033] text-white'
+                      : 'bg-white border border-[#E5E7EB] text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Stationery
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveCategory('essentials');
+                    setSelectedSubfilter('all');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-colors shrink-0 cursor-pointer ${
+                    activeCategory === 'essentials'
+                      ? 'bg-[#172033] text-white'
+                      : 'bg-white border border-[#E5E7EB] text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Hostel Essentials
+                </button>
+              </div>
             </div>
           </div>
 
@@ -764,74 +763,76 @@ export default function HomePage() {
           )}
 
           {/* Quick Dietary / Offer Filter Chips */}
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar text-xs pt-1">
-            <span className="text-gray-400 font-bold text-[11px] uppercase tracking-wider">Filter:</span>
-            <button
-              type="button"
-              onClick={() => setSelectedSubfilter('all')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
-                selectedSubfilter === 'all'
-                  ? 'bg-[#4F9D2F] text-white'
-                  : 'bg-white border border-[#E5E7EB] text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              All Items
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedSubfilter(selectedSubfilter === 'discount' ? 'all' : 'discount')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
-                selectedSubfilter === 'discount'
-                  ? 'bg-[#4F9D2F] text-white'
-                  : 'bg-white border border-[#E5E7EB] text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              10% OFF Deals
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedSubfilter(selectedSubfilter === 'veg' ? 'all' : 'veg')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-                selectedSubfilter === 'veg'
-                  ? 'bg-[#2e7d32] text-white'
-                  : 'bg-white border border-[#E5E7EB] text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <div className="veg-icon" />
-              <span>Pure Veg</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedSubfilter(selectedSubfilter === 'non-veg' ? 'all' : 'non-veg')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
-                selectedSubfilter === 'non-veg'
-                  ? 'bg-[#d32f2f] text-white'
-                  : 'bg-white border border-[#E5E7EB] text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <div className="non-veg-icon" />
-              <span>Non-Veg</span>
-            </button>
+          <div className="overflow-x-auto no-scrollbar -mx-3 px-3 touch-pan-x w-full">
+            <div className="flex items-center gap-2 text-xs pt-1 pb-1 w-max">
+              <span className="text-gray-400 font-bold text-[11px] uppercase tracking-wider shrink-0">Filter:</span>
+              <button
+                type="button"
+                onClick={() => setSelectedSubfilter('all')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 ${
+                  selectedSubfilter === 'all'
+                    ? 'bg-[#4F9D2F] text-white'
+                    : 'bg-white border border-[#E5E7EB] text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                All Items
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedSubfilter(selectedSubfilter === 'discount' ? 'all' : 'discount')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 ${
+                  selectedSubfilter === 'discount'
+                    ? 'bg-[#4F9D2F] text-white'
+                    : 'bg-white border border-[#E5E7EB] text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                10% OFF Deals
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedSubfilter(selectedSubfilter === 'veg' ? 'all' : 'veg')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer shrink-0 ${
+                  selectedSubfilter === 'veg'
+                    ? 'bg-[#2e7d32] text-white'
+                    : 'bg-white border border-[#E5E7EB] text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <div className="veg-icon" />
+                <span>Pure Veg</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedSubfilter(selectedSubfilter === 'non-veg' ? 'all' : 'non-veg')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer shrink-0 ${
+                  selectedSubfilter === 'non-veg'
+                    ? 'bg-[#d32f2f] text-white'
+                    : 'bg-white border border-[#E5E7EB] text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <div className="non-veg-icon" />
+                <span>Non-Veg</span>
+              </button>
+            </div>
           </div>
 
           {/* Product Grid */}
           {activeCategory === 'laundry' ? (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-6 w-full min-w-0">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                 {LAUNDRY_SERVICES_LIST.map((srv) => (
                   <div
                     key={srv.id}
-                    className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs hover:shadow-md transition-shadow relative space-y-3"
+                    className="bg-white rounded-2xl border border-[#E5E7EB] p-5 shadow-xs hover:shadow-md transition-shadow relative space-y-3 min-w-0"
                   >
                     {srv.popular && (
                       <div className="absolute top-0 right-0 bg-[#4F9D2F] text-white text-[10px] font-extrabold px-2.5 py-0.5 rounded-bl-lg uppercase tracking-wider">
                         Most Booked
                       </div>
                     )}
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{srv.icon}</span>
-                      <div>
-                        <h3 className="font-bold text-gray-900 text-sm">{srv.name}</h3>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-2xl shrink-0">{srv.icon}</span>
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-gray-900 text-sm truncate">{srv.name}</h3>
                         <div className="text-xs font-semibold text-gray-500">
                           Turnaround: <span className="text-gray-800">{srv.time}</span>
                         </div>
@@ -854,7 +855,7 @@ export default function HomePage() {
                 ))}
               </div>
 
-              <div id="laundry-booking-section" className="bg-white rounded-2xl border border-[#E5E7EB] p-6 shadow-xs">
+              <div id="laundry-booking-section" className="bg-white rounded-2xl border border-[#E5E7EB] p-4 sm:p-6 shadow-xs w-full min-w-0">
                 <div className="border-b border-gray-100 pb-4 mb-6">
                   <h2 className="text-lg font-bold text-gray-900">
                     Schedule Hostel Room Pickup
@@ -867,7 +868,7 @@ export default function HomePage() {
               </div>
             </div>
           ) : filteredProducts.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-[#E5E7EB] p-12 text-center space-y-3">
+            <div className="bg-white rounded-2xl border border-[#E5E7EB] p-8 sm:p-12 text-center space-y-3 w-full">
               <Package className="w-10 h-10 text-gray-300 mx-auto" />
               <h3 className="text-base font-bold text-gray-800">No items found</h3>
               <p className="text-xs text-gray-500 max-w-sm mx-auto">
@@ -880,13 +881,13 @@ export default function HomePage() {
                   setSelectedSubfilter('all');
                   setActiveCategory('all');
                 }}
-                className="px-4 py-2 rounded-xl bg-[#4F9D2F] text-white text-xs font-bold hover:bg-[#36751F] transition-colors"
+                className="px-4 py-2 rounded-xl bg-[#4F9D2F] text-white text-xs font-bold hover:bg-[#36751F] transition-colors cursor-pointer"
               >
                 Clear Filters
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 w-full min-w-0">
               {filteredProducts.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}

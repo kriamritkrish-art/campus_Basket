@@ -35,7 +35,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <>
       <CampusBanner />
       <Navbar />
-      <main className="flex-1 pb-28 md:pb-16">{children}</main>
+      <main className="flex-1 pb-28 md:pb-16 w-full max-w-full overflow-x-hidden min-w-0">{children}</main>
       <Footer />
       <CartDrawer />
       {/* Desktop floating cart in bottom right */}
