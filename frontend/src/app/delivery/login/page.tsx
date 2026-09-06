@@ -14,17 +14,15 @@ import {
   Eye,
   EyeOff,
   AlertCircle,
-  KeyRound,
-  CheckCircle2,
-  Sparkles
+  KeyRound
 } from 'lucide-react';
 
 function DeliveryLoginForm() {
   const router = useRouter();
   const { user, role, isAuthenticated, login, isLoading } = useAuth();
 
-  const [identifier, setIdentifier] = useState('DB_BOY_01');
-  const [password, setPassword] = useState('Delivery@12345');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [loginWithOtp, setLoginWithOtp] = useState(false);
@@ -41,12 +39,6 @@ function DeliveryLoginForm() {
       }
     }
   }, [isAuthenticated, role, isLoading, router]);
-
-  const handleQuickFill = () => {
-    setIdentifier('DB_BOY_01');
-    setPassword('Delivery@12345');
-    setError(null);
-  };
 
   const handleSendOtp = async () => {
     if (!identifier.trim()) {
@@ -125,22 +117,7 @@ function DeliveryLoginForm() {
 
         {/* Card */}
         <div className="mt-8 bg-white py-8 px-6 sm:px-10 shadow-sm border border-gray-200 rounded-3xl space-y-6">
-          {/* Quick Fill Preset Banner */}
-          <div className="bg-[#f1f8e9] border border-[#dcedc8] p-3.5 rounded-2xl flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-[#4f9d2f] shrink-0" />
-              <span className="text-[11px] font-bold text-[#2e7d32]">
-                Delivery Partner Demo Available
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={handleQuickFill}
-              className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-lg bg-[#4f9d2f] text-white hover:bg-[#36751f] transition-colors"
-            >
-              Fill Credentials
-            </button>
-          </div>
+
 
           {error && (
             <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-700 flex items-center gap-2">
@@ -219,7 +196,7 @@ function DeliveryLoginForm() {
                 </div>
                 {otpSent && (
                   <span className="text-[10px] text-[#2e7d32] font-semibold mt-1 block">
-                    ✓ Demo OTP sent: 123456
+                    ✓ OTP dispatched to registered mobile
                   </span>
                 )}
               </div>

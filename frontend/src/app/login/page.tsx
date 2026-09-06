@@ -15,8 +15,6 @@ import {
   KeyRound,
   Eye,
   EyeOff,
-  CheckCircle2,
-  Sparkles,
   AlertCircle
 } from 'lucide-react';
 
@@ -33,7 +31,6 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [autoFilled, setAutoFilled] = useState(false);
 
   // OTP Verification Step State
   const [otpStep, setOtpStep] = useState(false);
@@ -60,30 +57,11 @@ function LoginForm() {
   const handleRoleChange = (selectedRole: UserRole) => {
     setActiveRole(selectedRole);
     setError(null);
-    setAutoFilled(false);
     setOtpStep(false);
     setIdentifier('');
     setPassword('');
     // Cleanly update URL without stale redirects from other roles
     router.replace(`/login?role=${selectedRole}`);
-  };
-
-  const handleQuickFill = (roleToFill: UserRole) => {
-    if (roleToFill === 'ADMIN') {
-      setIdentifier('souravsenapati408@gmail.com');
-      setPassword('Sourav@12345');
-    } else if (roleToFill === 'DELIVERY_BOY') {
-      setIdentifier('DB_BOY_01');
-      setPassword('Delivery@12345');
-    } else if (roleToFill === 'SERVICE_PROVIDER') {
-      setIdentifier('SP_FOOD_01');
-      setPassword('Vendor@12345');
-    } else {
-      setIdentifier('ss.24u10227@nitdgp.ac.in');
-      setPassword('Student@2026');
-    }
-    setAutoFilled(true);
-    setTimeout(() => setAutoFilled(false), 2500);
   };
 
   const handleRoleRedirect = (userRole: string) => {
@@ -537,26 +515,7 @@ function LoginForm() {
           </p>
         </div>
 
-        {/* Quick Fill Demo Credentials Chip (Only in credential step) */}
-        {!otpStep && (
-          <div className="bg-[#f8f8f8] rounded-xl p-2.5 border border-gray-200 flex items-center justify-between gap-2">
-            <div className="text-[11px] text-gray-700 flex items-center gap-1.5 truncate">
-              <KeyRound className="w-3.5 h-3.5 text-[#689f38] shrink-0" />
-              <span className="font-semibold text-gray-500">Quick Test:</span>
-              <span className="text-gray-600 font-medium truncate">
-                Demo account preset
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleQuickFill(activeRole)}
-              className="px-2.5 py-1 rounded-md bg-white hover:bg-gray-100 text-[#689f38] text-[11px] font-bold flex items-center gap-1 shrink-0 border border-gray-300 shadow-2xs transition-colors"
-            >
-              {autoFilled ? <CheckCircle2 className="w-3 h-3 text-[#2e7d32]" /> : <Sparkles className="w-3 h-3 text-[#689f38]" />}
-              {autoFilled ? 'Loaded!' : 'Autofill'}
-            </button>
-          </div>
-        )}
+
 
         {error && (
           <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
@@ -781,30 +740,18 @@ function LoginForm() {
 
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 space-y-1.5">
               <p className="font-semibold flex items-center gap-1.5">
-                <span>💡 Note for Localhost / Development:</span>
+                <span>💡 Note for Google Authentication:</span>
               </p>
               <p className="text-[11px] text-amber-800 leading-normal">
-                Google requires <code className="bg-amber-100 px-1 rounded font-mono text-[10px]">http://localhost:3000</code> in Authorized JavaScript Origins in Google Cloud Console. In the meantime, you can instantly sign in with your verified demo student account below.
+                Please ensure your Google account is registered with your NIT Durgapur credentials or use your student email and password to log in.
               </p>
             </div>
 
-            <div className="space-y-2 pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setGoogleInfoModal(false);
-                  handleQuickFill('STUDENT');
-                }}
-                className="w-full py-2.5 bg-[#4F9D2F] hover:bg-[#36751F] text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2"
-              >
-                <span>Sign In with Demo Student Account</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-
+            <div className="pt-1">
               <button
                 type="button"
                 onClick={() => setGoogleInfoModal(false)}
-                className="w-full py-2 text-xs font-semibold text-gray-500 hover:text-gray-800 transition-colors cursor-pointer"
+                className="w-full py-2.5 bg-[#4F9D2F] hover:bg-[#36751F] text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-sm transition-all cursor-pointer"
               >
                 Close
               </button>

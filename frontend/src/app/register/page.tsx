@@ -11,7 +11,6 @@ import {
   ShieldCheck,
   Mail,
   Lock,
-  KeyRound,
   User,
   Phone,
   Home,
@@ -19,7 +18,6 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
-  Sparkles,
   GraduationCap,
   Building2,
   RotateCcw,
@@ -98,7 +96,6 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [autoFilled, setAutoFilled] = useState(false);
 
   // Load campus residence halls
   useEffect(() => {
@@ -133,25 +130,7 @@ export default function RegisterPage() {
     return () => clearInterval(timer);
   }, [personalResendTimer]);
 
-  // Quick preset autofill for evaluation / demonstration
-  const handleQuickDemoFill = () => {
-    setCollegeEmail('ss.24u10227@nitdgp.ac.in');
-    setCollegeOtp('123456');
-    setPersonalEmail('student@gmail.com');
-    setPersonalOtp('123456');
-    setFullName('Sourav Senapati');
-    setRollNumber('24U10227');
-    setRegistrationNumber('202410227');
-    setMobileNumber('9876501234');
-    setDepartment('Computer Science & Engineering');
-    setProgramme('B.Tech');
-    setYear('2nd Year');
-    setRoomNumber('B-304');
-    setPassword('Student@2026');
-    setConfirmPassword('Student@2026');
-    setAutoFilled(true);
-    setTimeout(() => setAutoFilled(false), 2500);
-  };
+
 
   // Password Strength Calculation
   const calculatePasswordStrength = (pass: string) => {
@@ -445,24 +424,7 @@ export default function RegisterPage() {
           </p>
         </div>
 
-        {/* Demo Autofill Preset Chip */}
-        {step === 1 && (
-          <div className="bg-[#f8f8f8] rounded-xl p-2.5 border border-gray-200 flex items-center justify-between gap-2">
-            <div className="text-[11px] text-gray-700 flex items-center gap-1.5 truncate">
-              <KeyRound className="w-3.5 h-3.5 text-[#689f38] shrink-0" />
-              <span className="font-semibold text-gray-500">Test Preset:</span>
-              <span className="text-gray-600 font-medium truncate">Demo Student Account</span>
-            </div>
-            <button
-              type="button"
-              onClick={handleQuickDemoFill}
-              className="px-2.5 py-1 rounded-md bg-white hover:bg-gray-100 text-[#689f38] text-[11px] font-bold flex items-center gap-1 shrink-0 border border-gray-300 shadow-2xs transition-colors cursor-pointer"
-            >
-              {autoFilled ? <CheckCircle2 className="w-3 h-3 text-[#2e7d32]" /> : <Sparkles className="w-3 h-3 text-[#689f38]" />}
-              {autoFilled ? 'Loaded!' : 'Autofill'}
-            </button>
-          </div>
-        )}
+
 
         {/* Alerts */}
         {error && (
