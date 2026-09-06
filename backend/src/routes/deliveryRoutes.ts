@@ -13,6 +13,7 @@ router.get('/available', DeliveryController.getAvailableOrders);
 router.get('/orders', DeliveryController.getAssignedOrders);
 router.get('/history', DeliveryController.getDeliveryHistory);
 router.post('/orders/:id/accept', DeliveryController.acceptOrder);
+router.post('/orders/:id/verify-otp', DeliveryController.verifyDeliveryOtp);
 router.patch('/orders/:id/status', DeliveryController.updateDeliveryStatus);
 router.patch('/status', DeliveryController.toggleOnlineStatus);
 

@@ -50,6 +50,7 @@ router.get('/services/food', AdminServicesController.getFoodAndMeals);
 router.get('/services/fruits', AdminServicesController.getFreshFruits);
 router.get('/services/laundry', AdminServicesController.getExpressLaundry);
 router.patch('/services/laundry/:id/status', AdminServicesController.updateLaundryStatus);
+router.patch('/services/laundry/:id/assign-delivery', AdminServicesController.assignLaundryDelivery);
 router.get('/services/essentials', AdminServicesController.getStationeryAndEssentials);
 
 // 5. Power BI-Style Analytics

@@ -152,6 +152,11 @@ export default function ProviderDashboardPage() {
 
   // Laundry Jobs State (Doorstep dual-OTP feature preserved)
   const [laundryJobs, setLaundryJobs] = useState<any[]>([]);
+  const [selectedGarmentPhotos, setSelectedGarmentPhotos] = useState<{
+    photos: any[];
+    orderNumber: string;
+    studentName?: string;
+  } | null>(null);
   const [otpModal, setOtpModal] = useState<{
     isOpen: boolean;
     jobId: string;
@@ -162,6 +167,24 @@ export default function ProviderDashboardPage() {
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpSuccess, setOtpSuccess] = useState<string | null>(null);
   const [submittingOtp, setSubmittingOtp] = useState(false);
+
+  // Update laundry status handler (self-fulfillment control)
+  const handleUpdateLaundryStatus = async (jobId: string, status: string) => {
+    try {
+      const res = await apiRequest(`/api/laundry/${jobId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      });
+      if (res.success) {
+        showToast(`Laundry stage updated to ${status}`);
+        loadLaundryJobs();
+      } else {
+        alert(res.message || 'Failed to update laundry status');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error updating laundry status');
+    }
+  };
 
   // Toast / notification feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -513,6 +536,7 @@ export default function ProviderDashboardPage() {
   const isLaundryVendor =
     analytics?.provider?.serviceCategory === 'Express Laundry' ||
     analytics?.provider?.serviceCategory === 'LAUNDRY' ||
+    Boolean(analytics?.provider?.serviceCategory?.toLowerCase().includes('laundry')) ||
     analytics?.provider?.serviceCategory === 'ALL';
 
   const activeTabTitle = useMemo(() => {
@@ -2561,81 +2585,147 @@ export default function ProviderDashboardPage() {
             ======================================================= */}
         {activeTab === 'LAUNDRY' && isLaundryVendor && (
           <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <Shirt className="w-5 h-5 text-indigo-600" />
                   Express Laundry Doorstep Verification Desk
                 </h3>
-                <p className="text-xs text-slate-500">Student dual-OTP room pickup & delivery cycle</p>
+                <p className="text-xs text-slate-500">
+                  Student dual-OTP room pickup &amp; delivery cycle &bull; Self-fulfillment control &bull; Photo inspection
+                </p>
               </div>
+              <button
+                onClick={() => loadLaundryJobs()}
+                className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Refresh Jobs</span>
+              </button>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
+                <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 text-[10px]">
                   <tr>
                     <th className="py-3 px-4">Order #</th>
-                    <th className="py-3 px-4">Student</th>
-                    <th className="py-3 px-4">Room Drop</th>
-                    <th className="py-3 px-4">Service Type</th>
-                    <th className="py-3 px-4 text-center">Items</th>
+                    <th className="py-3 px-4">Student &amp; Room</th>
+                    <th className="py-3 px-4">Garment Photos</th>
+                    <th className="py-3 px-4">Items Summary</th>
                     <th className="py-3 px-4 text-right">Price</th>
-                    <th className="py-3 px-4 text-center">Pickup OTP</th>
-                    <th className="py-3 px-4 text-center">Delivery OTP</th>
-                    <th className="py-3 px-4 text-center">Actions</th>
+                    <th className="py-3 px-4 text-center">Pickup OTP (Give to Student)</th>
+                    <th className="py-3 px-4 text-center">Wash &amp; Return Stage</th>
+                    <th className="py-3 px-4 text-center">Return OTP Handover</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {laundryJobs.length > 0 ? (
                     laundryJobs.map((job: any) => (
-                      <tr key={job.id} className="hover:bg-slate-50">
-                        <td className="py-3 px-4 font-mono font-bold text-slate-900">#{job.orderNumber}</td>
-                        <td className="py-3 px-4 font-medium">{job.student?.fullName || 'Student'}</td>
-                        <td className="py-3 px-4 text-slate-500">{job.hallName} {job.roomNumber}</td>
-                        <td className="py-3 px-4 text-indigo-700 font-medium">{job.serviceType}</td>
-                        <td className="py-3 px-4 text-center">{job.totalClothesCount || 1}</td>
-                        <td className="py-3 px-4 text-right font-bold">₹{job.finalPrice || job.estimatedPrice}</td>
-                        <td className="py-3 px-4 text-center">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              job.pickupOtpStatus === 'VERIFIED'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-amber-100 text-amber-800'
-                            }`}
-                          >
-                            {job.pickupOtpStatus}
-                          </span>
+                      <tr key={job.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                          #{job.orderNumber}
+                          <div className="text-[10px] text-slate-400 font-normal font-sans">
+                            {job.createdAt ? new Date(job.createdAt).toLocaleDateString('en-IN') : ''}
+                          </div>
                         </td>
-                        <td className="py-3 px-4 text-center">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              job.deliveryOtpStatus === 'VERIFIED'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}
-                          >
-                            {job.deliveryOtpStatus}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          {job.pickupOtpStatus === 'PENDING' && (
-                            <button
-                              onClick={() => {
-                                setOtpModal({
-                                  isOpen: true,
-                                  jobId: job.id,
-                                  type: 'PICKUP',
-                                  orderNumber: job.orderNumber,
-                                });
-                                setEnteredOtp('');
-                              }}
-                              className="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded text-[11px] font-semibold"
-                            >
-                              Verify Pickup OTP
-                            </button>
+
+                        <td className="py-3 px-4 font-medium">
+                          <div className="font-bold text-slate-800">{job.student?.fullName || 'Student'}</div>
+                          <div className="text-slate-500 text-[11px] flex items-center gap-1 mt-0.5">
+                            <MapPin className="w-3 h-3 text-slate-400" />
+                            {job.hallName} {job.roomNumber}
+                          </div>
+                          {job.student?.mobileNumber && (
+                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                              📞 {job.student.mobileNumber}
+                            </div>
                           )}
-                          {job.pickupOtpStatus === 'VERIFIED' && job.deliveryOtpStatus === 'PENDING' && (
+                        </td>
+
+                        <td className="py-3 px-4">
+                          {job.photos && job.photos.length > 0 ? (
+                            <button
+                              onClick={() =>
+                                setSelectedGarmentPhotos({
+                                  photos: job.photos,
+                                  orderNumber: job.orderNumber,
+                                  studentName: job.student?.fullName,
+                                })
+                              }
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] border border-indigo-200 transition"
+                            >
+                              <Camera className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>View Clothes ({job.photos.length})</span>
+                            </button>
+                          ) : (
+                            <span className="text-slate-400 text-[11px] italic">No photos attached</span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <div className="text-slate-700 font-medium line-clamp-2 max-w-[180px]">
+                            {job.itemsSummary || `${job.totalClothesCount || 1} clothes`}
+                          </div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            Total: {job.totalClothesCount || 1} pcs
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4 text-right font-bold text-slate-900">
+                          ₹{job.finalPrice || job.estimatedPrice}
+                        </td>
+
+                        <td className="py-3 px-4 text-center">
+                          <div className="inline-flex flex-col items-center">
+                            <div className="font-mono font-black text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md border border-indigo-200 tracking-wider">
+                              {job.pickupOtp || '123456'}
+                            </div>
+                            <span className="text-[9px] text-slate-500 mt-0.5">Tell to student</span>
+                            {job.pickupOtpStatus === 'PENDING' ? (
+                              <button
+                                onClick={() => handleUpdateLaundryStatus(job.id, 'CLOTHES_COLLECTED')}
+                                className="mt-1 text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-2 py-0.5 rounded shadow-xs"
+                              >
+                                Mark Collected
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-0.5 mt-0.5">
+                                <CheckCircle2 className="w-3 h-3" /> Collected
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4 text-center">
+                          <div className="space-y-1 inline-block text-left">
+                            <select
+                              value={job.status}
+                              onChange={(e) => handleUpdateLaundryStatus(job.id, e.target.value)}
+                              className="bg-slate-50 border border-slate-200 text-slate-700 font-bold text-[11px] rounded-lg px-2 py-1 cursor-pointer focus:outline-none focus:border-indigo-600"
+                            >
+                              <option value="REQUESTED">Requested</option>
+                              <option value="ACCEPTED">Accepted</option>
+                              <option value="PICKUP_SCHEDULED">Pickup Scheduled</option>
+                              <option value="CLOTHES_COLLECTED">Clothes Collected</option>
+                              <option value="WASHING">Washing</option>
+                              <option value="IRONING">Ironing</option>
+                              <option value="READY">Ready for Return</option>
+                              <option value="DELIVERY_SCHEDULED">Out for Delivery</option>
+                              <option value="COMPLETED">Completed</option>
+                            </select>
+                            <div className="text-[9px] text-slate-400">
+                              {job.deliveryBoy ? `Runner: ${job.deliveryBoy.fullName}` : 'Self-Fulfillment'}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4 text-center">
+                          {job.deliveryOtpStatus === 'VERIFIED' || job.status === 'COMPLETED' ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full text-[11px] font-bold">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              Delivered
+                            </span>
+                          ) : (
                             <button
                               onClick={() => {
                                 setOtpModal({
@@ -2646,9 +2736,10 @@ export default function ProviderDashboardPage() {
                                 });
                                 setEnteredOtp('');
                               }}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded text-[11px] font-semibold"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold shadow-xs flex items-center gap-1 mx-auto transition"
                             >
-                              Verify Return OTP
+                              <KeyRound className="w-3 h-3" />
+                              <span>Verify Return OTP</span>
                             </button>
                           )}
                         </td>
@@ -2656,7 +2747,8 @@ export default function ProviderDashboardPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={9} className="py-8 text-center text-slate-400">
+                      <td colSpan={8} className="py-10 text-center text-slate-400">
+                        <Shirt className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                         No active doorstep laundry orders right now.
                       </td>
                     </tr>
@@ -3306,6 +3398,67 @@ export default function ProviderDashboardPage() {
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold"
               >
                 {submittingOtp ? 'Verifying...' : 'Verify OTP'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* =======================================================
+          STUDENT GARMENT PHOTOS INSPECTION MODAL
+          ======================================================= */}
+      {selectedGarmentPhotos && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div>
+                <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
+                  <Camera className="w-5 h-5 text-indigo-600" />
+                  Student Garment Photos — #{selectedGarmentPhotos.orderNumber}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Uploaded by {selectedGarmentPhotos.studentName || 'Student'} for condition verification &amp; anti-loss tracking
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedGarmentPhotos(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="py-4 overflow-y-auto flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {selectedGarmentPhotos.photos.map((photo: any, index: number) => (
+                <div
+                  key={photo.id || index}
+                  className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50 flex flex-col shadow-xs"
+                >
+                  <div className="relative aspect-video sm:aspect-square bg-slate-900/5 flex items-center justify-center overflow-hidden">
+                    <img
+                      src={photo.url}
+                      alt={photo.description || `Cloth ${index + 1}`}
+                      className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                    />
+                  </div>
+                  <div className="p-3 bg-white border-t border-slate-100 flex-1 flex flex-col justify-between">
+                    <div className="text-xs font-semibold text-slate-800">
+                      {photo.description || `Garment verification photo ${index + 1}`}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
+                      <span>Photo #{index + 1}</span>
+                      <span className="text-indigo-600 font-medium">Uploaded by Student</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-3 border-t border-slate-200 flex justify-end">
+              <button
+                onClick={() => setSelectedGarmentPhotos(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold transition"
+              >
+                Close Inspection
               </button>
             </div>
           </div>

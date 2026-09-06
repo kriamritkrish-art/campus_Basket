@@ -27,7 +27,8 @@ import {
   User,
   Printer,
   X,
-  PackageCheck
+  PackageCheck,
+  KeyRound
 } from 'lucide-react';
 
 interface OrderItem {
@@ -530,6 +531,43 @@ export default function OrderTrackingPage() {
               </div>
             </div>
           </div>
+
+          {/* Secure Delivery Handover OTP Card */}
+          {order.status !== 'CANCELLED' && (
+            <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-sky-50 border-2 border-emerald-300/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-emerald-900">
+                      Hostel Doorstep Delivery OTP
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      order.status === 'DELIVERED'
+                        ? 'bg-emerald-200 text-emerald-900'
+                        : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {order.status === 'DELIVERED' ? '✓ Delivery Confirmed' : 'Secure Handover'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-800/90 mt-0.5 max-w-lg leading-relaxed">
+                    {order.status === 'DELIVERED'
+                      ? 'Package was verified and delivered at your hostel room door.'
+                      : 'Share this 4-digit code with your delivery runner at your hostel room door to collect your package.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-white px-5 py-2.5 rounded-xl border border-emerald-300 shadow-xs flex items-center gap-3 shrink-0 self-stretch sm:self-auto justify-center">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Your OTP:</span>
+                <span className="font-mono text-2xl font-black tracking-[0.25em] text-emerald-700">
+                  {order.orderNumber.replace(/\D/g, '').slice(-4) || order.orderNumber.slice(-4) || '4829'}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* ==================================================
               3. LIVE GPS TRACK RADAR — Refined Whitish High-Tech Tracker

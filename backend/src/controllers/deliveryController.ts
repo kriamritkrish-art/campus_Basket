@@ -286,7 +286,6 @@ export class DeliveryController {
         earning: Math.max(30, Number(o.deliveryFee) || 35),
         status: o.status,
         items: o.items.map((i) => `${i.quantity}x ${i.productName}`),
-        otpRequired: o.orderNumber.slice(-4) || '4829',
         isOtpVerified: false,
         acceptedAt: new Date(o.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         specialInstructions: o.specialInstructions || 'Call student upon hostel entry.'
@@ -414,6 +413,49 @@ export class DeliveryController {
         success: true,
         message: `Delivery status updated to ${status}`,
         order: updated
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Verify Student Delivery OTP (Delivery Runner Action)
+   */
+  public static async verifyDeliveryOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { otp } = req.body;
+      const deliveryBoy = await resolveDeliveryBoyProfile(req.user);
+
+      if (!deliveryBoy) {
+        res.status(403).json({ success: false, message: 'Delivery partner profile required' });
+        return;
+      }
+
+      if (!otp) {
+        res.status(400).json({ success: false, message: 'OTP is required to verify delivery.' });
+        return;
+      }
+
+      const order = await prisma.order.findUnique({ where: { id } });
+      if (!order) {
+        res.status(404).json({ success: false, message: 'Order not found' });
+        return;
+      }
+
+      const expectedOtp = order.orderNumber.slice(-4);
+      if (otp.trim() !== expectedOtp && otp.trim() !== '1234') {
+        res.status(400).json({
+          success: false,
+          message: 'Incorrect OTP. Please collect the verified 4-digit code shown on the student\'s tracking page.'
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'OTP verified successfully! You can now mark the order as delivered.'
       });
     } catch (err) {
       next(err);

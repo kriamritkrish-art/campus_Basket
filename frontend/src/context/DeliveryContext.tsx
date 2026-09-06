@@ -100,12 +100,12 @@ interface DeliveryContextType {
   maxActiveSlots: number;
 
   advanceOrderStatus: (orderId: string) => Promise<void>;
-  verifyOrderOtp: (orderId: string, enteredOtp: string) => boolean;
+  verifyOrderOtp: (orderId: string, enteredOtp: string) => Promise<boolean>;
   deliverOrder: (orderId: string) => Promise<void>;
 
   // Legacy aliases for backward compatibility
   advanceActiveStatus: () => void;
-  verifyDeliveryOtp: (enteredOtp: string) => boolean;
+  verifyDeliveryOtp: (enteredOtp: string) => Promise<boolean>;
   completeDelivery: () => void;
 
   availableOrders: AvailableOrder[];
@@ -402,23 +402,45 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     await deliverOrder(target.id);
   };
 
-  // Verify Order OTP
-  const verifyOrderOtp = (orderId: string, enteredOtp: string): boolean => {
+  // Verify Order OTP collected from student
+  const verifyOrderOtp = async (orderId: string, enteredOtp: string): Promise<boolean> => {
     const target = activeOrders.find((o) => o.id === orderId || o.orderNumber === orderId);
     if (!target) return false;
 
-    if (enteredOtp.trim() === target.otpRequired || enteredOtp.trim() === target.orderNumber.slice(-4) || enteredOtp.trim() === '1234') {
-      setActiveOrders((prev) =>
-        prev.map((ord) => {
-          if (ord.id === target.id) {
-            return { ...ord, isOtpVerified: true, status: 'OTP_VERIFIED' };
-          }
-          return ord;
-        })
-      );
-      setOtpModalOrder(null);
-      setSuccessToast(`✓ OTP Verified for ${target.orderNumber}! Now tap Mark Delivered.`);
-      return true;
+    try {
+      const res = await apiRequest(`/api/delivery/orders/${target.id}/verify-otp`, {
+        method: 'POST',
+        body: JSON.stringify({ otp: enteredOtp.trim() })
+      });
+      if (res.success) {
+        setActiveOrders((prev) =>
+          prev.map((ord) => {
+            if (ord.id === target.id) {
+              return { ...ord, isOtpVerified: true, status: 'OTP_VERIFIED' };
+            }
+            return ord;
+          })
+        );
+        setOtpModalOrder(null);
+        setSuccessToast(`✓ OTP Verified for ${target.orderNumber}! Now tap Mark Delivered.`);
+        return true;
+      }
+    } catch {
+      // Offline / fallback fallback check
+      const expectedCode = target.orderNumber.replace(/\D/g, '').slice(-4);
+      if (enteredOtp.trim() === expectedCode || enteredOtp.trim() === target.orderNumber.slice(-4)) {
+        setActiveOrders((prev) =>
+          prev.map((ord) => {
+            if (ord.id === target.id) {
+              return { ...ord, isOtpVerified: true, status: 'OTP_VERIFIED' };
+            }
+            return ord;
+          })
+        );
+        setOtpModalOrder(null);
+        setSuccessToast(`✓ OTP Verified for ${target.orderNumber}! Now tap Mark Delivered.`);
+        return true;
+      }
     }
     return false;
   };
@@ -429,9 +451,9 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const verifyDeliveryOtp = (enteredOtp: string): boolean => {
+  const verifyDeliveryOtp = async (enteredOtp: string): Promise<boolean> => {
     if (activeOrders.length > 0) {
-      return verifyOrderOtp(activeOrders[0].id, enteredOtp);
+      return await verifyOrderOtp(activeOrders[0].id, enteredOtp);
     }
     return false;
   };

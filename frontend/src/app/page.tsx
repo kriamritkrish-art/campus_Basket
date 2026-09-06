@@ -264,17 +264,27 @@ export default function HomePage() {
   }, [products, activeCategory, searchFilter, selectedSubfilter]);
 
   const handleCategoryClick = (svc: ServiceCard) => {
-    // If already active, tapping navigates to dedicated store
-    if (activeCategory === svc.id && svc.href && svc.href !== '/#campus-services') {
+    setActiveCategory(svc.id);
+    setSelectedSubfilter('all');
+
+    // On single click directly open that particular store/section
+    if (svc.href && svc.href !== '/#campus-services') {
       router.push(svc.href);
       return;
     }
-    setActiveCategory(svc.id);
-    setSelectedSubfilter('all');
+
     if (svc.id === 'laundry') {
       const el = document.getElementById('laundry-booking-section');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        router.push('/laundry');
+      }
+      return;
     }
+
+    const el = document.getElementById('campus-services');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
 
   // Specific student favorites for "Order Again" section

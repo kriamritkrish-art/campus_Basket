@@ -500,6 +500,7 @@ export class OrderController {
         success: true,
         order: {
           ...order,
+          deliveryOtp: order.orderNumber.slice(-4),
           totalAmount: Number(order.totalAmount),
           subtotal: Number(order.subtotal),
           deliveryFee: Number(order.deliveryFee),

@@ -123,14 +123,21 @@ export class AdminServicesController {
    */
   public static async getExpressLaundry(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const laundryOrders = await prisma.laundryOrder.findMany({
-        include: {
-          student: true,
-          items: true,
-          provider: true
-        },
-        orderBy: { createdAt: 'desc' }
-      });
+      const [laundryOrders, deliveryBoys] = await Promise.all([
+        prisma.laundryOrder.findMany({
+          include: {
+            student: true,
+            items: true,
+            provider: true,
+            deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true } }
+          },
+          orderBy: { createdAt: 'desc' }
+        }),
+        prisma.deliveryBoy.findMany({
+          where: { activeStatus: true },
+          select: { id: true, fullName: true, mobileNumber: true }
+        })
+      ]);
 
       const stageCounts = {
         requested: laundryOrders.filter((l) => l.status === 'REQUESTED').length,
@@ -156,6 +163,7 @@ export class AdminServicesController {
           ...stageCounts
         },
         serviceCatalog: fallbackLaundryServices,
+        deliveryBoys,
         orders: laundryOrders.map((l: any) => ({
           id: l.id,
           orderNumber: l.orderNumber,
@@ -173,6 +181,9 @@ export class AdminServicesController {
           itemsCount: l.items?.length || l.totalClothesCount || 1,
           pickupOtpStatus: l.pickupOtpStatus || (l.status === 'REQUESTED' ? 'PENDING' : 'VERIFIED'),
           deliveryOtpStatus: l.deliveryOtpStatus || (l.status === 'COMPLETED' ? 'VERIFIED' : 'PENDING'),
+          deliveryBoyId: l.deliveryBoyId || null,
+          deliveryBoyName: l.deliveryBoy?.fullName || 'Self-Fulfillment (Laundry Vendor)',
+          deliveryBoyMobile: l.deliveryBoy?.mobileNumber || null,
           createdAt: l.createdAt
         }))
       });
@@ -200,6 +211,34 @@ export class AdminServicesController {
       res.status(200).json({
         success: true,
         message: `Laundry order status updated to ${status}`,
+        laundryOrder: updated
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Assign or unassign a delivery runner to laundry order (Campus Admin control)
+   */
+  public static async assignLaundryDelivery(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { deliveryBoyId } = req.body; // string or null
+
+      const updated = await prisma.laundryOrder.update({
+        where: { id },
+        data: {
+          deliveryBoyId: deliveryBoyId || null
+        },
+        include: {
+          deliveryBoy: true
+        }
+      });
+
+      res.status(200).json({
+        success: true,
+        message: deliveryBoyId ? 'Delivery partner assigned to laundry order' : 'Delivery partner unassigned (Self-fulfillment by Laundry Vendor)',
         laundryOrder: updated
       });
     } catch (err) {

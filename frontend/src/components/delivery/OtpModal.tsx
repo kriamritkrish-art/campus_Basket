@@ -9,22 +9,30 @@ export default function OtpModal() {
   const [otpValue, setOtpValue] = useState('');
   const [error, setError] = useState(false);
 
+  const [loading, setLoading] = useState(false);
+
   if (!otpModalOrder) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(false);
-    const valid = verifyOrderOtp(otpModalOrder.id, otpValue);
-    if (!valid) {
+    if (!otpValue || otpValue.trim().length !== 4) {
       setError(true);
-    } else {
-      setOtpValue('');
+      return;
     }
-  };
-
-  const handleUseDemo = () => {
-    setOtpValue(otpModalOrder.otpRequired);
+    setLoading(true);
     setError(false);
+    try {
+      const valid = await verifyOrderOtp(otpModalOrder.id, otpValue);
+      if (!valid) {
+        setError(true);
+      } else {
+        setOtpValue('');
+      }
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -59,7 +67,7 @@ export default function OtpModal() {
 
         <div>
           <p className="text-xs text-gray-600 font-medium leading-relaxed">
-            Enter student's delivery OTP received at <span className="font-bold text-gray-900">{otpModalOrder.destination}</span>:
+            Enter the student&apos;s 4-digit delivery OTP at <span className="font-bold text-gray-900">{otpModalOrder.destination}</span>:
           </p>
 
           <form onSubmit={handleSubmit} className="mt-3 space-y-3">
@@ -70,7 +78,7 @@ export default function OtpModal() {
                 autoFocus
                 value={otpValue}
                 onChange={(e) => {
-                  setOtpValue(e.target.value);
+                  setOtpValue(e.target.value.replace(/\D/g, ''));
                   setError(false);
                 }}
                 placeholder="• • • •"
@@ -78,26 +86,35 @@ export default function OtpModal() {
               />
             </div>
 
+            <p className="text-[11px] text-gray-500 text-center font-medium">
+              Ask student for the 4-digit code displayed on their tracking screen.
+            </p>
+
             {error && (
               <p className="text-xs text-red-600 font-bold text-center">
-                Incorrect OTP. Ask student for their 4-digit code.
+                Incorrect OTP. Please ask student to check their live tracking code.
               </p>
             )}
 
             <div className="flex gap-2 pt-1">
               <button
                 type="button"
-                onClick={handleUseDemo}
-                className="px-3 py-2.5 rounded-xl border border-purple-200 text-purple-700 hover:bg-purple-50 text-xs font-bold transition flex-1"
+                onClick={() => {
+                  setOtpModalOrder(null);
+                  setError(false);
+                  setOtpValue('');
+                }}
+                className="px-3 py-2.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-bold transition flex-1"
               >
-                Use Code ({otpModalOrder.otpRequired})
+                Cancel
               </button>
 
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-black transition flex-1 shadow-sm"
+                disabled={loading || otpValue.length !== 4}
+                className="px-5 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white text-xs font-black transition flex-1 shadow-sm"
               >
-                Verify
+                {loading ? 'Verifying...' : 'Verify OTP'}
               </button>
             </div>
           </form>

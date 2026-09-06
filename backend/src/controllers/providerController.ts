@@ -48,6 +48,9 @@ export class ProviderController {
       monthStart.setDate(1);
       monthStart.setHours(0, 0, 0, 0);
 
+      const isLaundryProvider =
+        provider.serviceCategory?.toLowerCase().includes('laundry');
+
       const [products, orders, laundryJobs] = await Promise.all([
         prisma.product.findMany({
           where: { providerId },
@@ -64,10 +67,14 @@ export class ProviderController {
           orderBy: { createdAt: 'desc' }
         }),
         prisma.laundryOrder.findMany({
-          where: { providerId },
+          where: isLaundryProvider
+            ? { OR: [{ providerId }, { providerId: null }] }
+            : { providerId },
           include: {
             student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
             items: true,
+            photos: true,
+            otps: true,
             deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true } }
           },
           orderBy: { createdAt: 'desc' }
@@ -82,6 +89,43 @@ export class ProviderController {
       const monthlySales = deliveredOrders
         .filter((o) => new Date(o.createdAt) >= monthStart)
         .reduce((sum, o) => sum + Number(o.totalAmount), 0);
+
+      const formattedLaundryJobs = laundryJobs.map((j) => {
+        let qr: any = {};
+        try { qr = JSON.parse(j.qrCodeData || '{}'); } catch {}
+        const pickupOtpRec = j.otps?.find((o: any) => o.otpType === 'PICKUP');
+        const deliveryOtpRec = j.otps?.find((o: any) => o.otpType === 'DELIVERY');
+        return {
+          id: j.id,
+          orderNumber: j.orderNumber,
+          trackingNumber: j.trackingNumber,
+          status: j.status,
+          hallName: j.hallName,
+          hallNumber: j.hallNumber,
+          roomNumber: j.roomNumber,
+          pickupDate: j.pickupDate,
+          preferredPickupTime: j.preferredPickupTime,
+          preferredReturnTime: j.preferredReturnTime,
+          specialInstructions: j.specialInstructions,
+          estimatedPrice: Number(j.estimatedPrice),
+          finalPrice: j.finalPrice ? Number(j.finalPrice) : Number(j.estimatedPrice),
+          student: j.student,
+          deliveryBoy: j.deliveryBoy,
+          items: j.items,
+          itemsSummary: j.items?.map((i: any) => `${i.quantity}x ${i.itemType}`).join(', ') || 'Laundry Items',
+          totalClothesCount: j.items?.reduce((sum: number, i: any) => sum + i.quantity, 0) || 1,
+          photos: j.photos?.map((p: any) => ({
+            id: p.id,
+            url: p.googleDriveUrl,
+            description: p.description,
+            uploadedBy: p.uploadedBy
+          })) || [],
+          pickupOtp: qr.pickupOtp || j.orderNumber.replace(/\D/g, '').slice(-6) || '123456',
+          pickupOtpStatus: pickupOtpRec?.isUsed ? 'VERIFIED' : (j.status === 'REQUESTED' ? 'PENDING' : 'VERIFIED'),
+          deliveryOtpStatus: deliveryOtpRec?.isUsed ? 'VERIFIED' : (j.status === 'COMPLETED' ? 'VERIFIED' : 'PENDING'),
+          createdAt: j.createdAt
+        };
+      });
 
       res.status(200).json({
         success: true,
@@ -113,7 +157,8 @@ export class ProviderController {
         recentOrders: orders.slice(0, 10).map((o) => ({
           ...o,
           totalAmount: Number(o.totalAmount)
-        }))
+        })),
+        laundryJobs: formattedLaundryJobs
       });
     } catch (err) {
       next(err);

@@ -62,17 +62,20 @@ export class LaundryController {
 
       const orderNumber = generateLaundryOrderNumber();
       const trackingNumber = `TRK-${orderNumber}`;
+
+      // Generate TWO DISTINCT OTPs
+      const pickupOtpData = laundryOtpService.generateOtp(orderNumber, 'PICKUP');
+      const deliveryOtpData = laundryOtpService.generateOtp(orderNumber, 'DELIVERY');
+
       const qrCodeData = JSON.stringify({
         trackingNumber,
         orderNumber,
         studentName: student.fullName,
         hall: student.hall?.name || data.hallName,
-        room: data.roomNumber
+        room: data.roomNumber,
+        pickupOtp: pickupOtpData.plainOtp,
+        deliveryOtp: deliveryOtpData.plainOtp
       });
-
-      // Generate TWO DISTINCT OTPs
-      const pickupOtpData = laundryOtpService.generateOtp(orderNumber, 'PICKUP');
-      const deliveryOtpData = laundryOtpService.generateOtp(orderNumber, 'DELIVERY');
 
       // Create Laundry Order transactionally
       const newLaundryOrder = await prisma.$transaction(async (tx) => {
@@ -82,6 +85,7 @@ export class LaundryController {
             trackingNumber,
             qrCodeData,
             studentId,
+            deliveryBoyId: null,
             status: 'REQUESTED',
             estimatedPrice,
             hallName: data.hallName,
@@ -216,11 +220,17 @@ export class LaundryController {
 
       res.status(200).json({
         success: true,
-        orders: orders.map((o) => ({
-          ...o,
-          estimatedPrice: Number(o.estimatedPrice),
-          finalPrice: o.finalPrice ? Number(o.finalPrice) : null
-        }))
+        orders: orders.map((o) => {
+          let qr: any = {};
+          try { qr = JSON.parse(o.qrCodeData || '{}'); } catch {}
+          return {
+            ...o,
+            estimatedPrice: Number(o.estimatedPrice),
+            finalPrice: o.finalPrice ? Number(o.finalPrice) : null,
+            pickupOtp: qr.pickupOtp || null,
+            returnOtp: qr.deliveryOtp || null
+          };
+        })
       });
     } catch (err) {
       next(err);
@@ -473,6 +483,15 @@ export class LaundryController {
               expiresAt: returnOtpData.expiresAt
             }
           });
+          // Also update returnOtp in qrCodeData so student sees it on tracking screen without relying on Brevo email
+          let qr: any = {};
+          try { qr = JSON.parse(fullOrder.qrCodeData || '{}'); } catch {}
+          qr.deliveryOtp = returnOtpData.plainOtp;
+          await prisma.laundryOrder.update({
+            where: { id: fullOrder.id },
+            data: { qrCodeData: JSON.stringify(qr) }
+          });
+
           emailService.sendLaundryNotification(
             targetPersonalEmail,
             fullOrder.orderNumber,
