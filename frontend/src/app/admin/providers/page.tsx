@@ -571,7 +571,7 @@ export default function AdminProvidersPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. SP_FOOD_01"
+                    placeholder="e.g. SP_VENDOR_01"
                     value={createForm.username}
                     onChange={(e) => setCreateForm({ ...createForm, username: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono uppercase focus:outline-none focus:border-[#4F9D32] focus:bg-white"
@@ -582,7 +582,7 @@ export default function AdminProvidersPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Vendor@12345"
+                    placeholder="e.g. TempPass@2026"
                     value={createForm.password}
                     onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono focus:outline-none focus:border-[#4F9D32] focus:bg-white"

@@ -130,7 +130,7 @@ function DeliveryLoginForm() {
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-[#4f9d2f] shrink-0" />
               <span className="text-[11px] font-bold text-[#2e7d32]">
-                Demo ID: <span className="font-mono font-extrabold">DB_BOY_01</span>
+                Delivery Partner Demo Available
               </span>
             </div>
             <button
@@ -159,7 +159,7 @@ function DeliveryLoginForm() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. DB_BOY_01 or +91 98765 43210"
+                  placeholder="e.g. DB_RUNNER_01 or +91 98765 43210"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   className="w-full bg-gray-50 border border-gray-300 rounded-xl pl-10 pr-4 py-2.5 text-xs text-gray-900 font-bold focus:outline-none focus:border-[#4f9d2f] focus:bg-white"

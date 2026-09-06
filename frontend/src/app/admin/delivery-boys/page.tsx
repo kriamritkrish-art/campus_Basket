@@ -246,7 +246,7 @@ export default function AdminDeliveryBoysPage() {
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search runners by name, User ID (e.g. DB_BOY_01), email, or phone..."
+            placeholder="Search runners by name, User ID (e.g. DB_RUNNER_01), email, or phone..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-[#17202A] placeholder:text-slate-400 focus:outline-none focus:border-sky-500 focus:bg-white transition"
@@ -452,7 +452,7 @@ export default function AdminDeliveryBoysPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. DB_BOY_01"
+                    placeholder="e.g. DB_RUNNER_01"
                     value={createForm.username}
                     onChange={(e) => setCreateForm({ ...createForm, username: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono uppercase focus:outline-none focus:border-sky-500 focus:bg-white"
@@ -463,7 +463,7 @@ export default function AdminDeliveryBoysPage() {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Delivery@12345"
+                    placeholder="e.g. TempPass@2026"
                     value={createForm.password}
                     onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-mono focus:outline-none focus:border-sky-500 focus:bg-white"

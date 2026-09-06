@@ -451,7 +451,7 @@ export default function RegisterPage() {
             <div className="text-[11px] text-gray-700 flex items-center gap-1.5 truncate">
               <KeyRound className="w-3.5 h-3.5 text-[#689f38] shrink-0" />
               <span className="font-semibold text-gray-500">Test Preset:</span>
-              <span className="font-mono text-gray-900 font-bold truncate">ss.24u10227@nitdgp.ac.in</span>
+              <span className="text-gray-600 font-medium truncate">Demo Student Account</span>
             </div>
             <button
               type="button"
@@ -492,7 +492,7 @@ export default function RegisterPage() {
                 <Mail className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
                 <input
                   type="email"
-                  placeholder="e.g. ss.24u10227@nitdgp.ac.in"
+                  placeholder="e.g. student@nitdgp.ac.in"
                   value={collegeEmail}
                   onChange={(e) => setCollegeEmail(e.target.value)}
                   className="w-full bg-white border border-gray-300 rounded-lg pl-10 pr-4 py-2.5 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#84c225] focus:ring-1 focus:ring-[#84c225] transition-colors"
@@ -710,7 +710,7 @@ export default function RegisterPage() {
                   <User className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
                   <input
                     type="text"
-                    placeholder="e.g. Sourav Senapati"
+                    placeholder="e.g. Student Name"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-xs text-gray-900 focus:outline-none focus:border-[#84c225]"
@@ -739,7 +739,7 @@ export default function RegisterPage() {
                 <label className="text-xs font-bold text-gray-700 block mb-1">Roll Number</label>
                 <input
                   type="text"
-                  placeholder="e.g. 24U10227"
+                  placeholder="e.g. 24U10001"
                   value={rollNumber}
                   onChange={(e) => setRollNumber(e.target.value.toUpperCase())}
                   className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono text-gray-900 focus:outline-none focus:border-[#84c225]"
@@ -751,7 +751,7 @@ export default function RegisterPage() {
                 <label className="text-xs font-bold text-gray-700 block mb-1">Registration Number</label>
                 <input
                   type="text"
-                  placeholder="e.g. 202410227"
+                  placeholder="e.g. 202410001"
                   value={registrationNumber}
                   onChange={(e) => setRegistrationNumber(e.target.value.toUpperCase())}
                   className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono text-gray-900 focus:outline-none focus:border-[#84c225]"

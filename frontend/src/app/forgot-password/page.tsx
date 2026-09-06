@@ -168,7 +168,7 @@ export default function ForgotPasswordPage() {
                 <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
                 <input
                   type="email"
-                  placeholder="ss.24u10227@nitdgp.ac.in or personal@gmail.com"
+                  placeholder="e.g. student@nitdgp.ac.in or personal@gmail.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full bg-slate-950/80 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition"

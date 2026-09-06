@@ -28,8 +28,8 @@ function LoginForm() {
   const { user, role, isAuthenticated, login, logout } = useAuth();
 
   const [activeRole, setActiveRole] = useState<UserRole>('STUDENT');
-  const [identifier, setIdentifier] = useState('ss.24u10227@nitdgp.ac.in');
-  const [password, setPassword] = useState('Student@2026');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -48,20 +48,12 @@ function LoginForm() {
 
     if (roleParam === 'ADMIN' || (!roleParam && redirectParam?.startsWith('/admin'))) {
       setActiveRole('ADMIN');
-      setIdentifier('souravsenapati408@gmail.com');
-      setPassword('Sourav@12345');
     } else if (roleParam === 'DELIVERY_BOY' || roleParam === 'DELIVERY' || (!roleParam && redirectParam?.startsWith('/delivery'))) {
       setActiveRole('DELIVERY_BOY');
-      setIdentifier('DB_BOY_01');
-      setPassword('Delivery@12345');
     } else if (roleParam === 'PROVIDER' || roleParam === 'SERVICE_PROVIDER' || (!roleParam && redirectParam?.startsWith('/provider'))) {
       setActiveRole('SERVICE_PROVIDER');
-      setIdentifier('SP_FOOD_01');
-      setPassword('Vendor@12345');
     } else if (roleParam === 'STUDENT' || (!roleParam && redirectParam && !redirectParam.startsWith('/admin') && !redirectParam.startsWith('/provider') && !redirectParam.startsWith('/delivery'))) {
       setActiveRole('STUDENT');
-      setIdentifier('ss.24u10227@nitdgp.ac.in');
-      setPassword('Student@2026');
     }
   }, [searchParams]);
 
@@ -70,19 +62,8 @@ function LoginForm() {
     setError(null);
     setAutoFilled(false);
     setOtpStep(false);
-    if (selectedRole === 'ADMIN') {
-      setIdentifier('souravsenapati408@gmail.com');
-      setPassword('Sourav@12345');
-    } else if (selectedRole === 'DELIVERY_BOY') {
-      setIdentifier('DB_BOY_01');
-      setPassword('Delivery@12345');
-    } else if (selectedRole === 'SERVICE_PROVIDER') {
-      setIdentifier('SP_FOOD_01');
-      setPassword('Vendor@12345');
-    } else {
-      setIdentifier('ss.24u10227@nitdgp.ac.in');
-      setPassword('Student@2026');
-    }
+    setIdentifier('');
+    setPassword('');
     // Cleanly update URL without stale redirects from other roles
     router.replace(`/login?role=${selectedRole}`);
   };
@@ -225,7 +206,7 @@ function LoginForm() {
       title: 'Welcome Back',
       subtitle: 'Sign in to order meals, express laundry & campus essentials',
       emailLabel: 'College or Personal Email',
-      emailPlaceholder: 'e.g. ss.24u10227@nitdgp.ac.in or student@gmail.com',
+      emailPlaceholder: 'e.g. student@nitdgp.ac.in or student@gmail.com',
     },
     SERVICE_PROVIDER: {
       themeBorder: 'border-emerald-200',
@@ -237,7 +218,7 @@ function LoginForm() {
       title: 'Provider Portal',
       subtitle: 'Manage assigned category catalog, orders & preparation status',
       emailLabel: 'User ID or Personal Gmail',
-      emailPlaceholder: 'e.g. SP_FOOD_01 or canteen.vendor@gmail.com',
+      emailPlaceholder: 'e.g. SP_VENDOR_01 or vendor@gmail.com',
     },
     DELIVERY_BOY: {
       themeBorder: 'border-sky-200',
@@ -249,7 +230,7 @@ function LoginForm() {
       title: 'Delivery Boy Login',
       subtitle: 'Pick up assigned orders and drop to student hostel rooms',
       emailLabel: 'User ID or Personal Gmail',
-      emailPlaceholder: 'e.g. DB_BOY_01 or runner.delivery@gmail.com',
+      emailPlaceholder: 'e.g. DB_RUNNER_01 or runner@gmail.com',
     },
     ADMIN: {
       themeBorder: 'border-purple-200',
@@ -261,7 +242,7 @@ function LoginForm() {
       title: 'Campus Admin Login',
       subtitle: 'Management of campus catalog, deliveries, zones & governance',
       emailLabel: 'Admin Email or User ID',
-      emailPlaceholder: 'souravsenapati408@gmail.com or ADMIN_SOURAV',
+      emailPlaceholder: 'e.g. admin@nitdgp.ac.in or ADMIN_01',
     },
   };
 
@@ -561,15 +542,9 @@ function LoginForm() {
           <div className="bg-[#f8f8f8] rounded-xl p-2.5 border border-gray-200 flex items-center justify-between gap-2">
             <div className="text-[11px] text-gray-700 flex items-center gap-1.5 truncate">
               <KeyRound className="w-3.5 h-3.5 text-[#689f38] shrink-0" />
-              <span className="font-semibold text-gray-500">Preset:</span>
-              <span className="font-mono text-gray-900 font-bold truncate">
-                {activeRole === 'ADMIN'
-                  ? 'souravsenapati408@gmail.com'
-                  : activeRole === 'SERVICE_PROVIDER'
-                  ? 'SP_FOOD_01'
-                  : activeRole === 'DELIVERY_BOY'
-                  ? 'DB_BOY_01'
-                  : 'ss.24u10227@nitdgp.ac.in'}
+              <span className="font-semibold text-gray-500">Quick Test:</span>
+              <span className="text-gray-600 font-medium truncate">
+                Demo account preset
               </span>
             </div>
             <button
@@ -822,7 +797,7 @@ function LoginForm() {
                 }}
                 className="w-full py-2.5 bg-[#4F9D2F] hover:bg-[#36751F] text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2"
               >
-                <span>Sign In as Verified Student (ss.24u10227@nitdgp.ac.in)</span>
+                <span>Sign In with Demo Student Account</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
 
