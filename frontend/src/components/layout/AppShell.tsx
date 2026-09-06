@@ -25,6 +25,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <div className="min-h-screen w-full">{children}</div>;
   }
 
+  const isCheckoutRoute = pathname === '/checkout';
+  if (isCheckoutRoute) {
+    // Dedicated distraction-free checkout experience (Amazon/Flipkart style)
+    return <div className="min-h-screen bg-[#F7F8FA]">{children}</div>;
+  }
+
   return (
     <>
       <CampusBanner />

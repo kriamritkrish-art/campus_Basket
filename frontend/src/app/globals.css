@@ -573,3 +573,94 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #84c225;
 }
+
+/* ======================================================== */
+/* Reusable E-Commerce Checkout Design System               */
+/* ======================================================== */
+.checkout-container {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.checkout-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+  align-items: start;
+}
+
+.order-panel {
+  position: sticky;
+  top: 24px;
+}
+
+.checkout-card {
+  background: #ffffff;
+  border: 1px solid var(--cb-border, #E4E7EC);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
+}
+
+.checkout-section {
+  padding: 22px;
+}
+
+.payment-option {
+  border: 1px solid var(--cb-border, #E4E7EC);
+  border-radius: 10px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.payment-option:hover {
+  border-color: #A8CF97;
+}
+
+.payment-option.selected {
+  border: 2px solid var(--cb-green, #4F9D2F);
+  background: var(--cb-green-light, #EFF8EA);
+}
+
+.pay-button {
+  width: 100%;
+  height: 54px;
+  border: none;
+  border-radius: 9px;
+  background: var(--cb-green, #4F9D2F);
+  color: white;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.pay-button:hover {
+  background: var(--cb-green-dark, #36751F);
+}
+
+.pay-button:active {
+  transform: scale(0.99);
+}
+
+@media (max-width: 900px) {
+  .checkout-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .order-panel {
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .checkout-container {
+    padding: 12px;
+  }
+
+  .checkout-section {
+    padding: 16px;
+  }
+}
+
