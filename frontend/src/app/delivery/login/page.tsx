@@ -179,7 +179,7 @@ function DeliveryLoginForm() {
                     <input
                       type="text"
                       maxLength={6}
-                      placeholder="123456"
+                      placeholder="• • • • • •"
                       value={otpCode}
                       onChange={(e) => setOtpCode(e.target.value)}
                       className="w-full bg-gray-50 border border-gray-300 rounded-xl pl-10 pr-4 py-2.5 text-xs text-gray-900 font-mono font-bold tracking-widest focus:outline-none focus:border-[#4f9d2f] focus:bg-white"
