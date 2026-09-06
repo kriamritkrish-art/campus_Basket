@@ -1,15 +1,20 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { CampusBanner } from './CampusBanner';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 import { CartDrawer } from '../cart/CartDrawer';
 import { FloatingCartButton } from '../cart/FloatingCartButton';
+import { MobileBottomNav } from './MobileBottomNav';
+import { MobileCategoryDrawer } from './MobileCategoryDrawer';
+import { MobileCartBar } from '../cart/MobileCartBar';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [isCategoryDrawerOpen, setIsCategoryDrawerOpen] = useState(false);
+
   const isPortalRoute =
     pathname?.startsWith('/admin') ||
     pathname?.startsWith('/provider') ||
@@ -24,10 +29,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <>
       <CampusBanner />
       <Navbar />
-      <main className="flex-1 pb-16">{children}</main>
+      <main className="flex-1 pb-28 md:pb-16">{children}</main>
       <Footer />
       <CartDrawer />
-      <FloatingCartButton />
+      {/* Desktop floating cart in bottom right */}
+      <div className="hidden md:block">
+        <FloatingCartButton />
+      </div>
+      {/* Mobile-only quick-commerce bottom cart pill & bottom nav bar */}
+      <MobileCartBar />
+      <MobileBottomNav onOpenCategories={() => setIsCategoryDrawerOpen(true)} />
+      <MobileCategoryDrawer
+        isOpen={isCategoryDrawerOpen}
+        onClose={() => setIsCategoryDrawerOpen(false)}
+      />
     </>
   );
 }

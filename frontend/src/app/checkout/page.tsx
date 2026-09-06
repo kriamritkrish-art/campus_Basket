@@ -665,6 +665,43 @@ export default function CheckoutPage() {
             </div>
           </div>
         </div>
+
+        {/* Mobile Sticky Pay Bar */}
+        <div className="sm:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-gray-200 p-3 shadow-lg z-40 flex items-center justify-between pb-safe">
+          <div>
+            <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Total</div>
+            <div className="text-xl font-black text-slate-900">₹{total.toFixed(2)}</div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={isProcessing}
+            className={`py-3 px-5 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md active:scale-95 disabled:opacity-60 transition-all flex items-center gap-2 ${
+              paymentMethod === 'RAZORPAY'
+                ? 'bg-[#689f38] hover:bg-[#5b8c30]'
+                : 'bg-slate-900 hover:bg-slate-800'
+            }`}
+          >
+            {isProcessing ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Processing...</span>
+              </>
+            ) : paymentMethod === 'RAZORPAY' ? (
+              <>
+                <Lock className="w-3.5 h-3.5" />
+                <span>Pay Now</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </>
+            ) : (
+              <>
+                <Banknote className="w-3.5 h-3.5" />
+                <span>Confirm COD</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </>
+            )}
+          </button>
+        </div>
       </form>
     </div>
   );

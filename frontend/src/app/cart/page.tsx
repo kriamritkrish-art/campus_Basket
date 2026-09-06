@@ -409,6 +409,22 @@ export default function CartPage() {
           </div>
         </div>
       </div>
+
+      {/* Mobile Sticky Checkout Action Strip (BigBasket Style Bottom Bar) */}
+      <div className="sm:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-gray-200 p-3 shadow-lg z-40 flex items-center justify-between pb-safe">
+        <div>
+          <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Total Payable</div>
+          <div className="text-xl font-black text-[#212121]">₹{total}</div>
+        </div>
+
+        <button
+          onClick={() => router.push('/checkout')}
+          className="py-2.5 px-5 bg-[#689f38] hover:bg-[#5b8c30] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center gap-2 active:scale-95"
+        >
+          <span>Checkout</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }

@@ -162,9 +162,9 @@ function FoodContent() {
           </div>
         </form>
 
-        {/* Popular Searches & Recent Searches (Requirement 24) */}
-        <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-          <div className="flex items-center gap-1.5 text-gray-500 font-bold">
+        {/* Popular Searches & Recent Searches */}
+        <div className="flex flex-nowrap sm:flex-wrap items-center gap-1.5 sm:gap-2 pt-1 text-xs overflow-x-auto no-scrollbar pb-1">
+          <div className="flex items-center gap-1.5 text-gray-500 font-bold shrink-0">
             <Sparkles className="w-3.5 h-3.5 text-[#689f38]" />
             <span className="text-[11px] uppercase tracking-wider">Popular:</span>
           </div>
@@ -173,7 +173,7 @@ function FoodContent() {
               key={item}
               type="button"
               onClick={() => handlePillClick(item)}
-              className="px-2.5 py-1 rounded-full bg-white hover:bg-[#f1f8e9] hover:text-[#2e7d32] border border-gray-200 text-[11px] font-semibold text-gray-700 shadow-2xs transition-colors"
+              className="px-2.5 py-1 rounded-full bg-white hover:bg-[#f1f8e9] hover:text-[#2e7d32] border border-gray-200 text-[11px] font-semibold text-gray-700 shadow-2xs transition-colors shrink-0"
             >
               {item}
             </button>
@@ -181,8 +181,8 @@ function FoodContent() {
 
           {recentSearches.length > 0 && (
             <>
-              <span className="text-gray-300">|</span>
-              <div className="flex items-center gap-1.5 text-gray-500 font-bold">
+              <span className="text-gray-300 shrink-0">|</span>
+              <div className="flex items-center gap-1.5 text-gray-500 font-bold shrink-0">
                 <History className="w-3.5 h-3.5 text-gray-400" />
                 <span className="text-[11px] uppercase tracking-wider">Recent:</span>
               </div>
@@ -191,7 +191,7 @@ function FoodContent() {
                   key={term}
                   type="button"
                   onClick={() => handlePillClick(term)}
-                  className="px-2.5 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-[11px] font-medium text-gray-600 transition-colors"
+                  className="px-2.5 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-[11px] font-medium text-gray-600 transition-colors shrink-0"
                 >
                   {term}
                 </button>
@@ -203,13 +203,17 @@ function FoodContent() {
 
       {/* Products Grid */}
       {loading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
           {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-            <div key={i} className="h-64 bg-gray-200 rounded-xl animate-pulse" />
+            <div key={i} className="h-64 bg-white rounded-2xl border border-gray-200 animate-pulse p-4 space-y-3">
+              <div className="w-full h-36 bg-gray-100 rounded-xl" />
+              <div className="h-4 bg-gray-200 rounded w-3/4" />
+              <div className="h-3 bg-gray-100 rounded w-1/2" />
+            </div>
           ))}
         </div>
       ) : products.length === 0 ? (
-        <div className="bg-white rounded-2xl p-12 text-center border border-gray-200 shadow-sm text-gray-500 space-y-3">
+        <div className="bg-white rounded-2xl p-8 sm:p-12 text-center border border-gray-200 shadow-sm text-gray-500 space-y-3">
           <Utensils className="w-12 h-12 mx-auto text-gray-300" />
           <p className="font-bold text-gray-800 text-sm">No cafeteria dishes found</p>
           <p className="text-xs text-gray-400">Try adjusting your search terms or tap one of the popular search pills above.</p>
@@ -224,7 +228,7 @@ function FoodContent() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4">
           {products.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}

@@ -265,9 +265,10 @@ export default function HomePage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-4 xl:col-span-4 sticky top-24 space-y-4">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-start">
+          {/* Desktop Left Sidebar (Hidden on mobile) */}
+          <div className="hidden lg:block lg:col-span-4 xl:col-span-4 sticky top-24 space-y-4">
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden divide-y divide-gray-100">
               {CATEGORY_OPTIONS.map((option) => {
                 const IconComponent = option.icon;
@@ -388,11 +389,60 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="lg:col-span-8 xl:col-span-8 space-y-6">
-            <div className="bg-white rounded-2xl border border-gray-200 p-5 sm:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="lg:col-span-8 xl:col-span-8 space-y-4 sm:space-y-6">
+            {/* Mobile Category Stories Bar (BigBasket Style App Bubbles) */}
+            <div className="lg:hidden bg-white rounded-2xl border border-gray-200 p-3 shadow-xs">
+              <div className="flex items-center justify-between pb-2 border-b border-gray-100 mb-2">
+                <span className="text-xs font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#689f38]" />
+                  Categories
+                </span>
+                <span className="text-[10px] font-bold text-[#2e7d32] bg-[#f1f8e9] px-2 py-0.5 rounded-full border border-[#dcedc8]">
+                  ⚡ 10-15 Min Delivery
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar pb-1 pt-0.5 px-0.5">
+                {CATEGORY_OPTIONS.map((cat) => {
+                  const IconComp = cat.icon;
+                  const isSelected = activeCategory === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveCategory(cat.id);
+                        setSelectedSubfilter('all');
+                        setSearchFilter('');
+                      }}
+                      className="flex flex-col items-center shrink-0 w-[68px] group transition-transform active:scale-95 text-center"
+                    >
+                      <div
+                        className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-2xs ${
+                          isSelected
+                            ? 'bg-[#2e7d32] text-white ring-2 ring-[#2e7d32] ring-offset-2 scale-105'
+                            : 'bg-gray-50 border border-gray-200 text-gray-700 group-hover:border-[#689f38]'
+                        }`}
+                      >
+                        <IconComp className={`w-5 h-5 ${isSelected ? 'stroke-[2.2]' : 'stroke-[1.8]'}`} />
+                      </div>
+                      <span
+                        className={`text-[10px] mt-1.5 leading-tight font-bold line-clamp-2 ${
+                          isSelected ? 'text-[#1b5e20]' : 'text-gray-700'
+                        }`}
+                      >
+                        {cat.name.split('&')[0].trim()}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full bg-[#f1f8e9] text-[#2e7d32] text-[11px] font-bold uppercase tracking-wider border border-[#dcedc8]">
+                  <span className="px-2.5 py-0.5 rounded-full bg-[#f1f8e9] text-[#2e7d32] text-[10px] sm:text-[11px] font-bold uppercase tracking-wider border border-[#dcedc8]">
                     {activeCategoryObj.badge}
                   </span>
                   <span className="text-xs text-gray-400">
@@ -401,7 +451,7 @@ export default function HomePage() {
                       : `${categoryProducts.length} Items Available`}
                   </span>
                 </div>
-                <h1 className="text-2xl sm:text-3xl font-black text-[#212121] tracking-tight">
+                <h1 className="text-xl sm:text-3xl font-black text-[#212121] tracking-tight">
                   {activeCategoryObj.name}
                 </h1>
                 <p className="text-xs sm:text-sm text-gray-500">
@@ -626,7 +676,7 @@ export default function HomePage() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-2.5 sm:gap-4">
                 {filteredProducts.map((product) => (
                   <ProductCard key={product.id} product={product} />
                 ))}
