@@ -806,6 +806,10 @@ export const fallbackUsers = [
       vehicleType: 'Bicycle / Walk',
       activeStatus: true,
       currentZone: 'ALL',
+      paymentType: 'PER_DELIVERY' as const,
+      perDeliveryRate: 10.00,
+      monthlySalary: 0.00,
+      walletBalance: 1250.00,
       createdAt: new Date('2026-01-15'),
       updatedAt: new Date()
     }
@@ -832,6 +836,10 @@ export const fallbackUsers = [
       vehicleType: 'Electric Scooter',
       activeStatus: true,
       currentZone: 'ALL',
+      paymentType: 'MONTHLY_CONTRACT' as const,
+      perDeliveryRate: 0.00,
+      monthlySalary: 15000.00,
+      walletBalance: 0.00,
       createdAt: new Date('2026-01-15'),
       updatedAt: new Date()
     }
@@ -2836,6 +2844,31 @@ export const fallbackStationeryOrderDetails = [
     warrantyMonths: 6,
     createdAt: pastDays(1, 3),
     updatedAt: pastDays(1, 2)
+  }
+];
+
+export const fallbackDeliveryBoyEarnings: any[] = [
+  {
+    id: 'earning_sample_1',
+    deliveryBoyId: 'db_boy_1',
+    orderId: 'ord_sample_delivered_1',
+    amount: 10.00,
+    paymentType: 'PER_DELIVERY',
+    earningType: 'DELIVERY_PAYOUT',
+    description: 'Order #CB10284 delivered',
+    adminAdjustedBy: null,
+    createdAt: new Date(Date.now() - 3600 * 1000 * 4)
+  },
+  {
+    id: 'earning_sample_2',
+    deliveryBoyId: 'db_boy_1',
+    orderId: 'ord_sample_delivered_2',
+    amount: 10.00,
+    paymentType: 'PER_DELIVERY',
+    earningType: 'DELIVERY_PAYOUT',
+    description: 'Order #CB10285 delivered',
+    adminAdjustedBy: null,
+    createdAt: new Date(Date.now() - 3600 * 1000 * 2)
   }
 ];
 

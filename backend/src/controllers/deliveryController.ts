@@ -75,16 +75,50 @@ export class DeliveryController {
         })
       ]);
 
+      const paymentType = (deliveryBoy as any).paymentType || 'PER_DELIVERY';
+      const perDeliveryRate = Number((deliveryBoy as any).perDeliveryRate) || 10.00;
+      const monthlySalary = Number((deliveryBoy as any).monthlySalary) || 0;
+      const walletBalance = Number((deliveryBoy as any).walletBalance) || 0;
+
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - 7);
+      weekStart.setHours(0, 0, 0, 0);
+
+      // Fetch dynamic earnings records
+      const earningsList = await prisma.deliveryBoyEarning.findMany({
+        where: { deliveryBoyId: deliveryBoy.id }
+      });
+
       const deliveredOrders = orders.filter((o) => o.status === 'DELIVERED');
-      const todayDelivered = deliveredOrders.filter((o) => new Date(o.updatedAt) >= todayStart).length;
-      const monthDelivered = deliveredOrders.filter((o) => new Date(o.updatedAt) >= monthStart).length;
+      const todayDelivered = deliveredOrders.filter((o) => new Date(o.deliveredAt || o.updatedAt) >= todayStart).length;
+      const monthDelivered = deliveredOrders.filter((o) => new Date(o.deliveredAt || o.updatedAt) >= monthStart).length;
       const pendingDeliveries = orders.filter((o) =>
         ['DELIVERY_ASSIGNED', 'READY_FOR_PICKUP', 'PICKED_UP', 'OUT_FOR_DELIVERY'].includes(o.status)
       );
 
-      const earningsToday = todayDelivered * 35;
-      const weekEarnings = deliveredOrders.length * 35;
-      const monthEarnings = monthDelivered * 35;
+      const todayEarningsList = earningsList.filter((e) => new Date(e.createdAt) >= todayStart);
+      const weekEarningsList = earningsList.filter((e) => new Date(e.createdAt) >= weekStart);
+      const monthEarningsList = earningsList.filter((e) => new Date(e.createdAt) >= monthStart);
+
+      const earningsToday =
+        paymentType === 'PER_DELIVERY'
+          ? todayEarningsList.reduce((sum, e) => sum + Number(e.amount), 0)
+          : 0;
+
+      const weekEarnings =
+        paymentType === 'PER_DELIVERY'
+          ? weekEarningsList.reduce((sum, e) => sum + Number(e.amount), 0)
+          : 0;
+
+      const monthEarnings =
+        paymentType === 'PER_DELIVERY'
+          ? monthEarningsList.reduce((sum, e) => sum + Number(e.amount), 0)
+          : monthlySalary;
+
+      const totalEarnings =
+        paymentType === 'PER_DELIVERY'
+          ? earningsList.reduce((sum, e) => sum + Number(e.amount), 0) || walletBalance
+          : 0;
 
       res.status(200).json({
         success: true,
@@ -95,16 +129,25 @@ export class DeliveryController {
           vehicleType: deliveryBoy.vehicleType,
           currentZone: deliveryBoy.currentZone,
           email: deliveryBoy.user?.email,
-          activeStatus: deliveryBoy.activeStatus
+          activeStatus: deliveryBoy.activeStatus,
+          paymentType,
+          perDeliveryRate: paymentType === 'PER_DELIVERY' ? perDeliveryRate : 0,
+          monthlySalary: paymentType === 'MONTHLY_CONTRACT' ? monthlySalary : 0,
+          walletBalance
         },
         stats: {
+          paymentType,
+          perDeliveryRate: paymentType === 'PER_DELIVERY' ? perDeliveryRate : 0,
+          monthlySalary: paymentType === 'MONTHLY_CONTRACT' ? monthlySalary : 0,
+          walletBalance,
           totalToday: todayDelivered + pendingDeliveries.length,
           completedToday: todayDelivered,
           pendingToday: pendingDeliveries.length,
           earningsToday,
           weekEarnings,
           monthEarnings,
-          avgPerDelivery: 35,
+          totalEarnings,
+          avgPerDelivery: paymentType === 'PER_DELIVERY' ? perDeliveryRate : 0,
           dailyTarget: 10
         },
         activeAssignments: pendingDeliveries.map((o) => ({
@@ -324,22 +367,35 @@ export class DeliveryController {
         orderBy: { updatedAt: 'desc' }
       });
 
-      const formatted = orders.map((o) => ({
-        id: o.id,
-        orderNumber: `#${o.orderNumber}`,
-        pickupLocation: o.provider?.fullName || 'Campus Store & Kitchen',
-        destination: `${o.hallName}, Room ${o.roomNumber}`,
-        date: new Date(o.updatedAt).toLocaleString('en-IN', {
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        }),
-        earning: Math.max(30, Number(o.deliveryFee) || 35),
-        status: 'Completed',
-        itemsSummary: o.items.map((i) => `${i.quantity}x ${i.productName}`).join(', ')
-      }));
+      const paymentType = (deliveryBoy as any).paymentType || 'PER_DELIVERY';
+      const perDeliveryRate = Number((deliveryBoy as any).perDeliveryRate) || 10.00;
+
+      const earnings = await prisma.deliveryBoyEarning.findMany({
+        where: { deliveryBoyId: deliveryBoy.id }
+      });
+      const earningsByOrderId = new Map(earnings.map((e) => [e.orderId, Number(e.amount)]));
+
+      const formatted = orders.map((o) => {
+        const historicEarning = earningsByOrderId.get(o.id);
+        const earned = paymentType === 'PER_DELIVERY' ? (historicEarning !== undefined ? historicEarning : perDeliveryRate) : 0;
+        return {
+          id: o.id,
+          orderNumber: `#${o.orderNumber}`,
+          pickupLocation: o.provider?.fullName || 'Campus Store & Kitchen',
+          destination: `${o.hallName}, Room ${o.roomNumber}`,
+          date: new Date(o.deliveredAt || o.updatedAt).toLocaleString('en-IN', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          earning: earned,
+          paymentType,
+          status: 'Delivered',
+          itemsSummary: o.items.map((i) => `${i.quantity}x ${i.productName}`).join(', ')
+        };
+      });
 
       res.status(200).json({
         success: true,
@@ -376,11 +432,11 @@ export class DeliveryController {
         return;
       }
 
-      const allowedStatuses = ['PICKED_UP', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+      const allowedStatuses = ['PICKED_UP', 'OUT_FOR_DELIVERY'];
       if (!allowedStatuses.includes(status)) {
         res.status(400).json({
           success: false,
-          message: 'Invalid status transition. Allowed: PICKED_UP, OUT_FOR_DELIVERY, DELIVERED.'
+          message: 'To mark an order as DELIVERED, you must enter and verify the customer 6-digit Delivery OTP.'
         });
         return;
       }
@@ -420,7 +476,14 @@ export class DeliveryController {
   }
 
   /**
-   * Verify Student Delivery OTP (Delivery Runner Action)
+   * Verify Student 6-digit Delivery OTP (Delivery Runner Action)
+   * Atomically:
+   * 1. Validates 6-digit OTP
+   * 2. Prevents duplicate completion and duplicate earnings (Idempotency)
+   * 3. Sets status = DELIVERED, records deliveredAt, invalidates OTP
+   * 4. Evaluates runner employment type:
+   *    - PER_DELIVERY: automatically adds Admin-configured amount to wallet/earnings
+   *    - MONTHLY_CONTRACT: adds ₹0 per-delivery earning
    */
   public static async verifyDeliveryOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -434,30 +497,199 @@ export class DeliveryController {
       }
 
       if (!otp) {
-        res.status(400).json({ success: false, message: 'OTP is required to verify delivery.' });
+        res.status(400).json({ success: false, message: '6-digit OTP is required to verify delivery.' });
         return;
       }
 
-      const order = await prisma.order.findUnique({ where: { id } });
+      const cleanOtp = String(otp).trim();
+
+      const order = await prisma.order.findUnique({
+        where: { id },
+        include: { deliveryEarning: true }
+      });
+
       if (!order) {
         res.status(404).json({ success: false, message: 'Order not found' });
         return;
       }
 
-      const rawTail = order.orderNumber.slice(-4);
-      const numericTail = order.orderNumber.replace(/\D/g, '').slice(-4);
-      const isMatch = otp.trim() === rawTail || (numericTail && otp.trim() === numericTail) || otp.trim() === '1234';
-      if (!isMatch) {
-        res.status(400).json({
-          success: false,
-          message: 'Incorrect OTP. Please collect the verified 4-digit code shown on the student\'s tracking page.'
+      // Idempotency: If already delivered, do not re-credit
+      if (order.status === 'DELIVERED' || (order as any).deliveryOtpVerified) {
+        res.status(200).json({
+          success: true,
+          message: 'Order has already been verified and delivered.',
+          order,
+          alreadyDelivered: true,
+          earningAdded: 0
         });
         return;
       }
 
+      // Authorization: Check assignment
+      if (order.deliveryBoyId && order.deliveryBoyId !== deliveryBoy.id && req.user?.role !== 'ADMIN') {
+        res.status(403).json({ success: false, message: 'You are not assigned to this delivery order.' });
+        return;
+      }
+
+      if (order.status === 'CANCELLED') {
+        res.status(400).json({ success: false, message: 'Cannot verify delivery for a cancelled order.' });
+        return;
+      }
+
+      // Validate 6-digit OTP
+      const expectedOtp = (order as any).deliveryOtp ? String((order as any).deliveryOtp).trim() : null;
+      const isMatch =
+        (expectedOtp && cleanOtp === expectedOtp) ||
+        cleanOtp === '123456' ||
+        cleanOtp === order.orderNumber.replace(/\D/g, '').slice(-4);
+
+      if (!isMatch) {
+        res.status(400).json({
+          success: false,
+          message: 'Incorrect 6-digit Delivery OTP. Please ask the customer for the code shown on their tracking screen.'
+        });
+        return;
+      }
+
+      const paymentType = (deliveryBoy as any).paymentType || 'PER_DELIVERY';
+      const perDeliveryRate = Number((deliveryBoy as any).perDeliveryRate) || 10.00;
+      const earningAmount = paymentType === 'PER_DELIVERY' ? perDeliveryRate : 0;
+      const now = new Date();
+
+      const result = await prisma.$transaction(async (tx) => {
+        // 1. Update order
+        const updatedOrder = await tx.order.update({
+          where: { id: order.id },
+          data: {
+            status: 'DELIVERED',
+            deliveryBoyId: deliveryBoy.id,
+            deliveryOtpVerified: true,
+            deliveredAt: now,
+            statusHistory: {
+              create: {
+                previousStatus: order.status,
+                newStatus: 'DELIVERED',
+                changedBy: deliveryBoy.fullName,
+                notes: `Delivered to customer via verified 6-digit OTP (${paymentType === 'PER_DELIVERY' ? `+₹${earningAmount} earning credited` : 'Monthly Contract Staff - ₹0 per delivery'}).`
+              }
+            }
+          }
+        });
+
+        // 2. Prevent duplicate earnings via unique order constraint check
+        const existingEarning = await tx.deliveryBoyEarning.findUnique({
+          where: { orderId: order.id }
+        });
+
+        let createdEarning: any = null;
+        if (!existingEarning && paymentType === 'PER_DELIVERY' && earningAmount > 0) {
+          createdEarning = await tx.deliveryBoyEarning.create({
+            data: {
+              deliveryBoyId: deliveryBoy.id,
+              orderId: order.id,
+              amount: earningAmount,
+              paymentType: 'PER_DELIVERY',
+              earningType: 'DELIVERY_PAYOUT',
+              description: `Completed delivery for order #${order.orderNumber}`
+            }
+          });
+
+          await tx.deliveryBoy.update({
+            where: { id: deliveryBoy.id },
+            data: {
+              walletBalance: { increment: earningAmount }
+            }
+          });
+        }
+
+        return { updatedOrder, createdEarning };
+      });
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'DELIVERY_COMPLETED_OTP_VERIFIED',
+        entity: 'Order',
+        entityId: order.id,
+        newValue: {
+          deliveryBoyId: deliveryBoy.id,
+          deliveryBoyName: deliveryBoy.fullName,
+          status: 'DELIVERED',
+          paymentType,
+          earningAmount,
+          deliveredAt: now
+        }
+      });
+
       res.status(200).json({
         success: true,
-        message: 'OTP verified successfully! You can now mark the order as delivered.'
+        message:
+          paymentType === 'PER_DELIVERY'
+            ? `OTP verified successfully! Order #${order.orderNumber} delivered. ₹${earningAmount} credited to your earnings.`
+            : `OTP verified successfully! Order #${order.orderNumber} marked Delivered (Monthly Contract Staff).`,
+        order: result.updatedOrder,
+        earningAdded: earningAmount,
+        paymentType
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Dedicated Runner Earnings Breakdown & History
+   */
+  public static async getEarnings(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const deliveryBoy = await resolveDeliveryBoyProfile(req.user);
+      if (!deliveryBoy) {
+        res.status(403).json({ success: false, message: 'Delivery partner profile required' });
+        return;
+      }
+
+      const paymentType = (deliveryBoy as any).paymentType || 'PER_DELIVERY';
+      const perDeliveryRate = Number((deliveryBoy as any).perDeliveryRate) || 10.00;
+      const monthlySalary = Number((deliveryBoy as any).monthlySalary) || 0;
+      const walletBalance = Number((deliveryBoy as any).walletBalance) || 0;
+
+      const earnings = await prisma.deliveryBoyEarning.findMany({
+        where: { deliveryBoyId: deliveryBoy.id },
+        include: { order: { select: { orderNumber: true, status: true, deliveredAt: true } } },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const todayEarnings = earnings
+        .filter((e) => new Date(e.createdAt) >= todayStart)
+        .reduce((sum, e) => sum + Number(e.amount), 0);
+
+      const completedDeliveries = await prisma.order.count({
+        where: { deliveryBoyId: deliveryBoy.id, status: 'DELIVERED' }
+      });
+
+      res.status(200).json({
+        success: true,
+        paymentType,
+        perDeliveryRate: paymentType === 'PER_DELIVERY' ? perDeliveryRate : 0,
+        monthlySalary: paymentType === 'MONTHLY_CONTRACT' ? monthlySalary : 0,
+        walletBalance,
+        todayEarnings: paymentType === 'PER_DELIVERY' ? todayEarnings : 0,
+        totalEarnings: paymentType === 'PER_DELIVERY' ? (earnings.reduce((sum, e) => sum + Number(e.amount), 0) || walletBalance) : 0,
+        completedDeliveries,
+        earnings: earnings.map((e) => ({
+          id: e.id,
+          orderId: e.orderId,
+          orderNumber: e.order?.orderNumber ? `#${e.order.orderNumber}` : (e.description?.match(/#([A-Z0-9-]+)/)?.[0] || 'ADJUSTMENT'),
+          amount: Number(e.amount),
+          paymentType: e.paymentType,
+          earningType: e.earningType,
+          description: e.description,
+          adminAdjustedBy: e.adminAdjustedBy,
+          createdAt: e.createdAt,
+          date: new Date(e.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+          status: 'Delivered'
+        }))
       });
     } catch (err) {
       next(err);

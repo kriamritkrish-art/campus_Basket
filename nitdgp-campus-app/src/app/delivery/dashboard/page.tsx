@@ -17,6 +17,7 @@ import {
   Store,
   ChevronRight,
   Sparkles,
+  Briefcase,
 } from 'lucide-react';
 
 export default function DeliveryDashboardPage() {
@@ -46,7 +47,7 @@ export default function DeliveryDashboardPage() {
             </h2>
           </div>
           <p className="text-sm text-gray-500 font-medium mt-1">
-            Ready for your next delivery? Update status with one-tap on active cards below.
+            Ready for your next delivery? Verify customer 6-digit OTP upon doorstep arrival.
           </p>
         </div>
 
@@ -74,85 +75,167 @@ export default function DeliveryDashboardPage() {
       </div>
 
       {/* ==================================================
-          STATISTICS (Four Card Grid)
+          STATISTICS & EARNINGS OVERVIEW
          ================================================== */}
       <div>
         <div className="flex items-center justify-between mb-3 px-1">
-          <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-400">
-            Today's Delivery Overview
-          </h3>
-          <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full">
-            Active Shift • Hall Zone 1–14
-          </span>
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-extrabold uppercase tracking-wider text-gray-400">
+              Runner Earnings & Compensation
+            </h3>
+            <span
+              className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                todayStats.paymentType === 'MONTHLY_CONTRACT'
+                  ? 'text-purple-700 bg-purple-50 border border-purple-200'
+                  : 'text-emerald-700 bg-emerald-50 border border-emerald-200'
+              }`}
+            >
+              {todayStats.paymentType === 'MONTHLY_CONTRACT' ? '💼 Monthly Contract' : '⚡ Per Delivery'}
+            </span>
+          </div>
+          <Link href="/delivery/earnings" className="text-xs font-bold text-[#36751F] hover:underline flex items-center gap-1">
+            <span>Detailed Ledger</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
 
-        <div className="stats-grid">
-          {/* Total Deliveries Today */}
-          <div className="stat-card flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-500">Total Deliveries</span>
-              <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                <Package className="w-5 h-5" />
+        {todayStats.paymentType === 'MONTHLY_CONTRACT' ? (
+          /* Monthly Contract View */
+          <div className="stats-grid">
+            {/* Payment Type */}
+            <div className="stat-card flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-500">Payment Type</span>
+                <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+                  <Briefcase className="w-5 h-5" />
+                </div>
+              </div>
+              <div>
+                <div className="text-2xl font-black text-gray-900 tracking-tight">
+                  Monthly Contract
+                </div>
+                <p className="text-xs text-purple-600 mt-1 font-semibold">Fixed Campus Salary</p>
               </div>
             </div>
-            <div>
-              <div className="text-3xl font-black text-gray-900 tracking-tight">
-                {todayStats.totalToday}
-              </div>
-              <p className="text-xs text-gray-500 mt-1 font-semibold">Today's Assigned</p>
-            </div>
-          </div>
 
-          {/* Completed */}
-          <div className="stat-card flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-500">Completed</span>
-              <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                <CheckCircle2 className="w-5 h-5" />
+            {/* Monthly Contract */}
+            <div className="stat-card flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-500">Monthly Contract</span>
+                <div className="w-9 h-9 rounded-xl bg-green-50 text-[#36751F] flex items-center justify-center">
+                  <IndianRupee className="w-5 h-5" />
+                </div>
+              </div>
+              <div>
+                <div className="text-3xl font-black text-gray-900 tracking-tight">
+                  ₹{(todayStats.monthlySalary || 15000).toLocaleString('en-IN')}
+                </div>
+                <p className="text-xs text-emerald-700 mt-1 font-semibold">Fixed Contract Salary</p>
               </div>
             </div>
-            <div>
-              <div className="text-3xl font-black text-emerald-700 tracking-tight">
-                {todayStats.completedToday}
-              </div>
-              <p className="text-xs text-gray-500 mt-1 font-semibold">Delivered on Time</p>
-            </div>
-          </div>
 
-          {/* Pending */}
-          <div className="stat-card flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-500">Pending</span>
-              <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                <Clock className="w-5 h-5" />
+            {/* Completed Deliveries */}
+            <div className="stat-card flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-500">Completed Deliveries</span>
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+              </div>
+              <div>
+                <div className="text-3xl font-black text-emerald-700 tracking-tight">
+                  {todayStats.completedToday}
+                </div>
+                <p className="text-xs text-gray-500 mt-1 font-semibold">Delivered on Time</p>
               </div>
             </div>
-            <div>
-              <div className="text-3xl font-black text-amber-600 tracking-tight">
-                {todayStats.pendingToday}
-              </div>
-              <p className="text-xs text-gray-500 mt-1 font-semibold">In Pipeline / Queue</p>
-            </div>
-          </div>
 
-          {/* Today's Earnings */}
-          <div className="stat-card flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-500">Today's Earnings</span>
-              <div className="w-9 h-9 rounded-xl bg-green-50 text-[#36751F] flex items-center justify-center">
-                <IndianRupee className="w-5 h-5" />
+            {/* Per Delivery Earnings */}
+            <div className="stat-card flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-500">Per Delivery Earnings</span>
+                <div className="w-9 h-9 rounded-xl bg-gray-50 text-gray-400 flex items-center justify-center">
+                  <Sparkles className="w-5 h-5" />
+                </div>
               </div>
-            </div>
-            <div>
-              <div className="text-3xl font-black text-gray-900 tracking-tight">
-                ₹{todayStats.earningsToday}
+              <div>
+                <div className="text-3xl font-black text-gray-900 tracking-tight">
+                  ₹0
+                </div>
+                <p className="text-xs text-gray-400 mt-1 font-semibold">Included in monthly salary</p>
               </div>
-              <p className="text-xs text-emerald-700 mt-1 font-bold">
-                + ₹{todayStats.dailyTarget > todayStats.completedToday ? '100 bonus at 10 orders' : 'Bonus unlocked!'}
-              </p>
             </div>
           </div>
-        </div>
+        ) : (
+          /* Per Delivery View */
+          <div className="stats-grid">
+            {/* Today's Earnings */}
+            <div className="stat-card flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-500">Today's Earnings</span>
+                <div className="w-9 h-9 rounded-xl bg-green-50 text-[#36751F] flex items-center justify-center">
+                  <IndianRupee className="w-5 h-5" />
+                </div>
+              </div>
+              <div>
+                <div className="text-3xl font-black text-gray-900 tracking-tight">
+                  ₹{todayStats.earningsToday}
+                </div>
+                <p className="text-xs text-emerald-700 mt-1 font-semibold">
+                  {todayStats.completedToday} orders completed today
+                </p>
+              </div>
+            </div>
+
+            {/* Completed Deliveries */}
+            <div className="stat-card flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-500">Completed Deliveries</span>
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+              </div>
+              <div>
+                <div className="text-3xl font-black text-emerald-700 tracking-tight">
+                  {todayStats.completedToday}
+                </div>
+                <p className="text-xs text-gray-500 mt-1 font-semibold">Delivered on Time</p>
+              </div>
+            </div>
+
+            {/* Per Delivery Rate */}
+            <div className="stat-card flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-500">Per Delivery Rate</span>
+                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+              </div>
+              <div>
+                <div className="text-3xl font-black text-gray-900 tracking-tight">
+                  ₹{todayStats.perDeliveryRate || 10}
+                </div>
+                <p className="text-xs text-amber-700 mt-1 font-semibold">Per completed order</p>
+              </div>
+            </div>
+
+            {/* Total Earnings */}
+            <div className="stat-card flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-gray-500">Total Earnings</span>
+                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <IndianRupee className="w-5 h-5" />
+                </div>
+              </div>
+              <div>
+                <div className="text-3xl font-black text-gray-900 tracking-tight">
+                  ₹{(todayStats.totalEarnings !== undefined ? todayStats.totalEarnings : todayStats.walletBalance || 1250).toLocaleString('en-IN')}
+                </div>
+                <p className="text-xs text-blue-600 mt-1 font-semibold">Available in wallet</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ==================================================

@@ -151,10 +151,10 @@ const LAUNDRY_CHECKPOINTS = [
 
 export default function OrderTrackClient() {
   const params = useParams();
-  const id = (params?.id as string) || '';
+  const id = params.id as string;
   const router = useRouter();
   const searchParams = useSearchParams();
-  const isJustPlaced = searchParams?.get('placed') === 'true';
+  const isJustPlaced = searchParams.get('placed') === 'true';
 
   const { addItem, showToast } = useCart();
   const [order, setOrder] = useState<OrderData | null>(null);
@@ -251,10 +251,6 @@ export default function OrderTrackClient() {
   };
 
   useEffect(() => {
-    if (!id || id === 'default') {
-      setLoading(false);
-      return;
-    }
     fetchOrder(true);
     fetchAllOrders();
     fetchRefundAccount();
@@ -988,6 +984,89 @@ export default function OrderTrackClient() {
                   </p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* STANDARD ORDERS: SECURE CUSTOMER DELIVERY OTP PANEL */}
+          {!isLaundry && order.status !== 'CANCELLED' && order.status !== 'DELIVERED' && order.deliveryOtp && (
+            <div className="bg-gradient-to-r from-emerald-500/10 via-sky-500/10 to-blue-500/10 border-2 border-emerald-500/30 rounded-2xl p-4 sm:p-5 space-y-3 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-500/20 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                    <KeyRound className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                      Customer Delivery Verification OTP
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        Active Handover Code
+                      </span>
+                    </h4>
+                    <p className="text-xs text-slate-600">
+                      Share this 6-digit code with your campus runner only after receiving your items at your room door.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                    {['OUT_FOR_DELIVERY', 'IN_TRANSIT', 'PICKED_UP'].includes(order.status) ? 'Runner En Route' : 'Ready for Handover'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="space-y-1 text-center sm:text-left">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
+                    Customer Delivery OTP
+                  </span>
+                  <div className="text-3xl sm:text-4xl font-black tracking-widest text-emerald-700 font-mono">
+                    {order.deliveryOtp}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      if (order.deliveryOtp) {
+                        navigator.clipboard.writeText(order.deliveryOtp);
+                        showToast('Delivery OTP copied to clipboard');
+                      }
+                    }}
+                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-2 shadow-xs cursor-pointer"
+                  >
+                    <Copy className="w-4 h-4" />
+                    <span>Copy OTP</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-[11px] text-slate-500 bg-emerald-50/50 p-2.5 rounded-lg border border-emerald-100">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>
+                  Zero fraud guarantee: The delivery runner must enter this exact 6-digit OTP on their device to successfully complete delivery.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* STANDARD ORDERS: DELIVERED CONFIRMATION BANNER */}
+          {!isLaundry && order.status === 'DELIVERED' && (
+            <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-emerald-950">Delivery Confirmed & Handed Over</h4>
+                  <p className="text-[11px] text-emerald-700">
+                    Order successfully delivered at your door and verified via 6-digit customer OTP.
+                  </p>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold text-emerald-800 bg-white px-3 py-1 rounded-full border border-emerald-200">
+                OTP Verified
+              </span>
             </div>
           )}
 

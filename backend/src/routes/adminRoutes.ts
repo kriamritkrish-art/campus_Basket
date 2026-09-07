@@ -92,10 +92,13 @@ router.patch('/providers/:id/status', AdminPeopleController.toggleProviderActive
 router.get('/providers/:id/details', AdminPeopleController.getProviderDetails);
 router.get('/providers/:providerId/analytics', AdminController.getProviderSalesAnalytics);
 
+router.get('/delivery-boys/stats', AdminPeopleController.getDeliveryStats);
 router.get('/delivery-boys', AdminPeopleController.getDeliveryBoys);
 router.post('/delivery-boys', AdminPeopleController.createDeliveryBoy);
 router.patch('/delivery-boys/:id', AdminPeopleController.updateDeliveryBoy);
 router.delete('/delivery-boys/:id', AdminPeopleController.deleteDeliveryBoy);
+router.post('/delivery-boys/:id/adjust', AdminPeopleController.adjustDeliveryBoyEarnings);
+router.get('/delivery-boys/:id/earnings', AdminPeopleController.getDeliveryBoyEarnings);
 
 router.get('/halls', AdminPeopleController.getHalls);
 router.post('/halls', AdminPeopleController.createHall);

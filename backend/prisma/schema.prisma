@@ -14,6 +14,11 @@ enum Role {
   DELIVERY_BOY
 }
 
+enum DeliveryPaymentType {
+  PER_DELIVERY
+  MONTHLY_CONTRACT
+}
+
 enum ServiceType {
   FOOD
   FRESH_PRODUCE
@@ -263,21 +268,26 @@ model ServiceProvider {
 }
 
 model DeliveryBoy {
-  id             String          @id @default(cuid())
-  userId         String          @unique
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fullName       String
-  mobileNumber   String          @unique
-  activeStatus   Boolean         @default(true)
-  vehicleType    String?         @default("Bicycle / Walk")
-  currentZone    String?         @default("ALL")
-  plainPassword  String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  id                    String              @id @default(cuid())
+  userId                String              @unique
+  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName              String
+  mobileNumber          String              @unique
+  activeStatus          Boolean             @default(true)
+  vehicleType           String?             @default("Bicycle / Walk")
+  currentZone           String?             @default("ALL")
+  paymentType           DeliveryPaymentType @default(PER_DELIVERY)
+  perDeliveryRate       Decimal             @default(10.00) @db.Decimal(10, 2)
+  monthlySalary         Decimal             @default(0.00) @db.Decimal(10, 2)
+  walletBalance         Decimal             @default(0.00) @db.Decimal(10, 2)
+  plainPassword         String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
 
-  orders         Order[]
-  laundryOrders  LaundryOrder[]
-  codCollections CODCollection[]
+  orders                Order[]
+  laundryOrders         LaundryOrder[]
+  codCollections        CODCollection[]
+  earnings              DeliveryBoyEarning[]
 
   @@index([mobileNumber])
 }
@@ -464,6 +474,9 @@ model Order {
   cancellationReason  String?              @db.Text
   cancelledBy         String?
   cancelledAt         DateTime?
+  deliveredAt         DateTime?
+  deliveryOtp         String?
+  deliveryOtpVerified Boolean              @default(false)
   hallName            String
   hallNumber          String?
   roomNumber          String
@@ -487,6 +500,7 @@ model Order {
   codCollection       CODCollection?
   statusOverrides     AdminStatusOverride[]
   ledgerEntries       FinancialLedger[]
+  deliveryEarning     DeliveryBoyEarning?
 
   @@index([orderNumber])
   @@index([studentId])
@@ -1159,4 +1173,21 @@ model AdminSetting {
   updatedAt   DateTime @updatedAt
 
   @@index([key])
+}
+
+model DeliveryBoyEarning {
+  id                 String              @id @default(cuid())
+  deliveryBoyId      String
+  deliveryBoy        DeliveryBoy         @relation(fields: [deliveryBoyId], references: [id], onDelete: Cascade)
+  orderId            String?             @unique
+  order              Order?              @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  amount             Decimal             @db.Decimal(10, 2)
+  paymentType        DeliveryPaymentType
+  earningType        String              @default("DELIVERY_PAYOUT") // DELIVERY_PAYOUT | ADMIN_ADJUSTMENT | BONUS
+  description        String?             @db.Text
+  adminAdjustedBy    String?
+  createdAt          DateTime            @default(now())
+
+  @@index([deliveryBoyId])
+  @@index([createdAt])
 }

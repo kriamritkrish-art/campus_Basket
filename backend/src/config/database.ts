@@ -29,7 +29,8 @@ import {
   fallbackStationeryOrderDetails,
   fallbackLaundryServiceConfigs,
   fallbackLaundryCodCollections,
-  fallbackLaundryOtps
+  fallbackLaundryOtps,
+  fallbackDeliveryBoyEarnings
 } from '../services/fallbackData';
 
 declare global {
@@ -290,8 +291,10 @@ const fallbackHandlers: Record<string, any> = {
       const id = args?.where?.id || args?.where?.OR?.find((o: any) => o.id)?.id;
       const user = fallbackUsers.find((u: any) => u.deliveryBoy && ((userId && (u.deliveryBoy.userId === userId || u.id === userId)) || (id && u.deliveryBoy.id === id)));
       if (!user?.deliveryBoy) return null;
+      const dbEarnings = fallbackDeliveryBoyEarnings.filter((e) => e.deliveryBoyId === user.deliveryBoy.id);
       return JSON.parse(JSON.stringify({
         ...user.deliveryBoy,
+        earnings: dbEarnings,
         user: { id: user.id, email: user.email, username: user.username, role: user.role, isActive: user.isActive }
       }));
     },
@@ -303,27 +306,100 @@ const fallbackHandlers: Record<string, any> = {
         user = fallbackUsers.find((u: any) => u.deliveryBoy);
       }
       if (!user?.deliveryBoy) return null;
+      const dbEarnings = fallbackDeliveryBoyEarnings.filter((e) => e.deliveryBoyId === user.deliveryBoy.id);
       return JSON.parse(JSON.stringify({
         ...user.deliveryBoy,
+        earnings: dbEarnings,
         user: { id: user.id, email: user.email, username: user.username, role: user.role, isActive: user.isActive }
       }));
     },
     findMany: async () =>
       fallbackUsers
         .filter((u: any) => u.deliveryBoy)
-        .map((u: any) => ({
-          ...u.deliveryBoy,
-          user: { id: u.id, email: u.email, username: u.username, role: u.role, isActive: u.isActive }
-        })),
+        .map((u: any) => {
+          const dbEarnings = fallbackDeliveryBoyEarnings.filter((e) => e.deliveryBoyId === u.deliveryBoy.id);
+          const orders = fallbackOrders.filter((o) => o.deliveryBoyId === u.deliveryBoy.id);
+          return {
+            ...u.deliveryBoy,
+            orders,
+            laundryOrders: [],
+            earnings: dbEarnings,
+            user: { id: u.id, email: u.email, username: u.username, role: u.role, isActive: u.isActive }
+          };
+        }),
     count: async () => fallbackUsers.filter((u: any) => u.deliveryBoy).length,
+    create: async (args: any) => {
+      const newDb = {
+        id: `db_boy_${Date.now()}`,
+        userId: args.data.userId,
+        fullName: args.data.fullName,
+        mobileNumber: args.data.mobileNumber,
+        vehicleType: args.data.vehicleType || 'Bicycle / Walk',
+        activeStatus: args.data.activeStatus ?? true,
+        currentZone: 'ALL',
+        paymentType: args.data.paymentType || 'PER_DELIVERY',
+        perDeliveryRate: args.data.perDeliveryRate !== undefined ? Number(args.data.perDeliveryRate) : 10.00,
+        monthlySalary: args.data.monthlySalary !== undefined ? Number(args.data.monthlySalary) : 0.00,
+        walletBalance: args.data.walletBalance !== undefined ? Number(args.data.walletBalance) : 0.00,
+        plainPassword: args.data.plainPassword,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      const user = fallbackUsers.find((u) => u.id === args.data.userId);
+      if (user) (user as any).deliveryBoy = newDb;
+      return JSON.parse(JSON.stringify(newDb));
+    },
     update: async (args: any) => {
       const id = args?.where?.id;
       const user = fallbackUsers.find((u: any) => u.deliveryBoy && u.deliveryBoy.id === id);
       if (user?.deliveryBoy) {
-        Object.assign(user.deliveryBoy, args.data);
+        const updateData = { ...args.data };
+        if (updateData.walletBalance && typeof updateData.walletBalance === 'object') {
+          if (updateData.walletBalance.increment !== undefined) {
+            updateData.walletBalance = (Number(user.deliveryBoy.walletBalance) || 0) + Number(updateData.walletBalance.increment);
+          } else if (updateData.walletBalance.decrement !== undefined) {
+            updateData.walletBalance = (Number(user.deliveryBoy.walletBalance) || 0) - Number(updateData.walletBalance.decrement);
+          }
+        }
+        Object.assign(user.deliveryBoy, updateData);
         return JSON.parse(JSON.stringify(user.deliveryBoy));
       }
       return args.data;
+    },
+    delete: async (args: any) => {
+      const id = args?.where?.id;
+      const user = fallbackUsers.find((u: any) => u.deliveryBoy && u.deliveryBoy.id === id);
+      if (user) {
+        (user as any).deliveryBoy = null;
+      }
+      return { id };
+    }
+  },
+  deliveryBoyEarning: {
+    findMany: async (args: any) => {
+      let list = [...fallbackDeliveryBoyEarnings];
+      if (args?.where?.deliveryBoyId) {
+        list = list.filter((e) => e.deliveryBoyId === args.where.deliveryBoyId);
+      }
+      if (args?.where?.orderId) {
+        list = list.filter((e) => e.orderId === args.where.orderId);
+      }
+      return JSON.parse(JSON.stringify(list));
+    },
+    findUnique: async (args: any) => {
+      const id = args?.where?.id;
+      const orderId = args?.where?.orderId;
+      const found = fallbackDeliveryBoyEarnings.find((e) => (id && e.id === id) || (orderId && e.orderId === orderId));
+      return found ? JSON.parse(JSON.stringify(found)) : null;
+    },
+    create: async (args: any) => {
+      const newRecord = {
+        id: `earn_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        createdAt: new Date(),
+        ...args.data
+      };
+      fallbackDeliveryBoyEarnings.unshift(newRecord);
+      return JSON.parse(JSON.stringify(newRecord));
     }
   },
   category: {
@@ -663,6 +739,9 @@ const fallbackHandlers: Record<string, any> = {
         hallNumber: args.data.hallNumber || null,
         roomNumber: args.data.roomNumber || '123',
         specialInstructions: args.data.specialInstructions || null,
+        deliveryOtp: args.data.deliveryOtp || '123456',
+        deliveryOtpVerified: args.data.deliveryOtpVerified || false,
+        deliveredAt: args.data.deliveredAt || null,
         items: itemsData.map((i: any, idx: number) => ({
           id: `item_${Date.now()}_${idx}`,
           productName: i.productName || 'Product Item',

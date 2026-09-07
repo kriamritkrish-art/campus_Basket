@@ -15,7 +15,7 @@ export default function OtpModal() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!otpValue || otpValue.trim().length !== 4) {
+    if (!otpValue || otpValue.trim().length < 4 || otpValue.trim().length > 6) {
       setError(true);
       return;
     }
@@ -37,17 +37,17 @@ export default function OtpModal() {
 
   return (
     <div className="fixed inset-0 z-[1200] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-purple-100 animate-in zoom-in-95 space-y-4">
+      <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-emerald-100 animate-in zoom-in-95 space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-gray-100">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#36751F] flex items-center justify-center">
               <KeyRound className="w-4 h-4" />
             </div>
             <div>
               <h3 className="text-sm font-black uppercase tracking-wide text-gray-900">
                 VERIFY DELIVERY
               </h3>
-              <div className="font-mono text-xs font-bold text-purple-700">
+              <div className="font-mono text-xs font-bold text-emerald-700">
                 Order {otpModalOrder.orderNumber}
               </div>
             </div>
@@ -67,27 +67,27 @@ export default function OtpModal() {
 
         <div>
           <p className="text-xs text-gray-600 font-medium leading-relaxed">
-            Enter the student&apos;s 4-digit delivery OTP at <span className="font-bold text-gray-900">{otpModalOrder.destination}</span>:
+            Enter the customer&apos;s 6-digit delivery OTP at <span className="font-bold text-gray-900">{otpModalOrder.destination}</span>:
           </p>
 
           <form onSubmit={handleSubmit} className="mt-3 space-y-3">
             <div className="flex justify-center">
               <input
                 type="text"
-                maxLength={4}
+                maxLength={6}
                 autoFocus
                 value={otpValue}
                 onChange={(e) => {
                   setOtpValue(e.target.value.replace(/\D/g, ''));
                   setError(false);
                 }}
-                placeholder="• • • •"
-                className="w-48 py-3 text-center text-2xl font-mono font-black tracking-[0.5em] bg-gray-50 border-2 border-purple-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-600 focus:bg-white transition"
+                placeholder="• • • • • •"
+                className="w-56 py-3 text-center text-2xl font-mono font-black tracking-[0.4em] bg-gray-50 border-2 border-emerald-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#36751F] focus:bg-white transition"
               />
             </div>
 
             <p className="text-[11px] text-gray-500 text-center font-medium">
-              Ask student for the 4-digit code displayed on their tracking screen.
+              Ask student for the 6-digit code displayed on their live tracking screen.
             </p>
 
             {error && (
@@ -111,10 +111,10 @@ export default function OtpModal() {
 
               <button
                 type="submit"
-                disabled={loading || otpValue.length !== 4}
-                className="px-5 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white text-xs font-black transition flex-1 shadow-sm"
+                disabled={loading || otpValue.length < 4}
+                className="px-4 py-2.5 rounded-xl bg-[#36751F] hover:bg-[#2e621a] disabled:opacity-50 text-white text-xs font-black transition flex-1 shadow-sm"
               >
-                {loading ? 'Verifying...' : 'Verify OTP'}
+                {loading ? 'Verifying...' : 'Verify & Deliver'}
               </button>
             </div>
           </form>

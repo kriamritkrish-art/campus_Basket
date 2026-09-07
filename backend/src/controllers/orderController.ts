@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
 import { checkoutOrderSchema } from '../validators/orderValidators';
-import { generateOrderNumber } from '../utils/crypto';
+import { generateOrderNumber, generateSecureOtp } from '../utils/crypto';
 import { RazorpayService } from '../services/payment/RazorpayService';
 import { EmailService } from '../services/email/EmailService';
 import { ReceiptService } from '../services/receipt/ReceiptService';
@@ -243,6 +243,8 @@ export class OrderController {
           });
         }
 
+        const deliveryOtp = generateSecureOtp();
+
         const newOrder = await tx.order.create({
           data: {
             orderNumber,
@@ -251,6 +253,8 @@ export class OrderController {
             deliveryBoyId: assignedDeliveryBoyId,
             serviceType,
             status: initialStatus,
+            deliveryOtp,
+            deliveryOtpVerified: false,
             subtotal,
             deliveryFee,
             discountAmount,
@@ -546,11 +550,27 @@ export class OrderController {
         return;
       }
 
+      // For authenticated student: display real 6-digit customer delivery OTP until delivered
+      let customerOtp = (order as any).deliveryOtp;
+      if (!customerOtp && order.status !== 'DELIVERED') {
+        customerOtp = generateSecureOtp();
+        try {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: { deliveryOtp: customerOtp }
+          });
+        } catch {
+          // Non-blocking fallback
+        }
+      }
+
       res.status(200).json({
         success: true,
         order: {
           ...order,
-          deliveryOtp: order.orderNumber.slice(-4),
+          deliveryOtp: order.status === 'DELIVERED' || (order as any).deliveryOtpVerified ? null : customerOtp,
+          deliveryOtpVerified: (order as any).deliveryOtpVerified || false,
+          deliveredAt: (order as any).deliveredAt || null,
           totalAmount: Number(order.totalAmount),
           subtotal: Number(order.subtotal),
           deliveryFee: Number(order.deliveryFee),

@@ -556,6 +556,12 @@ export class AdminPeopleController {
         orderBy: { createdAt: 'desc' }
       });
 
+      const allEarnings = await prisma.deliveryBoyEarning.findMany();
+      const earningsByBoy = new Map<string, number>();
+      for (const e of allEarnings) {
+        earningsByBoy.set(e.deliveryBoyId, (earningsByBoy.get(e.deliveryBoyId) || 0) + Number(e.amount));
+      }
+
       res.status(200).json({
         success: true,
         deliveryBoys: deliveryBoys.map((d) => {
@@ -566,6 +572,11 @@ export class AdminPeopleController {
           const fallbackUsername =
             d.user?.username ||
             `DB_${d.fullName.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase() || 'RUNNER'}_01`;
+          const paymentType = (d as any).paymentType || 'PER_DELIVERY';
+          const perDeliveryRate = Number((d as any).perDeliveryRate) || 10.00;
+          const monthlySalary = Number((d as any).monthlySalary) || 0;
+          const walletBalance = Number((d as any).walletBalance) || 0;
+          const totalEarned = paymentType === 'PER_DELIVERY' ? (earningsByBoy.get(d.id) || walletBalance) : 0;
 
           return {
             id: d.id,
@@ -579,6 +590,11 @@ export class AdminPeopleController {
             activeStatus: d.activeStatus,
             status: d.activeStatus ? 'ACTIVE' : 'INACTIVE',
             currentZone: d.currentZone,
+            paymentType,
+            perDeliveryRate: paymentType === 'PER_DELIVERY' ? perDeliveryRate : 0,
+            monthlySalary: paymentType === 'MONTHLY_CONTRACT' ? monthlySalary : 0,
+            walletBalance,
+            totalEarned,
             plainPassword: d.plainPassword || 'Delivery@12345',
             activeAssignments,
             completedDeliveries,
@@ -624,6 +640,10 @@ export class AdminPeopleController {
 
       const passwordHash = await bcrypt.hash(data.password, 10);
 
+      const paymentType = req.body.paymentType === 'MONTHLY_CONTRACT' ? 'MONTHLY_CONTRACT' : 'PER_DELIVERY';
+      const perDeliveryRate = paymentType === 'PER_DELIVERY' ? (req.body.perDeliveryRate !== undefined ? Number(req.body.perDeliveryRate) : 10.00) : 0;
+      const monthlySalary = paymentType === 'MONTHLY_CONTRACT' ? (req.body.monthlySalary !== undefined ? Number(req.body.monthlySalary) : 15000.00) : 0;
+
       const result = await prisma.$transaction(async (tx) => {
         const user = await tx.user.create({
           data: {
@@ -643,6 +663,9 @@ export class AdminPeopleController {
             mobileNumber,
             vehicleType: data.vehicleType || 'Bicycle / Walk',
             activeStatus: isActive,
+            paymentType: paymentType as any,
+            perDeliveryRate: perDeliveryRate as any,
+            monthlySalary: monthlySalary as any,
             plainPassword: data.password
           }
         });
@@ -680,7 +703,20 @@ export class AdminPeopleController {
   public static async updateDeliveryBoy(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const { fullName, mobileNumber, phone, vehicleType, activeStatus, status, password, email, username } = req.body;
+      const {
+        fullName,
+        mobileNumber,
+        phone,
+        vehicleType,
+        activeStatus,
+        status,
+        password,
+        email,
+        username,
+        paymentType,
+        perDeliveryRate,
+        monthlySalary
+      } = req.body;
       const targetPhone = (mobileNumber || phone || '').trim();
 
       const deliveryBoy = await prisma.deliveryBoy.findUnique({ where: { id }, include: { user: true } });
@@ -732,6 +768,33 @@ export class AdminPeopleController {
         userUpdates.isActive = resolvedActive;
       }
 
+      const resolvedPaymentType =
+        paymentType !== undefined
+          ? (paymentType === 'MONTHLY_CONTRACT' ? 'MONTHLY_CONTRACT' : 'PER_DELIVERY')
+          : undefined;
+
+      const dbUpdates: any = {
+        ...(fullName && { fullName: fullName.trim() }),
+        ...(targetPhone && { mobileNumber: targetPhone }),
+        ...(vehicleType && { vehicleType }),
+        ...(resolvedActive !== undefined && { activeStatus: resolvedActive }),
+        ...(password && { plainPassword: password.trim() })
+      };
+
+      if (resolvedPaymentType !== undefined) {
+        dbUpdates.paymentType = resolvedPaymentType;
+        if (resolvedPaymentType === 'MONTHLY_CONTRACT') {
+          dbUpdates.perDeliveryRate = 0;
+          if (monthlySalary !== undefined) dbUpdates.monthlySalary = Number(monthlySalary);
+        } else if (resolvedPaymentType === 'PER_DELIVERY') {
+          if (perDeliveryRate !== undefined) dbUpdates.perDeliveryRate = Number(perDeliveryRate);
+          dbUpdates.monthlySalary = 0;
+        }
+      } else {
+        if (perDeliveryRate !== undefined) dbUpdates.perDeliveryRate = Number(perDeliveryRate);
+        if (monthlySalary !== undefined) dbUpdates.monthlySalary = Number(monthlySalary);
+      }
+
       await prisma.$transaction(async (tx) => {
         if (Object.keys(userUpdates).length > 0) {
           await tx.user.update({
@@ -742,13 +805,7 @@ export class AdminPeopleController {
 
         await tx.deliveryBoy.update({
           where: { id },
-          data: {
-            ...(fullName && { fullName: fullName.trim() }),
-            ...(targetPhone && { mobileNumber: targetPhone }),
-            ...(vehicleType && { vehicleType }),
-            ...(resolvedActive !== undefined && { activeStatus: resolvedActive }),
-            ...(password && { plainPassword: password.trim() })
-          }
+          data: dbUpdates
         });
       });
 
@@ -777,6 +834,164 @@ export class AdminPeopleController {
       });
 
       res.status(200).json({ success: true, message: 'Delivery partner deactivated successfully.' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Manually add or remove earnings adjustment for a delivery boy (Admin Action)
+   * Audit trail records Admin, Amount, Reason, Date/Time.
+   */
+  public static async adjustDeliveryBoyEarnings(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { amount, type, reason } = req.body; // type: 'ADD' | 'DEDUCT'
+
+      if (!amount || Number(amount) <= 0) {
+        res.status(400).json({ success: false, message: 'Valid positive adjustment amount is required.' });
+        return;
+      }
+
+      if (!reason || !reason.trim()) {
+        res.status(400).json({ success: false, message: 'A reason for manual adjustment is required for audit compliance.' });
+        return;
+      }
+
+      const deliveryBoy = await prisma.deliveryBoy.findUnique({ where: { id } });
+      if (!deliveryBoy) {
+        res.status(404).json({ success: false, message: 'Delivery partner not found.' });
+        return;
+      }
+
+      const numAmount = Number(amount);
+      const adjustmentValue = type === 'DEDUCT' ? -numAmount : numAmount;
+      const adminIdentifier = req.user?.email || req.user?.userId || 'Admin';
+
+      const result = await prisma.$transaction(async (tx) => {
+        const earning = await tx.deliveryBoyEarning.create({
+          data: {
+            deliveryBoyId: deliveryBoy.id,
+            amount: adjustmentValue,
+            paymentType: deliveryBoy.paymentType,
+            earningType: 'ADMIN_ADJUSTMENT',
+            description: reason.trim(),
+            adminAdjustedBy: adminIdentifier
+          }
+        });
+
+        const updatedBoy = await tx.deliveryBoy.update({
+          where: { id: deliveryBoy.id },
+          data: {
+            walletBalance: { increment: adjustmentValue }
+          }
+        });
+
+        return { earning, updatedBoy };
+      });
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'DELIVERY_BOY_EARNINGS_ADJUSTED',
+        entity: 'DeliveryBoy',
+        entityId: deliveryBoy.id,
+        newValue: {
+          admin: adminIdentifier,
+          amount: adjustmentValue,
+          type: type === 'DEDUCT' ? 'DEDUCT' : 'ADD',
+          reason: reason.trim(),
+          newBalance: Number(result.updatedBoy.walletBalance),
+          timestamp: new Date()
+        }
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `Successfully adjusted balance by ${adjustmentValue >= 0 ? `+₹${adjustmentValue}` : `-₹${Math.abs(adjustmentValue)}`}.`,
+        earning: result.earning,
+        walletBalance: Number(result.updatedBoy.walletBalance)
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get complete earnings & adjustment history for a specific delivery boy
+   */
+  public static async getDeliveryBoyEarnings(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const deliveryBoy = await prisma.deliveryBoy.findUnique({ where: { id } });
+      if (!deliveryBoy) {
+        res.status(404).json({ success: false, message: 'Delivery partner not found.' });
+        return;
+      }
+
+      const earnings = await prisma.deliveryBoyEarning.findMany({
+        where: { deliveryBoyId: id },
+        include: { order: { select: { orderNumber: true, status: true, deliveredAt: true } } },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      res.status(200).json({
+        success: true,
+        deliveryBoy: {
+          id: deliveryBoy.id,
+          fullName: deliveryBoy.fullName,
+          paymentType: deliveryBoy.paymentType,
+          perDeliveryRate: Number(deliveryBoy.perDeliveryRate),
+          monthlySalary: Number(deliveryBoy.monthlySalary),
+          walletBalance: Number(deliveryBoy.walletBalance)
+        },
+        earnings: earnings.map((e) => ({
+          id: e.id,
+          orderId: e.orderId,
+          orderNumber: e.order?.orderNumber ? `#${e.order.orderNumber}` : (e.description?.match(/#([A-Z0-9-]+)/)?.[0] || 'ADJUSTMENT'),
+          amount: Number(e.amount),
+          paymentType: e.paymentType,
+          earningType: e.earningType,
+          description: e.description,
+          adminAdjustedBy: e.adminAdjustedBy,
+          createdAt: e.createdAt,
+          date: new Date(e.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+        }))
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Aggregated Delivery Stats for Admin Dashboard
+   */
+  public static async getDeliveryStats(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const deliveryBoys = await prisma.deliveryBoy.findMany({
+        include: { orders: { select: { id: true, status: true } } }
+      });
+
+      const earnings = await prisma.deliveryBoyEarning.findMany();
+      const totalEarningsPaid = earnings.reduce((sum, e) => sum + Number(e.amount), 0);
+
+      const perDeliveryStaff = deliveryBoys.filter((d) => (d as any).paymentType === 'PER_DELIVERY');
+      const monthlyStaff = deliveryBoys.filter((d) => (d as any).paymentType === 'MONTHLY_CONTRACT');
+
+      const totalDelivered = deliveryBoys.reduce(
+        (sum, d) => sum + d.orders.filter((o) => o.status === 'DELIVERED').length,
+        0
+      );
+
+      res.status(200).json({
+        success: true,
+        stats: {
+          totalDeliveryBoys: deliveryBoys.length,
+          totalPerDeliveryStaff: perDeliveryStaff.length,
+          totalMonthlyStaff: monthlyStaff.length,
+          totalCompletedDeliveries: totalDelivered,
+          totalEarningsPaid
+        }
+      });
     } catch (err) {
       next(err);
     }
