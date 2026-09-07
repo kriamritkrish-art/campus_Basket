@@ -16,26 +16,39 @@ import {
   Camera,
   UploadCloud,
   X,
-  Trash2,
-  Sparkles,
   Plus,
   Minus,
-  Image as ImageIcon,
   AlertCircle,
-  CreditCard,
-  Banknote,
-  Info
+  Sparkles,
+  Info,
+  Check
 } from 'lucide-react';
 
-const DEFAULT_RATES = [
-  { type: 'Shirt', price: 15, icon: '👔' },
-  { type: 'T-Shirt', price: 15, icon: '👕' },
-  { type: 'Pants', price: 20, icon: '👖' },
-  { type: 'Jeans', price: 25, icon: '👖' },
-  { type: 'Kurta', price: 20, icon: '👘' },
-  { type: 'Bedsheet', price: 35, icon: '🛏️' },
-  { type: 'Towel', price: 15, icon: '🧖' },
-  { type: 'Blanket', price: 90, icon: '🛋️' },
+const CLOTHING_ITEMS = [
+  { type: 'Shirt', defaultPrice: 15, icon: '👔' },
+  { type: 'T-Shirt', defaultPrice: 15, icon: '👕' },
+  { type: 'Pants', defaultPrice: 20, icon: '👖' },
+  { type: 'Jeans', defaultPrice: 25, icon: '👖' },
+  { type: 'Kurta', defaultPrice: 20, icon: '👘' },
+];
+
+const HOUSEHOLD_ITEMS = [
+  { type: 'Bedsheet', defaultPrice: 35, icon: '🛏️' },
+  { type: 'Towel', defaultPrice: 15, icon: '🧖' },
+  { type: 'Blanket', defaultPrice: 90, icon: '🛋️' },
+];
+
+const PICKUP_SLOTS = [
+  '08:00 AM - 10:00 AM (Morning Slot)',
+  '12:00 PM - 02:00 PM (Noon Slot)',
+  '04:00 PM - 06:00 PM (Evening Slot)',
+  '07:00 PM - 09:00 PM (Night Slot)',
+];
+
+const RETURN_SLOTS = [
+  'Tomorrow • 05:00 PM - 07:00 PM (24h Express)',
+  'Day After Tomorrow • 05:00 PM - 07:00 PM (Standard 48h)',
+  'Weekend Delivery • 10:00 AM - 01:00 PM',
 ];
 
 interface ClothPhoto {
@@ -48,6 +61,7 @@ interface ClothPhoto {
 export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) => void }) {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
+
   const [halls, setHalls] = useState<Hall[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({
     'Shirt': 2,
@@ -55,17 +69,13 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
     'T-Shirt': 1,
   });
 
-  // Dynamic pricing & hero config from backend DB
+  // Dynamic pricing config from DB
   const [tariff, setTariff] = useState<any>({
-    heroTitle: 'Express Campus Laundry',
-    heroSubtitle: 'Automated wash, fabric softening & steam iron with room-to-room pickup across Halls 1–14',
-    tariffTag: 'DUAL-OTP',
-    tariffBadge: 'SUBSIDIZED TARIFF',
-    unitDisplayName: 'per garment',
     providerPricePerUnit: 15,
     serviceChargePerUnit: 1,
     studentPricePerUnit: 16
   });
+
   const [itemRates, setItemRates] = useState<Record<string, number>>({
     Shirt: 15,
     'T-Shirt': 15,
@@ -76,10 +86,6 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
     Towel: 15,
     Blanket: 90
   });
-  const [codEnabled, setCodEnabled] = useState(true);
-
-  // Payment Method: ONLINE vs COD
-  const [paymentMethod, setPaymentMethod] = useState<'ONLINE' | 'COD'>('ONLINE');
 
   const [clothPhotos, setClothPhotos] = useState<ClothPhoto[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -90,22 +96,20 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
   const [pickupDate, setPickupDate] = useState(
     new Date(Date.now() + 86400000).toISOString().split('T')[0]
   );
-  const [pickupTime, setPickupTime] = useState('08:00 AM - 10:00 AM');
-  const [returnTime, setReturnTime] = useState('05:00 PM - 07:00 PM');
+  const [pickupTime, setPickupTime] = useState(PICKUP_SLOTS[0]);
+  const [returnTime, setReturnTime] = useState(RETURN_SLOTS[0]);
   const [specialInstructions, setSpecialInstructions] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [bookingSuccess, setBookingSuccess] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Auto-fill from student profile
   useEffect(() => {
     if (user?.student) {
-      setHallName(user.student.hall?.name || 'Hall 11');
-      setRoomNumber(user.student.roomNumber || 'B-304');
+      if (!hallName) setHallName(user.student.hall?.name || 'Hall 11');
+      if (!roomNumber) setRoomNumber(user.student.roomNumber || 'B-304');
     }
   }, [user]);
 
-  // Restore draft if returning from checkout
+  // Restore draft if student is returning from /laundry/checkout
   useEffect(() => {
     try {
       const stored = sessionStorage.getItem('CB_LAUNDRY_CHECKOUT_DRAFT') || sessionStorage.getItem('laundry_checkout_draft');
@@ -119,7 +123,6 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
         if (d.returnTime) setReturnTime(d.returnTime);
         if (d.specialInstructions) setSpecialInstructions(d.specialInstructions);
         if (d.clothPhotos) setClothPhotos(d.clothPhotos);
-        if (d.paymentMethod) setPaymentMethod(d.paymentMethod);
       }
     } catch {}
   }, []);
@@ -133,9 +136,6 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
           if (res.itemRates && Object.keys(res.itemRates).length > 0) {
             setItemRates(res.itemRates);
           }
-          if (res.policy) {
-            setCodEnabled(res.policy.codEnabled !== false);
-          }
         }
       })
       .catch(() => {});
@@ -145,9 +145,9 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
   useEffect(() => {
     apiRequest('/api/campus/halls')
       .then((res) => {
-        if (res.success && res.halls) {
+        if (res.success && Array.isArray(res.halls) && res.halls.length > 0) {
           setHalls(res.halls);
-          if (!hallName && res.halls.length > 0) {
+          if (!hallName) {
             setHallName(res.halls[0].name);
           }
         }
@@ -195,13 +195,7 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
     setClothPhotos((prev) => prev.filter((p) => p.id !== id));
   };
 
-  const updatePhotoNote = (id: string, notes: string) => {
-    setClothPhotos((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, notes } : p))
-    );
-  };
-
-  // Financial calculations
+  // Dynamic Financial Calculations
   const totalGarments = Object.values(counts).reduce((a, b) => a + b, 0);
 
   const laundryBaseAmount = Object.entries(counts).reduce((sum, [type, qty]) => {
@@ -209,16 +203,32 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
     return sum + rate * qty;
   }, 0);
 
-  const serviceChargeAmount = (tariff.serviceChargePerUnit || 1) * totalGarments;
+  const serviceChargePerUnit = tariff.serviceChargePerUnit || 1;
+  const serviceChargeAmount = serviceChargePerUnit * totalGarments;
   const totalOrderAmount = laundryBaseAmount + serviceChargeAmount;
 
-  // COD Rule Breakdown:
-  // In COD mode: student pays serviceChargeAmount online in advance as booking confirmation;
-  // laundryBaseAmount is collected in cash by provider at doorstep upon delivery.
-  const payOnlineNow = paymentMethod === 'ONLINE' ? totalOrderAmount : serviceChargeAmount;
-  const payOnDelivery = paymentMethod === 'ONLINE' ? 0 : laundryBaseAmount;
+  // Selected itemized list for sticky order summary
+  const selectedItemsList = [
+    ...CLOTHING_ITEMS.map((item) => ({ ...item, category: 'Clothing' })),
+    ...HOUSEHOLD_ITEMS.map((item) => ({ ...item, category: 'Household' }))
+  ]
+    .filter((item) => (counts[item.type] || 0) > 0)
+    .map((item) => {
+      const qty = counts[item.type] || 0;
+      const unitRate = itemRates[item.type] !== undefined ? itemRates[item.type] : item.defaultPrice;
+      const unitStudentPrice = unitRate + serviceChargePerUnit;
+      return {
+        type: item.type,
+        icon: item.icon,
+        qty,
+        unitRate,
+        unitStudentPrice,
+        totalItemPrice: unitStudentPrice * qty,
+      };
+    });
 
-  const handleBook = async (e: React.FormEvent) => {
+  // Handle Checkout Navigation (Passes complete draft to /laundry/checkout)
+  const handleProceedToCheckout = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAuthenticated) {
       window.location.href = '/login?redirect=/laundry/checkout';
@@ -226,11 +236,12 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
     }
 
     if (totalGarments === 0) {
-      setError('Please select at least 1 clothing item for pickup.');
+      setError('Please select at least 1 clothing or household item for pickup.');
       return;
     }
 
-    // Save draft into session storage for dedicated checkout page
+    setError(null);
+
     const draft = {
       counts,
       totalGarments,
@@ -246,7 +257,6 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
       laundryBaseAmount,
       serviceChargeAmount,
       totalOrderAmount,
-      paymentMethod,
     };
 
     try {
@@ -257,529 +267,479 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
     router.push('/laundry/checkout');
   };
 
-  // Modern Transparent Booking Success Screen
-  if (bookingSuccess) {
+  // Helper to render a compact garment row
+  const renderGarmentRow = (item: { type: string; defaultPrice: number; icon: string }) => {
+    const qty = counts[item.type] || 0;
+    const unitBasePrice = itemRates[item.type] !== undefined ? itemRates[item.type] : item.defaultPrice;
+    const unitStudentPrice = unitBasePrice + serviceChargePerUnit;
+    const isSelected = qty > 0;
+
     return (
-      <div className="bg-white/80 backdrop-blur-2xl p-6 sm:p-10 rounded-3xl border border-white/90 shadow-[0_12px_40px_rgba(0,0,0,0.06)] text-center max-w-xl mx-auto space-y-6 relative overflow-hidden">
-        <div className="absolute -top-16 -right-16 w-48 h-48 bg-[#689f38]/15 rounded-full blur-2xl pointer-events-none" />
-
-        <div className="w-16 h-16 bg-[#f1f8e9] text-[#689f38] rounded-2xl flex items-center justify-center mx-auto border border-[#dcedc8] shadow-sm">
-          <CheckCircle2 className="w-8 h-8 stroke-[2.2]" />
-        </div>
-
-        <div>
-          <span className="px-3 py-1 rounded-full bg-[#f1f8e9] text-[#2e7d32] text-xs font-extrabold uppercase tracking-wider border border-[#dcedc8]">
-            Booking Confirmed
-          </span>
-          <h3 className="text-2xl font-black text-gray-900 mt-3 tracking-tight">
-            Order #{bookingSuccess.orderNumber}
-          </h3>
-          <p className="text-xs sm:text-sm text-gray-600 mt-1.5">
-            Campus laundry team dispatched. Scheduled pickup at{' '}
-            <strong className="text-gray-900">{hallName}, Room {roomNumber}</strong>.
-          </p>
-        </div>
-
-        {/* Financial Separation Summary */}
-        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left space-y-2 text-xs">
-          <div className="font-bold text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-200 pb-2">
-            Payment &amp; Financial Breakdown
+      <div
+        key={item.type}
+        className={`flex items-center justify-between py-2.5 px-3.5 rounded-xl border transition-all ${
+          isSelected
+            ? 'bg-[#f4fbf4] border-[#c8e6c9] shadow-2xs'
+            : 'bg-white border-gray-200/80 hover:border-gray-300'
+        }`}
+      >
+        {/* Left: Icon & Garment Specs */}
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-gray-50 flex items-center justify-center text-lg border border-gray-100 shrink-0">
+            {item.icon}
           </div>
-          <div className="flex justify-between text-slate-600">
-            <span>Laundry Service (Base Amount):</span>
-            <span className="font-semibold text-slate-900">₹{bookingSuccess.laundryBaseAmount || laundryBaseAmount}</span>
-          </div>
-          <div className="flex justify-between text-slate-600">
-            <span>Campus Basket Service Charge (₹{tariff.serviceChargePerUnit || 1}/garment):</span>
-            <span className="font-semibold text-slate-900">₹{bookingSuccess.serviceChargeAmount || serviceChargeAmount}</span>
-          </div>
-          <div className="flex justify-between text-slate-900 font-bold pt-1 border-t border-slate-200">
-            <span>Total Order Value:</span>
-            <span>₹{bookingSuccess.totalAmount || totalOrderAmount}</span>
-          </div>
-          <div className="flex justify-between pt-1 border-t border-dashed border-slate-200">
-            <span className="text-[#2e7d32] font-bold">Paid Online (Advance):</span>
-            <span className="font-black text-[#2e7d32]">₹{bookingSuccess.onlinePaidAmount || payOnlineNow}</span>
-          </div>
-          {(bookingSuccess.codAmount > 0 || payOnDelivery > 0) && (
-            <div className="flex justify-between text-amber-800 bg-amber-50 p-2 rounded-lg font-bold border border-amber-200">
-              <span>Cash on Delivery (Pay to Provider):</span>
-              <span>₹{bookingSuccess.codAmount || payOnDelivery}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Deferred Dual-OTP Notice */}
-        <div className="bg-[#f1f8e9]/90 border border-[#dcedc8] rounded-2xl p-4 text-left space-y-2 shadow-xs">
-          <div className="flex items-center gap-2 text-[#2e7d32] text-xs font-bold uppercase tracking-wider">
-            <ShieldCheck className="w-4 h-4 text-[#689f38]" /> Direct In-App Dual-OTP Protection
-          </div>
-          <p className="text-xs text-slate-600 leading-relaxed">
-            Your <strong>Pickup OTP</strong> will be generated directly on your Student Dashboard screen the moment your laundry provider accepts your order. Zero email OTP dispatch.
-          </p>
-        </div>
-
-        <button
-          onClick={() => (window.location.href = '/laundry')}
-          className="w-full py-3.5 bg-[#689f38] hover:bg-[#5b8c30] text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-md transition-all active:scale-95"
-        >
-          View in Laundry Dashboard
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <form
-      onSubmit={handleBook}
-      className="bg-white/70 backdrop-blur-2xl p-6 sm:p-10 rounded-3xl border border-white/80 shadow-[0_10px_35px_rgba(0,0,0,0.05)] space-y-8 relative overflow-hidden"
-    >
-      {/* Ambient background glow */}
-      <div className="absolute -top-24 -right-24 w-72 h-72 bg-[#689f38]/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-sky-400/10 rounded-full blur-3xl pointer-events-none" />
-
-      {/* Dynamic Header & Hero Card */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-5">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-[#f1f8e9] text-[#689f38] border border-[#dcedc8] flex items-center justify-center shadow-sm shrink-0">
-            <Shirt className="w-6 h-6 stroke-[1.8]" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-lg sm:text-xl font-black text-gray-900 tracking-tight">
-                {tariff.heroTitle || 'Express Campus Laundry'}
-              </h3>
-              <span className="px-2 py-0.5 rounded-full bg-[#f1f8e9] text-[#2e7d32] text-[10px] font-extrabold uppercase border border-[#dcedc8]">
-                {tariff.tariffTag || 'DUAL-OTP'}
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {tariff.heroSubtitle || 'Professional wash, fabric softening & steam iron with hostel doorstep collection'}
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-[#f1f8e9] border border-[#dcedc8] rounded-xl px-4 py-2 text-right self-start sm:self-auto">
-          <div className="text-[10px] uppercase font-bold text-[#2e7d32] tracking-wider">
-            {tariff.tariffBadge || 'SUBSIDIZED TARIFF'}
-          </div>
-          <div className="text-lg font-black text-gray-900">
-            ₹{tariff.providerPricePerUnit || 15}{' '}
-            <span className="text-[11px] font-normal text-gray-500">
-              +{tariff.serviceChargePerUnit || 1} SC / garment
+          <div className="truncate">
+            <span className="font-semibold text-gray-900 text-xs sm:text-sm block truncate">
+              {item.type}
+            </span>
+            <span className="text-[11px] text-gray-500 flex items-center gap-1 truncate">
+              <strong className="text-gray-900 font-semibold">₹{unitStudentPrice} / garment</strong>
+              <span className="text-gray-400">&bull;</span>
+              <span>₹{unitBasePrice} laundry + ₹{serviceChargePerUnit} service charge</span>
             </span>
           </div>
         </div>
-      </div>
 
+        {/* Right: Quantity Stepper */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-3">
+          <button
+            type="button"
+            onClick={() => updateItemCount(item.type, -1)}
+            disabled={qty === 0}
+            className="w-8 h-8 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 flex items-center justify-center text-sm font-bold disabled:opacity-30 disabled:cursor-not-allowed transition active:scale-95 shadow-2xs"
+            aria-label={`Decrease ${item.type}`}
+          >
+            <Minus className="w-3.5 h-3.5" />
+          </button>
+
+          <span className="w-7 text-center font-bold text-xs sm:text-sm text-gray-900 font-mono">
+            {qty}
+          </span>
+
+          <button
+            type="button"
+            onClick={() => updateItemCount(item.type, 1)}
+            className="w-8 h-8 rounded-lg border border-[#2e7d32] bg-[#2e7d32] hover:bg-[#1b5e20] text-white flex items-center justify-center text-sm font-bold transition active:scale-95 shadow-2xs"
+            aria-label={`Increase ${item.type}`}
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <form onSubmit={handleProceedToCheckout} className="w-full">
       {error && (
-        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-          <span>{error}</span>
+        <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2.5 shadow-2xs">
+          <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+          <span className="font-medium">{error}</span>
         </div>
       )}
 
-      {/* 1. SELECT GARMENT QUANTITIES */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-black text-gray-800 uppercase tracking-wider flex items-center gap-2">
-            <span className="w-5 h-5 rounded-full bg-[#f1f8e9] text-[#689f38] flex items-center justify-center text-[10px] font-black border border-[#dcedc8]">
-              1
-            </span>
-            <span>Select Garments for Pickup</span>
-          </label>
-          <span className="text-xs font-bold text-[#2e7d32]">
-            Total: {totalGarments} {totalGarments === 1 ? 'item' : 'items'}
-          </span>
-        </div>
+      {/* Main Two-Column Desktop Grid (68% Left / 32% Right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {DEFAULT_RATES.map((item) => {
-            const currentCount = counts[item.type] || 0;
-            const unitBasePrice = itemRates[item.type] !== undefined ? itemRates[item.type] : item.price;
-            const unitTotalStudentPrice = unitBasePrice + (tariff.serviceChargePerUnit || 1);
+        {/* ============================================================ */}
+        {/* LEFT COLUMN: BOOK YOUR LAUNDRY (3 SECTIONS ONLY)             */}
+        {/* ============================================================ */}
+        <div className="lg:col-span-8 space-y-6">
 
-            return (
-              <div
-                key={item.type}
-                className={`p-3.5 rounded-2xl border transition-all ${
-                  currentCount > 0
-                    ? 'bg-white border-[#689f38] shadow-sm ring-1 ring-[#689f38]/20'
-                    : 'bg-white/60 border-gray-200/80 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-2xl">{item.icon}</span>
-                  <div className="text-right">
-                    <span className="text-xs font-black text-gray-900">
-                      ₹{unitTotalStudentPrice}
-                    </span>
-                    <div className="text-[9px] text-gray-400">
-                      (₹{unitBasePrice} + ₹{tariff.serviceChargePerUnit || 1})
-                    </div>
-                  </div>
-                </div>
-
-                <div className="font-bold text-xs text-gray-800 truncate mb-2">
-                  {item.type}
-                </div>
-
-                <div className="flex items-center justify-between bg-slate-100/80 rounded-xl p-1">
-                  <button
-                    type="button"
-                    onClick={() => updateItemCount(item.type, -1)}
-                    disabled={currentCount === 0}
-                    className="w-7 h-7 rounded-lg bg-white disabled:opacity-30 text-gray-700 flex items-center justify-center shadow-xs hover:bg-gray-50 active:scale-95 transition"
-                  >
-                    <Minus className="w-3.5 h-3.5" />
-                  </button>
-
-                  <span className="font-black text-xs text-gray-900 w-6 text-center">
-                    {currentCount}
+          {/* SECTION ① — SELECT GARMENTS */}
+          <section className="bg-white rounded-2xl border border-gray-200/90 shadow-2xs p-5 sm:p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3.5">
+              <div>
+                <h2 className="text-sm sm:text-base font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
+                  <span className="w-5 h-5 rounded-full bg-[#f1f8e9] text-[#2e7d32] flex items-center justify-center text-xs font-black border border-[#dcedc8]">
+                    1
                   </span>
-
-                  <button
-                    type="button"
-                    onClick={() => updateItemCount(item.type, 1)}
-                    className="w-7 h-7 rounded-lg bg-[#689f38] text-white flex items-center justify-center shadow-xs hover:bg-[#5b8c30] active:scale-95 transition"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                  <span>SELECT GARMENTS</span>
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Choose the clothes you want to send.
+                </p>
               </div>
-            );
-          })}
-        </div>
-      </div>
 
-      {/* 2. PAYMENT METHOD SELECTION */}
-      <div className="space-y-3 pt-2">
-        <label className="text-xs font-black text-gray-800 uppercase tracking-wider flex items-center gap-2">
-          <span className="w-5 h-5 rounded-full bg-[#f1f8e9] text-[#689f38] flex items-center justify-center text-[10px] font-black border border-[#dcedc8]">
-            2
-          </span>
-          <span>Payment Method</span>
-        </label>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Online Payment */}
-          <div
-            onClick={() => setPaymentMethod('ONLINE')}
-            className={`cursor-pointer p-4 rounded-2xl border transition-all ${
-              paymentMethod === 'ONLINE'
-                ? 'bg-[#f1f8e9]/80 border-[#689f38] ring-2 ring-[#689f38]/20 shadow-sm'
-                : 'bg-white/70 border-gray-200/80 hover:border-gray-300'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-1.5">
-              <div className="flex items-center gap-2">
-                <CreditCard className={`w-4 h-4 ${paymentMethod === 'ONLINE' ? 'text-[#2e7d32]' : 'text-gray-500'}`} />
-                <span className="font-bold text-xs text-gray-900">Pay Online (Full)</span>
-              </div>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                Recommended
+              <span className={`px-3 py-1 rounded-full text-xs font-bold border transition ${
+                totalGarments > 0
+                  ? 'bg-[#f1f8e9] text-[#2e7d32] border-[#c8e6c9]'
+                  : 'bg-gray-100 text-gray-500 border-gray-200'
+              }`}>
+                {totalGarments} {totalGarments === 1 ? 'item' : 'items'} selected
               </span>
             </div>
-            <p className="text-[11px] text-gray-500 leading-snug">
-              Pay total order amount (₹{totalOrderAmount}) now via UPI / Net Banking. Seamless room delivery without cash hassles.
-            </p>
-          </div>
 
-          {/* COD Option */}
-          {codEnabled && (
-            <div
-              onClick={() => setPaymentMethod('COD')}
-              className={`cursor-pointer p-4 rounded-2xl border transition-all ${
-                paymentMethod === 'COD'
-                  ? 'bg-amber-50/80 border-amber-500 ring-2 ring-amber-500/20 shadow-sm'
-                  : 'bg-white/70 border-gray-200/80 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2">
-                  <Banknote className={`w-4 h-4 ${paymentMethod === 'COD' ? 'text-amber-700' : 'text-gray-500'}`} />
-                  <span className="font-bold text-xs text-gray-900">Cash on Delivery (COD)</span>
-                </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                  Advance SC Required
-                </span>
+            {/* Sub-Category: Clothing */}
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-2 text-xs font-bold text-gray-600 uppercase tracking-wider">
+                <Shirt className="w-3.5 h-3.5 text-[#2e7d32]" />
+                <span>Clothing</span>
               </div>
-              <p className="text-[11px] text-gray-500 leading-snug">
-                Pay Service Charge (<strong>₹{serviceChargeAmount}</strong>) online now to lock booking slot; pay laundry base (<strong>₹{laundryBaseAmount}</strong>) in cash to provider upon delivery.
+              <div className="space-y-2">
+                {CLOTHING_ITEMS.map(renderGarmentRow)}
+              </div>
+            </div>
+
+            {/* Sub-Category: Household */}
+            <div className="space-y-2.5 pt-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-gray-600 uppercase tracking-wider">
+                <span>🛏️</span>
+                <span>Household</span>
+              </div>
+              <div className="space-y-2">
+                {HOUSEHOLD_ITEMS.map(renderGarmentRow)}
+              </div>
+            </div>
+          </section>
+
+          {/* SECTION ② — PICKUP & RETURN */}
+          <section className="bg-white rounded-2xl border border-gray-200/90 shadow-2xs p-5 sm:p-6 space-y-4">
+            <div className="border-b border-gray-100 pb-3">
+              <h2 className="text-sm sm:text-base font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-[#f1f8e9] text-[#2e7d32] flex items-center justify-center text-xs font-black border border-[#dcedc8]">
+                  2
+                </span>
+                <span>PICKUP &amp; RETURN</span>
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Where and when should we collect your clothes?
               </p>
             </div>
-          )}
-        </div>
-      </div>
 
-      {/* 3. CLOTH PHOTOS FOR ANTI-LOSS VERIFICATION */}
-      <div className="space-y-3 pt-2">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-black text-gray-800 uppercase tracking-wider flex items-center gap-2">
-            <span className="w-5 h-5 rounded-full bg-[#f1f8e9] text-[#689f38] flex items-center justify-center text-[10px] font-black border border-[#dcedc8]">
-              3
-            </span>
-            <span>Upload Garment Photos (Anti-Loss Protection)</span>
-          </label>
-          <span className="text-[11px] text-gray-500">Optional but recommended</span>
-        </div>
-
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setIsDragging(false);
-            handleFiles(e.dataTransfer.files);
-          }}
-          onClick={() => fileInputRef.current?.click()}
-          className={`cursor-pointer border-2 border-dashed rounded-2xl p-6 text-center transition-all ${
-            isDragging
-              ? 'border-[#689f38] bg-[#f1f8e9]/50'
-              : 'border-gray-200 hover:border-gray-300 bg-white/40'
-          }`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => handleFiles(e.target.files)}
-          />
-          <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-          <div className="text-xs font-bold text-gray-800">
-            Click to upload or drag &amp; drop photos of your clothes
-          </div>
-          <div className="text-[11px] text-gray-500 mt-0.5">
-            Photos are saved to your order QR code so the dhobi can inspect garments at pickup and return.
-          </div>
-        </div>
-
-        {clothPhotos.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-            {clothPhotos.map((p) => (
-              <div key={p.id} className="relative rounded-xl border border-gray-200 bg-white p-2 space-y-1">
-                <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
-                  <img src={p.dataUrl} alt={p.name} className="w-full h-full object-cover" />
+            <div className="space-y-3.5">
+              {/* Row 1: Hostel / Hall & Room Number */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-[#2e7d32]" /> Hostel / Hall
+                  </label>
+                  <select
+                    value={hallName}
+                    onChange={(e) => setHallName(e.target.value)}
+                    className="w-full h-11 px-3 rounded-xl border border-gray-200 bg-white text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2e7d32]/20 focus:border-[#2e7d32] transition shadow-2xs font-medium"
+                  >
+                    {halls.length > 0 ? (
+                      halls.map((h) => (
+                        <option key={h.id || h.name} value={h.name}>
+                          {h.name} {h.hallNumber ? `(${h.hallNumber})` : ''}
+                        </option>
+                      ))
+                    ) : (
+                      Array.from({ length: 14 }).map((_, idx) => (
+                        <option key={idx + 1} value={`Hall ${idx + 1}`}>
+                          Hall {idx + 1}
+                        </option>
+                      ))
+                    )}
+                  </select>
                 </div>
-                <input
-                  type="text"
-                  placeholder="Note (e.g. blue jeans)"
-                  value={p.notes}
-                  onChange={(e) => updatePhotoNote(p.id, e.target.value)}
-                  className="w-full text-[10px] px-1.5 py-0.5 border border-gray-200 rounded"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeClothPhoto(p.id)}
-                  className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
-                >
-                  <X className="w-3 h-3" />
-                </button>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-700">
+                    Room Number
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={roomNumber}
+                    onChange={(e) => setRoomNumber(e.target.value)}
+                    placeholder="e.g. B-304, Room 12"
+                    className="w-full h-11 px-3.5 rounded-xl border border-gray-200 bg-white text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2e7d32]/20 focus:border-[#2e7d32] transition shadow-2xs font-medium"
+                  />
+                </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
 
-      {/* 4. RESIDENCE HALL & ROOM */}
-      <div className="space-y-3 pt-2">
-        <label className="text-xs font-black text-gray-800 uppercase tracking-wider flex items-center gap-2">
-          <span className="w-5 h-5 rounded-full bg-[#f1f8e9] text-[#689f38] flex items-center justify-center text-[10px] font-black border border-[#dcedc8]">
-            4
-          </span>
-          <span>Hostel Hall &amp; Room Details</span>
-        </label>
+              {/* Row 2: Pickup Date & Pickup Slot */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-[#2e7d32]" /> Pickup Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={pickupDate}
+                    min={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setPickupDate(e.target.value)}
+                    className="w-full h-11 px-3 rounded-xl border border-gray-200 bg-white text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2e7d32]/20 focus:border-[#2e7d32] transition shadow-2xs font-medium"
+                  />
+                </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="text-[11px] font-bold text-gray-600 block mb-1">
-              Hostel Hall
-            </label>
-            <select
-              value={hallName}
-              onChange={(e) => setHallName(e.target.value)}
-              className="w-full bg-white/80 backdrop-blur-md border border-gray-200/80 hover:border-gray-300 focus:border-[#689f38] rounded-xl px-4 py-3 text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#689f38]/20 transition-all shadow-sm"
-              required
-            >
-              {halls.map((h) => (
-                <option key={h.id} value={h.name}>
-                  {h.name}
-                </option>
-              ))}
-              {halls.length === 0 && (
-                <>
-                  <option value="Hall 1">Hall 1</option>
-                  <option value="Hall 2">Hall 2</option>
-                  <option value="Hall 3">Hall 3</option>
-                  <option value="Hall 4">Hall 4</option>
-                  <option value="Hall 5">Hall 5</option>
-                  <option value="Hall 7">Hall 7</option>
-                  <option value="Hall 8">Hall 8</option>
-                  <option value="Hall 9">Hall 9</option>
-                  <option value="Hall 10">Hall 10</option>
-                  <option value="Hall 11">Hall 11</option>
-                  <option value="Hall 12">Hall 12</option>
-                  <option value="Hall 13">Hall 13</option>
-                  <option value="Hall 14">Hall 14</option>
-                  <option value="Mother Teresa Hall">Mother Teresa Hall</option>
-                  <option value="Sister Nivedita Hall">Sister Nivedita Hall</option>
-                  <option value="Gargi Hall">Gargi Hall</option>
-                </>
-              )}
-            </select>
-          </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-[#2e7d32]" /> Pickup Slot
+                  </label>
+                  <select
+                    value={pickupTime}
+                    onChange={(e) => setPickupTime(e.target.value)}
+                    className="w-full h-11 px-3 rounded-xl border border-gray-200 bg-white text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2e7d32]/20 focus:border-[#2e7d32] transition shadow-2xs font-medium"
+                  >
+                    {PICKUP_SLOTS.map((slot) => (
+                      <option key={slot} value={slot}>
+                        {slot}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
-          <div>
-            <label className="text-[11px] font-bold text-gray-600 block mb-1">
-              Room Number &amp; Wing
-            </label>
-            <input
-              type="text"
-              value={roomNumber}
-              onChange={(e) => setRoomNumber(e.target.value)}
-              placeholder="e.g. B-304 / Ground Wing Common Room"
-              className="w-full bg-white/80 backdrop-blur-md border border-gray-200/80 hover:border-gray-300 focus:border-[#689f38] rounded-xl px-4 py-3 text-xs font-semibold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#689f38]/20 transition-all shadow-sm"
-              required
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* 5. PICKUP DATE & SLOTS */}
-      <div className="space-y-3 pt-2">
-        <label className="text-xs font-black text-gray-800 uppercase tracking-wider flex items-center gap-2">
-          <span className="w-5 h-5 rounded-full bg-[#f1f8e9] text-[#689f38] flex items-center justify-center text-[10px] font-black border border-[#dcedc8]">
-            5
-          </span>
-          <span>Pickup &amp; Return Slots</span>
-        </label>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label className="text-[11px] font-bold text-gray-600 block mb-1">
-              Pickup Date
-            </label>
-            <input
-              type="date"
-              value={pickupDate}
-              onChange={(e) => setPickupDate(e.target.value)}
-              className="w-full bg-white/80 backdrop-blur-md border border-gray-200/80 hover:border-gray-300 focus:border-[#689f38] rounded-xl px-4 py-3 text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#689f38]/20 transition-all shadow-sm"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="text-[11px] font-bold text-gray-600 block mb-1">
-              Preferred Pickup Slot
-            </label>
-            <select
-              value={pickupTime}
-              onChange={(e) => setPickupTime(e.target.value)}
-              className="w-full bg-white/80 backdrop-blur-md border border-gray-200/80 hover:border-gray-300 focus:border-[#689f38] rounded-xl px-4 py-3 text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#689f38]/20 transition-all shadow-sm"
-            >
-              <option value="08:00 AM - 10:00 AM">Morning (08:00 AM - 10:00 AM)</option>
-              <option value="12:00 PM - 02:00 PM">Noon (12:00 PM - 02:00 PM)</option>
-              <option value="05:00 PM - 07:00 PM">Evening (05:00 PM - 07:00 PM)</option>
-              <option value="08:00 PM - 10:00 PM">Night (08:00 PM - 10:00 PM)</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="text-[11px] font-bold text-gray-600 block mb-1">
-              Preferred Return Slot
-            </label>
-            <select
-              value={returnTime}
-              onChange={(e) => setReturnTime(e.target.value)}
-              className="w-full bg-white/80 backdrop-blur-md border border-gray-200/80 hover:border-gray-300 focus:border-[#689f38] rounded-xl px-4 py-3 text-xs font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#689f38]/20 transition-all shadow-sm"
-            >
-              <option value="Next Day 05:00 PM">Next Day Evening (24h Express)</option>
-              <option value="Next Day 08:00 PM">Next Day Night (24h Express)</option>
-              <option value="48 Hours Delivery">Standard 48 Hours</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* 6. SPECIAL INSTRUCTIONS */}
-      <div className="space-y-2 pt-2">
-        <label className="text-xs font-bold text-gray-700 block">
-          Special Washing Instructions &amp; Fabric Notes (Optional)
-        </label>
-        <textarea
-          rows={2}
-          value={specialInstructions}
-          onChange={(e) => setSpecialInstructions(e.target.value)}
-          placeholder="e.g. Mild detergent only for woolen kurta, dark shirts separately..."
-          className="w-full bg-white/80 backdrop-blur-md border border-gray-200/80 hover:border-gray-300 focus:border-[#689f38] rounded-xl px-4 py-2.5 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#689f38]/20 transition-all shadow-sm resize-none"
-        />
-      </div>
-
-      {/* TRANSPARENT CHECKOUT & FINANCIAL SEPARATION SUMMARY */}
-      <div className="pt-4 border-t border-gray-200/80 bg-white/90 backdrop-blur-md rounded-2xl p-5 shadow-sm space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-          <div className="space-y-1.5 border-b sm:border-b-0 sm:border-r border-gray-200 pb-3 sm:pb-0 sm:pr-4">
-            <div className="text-[11px] font-black uppercase text-slate-500 tracking-wider">
-              Transparent Tariff Breakdown
+              {/* Row 3: Return Slot */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-[#2e7d32]" /> Return Slot (24–48h Turnaround)
+                </label>
+                <select
+                  value={returnTime}
+                  onChange={(e) => setReturnTime(e.target.value)}
+                  className="w-full h-11 px-3 rounded-xl border border-gray-200 bg-white text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2e7d32]/20 focus:border-[#2e7d32] transition shadow-2xs font-medium"
+                >
+                  {RETURN_SLOTS.map((slot) => (
+                    <option key={slot} value={slot}>
+                      {slot}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div className="flex justify-between text-slate-700">
-              <span>Laundry Service Charges:</span>
-              <span className="font-semibold text-slate-900">₹{laundryBaseAmount}</span>
-            </div>
-            <div className="flex justify-between text-slate-700">
-              <span>Campus Basket Service Charge:</span>
-              <span className="font-semibold text-slate-900">
-                ₹{serviceChargeAmount}{' '}
-                <span className="text-[10px] text-slate-400 font-normal">
-                  ({totalGarments} × ₹{tariff.serviceChargePerUnit || 1})
+          </section>
+
+          {/* SECTION ③ — ADDITIONAL DETAILS (OPTIONAL) */}
+          <section className="bg-white rounded-2xl border border-gray-200/90 shadow-2xs p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <h2 className="text-sm sm:text-base font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs font-black">
+                  3
                 </span>
+                <span>ADDITIONAL DETAILS</span>
+              </h2>
+              <span className="text-[10px] uppercase font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-md">
+                Optional
               </span>
             </div>
-            <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-200">
-              <span>Total Order Value:</span>
-              <span className="text-sm">₹{totalOrderAmount}</span>
-            </div>
-          </div>
 
-          <div className="space-y-1.5">
-            <div className="text-[11px] font-black uppercase text-[#2e7d32] tracking-wider">
-              Payment Schedule ({paymentMethod})
+            <div className="space-y-3.5">
+              {/* Garment Photos Upload */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                    <Camera className="w-3.5 h-3.5 text-gray-500" /> Garment Photos (Anti-Loss Protection)
+                  </label>
+                  <span className="text-[11px] text-gray-400">
+                    {clothPhotos.length} attached
+                  </span>
+                </div>
+
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    handleFiles(e.dataTransfer.files);
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`h-24 rounded-xl border-2 border-dashed transition cursor-pointer flex flex-col items-center justify-center text-center p-3 ${
+                    isDragging
+                      ? 'border-[#2e7d32] bg-[#f1f8e9]/50'
+                      : 'border-gray-200 hover:border-gray-300 bg-gray-50/50'
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={(e) => handleFiles(e.target.files)}
+                    className="hidden"
+                  />
+                  <UploadCloud className="w-5 h-5 text-gray-400 mb-1" />
+                  <span className="text-xs font-semibold text-[#2e7d32]">
+                    + Upload garment photos
+                  </span>
+                  <span className="text-[10px] text-gray-400">
+                    Optional &bull; Cross-checked during room pickup
+                  </span>
+                </div>
+
+                {clothPhotos.length > 0 && (
+                  <div className="flex gap-2 overflow-x-auto py-1">
+                    {clothPhotos.map((photo) => (
+                      <div
+                        key={photo.id}
+                        className="relative w-14 h-14 rounded-lg overflow-hidden border border-gray-200 shrink-0 group"
+                      >
+                        <img
+                          src={photo.dataUrl}
+                          alt={photo.name}
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeClothPhoto(photo.id);
+                          }}
+                          className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Special Instructions */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-gray-700">
+                  Special Washing Instructions
+                </label>
+                <textarea
+                  rows={2}
+                  value={specialInstructions}
+                  onChange={(e) => setSpecialInstructions(e.target.value)}
+                  placeholder="Add special washing instructions (e.g., wash woolen kurta separately, gentle detergent)..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-white text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2e7d32]/20 focus:border-[#2e7d32] transition shadow-2xs resize-none"
+                />
+              </div>
             </div>
-            <div className="flex justify-between font-bold text-[#2e7d32]">
-              <span>Pay Online Now:</span>
-              <span className="text-base font-black">₹{payOnlineNow}</span>
-            </div>
-            <div className="flex justify-between text-slate-600">
-              <span>Pay to Provider on Delivery:</span>
-              <span className="font-bold text-slate-900">₹{payOnDelivery}</span>
-            </div>
-            <div className="text-[10px] text-slate-500 pt-1">
-              {paymentMethod === 'ONLINE'
-                ? 'Full amount paid safely via campus escrow.'
-                : 'Campus Basket service charge paid online to confirm slot; provider base paid on delivery.'}
-            </div>
-          </div>
+          </section>
         </div>
 
-        <div className="pt-3 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="text-xs text-slate-500 text-center sm:text-left">
-            In-App Dual-OTP enabled &bull; No email notifications &bull; Direct room pickup
-          </div>
+        {/* ============================================================ */}
+        {/* RIGHT COLUMN: STICKY ORDER SUMMARY (NO PAYMENT SELECTION)    */}
+        {/* ============================================================ */}
+        <div className="lg:col-span-4 lg:sticky lg:top-6 space-y-4">
+          <div className="bg-white rounded-2xl border border-gray-200/90 shadow-sm p-5 space-y-4">
+            {/* Header */}
+            <div className="border-b border-gray-100 pb-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">
+                  ORDER SUMMARY
+                </h3>
+                <span className="text-xs text-gray-500 font-medium">
+                  {totalGarments} {totalGarments === 1 ? 'garment' : 'garments'}
+                </span>
+              </div>
+              <span className="w-2 h-2 rounded-full bg-[#2e7d32] animate-pulse" />
+            </div>
 
-          <button
-            type="submit"
-            disabled={totalGarments === 0}
-            className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-[#2e7d32] to-[#388e3c] hover:from-[#1b5e20] hover:to-[#2e7d32] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md hover:shadow-lg active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shrink-0"
-          >
-            <span>Proceed to Dedicated Checkout (₹{payOnlineNow})</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+            {/* Selected Garments Itemized List */}
+            <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+              {selectedItemsList.length > 0 ? (
+                selectedItemsList.map((item) => (
+                  <div
+                    key={item.type}
+                    className="flex items-center justify-between text-xs py-1 border-b border-gray-50 last:border-0"
+                  >
+                    <div className="flex items-center gap-2 truncate text-gray-700">
+                      <span>{item.icon}</span>
+                      <span className="font-medium truncate">{item.type}</span>
+                      <span className="text-gray-400 font-normal">× {item.qty}</span>
+                    </div>
+                    <span className="font-semibold text-gray-900 shrink-0 font-mono">
+                      ₹{item.totalItemPrice}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="py-6 text-center text-xs text-gray-400">
+                  No garments selected yet. Select items on the left to start.
+                </div>
+              )}
+            </div>
+
+            {/* Financial Ledger Breakdown */}
+            <div className="border-t border-gray-100 pt-3 space-y-2 text-xs">
+              <div className="flex items-center justify-between text-gray-600">
+                <span>Laundry charges:</span>
+                <span className="font-semibold text-gray-900 font-mono">
+                  ₹{laundryBaseAmount}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-gray-600">
+                <span>
+                  Service charge{' '}
+                  <span className="text-[10px] text-gray-400">
+                    ({totalGarments} × ₹{serviceChargePerUnit})
+                  </span>:
+                </span>
+                <span className="font-semibold text-gray-900 font-mono">
+                  ₹{serviceChargeAmount}
+                </span>
+              </div>
+
+              <div className="border-t border-gray-100 pt-2 flex items-center justify-between text-gray-900">
+                <span className="font-bold text-sm">TOTAL:</span>
+                <span className="font-black text-xl text-gray-900 font-mono">
+                  ₹{totalOrderAmount}
+                </span>
+              </div>
+            </div>
+
+            {/* Logistics Preview */}
+            <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 text-[11px] text-gray-600 space-y-1">
+              <div className="flex items-center gap-1.5 truncate">
+                <Calendar className="w-3 h-3 text-[#2e7d32] shrink-0" />
+                <span className="truncate">
+                  Pickup: <strong>{pickupDate}</strong> &bull; {pickupTime.split('(')[0]}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 truncate">
+                <Clock className="w-3 h-3 text-gray-400 shrink-0" />
+                <span className="truncate">
+                  Return: {returnTime.split('(')[0]}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 truncate">
+                <MapPin className="w-3 h-3 text-gray-400 shrink-0" />
+                <span className="truncate">
+                  {hallName || 'Hall 11'}, Room {roomNumber || '101'}
+                </span>
+              </div>
+            </div>
+
+            {/* Proceed to Checkout CTA */}
+            <button
+              type="submit"
+              disabled={totalGarments === 0}
+              className="w-full py-3.5 bg-[#2e7d32] hover:bg-[#1b5e20] active:scale-[0.99] disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-sm transition flex items-center justify-center gap-2"
+            >
+              <span>PROCEED TO CHECKOUT (₹{totalOrderAmount})</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+
+            <p className="text-[10px] text-gray-400 text-center leading-tight">
+              Payment mode (Razorpay / COD) selected on next screen &bull; Zero Email OTPs
+            </p>
+          </div>
         </div>
+      </div>
+
+      {/* Mobile Sticky Bottom Checkout Bar (Hidden on Desktop) */}
+      <div className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200 px-4 py-3 shadow-lg lg:hidden flex items-center justify-between">
+        <div>
+          <span className="text-[11px] font-medium text-gray-500 block">
+            {totalGarments} {totalGarments === 1 ? 'garment' : 'garments'} selected
+          </span>
+          <span className="text-lg font-black text-gray-900 font-mono">
+            ₹{totalOrderAmount}
+          </span>
+        </div>
+
+        <button
+          type="submit"
+          disabled={totalGarments === 0}
+          className="py-2.5 px-5 rounded-xl bg-[#2e7d32] hover:bg-[#1b5e20] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold uppercase tracking-wider shadow-sm transition flex items-center gap-1.5"
+        >
+          <span>Review &amp; Pay</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
       </div>
     </form>
   );

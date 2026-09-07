@@ -5,8 +5,8 @@ import { LaundryBookingDrawer } from '../../../components/laundry/LaundryBooking
 
 export default function BookLaundryPage() {
   return (
-    <div className="bg-[#f8f8f8] min-h-screen py-10">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+    <div className="bg-[#f8f9fa] min-h-screen py-8 sm:py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f1f8e9] text-[#2e7d32] text-xs font-bold border border-[#dcedc8]">
             <span>Campus Basket Doorstep Laundry</span>

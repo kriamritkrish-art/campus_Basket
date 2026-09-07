@@ -142,64 +142,40 @@ export default function LaundryPage() {
           </button>
         </div>
       )}
-      {/* Dynamic Hero Header Controlled by Admin */}
-      <div className="bg-white p-6 sm:p-10 rounded-3xl border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-8 relative overflow-hidden">
-        <div className="space-y-3 max-w-2xl relative z-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#f1f8e9] text-[#2e7d32] text-xs font-bold border border-[#dcedc8]">
-            <Shirt className="w-3.5 h-3.5" /> Doorstep Room Pickup &amp; Return
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-gray-900 leading-tight">
-            {tariff.heroTitle || 'Express Campus Laundry'} <br />
-            <span className="text-[#689f38]">Powered by In-App Dual-OTP Protection</span>
+      {/* 1. COMPACT HEADER (75–90px, white background, subtle border, title 20–22px, subtitle 12–13px, badges on right) */}
+      <header className="bg-white rounded-2xl border border-gray-200/80 px-5 sm:px-7 py-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-h-[75px]">
+        <div>
+          <h1 className="text-xl sm:text-[22px] font-bold text-gray-900 tracking-tight leading-snug">
+            Express Campus Laundry
           </h1>
-          <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-            {tariff.heroSubtitle || 'Professional washing, fabric softening, precision steam iron, and room return across all 14 residence halls.'}
+          <p className="text-xs sm:text-[13px] text-gray-500">
+            Wash &bull; Steam Press &bull; Fold &bull; Doorstep Pickup
           </p>
-
-          <div className="pt-2 flex flex-wrap gap-4 text-xs font-semibold text-gray-700">
-            <span className="flex items-center gap-1.5 text-[#2e7d32]">
-              <CheckCircle2 className="w-4 h-4 text-[#689f38]" /> 24h Express Available
-            </span>
-            <span className="flex items-center gap-1.5 text-[#2e7d32]">
-              <ShieldCheck className="w-4 h-4 text-[#689f38]" /> {tariff.tariffTag || 'DUAL-OTP'} (Pickup + Delivery)
-            </span>
-            <span className="flex items-center gap-1.5 text-gray-700">
-              <QrCode className="w-4 h-4 text-gray-500" /> In-App Only &bull; Zero Email OTPs
-            </span>
-          </div>
         </div>
 
-        <div className="bg-[#f1f8e9] border border-[#dcedc8] rounded-2xl p-6 text-center space-y-2 min-w-[260px] relative z-10 shadow-sm">
-          <div className="text-xs font-bold uppercase text-[#2e7d32] tracking-wider">
-            {tariff.tariffBadge || 'SUBSIDIZED TARIFF'}
-          </div>
-          <div className="text-3xl font-black text-gray-900">
-            ₹{tariff.providerPricePerUnit || 15}{' '}
-            <span className="text-xs font-normal text-gray-500">
-              + ₹{tariff.serviceChargePerUnit || 1} SC / garment
-            </span>
-          </div>
-          <div className="text-[11px] text-[#33691e] font-medium">
-            Wash, steam press &amp; folding included
-          </div>
-          <button
-            onClick={() => setViewTab('BOOK')}
-            className="block w-full py-2.5 bg-[#689f38] hover:bg-[#5b8c30] text-white font-bold text-xs rounded-xl shadow-sm transition-colors uppercase tracking-wider"
-          >
-            Book Room Pickup
-          </button>
+        {/* Right side supporting badges/info */}
+        <div className="flex items-center flex-wrap gap-2 text-[11px] sm:text-xs">
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#f1f8e9] text-[#2e7d32] font-semibold border border-[#dcedc8]">
+            <Check className="w-3 h-3 text-[#2e7d32]" /> Dual-OTP Protected
+          </span>
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 font-semibold border border-amber-200">
+            ⚡ 24h Express
+          </span>
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gray-100 text-gray-800 font-bold border border-gray-200">
+            ₹{tariff.providerPricePerUnit || 15} + ₹{tariff.serviceChargePerUnit || 1} / garment
+          </span>
         </div>
-      </div>
+      </header>
 
-      {/* Navigation Switcher between Booking Form & My Orders */}
-      <div className="flex items-center justify-center">
-        <div className="inline-flex p-1 rounded-2xl bg-slate-200/70 border border-slate-300/60 shadow-xs">
+      {/* 2. BOOKING NAVIGATION */}
+      <div className="flex items-center">
+        <div className="inline-flex p-1 rounded-xl bg-gray-200/60 border border-gray-300/50 shadow-2xs">
           <button
             onClick={() => setViewTab('BOOK')}
-            className={`px-6 py-2.5 rounded-xl text-xs font-bold transition ${
+            className={`px-5 py-2 rounded-lg text-xs font-bold transition ${
               viewTab === 'BOOK'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-slate-600 hover:text-gray-900'
+                ? 'bg-[#2e7d32] text-white shadow-xs'
+                : 'text-gray-600 hover:text-gray-900'
             }`}
           >
             Schedule New Booking
@@ -209,15 +185,17 @@ export default function LaundryPage() {
               setViewTab('ORDERS');
               fetchStudentLaundryOrders();
             }}
-            className={`px-6 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`px-5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
               viewTab === 'ORDERS'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-slate-600 hover:text-gray-900'
+                ? 'bg-[#2e7d32] text-white shadow-xs'
+                : 'text-gray-600 hover:text-gray-900'
             }`}
           >
             <span>My Active Laundry</span>
             {studentOrders.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full bg-[#689f38] text-white text-[10px] font-black">
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                viewTab === 'ORDERS' ? 'bg-white text-[#2e7d32]' : 'bg-[#2e7d32] text-white'
+              }`}>
                 {studentOrders.length}
               </span>
             )}
@@ -225,9 +203,9 @@ export default function LaundryPage() {
         </div>
       </div>
 
-      {/* View 1: Booking Form */}
+      {/* View 1: Booking Form (Full-width responsive container) */}
       {viewTab === 'BOOK' && (
-        <div id="booking-form" className="max-w-3xl mx-auto">
+        <div id="booking-form" className="w-full pb-20 lg:pb-8">
           <LaundryBookingDrawer
             onSuccess={() => {
               fetchStudentLaundryOrders();
