@@ -34,55 +34,62 @@ export default function OrderCard({ order }: OrderCardProps) {
   const getStatusBadge = (status: DeliveryStatus) => {
     switch (status) {
       case 'ASSIGNED':
+      case 'DELIVERY_ASSIGNED':
         return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800">
-            <span className="w-2 h-2 rounded-full bg-blue-600" />
-            ASSIGNED
+          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+            📦 Assigned (Pickup Pending)
           </span>
         );
       case 'PICKUP_READY':
+      case 'READY_FOR_PICKUP':
         return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900">
+          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
-            🟡 PICKUP READY
+            🟡 Ready for Pickup
           </span>
         );
       case 'PICKED_UP':
         return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-900">
+          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-900 border border-purple-200">
             <span className="w-2 h-2 rounded-full bg-purple-600" />
-            🟣 PICKED UP
+            🛍️ Picked Up (At Store)
           </span>
         );
       case 'IN_TRANSIT':
+      case 'OUT_FOR_DELIVERY':
         return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-900">
+          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-900 border border-indigo-200">
             <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
-            🟣 IN TRANSIT
+            🚚 Out for Delivery
           </span>
         );
       case 'AT_HOSTEL':
         return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-900">
+          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-900 border border-teal-200">
             <span className="w-2 h-2 rounded-full bg-teal-600 animate-pulse" />
-            🟢 AT HOSTEL
+            📍 Reached Hostel
           </span>
         );
       case 'OTP_VERIFIED':
         return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900">
+          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-200">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-            OTP VERIFIED
+            ✓ OTP Verified
           </span>
         );
       case 'DELIVERED':
         return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900">
-            ✓ DELIVERED
+          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-200">
+            ✓ Delivered
           </span>
         );
       default:
-        return null;
+        return (
+          <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-800">
+            {String(status).replace(/_/g, ' ')}
+          </span>
+        );
     }
   };
 
@@ -90,34 +97,32 @@ export default function OrderCard({ order }: OrderCardProps) {
   const getNextActionConfig = () => {
     switch (order.status) {
       case 'ASSIGNED':
-        return {
-          label: 'ACCEPT ORDER',
-          action: () => advanceOrderStatus(order.id),
-          bg: 'bg-[#4F9D2F] hover:bg-[#36751F]',
-        };
-      case 'PICKUP_READY':
+      case 'DELIVERY_ASSIGNED':
         return {
           label: 'CONFIRM PICKUP',
           action: () => advanceOrderStatus(order.id),
-          bg: order.priority === 'HIGH' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[#4F9D2F] hover:bg-[#36751F]',
+          bg: 'bg-blue-600 hover:bg-blue-700',
+        };
+      case 'PICKUP_READY':
+      case 'READY_FOR_PICKUP':
+        return {
+          label: 'CONFIRM PICKUP',
+          action: () => advanceOrderStatus(order.id),
+          bg: order.priority === 'HIGH' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700',
         };
       case 'PICKED_UP':
         return {
-          label: 'START DELIVERY',
+          label: 'START DELIVERY (OUT FOR DELIVERY)',
           action: () => advanceOrderStatus(order.id),
-          bg: 'bg-[#4F9D2F] hover:bg-[#36751F]',
+          bg: 'bg-purple-600 hover:bg-purple-700',
         };
       case 'IN_TRANSIT':
-        return {
-          label: 'REACHED HOSTEL',
-          action: () => advanceOrderStatus(order.id),
-          bg: 'bg-[#4F9D2F] hover:bg-[#36751F]',
-        };
+      case 'OUT_FOR_DELIVERY':
       case 'AT_HOSTEL':
         return {
-          label: 'VERIFY OTP',
+          label: 'VERIFY DELIVERY OTP',
           action: () => setOtpModalOrder(order),
-          bg: 'bg-purple-700 hover:bg-purple-800',
+          bg: 'bg-emerald-600 hover:bg-emerald-700',
         };
       case 'OTP_VERIFIED':
         return {
@@ -136,7 +141,7 @@ export default function OrderCard({ order }: OrderCardProps) {
         return {
           label: 'UPDATE STATUS',
           action: () => advanceOrderStatus(order.id),
-          bg: 'bg-[#4F9D2F]',
+          bg: 'bg-blue-600 hover:bg-blue-700',
         };
     }
   };

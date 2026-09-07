@@ -284,4 +284,171 @@ describe('Delivery Boy OTP & Payment/Earning Logic Tests', () => {
       expect(adjustment.success).toBe(false);
     });
   });
+
+  describe('6. Delivery Status Step Progression & Action Button Mapping', () => {
+    function getNextDeliveryStep(currentStatus: string) {
+      switch (currentStatus) {
+        case 'DELIVERY_ASSIGNED':
+        case 'ASSIGNED':
+          return { nextStatus: 'PICKED_UP', label: 'CONFIRM PICKUP', requiresOtp: false };
+        case 'PICKUP_READY':
+        case 'READY_FOR_PICKUP':
+          return { nextStatus: 'PICKED_UP', label: 'CONFIRM PICKUP', requiresOtp: false };
+        case 'PICKED_UP':
+          return { nextStatus: 'OUT_FOR_DELIVERY', label: 'START DELIVERY (OUT FOR DELIVERY)', requiresOtp: false };
+        case 'IN_TRANSIT':
+        case 'OUT_FOR_DELIVERY':
+        case 'AT_HOSTEL':
+          return { nextStatus: 'DELIVERED', label: 'VERIFY DELIVERY OTP', requiresOtp: true };
+        case 'DELIVERED':
+          return { nextStatus: 'DELIVERED', label: '✓ DELIVERED', requiresOtp: false, disabled: true };
+        default:
+          return { nextStatus: currentStatus, label: 'UPDATE STATUS', requiresOtp: false };
+      }
+    }
+
+    it('DELIVERY_ASSIGNED advances to PICKED_UP via CONFIRM PICKUP without requiring OTP', () => {
+      const step = getNextDeliveryStep('DELIVERY_ASSIGNED');
+      expect(step.nextStatus).toBe('PICKED_UP');
+      expect(step.label).toBe('CONFIRM PICKUP');
+      expect(step.requiresOtp).toBe(false);
+    });
+
+    it('PICKED_UP advances to OUT_FOR_DELIVERY via START DELIVERY', () => {
+      const step = getNextDeliveryStep('PICKED_UP');
+      expect(step.nextStatus).toBe('OUT_FOR_DELIVERY');
+      expect(step.label).toBe('START DELIVERY (OUT FOR DELIVERY)');
+      expect(step.requiresOtp).toBe(false);
+    });
+
+    it('OUT_FOR_DELIVERY prompts for VERIFY DELIVERY OTP before marking DELIVERED', () => {
+      const step = getNextDeliveryStep('OUT_FOR_DELIVERY');
+      expect(step.label).toBe('VERIFY DELIVERY OTP');
+      expect(step.requiresOtp).toBe(true);
+    });
+  });
+
+  describe('7. Runner Payout Account & Withdrawal Request Validation', () => {
+    const upiPayoutSchema = z.object({
+      accountType: z.literal('UPI'),
+      accountHolderName: z.string().min(2),
+      upiId: z.string().regex(/^[\w.-]+@[\w.-]+$/, 'Must be a valid UPI VPA')
+    });
+
+    const bankPayoutSchema = z.object({
+      accountType: z.literal('BANK_ACCOUNT'),
+      accountHolderName: z.string().min(2),
+      bankName: z.string().min(2),
+      accountNumber: z.string().min(6),
+      ifscCode: z.string().regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Valid 11-character IFSC code')
+    });
+
+    it('validates a valid UPI payout account', () => {
+      const parsed = upiPayoutSchema.safeParse({
+        accountType: 'UPI',
+        accountHolderName: 'Sourav Senapati',
+        upiId: 'sourav@okhdfcbank'
+      });
+      expect(parsed.success).toBe(true);
+    });
+
+    it('rejects invalid UPI ID lacking @ symbol', () => {
+      const parsed = upiPayoutSchema.safeParse({
+        accountType: 'UPI',
+        accountHolderName: 'Sourav Senapati',
+        upiId: 'invalid-vpa-without-bank'
+      });
+      expect(parsed.success).toBe(false);
+    });
+
+    it('validates a valid Bank payout account with IFSC', () => {
+      const parsed = bankPayoutSchema.safeParse({
+        accountType: 'BANK_ACCOUNT',
+        accountHolderName: 'Sourav Senapati',
+        bankName: 'State Bank of India',
+        accountNumber: '123456789012',
+        ifscCode: 'SBIN0001234'
+      });
+      expect(parsed.success).toBe(true);
+    });
+
+    it('prevents withdrawal if requested amount exceeds wallet balance', () => {
+      const walletBalance = 350.00;
+      const requestedAmount = 500.00;
+      const isValid = requestedAmount > 0 && requestedAmount <= walletBalance;
+      expect(isValid).toBe(false);
+    });
+
+    it('allows withdrawal when requested amount is less than or equal to wallet balance', () => {
+      const walletBalance = 500.00;
+      const requestedAmount = 500.00;
+      const isValid = requestedAmount > 0 && requestedAmount <= walletBalance;
+      expect(isValid).toBe(true);
+    });
+  });
+
+  describe('8. Admin Settlement Disbursal: Wallet Deduction to 0 & Settled Accumulation', () => {
+    function disburseWithdrawal(runner: { walletBalance: number; totalSettled: number }, withdrawal: { amount: number; status: string }) {
+      if (withdrawal.status === 'DISTRIBUTED') {
+        throw new Error('Already distributed');
+      }
+
+      const newBalance = Math.max(0, runner.walletBalance - withdrawal.amount);
+      const newSettled = runner.totalSettled + withdrawal.amount;
+
+      return {
+        withdrawal: {
+          ...withdrawal,
+          status: 'DISTRIBUTED',
+          utrReference: 'UTR-99887766',
+          distributedAt: new Date().toISOString()
+        },
+        runner: {
+          walletBalance: newBalance,
+          totalSettled: newSettled
+        }
+      };
+    }
+
+    it('deducts full balance to 0 and adds to totalSettled when runner withdraws 100% balance', () => {
+      const runner = {
+        walletBalance: 450.00,
+        totalSettled: 500.00
+      };
+      const withdrawal = {
+        amount: 450.00,
+        status: 'PENDING'
+      };
+
+      const result = disburseWithdrawal(runner, withdrawal);
+      expect(result.withdrawal.status).toBe('DISTRIBUTED');
+      expect(result.withdrawal.utrReference).toBe('UTR-99887766');
+      expect(result.runner.walletBalance).toBe(0.00); // Money section becomes 0
+      expect(result.runner.totalSettled).toBe(950.00); // Accumulated into Already Settled
+    });
+
+    it('deducts partial amount correctly leaving remaining wallet balance intact', () => {
+      const runner = {
+        walletBalance: 1000.00,
+        totalSettled: 200.00
+      };
+      const withdrawal = {
+        amount: 300.00,
+        status: 'APPROVED'
+      };
+
+      const result = disburseWithdrawal(runner, withdrawal);
+      expect(result.withdrawal.status).toBe('DISTRIBUTED');
+      expect(result.runner.walletBalance).toBe(700.00);
+      expect(result.runner.totalSettled).toBe(500.00);
+    });
+
+    it('prevents duplicate disbursals of an already distributed withdrawal', () => {
+      const runner = { walletBalance: 0.00, totalSettled: 500.00 };
+      const alreadySettled = { amount: 500.00, status: 'DISTRIBUTED' };
+
+      expect(() => disburseWithdrawal(runner, alreadySettled)).toThrow('Already distributed');
+    });
+  });
 });
+

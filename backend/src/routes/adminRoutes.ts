@@ -38,6 +38,9 @@ router.post('/payments/cod/reconcile', AdminPaymentController.reconcileCod);
 router.get('/payments/ledger', AdminPaymentController.getFinancialLedger);
 router.post('/payments/override-status', AdminPaymentController.overrideStatus);
 router.get('/payments/export', AdminPaymentController.exportData);
+router.get('/payments/delivery-settlements', AdminPaymentController.getDeliverySettlements);
+router.post('/payments/delivery-settlements/disburse', AdminPaymentController.disburseDeliverySettlement);
+router.get('/payments/delivery-settlements/pdf', AdminPaymentController.downloadDeliverySettlementsPdf);
 
 // 2. Commerce: Products & Inventory
 router.get('/products', AdminController.getAllProducts);
@@ -99,6 +102,8 @@ router.patch('/delivery-boys/:id', AdminPeopleController.updateDeliveryBoy);
 router.delete('/delivery-boys/:id', AdminPeopleController.deleteDeliveryBoy);
 router.post('/delivery-boys/:id/adjust', AdminPeopleController.adjustDeliveryBoyEarnings);
 router.get('/delivery-boys/:id/earnings', AdminPeopleController.getDeliveryBoyEarnings);
+router.get('/delivery-boys/withdrawals', AdminPaymentController.getDeliverySettlements);
+router.patch('/delivery-boys/withdrawals/:id/status', AdminPaymentController.disburseDeliverySettlement);
 
 router.get('/halls', AdminPeopleController.getHalls);
 router.post('/halls', AdminPeopleController.createHall);

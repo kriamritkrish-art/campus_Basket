@@ -75,11 +75,38 @@ export interface RunnerNotification {
   read: boolean;
 }
 
+export interface DeliveryPayoutAccount {
+  id?: string;
+  accountType: 'BANK_ACCOUNT' | 'UPI';
+  accountHolderName: string;
+  bankName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  upiId?: string;
+}
+
+export interface DeliveryWithdrawal {
+  id: string;
+  withdrawalNumber: string;
+  amount: number;
+  status: 'PENDING' | 'APPROVED' | 'DISTRIBUTED' | 'REJECTED';
+  payoutMethod: string;
+  accountDetails?: string;
+  adminNotes?: string;
+  utrReference?: string;
+  requestedAt: string;
+  approvedAt?: string;
+  distributedAt?: string;
+  rejectedAt?: string;
+}
+
 export interface TodayStats {
   paymentType?: 'PER_DELIVERY' | 'MONTHLY_CONTRACT';
   perDeliveryRate?: number;
   monthlySalary?: number;
   walletBalance?: number;
+  totalSettled?: number;
+  pendingWithdrawals?: number;
   totalEarnings?: number;
   totalToday: number;
   completedToday: number;
@@ -122,6 +149,14 @@ interface DeliveryContextType {
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
 
+  // Payout Account & Withdrawal Management
+  payoutAccount: DeliveryPayoutAccount | null;
+  withdrawals: DeliveryWithdrawal[];
+  savePayoutAccount: (data: Partial<DeliveryPayoutAccount>) => Promise<boolean>;
+  requestWithdrawal: (amount: number) => Promise<boolean>;
+  fetchWithdrawals: () => Promise<void>;
+  downloadStatementPdf: () => Promise<void>;
+
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (val: boolean | ((prev: boolean) => boolean)) => void;
   mobileDrawerOpen: boolean;
@@ -146,12 +181,16 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [availableOrders, setAvailableOrders] = useState<AvailableOrder[]>([]);
   const [deliveryHistory, setDeliveryHistory] = useState<HistoryOrder[]>([]);
   const [notifications, setNotifications] = useState<RunnerNotification[]>([]);
+  const [payoutAccount, setPayoutAccount] = useState<DeliveryPayoutAccount | null>(null);
+  const [withdrawals, setWithdrawals] = useState<DeliveryWithdrawal[]>([]);
 
   const [todayStats, setTodayStats] = useState<TodayStats>({
     paymentType: 'PER_DELIVERY',
     perDeliveryRate: 10,
     monthlySalary: 0,
     walletBalance: 0,
+    totalSettled: 0,
+    pendingWithdrawals: 0,
     totalEarnings: 0,
     totalToday: 0,
     completedToday: 0,
@@ -189,13 +228,18 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (typeof dashRes.deliveryBoy?.activeStatus === 'boolean') {
           setIsOnline(dashRes.deliveryBoy.activeStatus);
         }
+        if (dashRes.deliveryBoy?.payoutAccount) {
+          setPayoutAccount(dashRes.deliveryBoy.payoutAccount);
+        }
         if (dashRes.stats) {
           setTodayStats({
             paymentType: dashRes.stats.paymentType || dashRes.deliveryBoy?.paymentType || 'PER_DELIVERY',
             perDeliveryRate: dashRes.stats.perDeliveryRate !== undefined ? dashRes.stats.perDeliveryRate : 10,
             monthlySalary: dashRes.stats.monthlySalary !== undefined ? dashRes.stats.monthlySalary : 0,
             walletBalance: dashRes.stats.walletBalance !== undefined ? dashRes.stats.walletBalance : 0,
-            totalEarnings: dashRes.stats.totalEarnings !== undefined ? dashRes.stats.totalEarnings : (dashRes.stats.walletBalance || 0),
+            totalSettled: dashRes.stats.totalSettled !== undefined ? dashRes.stats.totalSettled : (dashRes.deliveryBoy?.totalSettled || 0),
+            pendingWithdrawals: dashRes.stats.pendingWithdrawals !== undefined ? dashRes.stats.pendingWithdrawals : 0,
+            totalEarnings: dashRes.stats.totalEarnings !== undefined ? dashRes.stats.totalEarnings : ((dashRes.stats.walletBalance || 0) + (dashRes.stats.totalSettled || 0)),
             totalToday: dashRes.stats.totalToday || 0,
             completedToday: dashRes.stats.completedToday || 0,
             pendingToday: dashRes.stats.pendingToday || 0,
@@ -206,6 +250,12 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             dailyTarget: dashRes.stats.dailyTarget || 10,
           });
         }
+      }
+
+      // 1b. Fetch Payout Account if not returned in dashboard
+      const payoutRes = await apiRequest('/api/delivery/payout-account').catch(() => null);
+      if (payoutRes?.success && payoutRes.payoutAccount) {
+        setPayoutAccount(payoutRes.payoutAccount);
       }
 
       // 2. Active Orders (assigned, excluding DELIVERED)
@@ -480,6 +530,86 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setSuccessToast('All notifications marked as read.');
   };
 
+  // Payout Account & Withdrawal Logic
+  const fetchWithdrawals = useCallback(async () => {
+    try {
+      const res = await apiRequest('/api/delivery/withdrawals').catch(() => null);
+      if (res?.success && Array.isArray(res.withdrawals)) {
+        setWithdrawals(res.withdrawals);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchWithdrawals();
+  }, [fetchWithdrawals]);
+
+  const savePayoutAccount = async (data: Partial<DeliveryPayoutAccount>): Promise<boolean> => {
+    try {
+      const res = await apiRequest('/api/delivery/payout-account', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      if (res?.success) {
+        setPayoutAccount(res.payoutAccount);
+        setSuccessToast(res.message || 'Payout account saved successfully.');
+        await fetchDeliveryData();
+        return true;
+      } else {
+        setSuccessToast(res?.message || 'Failed to save account details.');
+        return false;
+      }
+    } catch (err: any) {
+      setSuccessToast(err.message || 'Failed to save account details.');
+      return false;
+    }
+  };
+
+  const requestWithdrawal = async (amount: number): Promise<boolean> => {
+    try {
+      const res = await apiRequest('/api/delivery/withdrawals', {
+        method: 'POST',
+        body: JSON.stringify({ amount }),
+      });
+      if (res?.success) {
+        setSuccessToast(res.message || `Withdrawal request for ₹${amount} submitted.`);
+        await fetchDeliveryData();
+        await fetchWithdrawals();
+        return true;
+      } else {
+        setSuccessToast(res?.message || 'Withdrawal request failed.');
+        return false;
+      }
+    } catch (err: any) {
+      setSuccessToast(err.message || 'Failed to submit withdrawal request.');
+      return false;
+    }
+  };
+
+  const downloadStatementPdf = async () => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      const response = await fetch('/api/delivery/earnings/pdf', {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (!response.ok) throw new Error('Failed to generate statement PDF');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Delivery-Statement-${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setSuccessToast('✓ Settlement statement downloaded successfully');
+    } catch (err: any) {
+      setSuccessToast(err.message || 'Failed to download statement PDF');
+    }
+  };
+
   return (
     <DeliveryContext.Provider
       value={{
@@ -509,6 +639,14 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         notifications,
         markNotificationRead,
         markAllNotificationsRead,
+
+        payoutAccount,
+        withdrawals,
+        savePayoutAccount,
+        requestWithdrawal,
+        fetchWithdrawals,
+        downloadStatementPdf,
+
         sidebarCollapsed,
         setSidebarCollapsed,
         mobileDrawerOpen,

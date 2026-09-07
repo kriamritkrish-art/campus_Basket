@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
 import { AuditService } from '../services/audit/AuditService';
+import { DeliverySettlementPdfService } from '../services/pdf/DeliverySettlementPdfService';
 
 async function resolveDeliveryBoyProfile(user?: any) {
   if (!user) return null;
@@ -120,6 +121,15 @@ export class DeliveryController {
           ? earningsList.reduce((sum, e) => sum + Number(e.amount), 0) || walletBalance
           : 0;
 
+      const totalSettled = Number((deliveryBoy as any).totalSettled) || 0;
+      const pendingWithdrawalsList = await prisma.deliveryBoyWithdrawal.findMany({
+        where: { deliveryBoyId: deliveryBoy.id, status: { in: ['PENDING', 'APPROVED'] } }
+      });
+      const pendingWithdrawals = pendingWithdrawalsList.reduce((sum, w) => sum + Number(w.amount), 0);
+      const payoutAccount = await prisma.deliveryBoyPayoutAccount.findUnique({
+        where: { deliveryBoyId: deliveryBoy.id }
+      });
+
       res.status(200).json({
         success: true,
         deliveryBoy: {
@@ -133,13 +143,25 @@ export class DeliveryController {
           paymentType,
           perDeliveryRate: paymentType === 'PER_DELIVERY' ? perDeliveryRate : 0,
           monthlySalary: paymentType === 'MONTHLY_CONTRACT' ? monthlySalary : 0,
-          walletBalance
+          walletBalance,
+          totalSettled,
+          payoutAccount: payoutAccount ? {
+            accountType: payoutAccount.accountType,
+            accountHolderName: payoutAccount.accountHolderName,
+            bankName: payoutAccount.bankName,
+            accountNumberMasked: payoutAccount.accountNumber ? `••••${payoutAccount.accountNumber.slice(-4)}` : null,
+            ifscCode: payoutAccount.ifscCode,
+            upiId: payoutAccount.upiId
+          } : null
         },
         stats: {
           paymentType,
           perDeliveryRate: paymentType === 'PER_DELIVERY' ? perDeliveryRate : 0,
           monthlySalary: paymentType === 'MONTHLY_CONTRACT' ? monthlySalary : 0,
           walletBalance,
+          availableBalance: walletBalance,
+          totalSettled,
+          pendingWithdrawals,
           totalToday: todayDelivered + pendingDeliveries.length,
           completedToday: todayDelivered,
           pendingToday: pendingDeliveries.length,
@@ -148,7 +170,15 @@ export class DeliveryController {
           monthEarnings,
           totalEarnings,
           avgPerDelivery: paymentType === 'PER_DELIVERY' ? perDeliveryRate : 0,
-          dailyTarget: 10
+          dailyTarget: 10,
+          payoutAccount: payoutAccount ? {
+            accountType: payoutAccount.accountType,
+            accountHolderName: payoutAccount.accountHolderName,
+            bankName: payoutAccount.bankName,
+            accountNumberMasked: payoutAccount.accountNumber ? `••••${payoutAccount.accountNumber.slice(-4)}` : null,
+            ifscCode: payoutAccount.ifscCode,
+            upiId: payoutAccount.upiId
+          } : null
         },
         activeAssignments: pendingDeliveries.map((o) => ({
           ...o,
@@ -721,6 +751,258 @@ export class DeliveryController {
         isOnline: updated.activeStatus,
         message: updated.activeStatus ? 'You are now ONLINE' : 'You are now OFFLINE'
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get Runner Payout Account Details
+   */
+  public static async getPayoutAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const deliveryBoy = await resolveDeliveryBoyProfile(req.user);
+      if (!deliveryBoy) {
+        res.status(403).json({ success: false, message: 'Delivery partner profile required' });
+        return;
+      }
+      const account = await prisma.deliveryBoyPayoutAccount.findUnique({
+        where: { deliveryBoyId: deliveryBoy.id }
+      });
+      res.status(200).json({ success: true, account });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Save / Update Runner Payout Account (Bank / UPI)
+   */
+  public static async savePayoutAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const deliveryBoy = await resolveDeliveryBoyProfile(req.user);
+      if (!deliveryBoy) {
+        res.status(403).json({ success: false, message: 'Delivery partner profile required' });
+        return;
+      }
+      const { accountType, accountHolderName, bankName, accountNumber, ifscCode, upiId } = req.body;
+      if (!accountHolderName?.trim()) {
+        res.status(400).json({ success: false, message: 'Account holder name is required' });
+        return;
+      }
+      if (accountType === 'UPI') {
+        if (!upiId || !String(upiId).includes('@')) {
+          res.status(400).json({ success: false, message: 'Valid UPI ID is required (e.g. name@bank)' });
+          return;
+        }
+      } else {
+        if (!accountNumber || !ifscCode) {
+          res.status(400).json({ success: false, message: 'Bank account number and IFSC code are required' });
+          return;
+        }
+      }
+
+      const account = await prisma.deliveryBoyPayoutAccount.upsert({
+        where: { deliveryBoyId: deliveryBoy.id },
+        update: {
+          accountType: accountType || 'UPI',
+          accountHolderName: accountHolderName.trim(),
+          bankName: bankName?.trim() || null,
+          accountNumber: accountNumber?.trim() || null,
+          ifscCode: ifscCode?.trim()?.toUpperCase() || null,
+          upiId: upiId?.trim() || null
+        },
+        create: {
+          deliveryBoyId: deliveryBoy.id,
+          accountType: accountType || 'UPI',
+          accountHolderName: accountHolderName.trim(),
+          bankName: bankName?.trim() || null,
+          accountNumber: accountNumber?.trim() || null,
+          ifscCode: ifscCode?.trim()?.toUpperCase() || null,
+          upiId: upiId?.trim() || null
+        }
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Payout account details saved successfully',
+        account
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Request Balance Withdrawal
+   */
+  public static async requestWithdrawal(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const deliveryBoy = await resolveDeliveryBoyProfile(req.user);
+      if (!deliveryBoy) {
+        res.status(403).json({ success: false, message: 'Delivery partner profile required' });
+        return;
+      }
+      const { amount } = req.body;
+      const numAmount = Number(amount);
+      if (isNaN(numAmount) || numAmount <= 0) {
+        res.status(400).json({ success: false, message: 'Please enter a valid withdrawal amount greater than 0' });
+        return;
+      }
+      const walletBalance = Number((deliveryBoy as any).walletBalance) || 0;
+      if (numAmount > walletBalance) {
+        res.status(400).json({
+          success: false,
+          message: `Requested amount (₹${numAmount}) exceeds available balance (₹${walletBalance})`
+        });
+        return;
+      }
+
+      const payoutAccount = await prisma.deliveryBoyPayoutAccount.findUnique({
+        where: { deliveryBoyId: deliveryBoy.id }
+      });
+      if (!payoutAccount) {
+        res.status(400).json({
+          success: false,
+          message: 'Please link your Bank Account or UPI ID before requesting a withdrawal'
+        });
+        return;
+      }
+
+      const withdrawalNumber = `WDR-${Date.now().toString().slice(-6)}`;
+      const accountDetails = JSON.stringify({
+        accountType: payoutAccount.accountType,
+        accountHolderName: payoutAccount.accountHolderName,
+        bankName: payoutAccount.bankName,
+        accountNumber: payoutAccount.accountNumber ? `••••${payoutAccount.accountNumber.slice(-4)}` : null,
+        ifscCode: payoutAccount.ifscCode,
+        upiId: payoutAccount.upiId
+      });
+
+      const withdrawal = await prisma.deliveryBoyWithdrawal.create({
+        data: {
+          withdrawalNumber,
+          deliveryBoyId: deliveryBoy.id,
+          amount: numAmount,
+          status: 'PENDING',
+          payoutMethod: payoutAccount.accountType,
+          accountDetails
+        }
+      });
+
+      res.status(201).json({
+        success: true,
+        message: `Withdrawal request for ₹${numAmount} submitted. Status: PENDING admin review and distribution.`,
+        withdrawal
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get Runner Withdrawals & Settlement Ledger
+   */
+  public static async getWithdrawals(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const deliveryBoy = await resolveDeliveryBoyProfile(req.user);
+      if (!deliveryBoy) {
+        res.status(403).json({ success: false, message: 'Delivery partner profile required' });
+        return;
+      }
+      const withdrawals = await prisma.deliveryBoyWithdrawal.findMany({
+        where: { deliveryBoyId: deliveryBoy.id },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const walletBalance = Number((deliveryBoy as any).walletBalance) || 0;
+      const totalSettled = Number((deliveryBoy as any).totalSettled) || 0;
+      const pendingAmount = withdrawals
+        .filter((w) => w.status === 'PENDING' || w.status === 'APPROVED')
+        .reduce((sum, w) => sum + Number(w.amount), 0);
+
+      res.status(200).json({
+        success: true,
+        withdrawals,
+        metrics: {
+          availableBalance: walletBalance,
+          pendingAmount,
+          totalSettled,
+          lifetimeEarnings: walletBalance + totalSettled
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Download Runner Statement PDF
+   */
+  public static async downloadRunnerStatementPdf(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const deliveryBoy = await resolveDeliveryBoyProfile(req.user);
+      if (!deliveryBoy) {
+        res.status(403).json({ success: false, message: 'Delivery partner profile required' });
+        return;
+      }
+
+      const { range, status } = req.query;
+      let withdrawals = await prisma.deliveryBoyWithdrawal.findMany({
+        where: { deliveryBoyId: deliveryBoy.id },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      if (status && status !== 'ALL') {
+        withdrawals = withdrawals.filter((w) => w.status === status);
+      }
+
+      const walletBalance = Number((deliveryBoy as any).walletBalance) || 0;
+      const totalSettled = Number((deliveryBoy as any).totalSettled) || 0;
+      const pendingAmount = withdrawals
+        .filter((w) => w.status === 'PENDING' || w.status === 'APPROVED')
+        .reduce((sum, w) => sum + Number(w.amount), 0);
+
+      const rows = withdrawals.map((w) => {
+        let dest = 'UPI / Bank';
+        try {
+          if (w.accountDetails) {
+            const parsed = JSON.parse(w.accountDetails);
+            dest = parsed.accountType === 'UPI' ? `UPI: ${parsed.upiId}` : `${parsed.bankName || 'Bank'} (${parsed.accountNumber || ''})`;
+          }
+        } catch {}
+        return {
+          date: new Date(w.requestedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+          runnerName: deliveryBoy.fullName,
+          runnerMobile: deliveryBoy.mobileNumber,
+          paymentType: (deliveryBoy as any).paymentType || 'PER_DELIVERY',
+          referenceId: w.withdrawalNumber,
+          amount: Number(w.amount),
+          payoutMethod: w.payoutMethod,
+          destination: dest,
+          utrReference: w.utrReference,
+          status: w.status
+        };
+      });
+
+      const pdfBuffer = await DeliverySettlementPdfService.generatePdf({
+        reportTitle: 'Runner Earnings & Settlement Statement',
+        runnerScope: `${deliveryBoy.fullName} (${deliveryBoy.mobileNumber})`,
+        dateRangeText: (range as string) || 'All Recorded Disbursals',
+        generatedBy: deliveryBoy.fullName,
+        generatedAt: new Date(),
+        metrics: {
+          totalEarned: walletBalance + totalSettled,
+          totalSettled,
+          pendingAmount,
+          totalTransactions: withdrawals.length
+        },
+        settlements: rows
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="CampusBasket-Settlement-${deliveryBoy.fullName.replace(/\s+/g, '_')}.pdf"`);
+      res.send(pdfBuffer);
     } catch (err) {
       next(err);
     }

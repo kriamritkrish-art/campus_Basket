@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useDelivery } from '@/context/DeliveryContext';
 import { apiRequest } from '@/lib/api';
+import PayoutAccountModal from '@/components/delivery/PayoutAccountModal';
+import WithdrawalModal from '@/components/delivery/WithdrawalModal';
 import {
   IndianRupee,
   TrendingUp,
@@ -15,7 +17,12 @@ import {
   AlertCircle,
   RefreshCw,
   ArrowUpRight,
-  ShieldCheck
+  ShieldCheck,
+  FileText,
+  Landmark,
+  Smartphone,
+  Download,
+  ArrowDownLeft
 } from 'lucide-react';
 
 interface EarningRecord {
@@ -32,10 +39,21 @@ interface EarningRecord {
 }
 
 export default function DeliveryEarningsPage() {
-  const { todayStats, deliveryHistory } = useDelivery();
+  const {
+    todayStats,
+    deliveryHistory,
+    payoutAccount,
+    withdrawals,
+    fetchWithdrawals,
+    downloadStatementPdf,
+  } = useDelivery();
+
   const [earningsList, setEarningsList] = useState<EarningRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [backendStats, setBackendStats] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'EARNINGS' | 'WITHDRAWALS'>('EARNINGS');
+  const [showPayoutModal, setShowPayoutModal] = useState(false);
+  const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
 
   const paymentType = backendStats?.paymentType || todayStats.paymentType || 'PER_DELIVERY';
   const isMonthly = paymentType === 'MONTHLY_CONTRACT';
@@ -50,6 +68,7 @@ export default function DeliveryEarningsPage() {
           setEarningsList(res.earnings);
         }
       }
+      await fetchWithdrawals();
     } catch {
       // Non-blocking fallback
     } finally {
@@ -63,7 +82,9 @@ export default function DeliveryEarningsPage() {
 
   const perDeliveryRate = backendStats?.perDeliveryRate !== undefined ? backendStats.perDeliveryRate : (todayStats.perDeliveryRate || 10);
   const monthlySalary = backendStats?.monthlySalary !== undefined ? backendStats.monthlySalary : (todayStats.monthlySalary || 15000);
-  const totalEarnings = backendStats?.totalEarnings !== undefined ? backendStats.totalEarnings : (todayStats.totalEarnings || todayStats.walletBalance || 1250);
+  const availableBalance = todayStats.walletBalance || 0;
+  const totalSettled = todayStats.totalSettled || 0;
+  const pendingAmount = todayStats.pendingWithdrawals || 0;
   const completedCount = backendStats?.completedDeliveries !== undefined ? backendStats.completedDeliveries : (todayStats.completedToday || deliveryHistory.length);
 
   return (
@@ -72,7 +93,7 @@ export default function DeliveryEarningsPage() {
       <div className="bg-white p-6 rounded-2xl border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isMonthly ? 'bg-purple-50 text-purple-600' : 'bg-green-50 text-[#36751F]'}`}>
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isMonthly ? 'bg-purple-50 text-purple-600' : 'bg-emerald-50 text-emerald-700'}`}>
               {isMonthly ? <Briefcase className="w-5 h-5" /> : <IndianRupee className="w-5 h-5" />}
             </div>
             <div>
@@ -93,13 +114,13 @@ export default function DeliveryEarningsPage() {
               <p className="text-xs sm:text-sm text-gray-500 font-medium mt-0.5">
                 {isMonthly
                   ? 'Fixed campus contract partner. Direct monthly salary settlement processed via Admin.'
-                  : 'Automated per-delivery credit processed immediately upon customer 6-digit OTP verification.'}
+                  : 'Real-time financial treasury. Submit withdrawal requests and download PDF statements.'}
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
           <button
             onClick={fetchEarningsData}
             disabled={loading}
@@ -109,17 +130,81 @@ export default function DeliveryEarningsPage() {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
 
+          <button
+            onClick={downloadStatementPdf}
+            className="px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+          >
+            <Download className="w-4 h-4 text-gray-500" />
+            <span>Download PDF Statement</span>
+          </button>
+
           {!isMonthly && (
-            <button
-              onClick={() => alert(`Initiating instant transfer of ₹${totalEarnings} to UPI ID: sourav.runner@okhdfcbank`)}
-              className="btn-primary text-xs px-4 shadow-sm"
-            >
-              <Wallet className="w-4 h-4" />
-              <span>Withdraw to UPI</span>
-            </button>
+            <>
+              <button
+                onClick={() => setShowPayoutModal(true)}
+                className="px-3.5 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+              >
+                {payoutAccount?.accountType === 'UPI' ? (
+                  <Smartphone className="w-4 h-4 text-blue-600" />
+                ) : (
+                  <Landmark className="w-4 h-4 text-blue-600" />
+                )}
+                <span>{payoutAccount ? 'Manage Account' : 'Link Account'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowWithdrawalModal(true)}
+                className="btn-primary text-xs px-4 py-2 shadow-sm flex items-center gap-1.5"
+              >
+                <Wallet className="w-4 h-4" />
+                <span>Withdraw Money</span>
+              </button>
+            </>
           )}
         </div>
       </div>
+
+      {/* Linked Account Destination Banner */}
+      {!isMonthly && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 via-indigo-50/50 to-blue-50 border border-blue-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
+              {payoutAccount?.accountType === 'UPI' ? <Smartphone className="w-5 h-5" /> : <Landmark className="w-5 h-5" />}
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-blue-800">
+                Active Disbursement Destination
+              </div>
+              <div className="text-sm font-bold text-gray-900 mt-0.5">
+                {payoutAccount ? (
+                  payoutAccount.accountType === 'UPI' ? (
+                    <span>UPI ID: <span className="font-mono text-blue-900">{payoutAccount.upiId}</span></span>
+                  ) : (
+                    <span>{payoutAccount.bankName} ••••{payoutAccount.accountNumber?.slice(-4)} (IFSC: {payoutAccount.ifscCode})</span>
+                  )
+                ) : (
+                  <span className="text-amber-700 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    No Bank or UPI account linked yet. Please link your account to withdraw earnings.
+                  </span>
+                )}
+              </div>
+              {payoutAccount && (
+                <div className="text-gray-500 text-[11px]">
+                  Registered to: <span className="font-semibold text-gray-700">{payoutAccount.accountHolderName}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowPayoutModal(true)}
+            className="px-3.5 py-1.5 rounded-xl border border-blue-300 bg-white text-blue-700 hover:bg-blue-50 font-bold text-xs whitespace-nowrap self-start sm:self-center"
+          >
+            {payoutAccount ? 'Update Bank / UPI' : 'Link Account Now'}
+          </button>
+        </div>
+      )}
 
       {/* Monthly Contract Staff Info Card */}
       {isMonthly && (
@@ -147,12 +232,11 @@ export default function DeliveryEarningsPage() {
         </div>
       )}
 
-      {/* Four Summary Cards */}
+      {/* Financial Overview Cards */}
       <div className="stats-grid">
         {isMonthly ? (
           /* Monthly Contract 4 Cards */
           <>
-            {/* Payment Type */}
             <div className="stat-card flex flex-col justify-between">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-gray-500">Payment Type</span>
@@ -168,10 +252,9 @@ export default function DeliveryEarningsPage() {
               </div>
             </div>
 
-            {/* Monthly Contract Salary */}
             <div className="stat-card flex flex-col justify-between">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-500">Monthly Contract</span>
+                <span className="text-xs font-bold text-gray-500">Monthly Contract Salary</span>
                 <div className="w-9 h-9 rounded-xl bg-green-50 text-[#36751F] flex items-center justify-center">
                   <IndianRupee className="w-5 h-5" />
                 </div>
@@ -184,7 +267,6 @@ export default function DeliveryEarningsPage() {
               </div>
             </div>
 
-            {/* Completed Deliveries */}
             <div className="stat-card flex flex-col justify-between">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-gray-500">Completed Deliveries</span>
@@ -200,7 +282,6 @@ export default function DeliveryEarningsPage() {
               </div>
             </div>
 
-            {/* Per Delivery Earnings */}
             <div className="stat-card flex flex-col justify-between">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-gray-500">Per Delivery Earnings</span>
@@ -217,14 +298,14 @@ export default function DeliveryEarningsPage() {
             </div>
           </>
         ) : (
-          /* Per Delivery 4 Cards */
+          /* Per Delivery 4 Cards with Available, Pending, Settled */
           <>
-            {/* Today's Earnings */}
+            {/* 1. Today's Earnings */}
             <div className="stat-card flex flex-col justify-between">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-gray-500">Today's Earnings</span>
-                <div className="w-9 h-9 rounded-xl bg-green-50 text-[#36751F] flex items-center justify-center">
-                  <IndianRupee className="w-5 h-5" />
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5" />
                 </div>
               </div>
               <div>
@@ -232,124 +313,143 @@ export default function DeliveryEarningsPage() {
                   ₹{todayStats.earningsToday}
                 </div>
                 <p className="text-xs text-emerald-700 font-bold mt-1">
-                  {todayStats.completedToday} orders completed today
+                  {todayStats.completedToday} orders delivered today
                 </p>
               </div>
             </div>
 
-            {/* Completed Deliveries */}
-            <div className="stat-card flex flex-col justify-between">
+            {/* 2. Available Balance */}
+            <div className="stat-card flex flex-col justify-between bg-emerald-50/40 border-emerald-200">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-500">Completed Deliveries</span>
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                  <CheckCircle2 className="w-5 h-5" />
-                </div>
-              </div>
-              <div>
-                <div className="text-3xl font-black text-emerald-700 tracking-tight">
-                  {completedCount}
-                </div>
-                <p className="text-xs text-gray-500 font-semibold mt-1">Verified OTP Deliveries</p>
-              </div>
-            </div>
-
-            {/* Per Delivery Rate */}
-            <div className="stat-card flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-500">Per Delivery Rate</span>
-                <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-              </div>
-              <div>
-                <div className="text-3xl font-black text-gray-900 tracking-tight">
-                  ₹{perDeliveryRate}
-                </div>
-                <p className="text-xs text-amber-700 font-bold mt-1">Admin-configured rate</p>
-              </div>
-            </div>
-
-            {/* Total Earnings */}
-            <div className="stat-card flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-500">Total Earnings</span>
-                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Available Balance</span>
+                <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
                   <Wallet className="w-5 h-5" />
                 </div>
               </div>
               <div>
-                <div className="text-3xl font-black text-gray-900 tracking-tight">
-                  ₹{totalEarnings.toLocaleString('en-IN')}
+                <div className="text-3xl font-black text-emerald-800 tracking-tight font-mono">
+                  ₹{availableBalance.toFixed(2)}
                 </div>
-                <p className="text-xs text-blue-600 font-bold mt-1">Available wallet balance</p>
+                <p className="text-xs text-emerald-700 font-bold mt-1">Ready for withdrawal</p>
+              </div>
+            </div>
+
+            {/* 3. Pending Withdrawals */}
+            <div className="stat-card flex flex-col justify-between bg-amber-50/40 border-amber-200">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">Pending Withdrawals</span>
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center">
+                  <Clock className="w-5 h-5" />
+                </div>
+              </div>
+              <div>
+                <div className="text-3xl font-black text-amber-800 tracking-tight font-mono">
+                  ₹{pendingAmount.toFixed(2)}
+                </div>
+                <p className="text-xs text-amber-700 font-bold mt-1">Awaiting admin disbursal</p>
+              </div>
+            </div>
+
+            {/* 4. Already Settled */}
+            <div className="stat-card flex flex-col justify-between bg-blue-50/40 border-blue-200">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-blue-900 uppercase tracking-wider">Already Settled</span>
+                <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+              </div>
+              <div>
+                <div className="text-3xl font-black text-blue-900 tracking-tight font-mono">
+                  ₹{totalSettled.toFixed(2)}
+                </div>
+                <p className="text-xs text-blue-700 font-bold mt-1">Transferred to Bank / UPI</p>
               </div>
             </div>
           </>
         )}
       </div>
 
-      {/* Transaction & Earnings History Table */}
+      {/* Tabs & Table Section */}
       <div className="card p-6 bg-white space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-          <div>
-            <h3 className="text-base font-black text-gray-900">
-              {isMonthly ? 'Delivery Activity History' : 'Earnings & Transaction History'}
-            </h3>
-            <p className="text-xs text-gray-500">
-              {isMonthly
-                ? 'Chronological record of orders completed. Monthly staff do not generate individual delivery fees.'
-                : 'Automated order payouts credited upon successful customer 6-digit OTP verification.'}
-            </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('EARNINGS')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
+                activeTab === 'EARNINGS'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Order Delivery Credits
+            </button>
+
+            {!isMonthly && (
+              <button
+                onClick={() => setActiveTab('WITHDRAWALS')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  activeTab === 'WITHDRAWALS'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <span>Withdrawal Requests</span>
+                {withdrawals && withdrawals.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/20">
+                    {withdrawals.length}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
 
-          <div className="text-xs font-bold text-gray-500">
-            Status: <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Verified Deliveries Only</span>
+          <div className="text-xs text-gray-500 font-medium">
+            Showing records from active session
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-gray-200 text-[11px] font-black uppercase text-gray-400">
-                <th className="py-3 px-3">Order</th>
-                <th className="py-3 px-3">Date</th>
-                <th className="py-3 px-3">Delivery</th>
-                <th className="py-3 px-3 text-right">Earning</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {isMonthly ? (
-                // Monthly staff deliveries: show delivery activity without individual earnings
-                deliveryHistory.length > 0 ? (
-                  deliveryHistory.map((h, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50/80 transition">
-                      <td className="py-3.5 px-3 font-mono font-bold text-gray-900">
-                        {h.orderNumber}
-                      </td>
-                      <td className="py-3.5 px-3 text-gray-500">
-                        {h.date.split(',')[0]}
-                      </td>
-                      <td className="py-3.5 px-3">
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                          <span>Delivered</span>
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-3 text-right font-medium text-gray-400">
-                        ₹0 <span className="text-[10px] text-purple-600 font-semibold">(Contract)</span>
+        {/* Tab 1: Order Delivery Credits */}
+        {activeTab === 'EARNINGS' && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-gray-200 text-[11px] font-black uppercase text-gray-400">
+                  <th className="py-3 px-3">Order</th>
+                  <th className="py-3 px-3">Date</th>
+                  <th className="py-3 px-3">Delivery Status</th>
+                  <th className="py-3 px-3 text-right">Credit</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {isMonthly ? (
+                  deliveryHistory.length > 0 ? (
+                    deliveryHistory.map((h, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50/80 transition">
+                        <td className="py-3.5 px-3 font-mono font-bold text-gray-900">
+                          {h.orderNumber}
+                        </td>
+                        <td className="py-3.5 px-3 text-gray-500">
+                          {h.date.split(',')[0]}
+                        </td>
+                        <td className="py-3.5 px-3">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            <span>Delivered (OTP Verified)</span>
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-3 text-right font-medium text-gray-400">
+                          ₹0 <span className="text-[10px] text-purple-600 font-semibold">(Contract)</span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="py-8 text-center text-gray-400">
+                        No delivery activity recorded yet.
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={4} className="py-8 text-center text-gray-400">
-                      No delivery activity recorded yet.
-                    </td>
-                  </tr>
-                )
-              ) : (
-                // Per Delivery Staff: show actual earnings ledger
-                earningsList.length > 0 ? (
+                  )
+                ) : earningsList.length > 0 ? (
                   earningsList.map((row, idx) => (
                     <tr key={idx} className="hover:bg-gray-50/80 transition">
                       <td className="py-3.5 px-3 font-mono font-bold text-gray-900">
@@ -364,7 +464,7 @@ export default function DeliveryEarningsPage() {
                           <span>Delivered</span>
                         </span>
                       </td>
-                      <td className="py-3.5 px-3 text-right font-black text-emerald-700 text-sm">
+                      <td className="py-3.5 px-3 text-right font-black text-emerald-700 text-sm font-mono">
                         +{row.amount >= 0 ? `₹${row.amount}` : `-₹${Math.abs(row.amount)}`}
                       </td>
                     </tr>
@@ -384,7 +484,7 @@ export default function DeliveryEarningsPage() {
                           <span>Delivered</span>
                         </span>
                       </td>
-                      <td className="py-3.5 px-3 text-right font-black text-emerald-700 text-sm">
+                      <td className="py-3.5 px-3 text-right font-black text-emerald-700 text-sm font-mono">
                         +₹{perDeliveryRate}
                       </td>
                     </tr>
@@ -395,12 +495,127 @@ export default function DeliveryEarningsPage() {
                       No earnings transactions recorded yet. Complete an order with customer OTP to earn.
                     </td>
                   </tr>
-                )
-              )}
-            </tbody>
-          </table>
-        </div>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Tab 2: Withdrawal Requests & Disbursal Tracker */}
+        {activeTab === 'WITHDRAWALS' && !isMonthly && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-gray-200 text-[11px] font-black uppercase text-gray-400">
+                  <th className="py-3 px-3">Withdrawal ID</th>
+                  <th className="py-3 px-3">Requested At</th>
+                  <th className="py-3 px-3">Destination</th>
+                  <th className="py-3 px-3">Amount</th>
+                  <th className="py-3 px-3">Status</th>
+                  <th className="py-3 px-3">Bank Reference / UTR</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {withdrawals && withdrawals.length > 0 ? (
+                  withdrawals.map((w) => {
+                    let dest = 'UPI / Bank';
+                    try {
+                      if (w.accountDetails) {
+                        const parsed = JSON.parse(w.accountDetails);
+                        dest = parsed.accountType === 'UPI' ? `UPI: ${parsed.upiId}` : `${parsed.bankName || 'Bank'} (${parsed.accountNumber || ''})`;
+                      }
+                    } catch {}
+
+                    return (
+                      <tr key={w.id} className="hover:bg-gray-50/80 transition">
+                        <td className="py-3.5 px-3 font-mono font-bold text-gray-900">
+                          {w.withdrawalNumber}
+                        </td>
+                        <td className="py-3.5 px-3 text-gray-500">
+                          {new Date(w.requestedAt).toLocaleDateString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </td>
+                        <td className="py-3.5 px-3 text-gray-700 font-medium">
+                          {dest}
+                        </td>
+                        <td className="py-3.5 px-3 font-black text-gray-900 text-sm font-mono">
+                          ₹{Number(w.amount).toFixed(2)}
+                        </td>
+                        <td className="py-3.5 px-3">
+                          <span
+                            className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+                              w.status === 'DISTRIBUTED'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                : w.status === 'APPROVED'
+                                ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                : w.status === 'REJECTED'
+                                ? 'bg-red-100 text-red-800 border border-red-200'
+                                : 'bg-amber-100 text-amber-800 border border-amber-200'
+                            }`}
+                          >
+                            {w.status === 'DISTRIBUTED' ? (
+                              <>
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                <span>Distributed</span>
+                              </>
+                            ) : w.status === 'APPROVED' ? (
+                              <>
+                                <CheckCircle2 className="w-3 h-3 text-blue-600" />
+                                <span>Approved</span>
+                              </>
+                            ) : w.status === 'REJECTED' ? (
+                              <>
+                                <AlertCircle className="w-3 h-3 text-red-600" />
+                                <span>Rejected</span>
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="w-3 h-3 text-amber-600 animate-pulse" />
+                                <span>Pending Admin</span>
+                              </>
+                            )}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-3 font-mono text-gray-600">
+                          {w.utrReference ? (
+                            <span className="font-bold text-gray-800">{w.utrReference}</span>
+                          ) : (
+                            <span className="text-gray-400 italic">Pending Transfer</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-gray-400">
+                      No withdrawal requests submitted yet. Click &quot;Withdraw Money&quot; above to cash out earnings.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+
+      {/* Payout Account Modal */}
+      <PayoutAccountModal
+        isOpen={showPayoutModal}
+        onClose={() => setShowPayoutModal(false)}
+      />
+
+      {/* Withdrawal Request Modal */}
+      <WithdrawalModal
+        isOpen={showWithdrawalModal}
+        onClose={() => setShowWithdrawalModal(false)}
+        onOpenPayoutAccountModal={() => setShowPayoutModal(true)}
+      />
     </div>
   );
 }

@@ -30,7 +30,9 @@ import {
   fallbackLaundryServiceConfigs,
   fallbackLaundryCodCollections,
   fallbackLaundryOtps,
-  fallbackDeliveryBoyEarnings
+  fallbackDeliveryBoyEarnings,
+  fallbackDeliveryBoyPayoutAccounts,
+  fallbackDeliveryBoyWithdrawals
 } from '../services/fallbackData';
 
 declare global {
@@ -292,8 +294,13 @@ const fallbackHandlers: Record<string, any> = {
       const user = fallbackUsers.find((u: any) => u.deliveryBoy && ((userId && (u.deliveryBoy.userId === userId || u.id === userId)) || (id && u.deliveryBoy.id === id)));
       if (!user?.deliveryBoy) return null;
       const dbEarnings = fallbackDeliveryBoyEarnings.filter((e) => e.deliveryBoyId === user.deliveryBoy.id);
+      const payoutAccount = fallbackDeliveryBoyPayoutAccounts.find((p) => p.deliveryBoyId === user.deliveryBoy.id) || null;
+      const withdrawals = fallbackDeliveryBoyWithdrawals.filter((w) => w.deliveryBoyId === user.deliveryBoy.id);
       return JSON.parse(JSON.stringify({
         ...user.deliveryBoy,
+        totalSettled: Number(user.deliveryBoy.totalSettled) || 0.00,
+        payoutAccount,
+        withdrawals,
         earnings: dbEarnings,
         user: { id: user.id, email: user.email, username: user.username, role: user.role, isActive: user.isActive }
       }));
@@ -307,8 +314,13 @@ const fallbackHandlers: Record<string, any> = {
       }
       if (!user?.deliveryBoy) return null;
       const dbEarnings = fallbackDeliveryBoyEarnings.filter((e) => e.deliveryBoyId === user.deliveryBoy.id);
+      const payoutAccount = fallbackDeliveryBoyPayoutAccounts.find((p) => p.deliveryBoyId === user.deliveryBoy.id) || null;
+      const withdrawals = fallbackDeliveryBoyWithdrawals.filter((w) => w.deliveryBoyId === user.deliveryBoy.id);
       return JSON.parse(JSON.stringify({
         ...user.deliveryBoy,
+        totalSettled: Number(user.deliveryBoy.totalSettled) || 0.00,
+        payoutAccount,
+        withdrawals,
         earnings: dbEarnings,
         user: { id: user.id, email: user.email, username: user.username, role: user.role, isActive: user.isActive }
       }));
@@ -319,8 +331,13 @@ const fallbackHandlers: Record<string, any> = {
         .map((u: any) => {
           const dbEarnings = fallbackDeliveryBoyEarnings.filter((e) => e.deliveryBoyId === u.deliveryBoy.id);
           const orders = fallbackOrders.filter((o) => o.deliveryBoyId === u.deliveryBoy.id);
+          const payoutAccount = fallbackDeliveryBoyPayoutAccounts.find((p) => p.deliveryBoyId === u.deliveryBoy.id) || null;
+          const withdrawals = fallbackDeliveryBoyWithdrawals.filter((w) => w.deliveryBoyId === u.deliveryBoy.id);
           return {
             ...u.deliveryBoy,
+            totalSettled: Number(u.deliveryBoy.totalSettled) || 0.00,
+            payoutAccount,
+            withdrawals,
             orders,
             laundryOrders: [],
             earnings: dbEarnings,
@@ -341,6 +358,7 @@ const fallbackHandlers: Record<string, any> = {
         perDeliveryRate: args.data.perDeliveryRate !== undefined ? Number(args.data.perDeliveryRate) : 10.00,
         monthlySalary: args.data.monthlySalary !== undefined ? Number(args.data.monthlySalary) : 0.00,
         walletBalance: args.data.walletBalance !== undefined ? Number(args.data.walletBalance) : 0.00,
+        totalSettled: 0.00,
         plainPassword: args.data.plainPassword,
         createdAt: new Date(),
         updatedAt: new Date()
@@ -361,6 +379,11 @@ const fallbackHandlers: Record<string, any> = {
             updateData.walletBalance = (Number(user.deliveryBoy.walletBalance) || 0) - Number(updateData.walletBalance.decrement);
           }
         }
+        if (updateData.totalSettled && typeof updateData.totalSettled === 'object') {
+          if (updateData.totalSettled.increment !== undefined) {
+            updateData.totalSettled = (Number(user.deliveryBoy.totalSettled) || 0) + Number(updateData.totalSettled.increment);
+          }
+        }
         Object.assign(user.deliveryBoy, updateData);
         return JSON.parse(JSON.stringify(user.deliveryBoy));
       }
@@ -373,6 +396,130 @@ const fallbackHandlers: Record<string, any> = {
         (user as any).deliveryBoy = null;
       }
       return { id };
+    }
+  },
+  deliveryBoyPayoutAccount: {
+    findUnique: async (args: any) => {
+      const deliveryBoyId = args?.where?.deliveryBoyId;
+      const id = args?.where?.id;
+      const found = fallbackDeliveryBoyPayoutAccounts.find((a) => (deliveryBoyId && a.deliveryBoyId === deliveryBoyId) || (id && a.id === id));
+      return found ? JSON.parse(JSON.stringify(found)) : null;
+    },
+    findFirst: async (args: any) => {
+      const deliveryBoyId = args?.where?.deliveryBoyId;
+      const found = fallbackDeliveryBoyPayoutAccounts.find((a) => a.deliveryBoyId === deliveryBoyId);
+      return found ? JSON.parse(JSON.stringify(found)) : null;
+    },
+    upsert: async (args: any) => {
+      const deliveryBoyId = args?.where?.deliveryBoyId;
+      const idx = fallbackDeliveryBoyPayoutAccounts.findIndex((a) => a.deliveryBoyId === deliveryBoyId);
+      if (idx >= 0) {
+        Object.assign(fallbackDeliveryBoyPayoutAccounts[idx], args.update, { updatedAt: new Date() });
+        return JSON.parse(JSON.stringify(fallbackDeliveryBoyPayoutAccounts[idx]));
+      }
+      const newAcc = {
+        id: `payout_acc_${Date.now()}`,
+        deliveryBoyId,
+        accountType: args.create.accountType || 'UPI',
+        accountHolderName: args.create.accountHolderName,
+        bankName: args.create.bankName || null,
+        accountNumber: args.create.accountNumber || null,
+        ifscCode: args.create.ifscCode || null,
+        upiId: args.create.upiId || null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      fallbackDeliveryBoyPayoutAccounts.push(newAcc);
+      return JSON.parse(JSON.stringify(newAcc));
+    },
+    update: async (args: any) => {
+      const deliveryBoyId = args?.where?.deliveryBoyId;
+      const idx = fallbackDeliveryBoyPayoutAccounts.findIndex((a) => a.deliveryBoyId === deliveryBoyId);
+      if (idx >= 0) {
+        Object.assign(fallbackDeliveryBoyPayoutAccounts[idx], args.data, { updatedAt: new Date() });
+        return JSON.parse(JSON.stringify(fallbackDeliveryBoyPayoutAccounts[idx]));
+      }
+      return args.data;
+    }
+  },
+  deliveryBoyWithdrawal: {
+    findMany: async (args: any) => {
+      let list = [...fallbackDeliveryBoyWithdrawals];
+      if (args?.where?.deliveryBoyId) {
+        list = list.filter((w) => w.deliveryBoyId === args.where.deliveryBoyId);
+      }
+      if (args?.where?.status) {
+        list = list.filter((w) => w.status === args.where.status);
+      }
+      // Populate deliveryBoy if requested
+      return JSON.parse(JSON.stringify(list.map((w) => {
+        const u = fallbackUsers.find((user: any) => user.deliveryBoy && user.deliveryBoy.id === w.deliveryBoyId);
+        return {
+          ...w,
+          deliveryBoy: u?.deliveryBoy ? {
+            id: u.deliveryBoy.id,
+            fullName: u.deliveryBoy.fullName,
+            mobileNumber: u.deliveryBoy.mobileNumber,
+            walletBalance: Number(u.deliveryBoy.walletBalance) || 0,
+            totalSettled: Number(u.deliveryBoy.totalSettled) || 0,
+            paymentType: u.deliveryBoy.paymentType
+          } : null
+        };
+      })));
+    },
+    findUnique: async (args: any) => {
+      const id = args?.where?.id;
+      const withdrawalNumber = args?.where?.withdrawalNumber;
+      const found = fallbackDeliveryBoyWithdrawals.find((w) => (id && w.id === id) || (withdrawalNumber && w.withdrawalNumber === withdrawalNumber));
+      if (!found) return null;
+      const u = fallbackUsers.find((user: any) => user.deliveryBoy && user.deliveryBoy.id === found.deliveryBoyId);
+      return JSON.parse(JSON.stringify({
+        ...found,
+        deliveryBoy: u?.deliveryBoy ? {
+          id: u.deliveryBoy.id,
+          fullName: u.deliveryBoy.fullName,
+          mobileNumber: u.deliveryBoy.mobileNumber,
+          walletBalance: Number(u.deliveryBoy.walletBalance) || 0,
+          totalSettled: Number(u.deliveryBoy.totalSettled) || 0,
+          paymentType: u.deliveryBoy.paymentType
+        } : null
+      }));
+    },
+    create: async (args: any) => {
+      const newWithdrawal = {
+        id: `wdr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        withdrawalNumber: args.data.withdrawalNumber || `WDR-${Date.now().toString().slice(-6)}`,
+        deliveryBoyId: args.data.deliveryBoyId,
+        amount: Number(args.data.amount),
+        status: args.data.status || 'PENDING',
+        payoutMethod: args.data.payoutMethod || 'UPI',
+        accountDetails: args.data.accountDetails || null,
+        adminNotes: args.data.adminNotes || null,
+        processedBy: args.data.processedBy || null,
+        utrReference: args.data.utrReference || null,
+        requestedAt: new Date(),
+        approvedAt: null,
+        distributedAt: null,
+        rejectedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      fallbackDeliveryBoyWithdrawals.unshift(newWithdrawal);
+      return JSON.parse(JSON.stringify(newWithdrawal));
+    },
+    update: async (args: any) => {
+      const id = args?.where?.id;
+      const idx = fallbackDeliveryBoyWithdrawals.findIndex((w) => w.id === id);
+      if (idx >= 0) {
+        Object.assign(fallbackDeliveryBoyWithdrawals[idx], args.data, { updatedAt: new Date() });
+        const updated = fallbackDeliveryBoyWithdrawals[idx];
+        const u = fallbackUsers.find((user: any) => user.deliveryBoy && user.deliveryBoy.id === updated.deliveryBoyId);
+        return JSON.parse(JSON.stringify({
+          ...updated,
+          deliveryBoy: u?.deliveryBoy || null
+        }));
+      }
+      return args.data;
     }
   },
   deliveryBoyEarning: {

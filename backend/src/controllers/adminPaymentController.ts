@@ -4,6 +4,7 @@ import { LedgerService } from '../services/financial/LedgerService';
 import { SettlementService } from '../services/financial/SettlementService';
 import { RefundService } from '../services/financial/RefundService';
 import { AuditService } from '../services/audit/AuditService';
+import { DeliverySettlementPdfService } from '../services/pdf/DeliverySettlementPdfService';
 
 export class AdminPaymentController {
   /**
@@ -515,4 +516,377 @@ export class AdminPaymentController {
       next(err);
     }
   }
+
+  /**
+   * Section 7: Delivery Fleet Settlement Management (Runner Payouts)
+   */
+  public static async getDeliverySettlements(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { status, deliveryBoyId, search } = req.query;
+
+      let withdrawals = await (prisma as any).deliveryBoyWithdrawal.findMany({
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const deliveryBoys = await (prisma as any).deliveryBoy.findMany({
+        select: {
+          id: true,
+          fullName: true,
+          mobileNumber: true,
+          email: true,
+          walletBalance: true,
+          totalSettled: true,
+          paymentType: true,
+          perDeliveryRate: true,
+          monthlySalary: true
+        }
+      });
+      const boyMap = new Map(deliveryBoys.map((b: any) => [b.id, b]));
+
+      // Filter by runner if specified
+      if (deliveryBoyId && deliveryBoyId !== 'ALL') {
+        withdrawals = withdrawals.filter((w: any) => w.deliveryBoyId === deliveryBoyId);
+      }
+
+      // Filter by status if specified
+      if (status && status !== 'ALL') {
+        withdrawals = withdrawals.filter((w: any) => w.status === status);
+      }
+
+      // Filter by search query (runner name, mobile, withdrawal number, utr)
+      if (search) {
+        const query = String(search).toLowerCase();
+        withdrawals = withdrawals.filter((w: any) => {
+          const boy = boyMap.get(w.deliveryBoyId) as any;
+          const boyName = (boy?.fullName || '').toLowerCase();
+          const boyMobile = (boy?.mobileNumber || '').toLowerCase();
+          const num = (w.withdrawalNumber || '').toLowerCase();
+          const utr = (w.utrReference || '').toLowerCase();
+          return boyName.includes(query) || boyMobile.includes(query) || num.includes(query) || utr.includes(query);
+        });
+      }
+
+      // Attach deliveryBoy info to each withdrawal
+      const enrichedWithdrawals = withdrawals.map((w: any) => {
+        const boy = boyMap.get(w.deliveryBoyId);
+        return {
+          ...w,
+          deliveryBoy: boy || { id: w.deliveryBoyId, fullName: 'Fleet Runner', mobileNumber: '' }
+        };
+      });
+
+      // Calculate overview metrics across all withdrawals
+      const allWithdrawals = await (prisma as any).deliveryBoyWithdrawal.findMany();
+      const totalPendingAmount = allWithdrawals
+        .filter((w: any) => w.status === 'PENDING')
+        .reduce((sum: number, w: any) => sum + (Number(w.amount) || 0), 0);
+      const totalApprovedAmount = allWithdrawals
+        .filter((w: any) => w.status === 'APPROVED')
+        .reduce((sum: number, w: any) => sum + (Number(w.amount) || 0), 0);
+      const totalDistributedAmount = allWithdrawals
+        .filter((w: any) => w.status === 'DISTRIBUTED')
+        .reduce((sum: number, w: any) => sum + (Number(w.amount) || 0), 0);
+
+      const totalFleetSettled = deliveryBoys.reduce((sum: number, b: any) => sum + (Number(b.totalSettled) || 0), 0);
+      const totalFleetPendingBalance = deliveryBoys.reduce((sum: number, b: any) => sum + (Number(b.walletBalance) || 0), 0);
+
+      res.status(200).json({
+        success: true,
+        summary: {
+          totalPendingAmount,
+          totalApprovedAmount,
+          totalDistributedAmount,
+          totalFleetSettled,
+          totalFleetPendingBalance,
+          count: enrichedWithdrawals.length
+        },
+        deliveryBoys: deliveryBoys.map((b: any) => ({
+          id: b.id,
+          fullName: b.fullName,
+          mobileNumber: b.mobileNumber,
+          walletBalance: Number(b.walletBalance) || 0,
+          totalSettled: Number(b.totalSettled) || 0
+        })),
+        data: enrichedWithdrawals
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Settle / Disburse Delivery Boy Withdrawal (APPROVE, DISTRIBUTE, REJECT)
+   * When action is 'DISTRIBUTE':
+   * - Marks withdrawal status as 'DISTRIBUTED' with UTR reference number
+   * - Deducts withdrawal amount from runner's walletBalance (setting to 0 if full balance)
+   * - Adds withdrawal amount to runner's totalSettled ("Already Settled")
+   */
+  public static async disburseDeliverySettlement(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const withdrawalId = req.params.id || req.body.withdrawalId;
+      const { action, status, utrReference, adminNotes } = req.body;
+      const targetAction = (action || status || '').toUpperCase();
+
+      if (!withdrawalId) {
+        res.status(400).json({ success: false, message: 'Withdrawal ID is required' });
+        return;
+      }
+
+      const withdrawal = await (prisma as any).deliveryBoyWithdrawal.findUnique({
+        where: { id: withdrawalId }
+      });
+
+      if (!withdrawal) {
+        res.status(404).json({ success: false, message: 'Withdrawal record not found' });
+        return;
+      }
+
+      const withdrawalAmount = Number(withdrawal.amount) || 0;
+      const runnerId = withdrawal.deliveryBoyId;
+      const runner = await (prisma as any).deliveryBoy.findUnique({
+        where: { id: runnerId }
+      });
+
+      if (targetAction === 'APPROVE') {
+        const updated = await (prisma as any).deliveryBoyWithdrawal.update({
+          where: { id: withdrawalId },
+          data: {
+            status: 'APPROVED',
+            approvedAt: new Date(),
+            adminNotes: adminNotes || withdrawal.adminNotes,
+            processedBy: (req as any).user?.userId || 'admin'
+          }
+        });
+
+        await AuditService.log(prisma, {
+          userId: (req as any).user?.userId,
+          action: 'DELIVERY_WITHDRAWAL_APPROVED',
+          entity: 'DeliveryBoyWithdrawal',
+          entityId: withdrawalId,
+          newValue: { amount: withdrawalAmount, runnerId }
+        });
+
+        res.status(200).json({
+          success: true,
+          message: `Withdrawal ${withdrawal.withdrawalNumber} approved for ₹${withdrawalAmount}. Ready for disbursement.`,
+          withdrawal: updated
+        });
+        return;
+      }
+
+      if (targetAction === 'DISTRIBUTE') {
+        if (withdrawal.status === 'DISTRIBUTED') {
+          res.status(400).json({
+            success: false,
+            message: 'This withdrawal has already been distributed and settled.'
+          });
+          return;
+        }
+
+        const effectiveUtr = utrReference || `UTR-${Date.now().toString().slice(-8)}`;
+
+        const updated = await (prisma as any).deliveryBoyWithdrawal.update({
+          where: { id: withdrawalId },
+          data: {
+            status: 'DISTRIBUTED',
+            distributedAt: new Date(),
+            utrReference: effectiveUtr,
+            adminNotes: adminNotes || withdrawal.adminNotes,
+            processedBy: (req as any).user?.userId || 'admin'
+          }
+        });
+
+        // Deduct from runner's wallet balance (setting to 0 if all withdrawn) and credit to totalSettled
+        let newBalance = 0;
+        let newSettled = 0;
+        if (runner) {
+          const currentBalance = Number(runner.walletBalance) || 0;
+          const currentSettled = Number(runner.totalSettled) || 0;
+          newBalance = Math.max(0, currentBalance - withdrawalAmount);
+          newSettled = currentSettled + withdrawalAmount;
+
+          await (prisma as any).deliveryBoy.update({
+            where: { id: runnerId },
+            data: {
+              walletBalance: newBalance,
+              totalSettled: newSettled
+            }
+          });
+        }
+
+        await AuditService.log(prisma, {
+          userId: (req as any).user?.userId,
+          action: 'DELIVERY_WITHDRAWAL_DISTRIBUTED',
+          entity: 'DeliveryBoyWithdrawal',
+          entityId: withdrawalId,
+          newValue: {
+            amount: withdrawalAmount,
+            runnerId,
+            utrReference: effectiveUtr,
+            newWalletBalance: newBalance,
+            newTotalSettled: newSettled
+          }
+        });
+
+        res.status(200).json({
+          success: true,
+          message: `Payout of ₹${withdrawalAmount} distributed successfully with UTR: ${effectiveUtr}. Runner balance updated: ₹${newBalance}, Total Settled: ₹${newSettled}.`,
+          withdrawal: updated,
+          runnerBalances: {
+            walletBalance: newBalance,
+            totalSettled: newSettled
+          }
+        });
+        return;
+      }
+
+      if (targetAction === 'REJECT') {
+        const updated = await (prisma as any).deliveryBoyWithdrawal.update({
+          where: { id: withdrawalId },
+          data: {
+            status: 'REJECTED',
+            rejectedAt: new Date(),
+            adminNotes: adminNotes || 'Rejected by administrator',
+            processedBy: (req as any).user?.userId || 'admin'
+          }
+        });
+
+        await AuditService.log(prisma, {
+          userId: (req as any).user?.userId,
+          action: 'DELIVERY_WITHDRAWAL_REJECTED',
+          entity: 'DeliveryBoyWithdrawal',
+          entityId: withdrawalId,
+          newValue: { amount: withdrawalAmount, runnerId, reason: adminNotes }
+        });
+
+        res.status(200).json({
+          success: true,
+          message: `Withdrawal ${withdrawal.withdrawalNumber} rejected.`,
+          withdrawal: updated
+        });
+        return;
+      }
+
+      res.status(400).json({
+        success: false,
+        message: `Invalid action '${targetAction}'. Must be APPROVE, DISTRIBUTE, or REJECT.`
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Section 8: Download Settlement Report PDF (Delivery Boy Wise or Fleet Wide, with Monthly/Daily/Custom filters)
+   */
+  public static async downloadDeliverySettlementsPdf(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { deliveryBoyId, filterType, month, year, startDate, endDate, status } = req.query;
+
+      let withdrawals = await (prisma as any).deliveryBoyWithdrawal.findMany({
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const deliveryBoys = await (prisma as any).deliveryBoy.findMany();
+      const boyMap = new Map(deliveryBoys.map((b: any) => [b.id, b]));
+
+      // Filter by runner if requested
+      let targetRunner: any = null;
+      if (deliveryBoyId && deliveryBoyId !== 'ALL') {
+        targetRunner = boyMap.get(deliveryBoyId as string);
+        withdrawals = withdrawals.filter((w: any) => w.deliveryBoyId === deliveryBoyId);
+      }
+
+      // Filter by status if specified
+      if (status && status !== 'ALL') {
+        withdrawals = withdrawals.filter((w: any) => w.status === status);
+      }
+
+      // Filter by time horizon: MONTHLY, DAILY, or CUSTOM
+      let filterLabel = 'All Time Disbursals';
+      const now = new Date();
+      const targetYear = year ? Number(year) : now.getFullYear();
+
+      if (filterType === 'MONTHLY') {
+        const targetMonth = month ? Number(month) : now.getMonth() + 1;
+        withdrawals = withdrawals.filter((w: any) => {
+          const d = new Date(w.requestedAt);
+          return d.getFullYear() === targetYear && d.getMonth() + 1 === targetMonth;
+        });
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        filterLabel = `${monthNames[targetMonth - 1]} ${targetYear} Disbursal Statement`;
+      } else if (filterType === 'DAILY') {
+        const dayString = (startDate as string) || now.toISOString().slice(0, 10);
+        withdrawals = withdrawals.filter((w: any) => {
+          const d = new Date(w.requestedAt).toISOString().slice(0, 10);
+          return d === dayString;
+        });
+        filterLabel = `Daily Statement (${dayString})`;
+      } else if (filterType === 'CUSTOM' && startDate && endDate) {
+        const start = new Date(startDate as string).getTime();
+        const end = new Date(endDate as string).getTime();
+        withdrawals = withdrawals.filter((w: any) => {
+          const t = new Date(w.requestedAt).getTime();
+          return t >= start && t <= end;
+        });
+        filterLabel = `Custom Range (${startDate} to ${endDate})`;
+      }
+
+      const totalDisbursed = withdrawals
+        .filter((w: any) => w.status === 'DISTRIBUTED')
+        .reduce((sum: number, w: any) => sum + (Number(w.amount) || 0), 0);
+      const totalPending = withdrawals
+        .filter((w: any) => w.status === 'PENDING' || w.status === 'APPROVED')
+        .reduce((sum: number, w: any) => sum + (Number(w.amount) || 0), 0);
+
+      const rows = withdrawals.map((w: any) => {
+        const boy = boyMap.get(w.deliveryBoyId) as any;
+        let dest = 'UPI / Bank';
+        try {
+          if (w.accountDetails) {
+            const parsed = JSON.parse(w.accountDetails);
+            dest = parsed.accountType === 'UPI' ? `UPI: ${parsed.upiId}` : `${parsed.bankName || 'Bank'} (${parsed.accountNumber || ''})`;
+          }
+        } catch {}
+
+        return {
+          date: new Date(w.requestedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+          runnerName: boy?.fullName || 'Fleet Partner',
+          runnerMobile: boy?.mobileNumber || 'N/A',
+          paymentType: boy?.paymentType || 'PER_DELIVERY',
+          referenceId: w.withdrawalNumber,
+          amount: Number(w.amount),
+          payoutMethod: w.payoutMethod,
+          destination: dest,
+          utrReference: w.utrReference,
+          status: w.status
+        };
+      });
+
+      const pdfBuffer = await DeliverySettlementPdfService.generatePdf({
+        reportTitle: targetRunner
+          ? `Settlement Statement: ${targetRunner.fullName}`
+          : 'Fleet-Wide Delivery Settlement Report',
+        runnerScope: targetRunner ? `${targetRunner.fullName} (${targetRunner.mobileNumber})` : 'All Delivery Boys (Campus Fleet)',
+        dateRangeText: filterLabel,
+        generatedBy: (req as any).user?.fullName || 'Institutional Administration',
+        generatedAt: new Date(),
+        metrics: {
+          totalEarned: totalDisbursed + totalPending,
+          totalSettled: totalDisbursed,
+          pendingAmount: totalPending,
+          totalTransactions: withdrawals.length
+        },
+        settlements: rows
+      });
+
+      const safeName = targetRunner ? targetRunner.fullName.replace(/\s+/g, '_') : 'Fleet';
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="CampusBasket-Settlements-${safeName}-${Date.now()}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err) {
+      next(err);
+    }
+  }
 }
+

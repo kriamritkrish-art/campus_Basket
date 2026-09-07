@@ -26,10 +26,12 @@ import {
   Scale,
   RefreshCw,
   AlertCircle,
-  TrendingUp
+  TrendingUp,
+  Bike,
+  Wallet
 } from 'lucide-react';
 
-type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'REFUNDS' | 'SETTLEMENTS' | 'COD' | 'LEDGER';
+type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'REFUNDS' | 'SETTLEMENTS' | 'RUNNER_SETTLEMENTS' | 'COD' | 'LEDGER';
 
 export default function AdminPaymentsPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('OVERVIEW');
@@ -71,6 +73,30 @@ export default function AdminPaymentsPage() {
   const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
   const [ledgerTypeFilter, setLedgerTypeFilter] = useState('ALL');
 
+  // Delivery Boy Settlements State
+  const [deliverySettlements, setDeliverySettlements] = useState<any[]>([]);
+  const [deliverySettlementSummary, setDeliverySettlementSummary] = useState<any>(null);
+  const [deliveryBoysList, setDeliveryBoysList] = useState<any[]>([]);
+  const [selectedRunnerFilter, setSelectedRunnerFilter] = useState('ALL');
+  const [runnerSettlementStatusFilter, setRunnerSettlementStatusFilter] = useState('ALL');
+  const [runnerSearchQuery, setRunnerSearchQuery] = useState('');
+
+  // Disburse Runner Settlement Modal State
+  const [selectedDisburseRunnerWithdrawal, setSelectedDisburseRunnerWithdrawal] = useState<any>(null);
+  const [runnerUtrReference, setRunnerUtrReference] = useState('');
+  const [runnerDisburseNotes, setRunnerDisburseNotes] = useState('');
+  const [disbursingRunner, setDisbursingRunner] = useState(false);
+
+  // PDF Download Dialog State
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [pdfFilterType, setPdfFilterType] = useState<'ALL' | 'MONTHLY' | 'DAILY' | 'CUSTOM'>('ALL');
+  const [pdfSelectedRunner, setPdfSelectedRunner] = useState('ALL');
+  const [pdfMonth, setPdfMonth] = useState(new Date().getMonth() + 1);
+  const [pdfYear, setPdfYear] = useState(new Date().getFullYear());
+  const [pdfStartDate, setPdfStartDate] = useState('');
+  const [pdfEndDate, setPdfEndDate] = useState('');
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+
   // Status Override Modal State
   const [overrideModalOpen, setOverrideModalOpen] = useState(false);
   const [overrideOrderId, setOverrideOrderId] = useState('');
@@ -109,6 +135,17 @@ export default function AdminPaymentsPage() {
       } else if (activeTab === 'SETTLEMENTS') {
         const res = await apiRequest('/api/admin/payments/settlements');
         if (res.success) setSettlements(res.data || []);
+      } else if (activeTab === 'RUNNER_SETTLEMENTS') {
+        let query = `/api/admin/payments/delivery-settlements?status=${runnerSettlementStatusFilter}&deliveryBoyId=${selectedRunnerFilter}`;
+        if (runnerSearchQuery) query += `&search=${encodeURIComponent(runnerSearchQuery)}`;
+        const res = await apiRequest(query);
+        if (res.success) {
+          setDeliverySettlements(res.data || []);
+          setDeliverySettlementSummary(res.summary);
+          if (Array.isArray(res.deliveryBoys)) {
+            setDeliveryBoysList(res.deliveryBoys);
+          }
+        }
       } else if (activeTab === 'COD') {
         const res = await apiRequest('/api/admin/payments/cod');
         if (res.success) setCodCollections(res.data || []);
@@ -127,7 +164,16 @@ export default function AdminPaymentsPage() {
 
   useEffect(() => {
     loadData();
-  }, [activeTab, serviceFilter, paymentStatusFilter, refundStatusFilter, settlementStatusFilter, ledgerTypeFilter]);
+  }, [
+    activeTab,
+    serviceFilter,
+    paymentStatusFilter,
+    refundStatusFilter,
+    settlementStatusFilter,
+    ledgerTypeFilter,
+    selectedRunnerFilter,
+    runnerSettlementStatusFilter
+  ]);
 
   // Execute Refund Action
   const handleProcessRefund = async () => {
@@ -186,6 +232,101 @@ export default function AdminPaymentsPage() {
       showToast(err.message || 'Disbursement error', 'error');
     } finally {
       setDisbursing(false);
+    }
+  };
+
+  // Execute Runner Settlement Disbursement
+  const handleDisburseRunnerSettlement = async () => {
+    if (!selectedDisburseRunnerWithdrawal) return;
+    setDisbursingRunner(true);
+    try {
+      const res = await apiRequest('/api/admin/payments/delivery-settlements/disburse', {
+        method: 'POST',
+        body: JSON.stringify({
+          withdrawalId: selectedDisburseRunnerWithdrawal.id,
+          action: 'DISTRIBUTE',
+          utrReference: runnerUtrReference.trim() || `UTR-${Date.now().toString().slice(-8)}`,
+          adminNotes: runnerDisburseNotes.trim()
+        })
+      });
+      if (res.success) {
+        showToast(res.message || 'Runner withdrawal disbursed and settled successfully!');
+        setSelectedDisburseRunnerWithdrawal(null);
+        setRunnerUtrReference('');
+        setRunnerDisburseNotes('');
+        loadData();
+      } else {
+        showToast(res.message || 'Disbursement failed', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Disbursement error', 'error');
+    } finally {
+      setDisbursingRunner(false);
+    }
+  };
+
+  const handleApproveRunnerSettlement = async (withdrawal: any) => {
+    try {
+      const res = await apiRequest('/api/admin/payments/delivery-settlements/disburse', {
+        method: 'POST',
+        body: JSON.stringify({
+          withdrawalId: withdrawal.id,
+          action: 'APPROVE',
+          adminNotes: 'Approved by administrator'
+        })
+      });
+      if (res.success) {
+        showToast(res.message || 'Withdrawal approved');
+        loadData();
+      } else {
+        showToast(res.message || 'Approval failed', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Approval error', 'error');
+    }
+  };
+
+  const handleRejectRunnerSettlement = async (withdrawal: any) => {
+    const reason = window.prompt('Enter rejection reason for delivery partner:');
+    if (reason === null) return;
+    try {
+      const res = await apiRequest('/api/admin/payments/delivery-settlements/disburse', {
+        method: 'POST',
+        body: JSON.stringify({
+          withdrawalId: withdrawal.id,
+          action: 'REJECT',
+          adminNotes: reason || 'Rejected by administrator'
+        })
+      });
+      if (res.success) {
+        showToast(res.message || 'Withdrawal rejected');
+        loadData();
+      } else {
+        showToast(res.message || 'Rejection failed', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Rejection error', 'error');
+    }
+  };
+
+  const handleDownloadDeliverySettlementsPdf = () => {
+    setPdfGenerating(true);
+    try {
+      let query = `/api/admin/payments/delivery-settlements/pdf?deliveryBoyId=${pdfSelectedRunner}&filterType=${pdfFilterType}`;
+      if (pdfFilterType === 'MONTHLY') {
+        query += `&month=${pdfMonth}&year=${pdfYear}`;
+      } else if (pdfFilterType === 'DAILY') {
+        query += `&startDate=${pdfStartDate}`;
+      } else if (pdfFilterType === 'CUSTOM') {
+        query += `&startDate=${pdfStartDate}&endDate=${pdfEndDate}`;
+      }
+      window.open(query, '_blank');
+      setPdfDialogOpen(false);
+      showToast('Downloading delivery settlements PDF statement...');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to download PDF', 'error');
+    } finally {
+      setPdfGenerating(false);
     }
   };
 
@@ -360,6 +501,23 @@ export default function AdminPaymentsPage() {
         >
           <Store className="w-4 h-4 text-purple-600" />
           Provider Settlements
+        </button>
+
+        <button
+          onClick={() => setActiveTab('RUNNER_SETTLEMENTS')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'RUNNER_SETTLEMENTS'
+              ? 'bg-white text-gray-900 shadow-xs'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+          }`}
+        >
+          <Bike className="w-4 h-4 text-emerald-600" />
+          Delivery Boy Settlements
+          {deliverySettlementSummary?.totalPendingAmount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500 text-white font-black">
+              ₹{Math.round(deliverySettlementSummary.totalPendingAmount)}
+            </span>
+          )}
         </button>
 
         <button
@@ -806,6 +964,284 @@ export default function AdminPaymentsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* SECTION 4B: DELIVERY FLEET SETTLEMENTS & RUNNER PAYOUTS  */}
+      {/* ======================================================== */}
+      {activeTab === 'RUNNER_SETTLEMENTS' && (
+        <div className="space-y-6">
+          {/* 4 Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs">
+              <div className="flex items-center justify-between text-xs font-bold text-amber-700 uppercase tracking-wider">
+                <span>Pending Approvals</span>
+                <Clock className="w-4 h-4 text-amber-500" />
+              </div>
+              <div className="text-2xl font-black text-amber-800 mt-2 font-mono">
+                ₹{Number(deliverySettlementSummary?.totalPendingAmount || 0).toFixed(2)}
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1">Awaiting admin review</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs">
+              <div className="flex items-center justify-between text-xs font-bold text-blue-700 uppercase tracking-wider">
+                <span>Approved (Ready to Disburse)</span>
+                <CheckCircle2 className="w-4 h-4 text-blue-500" />
+              </div>
+              <div className="text-2xl font-black text-blue-800 mt-2 font-mono">
+                ₹{Number(deliverySettlementSummary?.totalApprovedAmount || 0).toFixed(2)}
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1">Ready for bank transfer</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs">
+              <div className="flex items-center justify-between text-xs font-bold text-emerald-700 uppercase tracking-wider">
+                <span>Total Fleet Settled</span>
+                <IndianRupee className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="text-2xl font-black text-emerald-800 mt-2 font-mono">
+                ₹{Number(deliverySettlementSummary?.totalFleetSettled || 0).toFixed(2)}
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1">All-time settled to runners</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-xs">
+              <div className="flex items-center justify-between text-xs font-bold text-gray-700 uppercase tracking-wider">
+                <span>Fleet Wallet Balances</span>
+                <Wallet className="w-4 h-4 text-gray-500" />
+              </div>
+              <div className="text-2xl font-black text-gray-900 mt-2 font-mono">
+                ₹{Number(deliverySettlementSummary?.totalFleetPendingBalance || 0).toFixed(2)}
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1">Undrawn in runner wallets</p>
+            </div>
+          </div>
+
+          {/* Table Container */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-4">
+            {/* Header and Filter Controls */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">
+                  Delivery Fleet Settlement &amp; Disbursal Ledger
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Approve withdrawals, input UTR numbers, deduct runner wallets to ₹0 upon distribution, and view full settlement history.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  onClick={() => setPdfDialogOpen(true)}
+                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Generate Statement PDF
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <div className="flex-1 min-w-[200px]">
+                <div className="relative">
+                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search by runner name, phone, withdrawal #, or UTR..."
+                    value={runnerSearchQuery}
+                    onChange={(e) => setRunnerSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-xs text-gray-800 focus:border-blue-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Runner Filter */}
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="font-bold text-gray-500">Runner:</span>
+                <select
+                  value={selectedRunnerFilter}
+                  onChange={(e) => setSelectedRunnerFilter(e.target.value)}
+                  className="border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold text-gray-700 focus:border-blue-600 focus:outline-none bg-white"
+                >
+                  <option value="ALL">All Delivery Boys</option>
+                  {deliveryBoysList.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.fullName} ({b.mobileNumber})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status Filter */}
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="font-bold text-gray-500">Status:</span>
+                <select
+                  value={runnerSettlementStatusFilter}
+                  onChange={(e) => setRunnerSettlementStatusFilter(e.target.value)}
+                  className="border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold text-gray-700 focus:border-blue-600 focus:outline-none bg-white"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="PENDING">Pending Approval</option>
+                  <option value="APPROVED">Approved</option>
+                  <option value="DISTRIBUTED">Distributed / Settled</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto border border-gray-100 rounded-xl">
+              <table className="w-full text-left text-xs text-gray-600">
+                <thead className="bg-gray-50 text-gray-700 font-extrabold border-b border-gray-200 uppercase text-[10px]">
+                  <tr>
+                    <th className="py-3 px-3">Withdrawal #</th>
+                    <th className="py-3 px-3">Delivery Partner</th>
+                    <th className="py-3 px-3">Requested Amount</th>
+                    <th className="py-3 px-3">Payout Destination</th>
+                    <th className="py-3 px-3">Status</th>
+                    <th className="py-3 px-3">Bank Reference / UTR</th>
+                    <th className="py-3 px-3">Requested At</th>
+                    <th className="py-3 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {deliverySettlements.length > 0 ? (
+                    deliverySettlements.map((w) => {
+                      let dest = 'UPI / Bank';
+                      try {
+                        if (w.accountDetails) {
+                          const parsed = JSON.parse(w.accountDetails);
+                          dest = parsed.accountType === 'UPI'
+                            ? `UPI: ${parsed.upiId}`
+                            : `${parsed.bankName || 'Bank'} (${parsed.accountNumber || ''})`;
+                        }
+                      } catch {}
+
+                      return (
+                        <tr key={w.id} className="hover:bg-gray-50/80 transition-colors">
+                          <td className="py-3 px-3 font-mono font-bold text-gray-900">
+                            {w.withdrawalNumber}
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="font-bold text-gray-900">
+                              {w.deliveryBoy?.fullName || 'Delivery Partner'}
+                            </div>
+                            <div className="text-[10px] text-gray-400">
+                              {w.deliveryBoy?.mobileNumber || 'N/A'} • Wallet: ₹{Number(w.deliveryBoy?.walletBalance || 0).toFixed(2)}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 font-black text-gray-900 text-sm font-mono">
+                            ₹{Number(w.amount).toFixed(2)}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="font-mono text-xs bg-gray-50 border border-gray-200 px-2 py-1 rounded-md inline-block font-medium text-gray-800">
+                              {dest}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                w.status === 'DISTRIBUTED'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                  : w.status === 'APPROVED'
+                                  ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                  : w.status === 'REJECTED'
+                                  ? 'bg-red-100 text-red-800 border border-red-200'
+                                  : 'bg-amber-100 text-amber-800 border border-amber-200'
+                              }`}
+                            >
+                              {w.status === 'DISTRIBUTED'
+                                ? '✓ Distributed'
+                                : w.status === 'APPROVED'
+                                ? 'Approved'
+                                : w.status === 'REJECTED'
+                                ? 'Rejected'
+                                : 'Pending Approval'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-mono">
+                            {w.utrReference ? (
+                              <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[11px]">
+                                {w.utrReference}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 italic text-[11px]">Pending UTR</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-gray-500 text-[11px]">
+                            {new Date(w.requestedAt).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {w.status === 'PENDING' && (
+                                <>
+                                  <button
+                                    onClick={() => handleApproveRunnerSettlement(w)}
+                                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedDisburseRunnerWithdrawal(w);
+                                      setRunnerUtrReference(`UTR-${Date.now().toString().slice(-8)}`);
+                                    }}
+                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                                  >
+                                    Settle
+                                  </button>
+                                  <button
+                                    onClick={() => handleRejectRunnerSettlement(w)}
+                                    className="px-2 py-1 bg-gray-100 hover:bg-red-50 hover:text-red-700 text-gray-600 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              )}
+
+                              {w.status === 'APPROVED' && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedDisburseRunnerWithdrawal(w);
+                                    setRunnerUtrReference(`UTR-${Date.now().toString().slice(-8)}`);
+                                  }}
+                                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
+                                >
+                                  Disburse / Settle
+                                </button>
+                              )}
+
+                              {w.status === 'DISTRIBUTED' && (
+                                <span className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                  Settled
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={8} className="py-8 text-center text-gray-400">
+                        No delivery runner withdrawal records found matching active filters.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -1259,6 +1695,242 @@ export default function AdminPaymentsPage() {
                 className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
               >
                 {overriding ? 'Logging Override...' : 'Commit Status Override'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 5: DISBURSE RUNNER WITHDRAWAL / SETTLEMENT        */}
+      {/* ======================================================== */}
+      {selectedDisburseRunnerWithdrawal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2 text-emerald-600">
+                <Bike className="w-5 h-5" />
+                <h3 className="text-base font-bold text-gray-900">Settle Delivery Boy Payout</h3>
+              </div>
+              <button
+                onClick={() => setSelectedDisburseRunnerWithdrawal(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 leading-relaxed">
+              <strong>Balance Deduction Policy:</strong> Confirming disbursement will mark status as{' '}
+              <strong>DISTRIBUTED</strong>, deduct <strong>₹{Number(selectedDisburseRunnerWithdrawal.amount).toFixed(2)}</strong> from the delivery runner&apos;s available wallet (reducing to ₹0 if all was withdrawn), and add to their <strong>Already Settled</strong> total.
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-gray-500">Withdrawal #:</span>
+                <strong className="font-mono text-gray-900">{selectedDisburseRunnerWithdrawal.withdrawalNumber}</strong>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-gray-500">Delivery Partner:</span>
+                <strong className="text-gray-900">{selectedDisburseRunnerWithdrawal.deliveryBoy?.fullName}</strong>
+              </div>
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-gray-500">Disbursement Amount:</span>
+                <strong className="text-emerald-700 text-sm font-black font-mono">
+                  ₹{Number(selectedDisburseRunnerWithdrawal.amount).toFixed(2)}
+                </strong>
+              </div>
+
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">
+                  Bank Reference Number / UTR *
+                </label>
+                <input
+                  type="text"
+                  value={runnerUtrReference}
+                  onChange={(e) => setRunnerUtrReference(e.target.value)}
+                  placeholder="e.g. UTR-98421039 or CMS-881923"
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-gray-900 focus:border-emerald-600 focus:outline-none"
+                  required
+                />
+                <p className="text-[10px] text-gray-400 mt-1">Transaction number from your banking / UPI portal</p>
+              </div>
+
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Disbursement Remarks / Notes:</label>
+                <input
+                  type="text"
+                  value={runnerDisburseNotes}
+                  onChange={(e) => setRunnerDisburseNotes(e.target.value)}
+                  placeholder="e.g. Cleared via Campus HDFC Corporate Netbanking"
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-800 focus:border-emerald-600 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t">
+              <button
+                onClick={() => setSelectedDisburseRunnerWithdrawal(null)}
+                className="px-4 py-2 border rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDisburseRunnerSettlement}
+                disabled={disbursingRunner}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {disbursingRunner ? 'Disbursing...' : 'Confirm Disbursement'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 6: GENERATE & DOWNLOAD SETTLEMENTS PDF STATEMENT    */}
+      {/* ======================================================== */}
+      {pdfDialogOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2 text-blue-600">
+                <FileText className="w-5 h-5" />
+                <h3 className="text-base font-bold text-gray-900">Generate Delivery Settlement PDF</h3>
+              </div>
+              <button onClick={() => setPdfDialogOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Runner Scope */}
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Select Delivery Partner *</label>
+                <select
+                  value={pdfSelectedRunner}
+                  onChange={(e) => setPdfSelectedRunner(e.target.value)}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-800 focus:border-blue-600 focus:outline-none"
+                >
+                  <option value="ALL">All Delivery Boys (Fleet Wide Statement)</option>
+                  {deliveryBoysList.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.fullName} ({b.mobileNumber})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Time Horizon Filter */}
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Time Horizon *</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {(['ALL', 'MONTHLY', 'DAILY', 'CUSTOM'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setPdfFilterType(mode)}
+                      className={`py-2 px-2.5 rounded-xl font-bold text-xs border text-center transition ${
+                        pdfFilterType === mode
+                          ? 'border-blue-600 bg-blue-50 text-blue-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      {mode === 'ALL' ? 'All Time' : mode === 'MONTHLY' ? 'Monthly' : mode === 'DAILY' ? 'Daily' : 'Custom'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Monthly Selector */}
+              {pdfFilterType === 'MONTHLY' && (
+                <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Month</label>
+                    <select
+                      value={pdfMonth}
+                      onChange={(e) => setPdfMonth(Number(e.target.value))}
+                      className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-800 bg-white"
+                    >
+                      {[
+                        'January', 'February', 'March', 'April', 'May', 'June',
+                        'July', 'August', 'September', 'October', 'November', 'December'
+                      ].map((m, i) => (
+                        <option key={i + 1} value={i + 1}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">Year</label>
+                    <select
+                      value={pdfYear}
+                      onChange={(e) => setPdfYear(Number(e.target.value))}
+                      className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-800 bg-white"
+                    >
+                      {[2025, 2026, 2027].map((y) => (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Daily Selector */}
+              {pdfFilterType === 'DAILY' && (
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <label className="font-bold text-gray-700 block mb-1">Select Statement Date</label>
+                  <input
+                    type="date"
+                    value={pdfStartDate}
+                    onChange={(e) => setPdfStartDate(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-medium text-gray-800 bg-white"
+                  />
+                </div>
+              )}
+
+              {/* Custom Date Range */}
+              {pdfFilterType === 'CUSTOM' && (
+                <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">From Date</label>
+                    <input
+                      type="date"
+                      value={pdfStartDate}
+                      onChange={(e) => setPdfStartDate(e.target.value)}
+                      className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-medium text-gray-800 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-gray-700 block mb-1">To Date</label>
+                    <input
+                      type="date"
+                      value={pdfEndDate}
+                      onChange={(e) => setPdfEndDate(e.target.value)}
+                      className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-medium text-gray-800 bg-white"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t">
+              <button
+                onClick={() => setPdfDialogOpen(false)}
+                className="px-4 py-2 border rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDownloadDeliverySettlementsPdf}
+                disabled={pdfGenerating}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>{pdfGenerating ? 'Generating PDF...' : 'Download Statement PDF'}</span>
               </button>
             </div>
           </div>

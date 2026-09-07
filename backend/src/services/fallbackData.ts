@@ -810,6 +810,7 @@ export const fallbackUsers = [
       perDeliveryRate: 10.00,
       monthlySalary: 0.00,
       walletBalance: 1250.00,
+      totalSettled: 500.00,
       createdAt: new Date('2026-01-15'),
       updatedAt: new Date()
     }
@@ -840,6 +841,7 @@ export const fallbackUsers = [
       perDeliveryRate: 0.00,
       monthlySalary: 15000.00,
       walletBalance: 0.00,
+      totalSettled: 0.00,
       createdAt: new Date('2026-01-15'),
       updatedAt: new Date()
     }
@@ -2871,4 +2873,79 @@ export const fallbackDeliveryBoyEarnings: any[] = [
     createdAt: new Date(Date.now() - 3600 * 1000 * 2)
   }
 ];
+
+export const fallbackDeliveryBoyPayoutAccounts: any[] = [
+  {
+    id: 'payout_acc_1',
+    deliveryBoyId: 'db_boy_1',
+    accountType: 'UPI',
+    accountHolderName: 'Bikash Mondal (Lead Runner)',
+    bankName: null,
+    accountNumber: null,
+    ifscCode: null,
+    upiId: 'bikash.runner@okhdfcbank',
+    createdAt: new Date(Date.now() - 3600 * 1000 * 24 * 7),
+    updatedAt: new Date(Date.now() - 3600 * 1000 * 24 * 7)
+  },
+  {
+    id: 'payout_acc_2',
+    deliveryBoyId: 'db_boy_2',
+    accountType: 'BANK_TRANSFER',
+    accountHolderName: 'Rajesh Kumar (Express Runner)',
+    bankName: 'State Bank of India (NIT Campus Branch)',
+    accountNumber: '30492819203',
+    ifscCode: 'SBIN0002108',
+    upiId: null,
+    createdAt: new Date(Date.now() - 3600 * 1000 * 24 * 14),
+    updatedAt: new Date(Date.now() - 3600 * 1000 * 24 * 14)
+  }
+];
+
+export const fallbackDeliveryBoyWithdrawals: any[] = [
+  {
+    id: 'wdr_sample_1',
+    withdrawalNumber: 'WDR-2026-0001',
+    deliveryBoyId: 'db_boy_1',
+    amount: 500.00,
+    status: 'DISTRIBUTED',
+    payoutMethod: 'UPI',
+    accountDetails: JSON.stringify({
+      accountType: 'UPI',
+      accountHolderName: 'Bikash Mondal (Lead Runner)',
+      upiId: 'bikash.runner@okhdfcbank'
+    }),
+    adminNotes: 'Weekly earnings disbursement approved by Campus Admin',
+    processedBy: 'Sourav Senapati',
+    utrReference: 'UPI/20260901/984729103948',
+    requestedAt: new Date(Date.now() - 3600 * 1000 * 24 * 5),
+    approvedAt: new Date(Date.now() - 3600 * 1000 * 24 * 4),
+    distributedAt: new Date(Date.now() - 3600 * 1000 * 24 * 4),
+    rejectedAt: null,
+    createdAt: new Date(Date.now() - 3600 * 1000 * 24 * 5),
+    updatedAt: new Date(Date.now() - 3600 * 1000 * 24 * 4)
+  },
+  {
+    id: 'wdr_sample_2',
+    withdrawalNumber: 'WDR-2026-0002',
+    deliveryBoyId: 'db_boy_1',
+    amount: 250.00,
+    status: 'PENDING',
+    payoutMethod: 'UPI',
+    accountDetails: JSON.stringify({
+      accountType: 'UPI',
+      accountHolderName: 'Bikash Mondal (Lead Runner)',
+      upiId: 'bikash.runner@okhdfcbank'
+    }),
+    adminNotes: null,
+    processedBy: null,
+    utrReference: null,
+    requestedAt: new Date(Date.now() - 3600 * 1000 * 6),
+    approvedAt: null,
+    distributedAt: null,
+    rejectedAt: null,
+    createdAt: new Date(Date.now() - 3600 * 1000 * 6),
+    updatedAt: new Date(Date.now() - 3600 * 1000 * 6)
+  }
+];
+
 

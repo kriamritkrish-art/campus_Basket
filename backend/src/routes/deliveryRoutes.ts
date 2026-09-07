@@ -10,6 +10,11 @@ router.use(rbacGuard(['ADMIN', 'DELIVERY_BOY']));
 
 router.get('/dashboard', DeliveryController.getDashboard);
 router.get('/earnings', DeliveryController.getEarnings);
+router.get('/earnings/pdf', DeliveryController.downloadRunnerStatementPdf);
+router.get('/payout-account', DeliveryController.getPayoutAccount);
+router.post('/payout-account', DeliveryController.savePayoutAccount);
+router.get('/withdrawals', DeliveryController.getWithdrawals);
+router.post('/withdrawals', DeliveryController.requestWithdrawal);
 router.get('/available', DeliveryController.getAvailableOrders);
 router.get('/orders', DeliveryController.getAssignedOrders);
 router.get('/history', DeliveryController.getDeliveryHistory);

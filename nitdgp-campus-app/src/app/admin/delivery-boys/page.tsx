@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { apiRequest } from '../../../lib/api';
 import {
   Truck,
+  Banknote,
   Phone,
   Mail,
   Plus,
@@ -355,13 +357,23 @@ export default function AdminDeliveryBoysPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => setCreateModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Delivery Boy</span>
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <Link
+            href="/admin/payments"
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold rounded-xl transition-all shadow-xs"
+          >
+            <Banknote className="w-4 h-4 text-emerald-600" />
+            <span>Runner Settlements &amp; PDF</span>
+          </Link>
+
+          <button
+            onClick={() => setCreateModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all active:scale-95 cursor-pointer shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Delivery Boy</span>
+          </button>
+        </div>
       </div>
 
       {/* Top 4 KPI Cards */}

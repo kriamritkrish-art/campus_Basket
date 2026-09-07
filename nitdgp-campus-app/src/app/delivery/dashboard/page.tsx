@@ -1,10 +1,12 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useDelivery } from '@/context/DeliveryContext';
 import { useAuth } from '@/context/AuthContext';
 import OrderCard from '@/components/delivery/OrderCard';
+import PayoutAccountModal from '@/components/delivery/PayoutAccountModal';
+import WithdrawalModal from '@/components/delivery/WithdrawalModal';
 import {
   Package,
   CheckCircle2,
@@ -18,6 +20,12 @@ import {
   ChevronRight,
   Sparkles,
   Briefcase,
+  Wallet,
+  Landmark,
+  Smartphone,
+  ShieldCheck,
+  AlertCircle,
+  FileText
 } from 'lucide-react';
 
 export default function DeliveryDashboardPage() {
@@ -32,7 +40,17 @@ export default function DeliveryDashboardPage() {
     acceptAvailableOrder,
     todayStats,
     deliveryHistory,
+    payoutAccount,
+    withdrawals,
+    downloadStatementPdf,
   } = useDelivery();
+
+  const [showPayoutModal, setShowPayoutModal] = useState(false);
+  const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
+
+  const availableBalance = todayStats.walletBalance || 0;
+  const totalSettled = todayStats.totalSettled || 0;
+  const pendingAmount = todayStats.pendingWithdrawals || 0;
 
   return (
     <div className="space-y-6">
@@ -71,6 +89,205 @@ export default function DeliveryDashboardPage() {
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           )}
+        </div>
+      </div>
+
+      {/* ==================================================
+          PROVISIONAL FINANCIAL DASHBOARD: WALLET & SETTLEMENTS
+         ================================================== */}
+      <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-950 rounded-2xl p-6 text-white shadow-lg border border-indigo-900/50 relative overflow-hidden">
+        {/* Background glow effects */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 space-y-6">
+          {/* Header Row: Title & Action CTAs */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  PROVISIONAL DASHBOARD
+                </span>
+                <span className="text-xs text-blue-200 font-medium">Real-Time Runner Treasury</span>
+              </div>
+              <h3 className="text-xl font-black tracking-tight mt-1">
+                Runner Wallet & Settlement Hub
+              </h3>
+            </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <button
+                onClick={() => setShowPayoutModal(true)}
+                className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-xs font-bold text-white transition flex items-center gap-1.5 shadow-sm"
+              >
+                {payoutAccount?.accountType === 'UPI' ? (
+                  <Smartphone className="w-3.5 h-3.5 text-blue-300" />
+                ) : (
+                  <Landmark className="w-3.5 h-3.5 text-blue-300" />
+                )}
+                <span>{payoutAccount ? 'Edit Payout Account' : 'Link Bank / UPI'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowWithdrawalModal(true)}
+                className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-500/25"
+              >
+                <Wallet className="w-3.5 h-3.5" />
+                <span>Withdraw Money</span>
+              </button>
+
+              <button
+                onClick={downloadStatementPdf}
+                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                title="Download PDF Statement"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>PDF Statement</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 3 Core Provisional Metric Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* 1. Available to Withdraw */}
+            <div className="p-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+                  Available Balance
+                </span>
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <IndianRupee className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-3xl font-black tracking-tight text-white mt-2 font-mono">
+                ₹{availableBalance.toFixed(2)}
+              </div>
+              <p className="text-[11px] text-emerald-200/80 mt-1">
+                Ready for immediate withdrawal
+              </p>
+            </div>
+
+            {/* 2. Pending Withdrawals */}
+            <div className="p-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-300">
+                  Pending Withdrawals
+                </span>
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center">
+                  <Clock className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-3xl font-black tracking-tight text-amber-200 mt-2 font-mono">
+                ₹{pendingAmount.toFixed(2)}
+              </div>
+              <p className="text-[11px] text-amber-200/70 mt-1">
+                Awaiting Admin disbursement
+              </p>
+            </div>
+
+            {/* 3. Already Settled */}
+            <div className="p-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-300">
+                  Already Settled
+                </span>
+                <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-300 flex items-center justify-center">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-3xl font-black tracking-tight text-blue-200 mt-2 font-mono">
+                ₹{totalSettled.toFixed(2)}
+              </div>
+              <p className="text-[11px] text-blue-200/70 mt-1">
+                Transferred to your bank / UPI
+              </p>
+            </div>
+          </div>
+
+          {/* Account & Recent Disbursal Status Row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1 text-xs">
+            {/* Left: Linked Account Status */}
+            <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-blue-600/30 text-blue-300 flex items-center justify-center">
+                  {payoutAccount?.accountType === 'UPI' ? (
+                    <Smartphone className="w-5 h-5" />
+                  ) : (
+                    <Landmark className="w-5 h-5" />
+                  )}
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase font-bold text-gray-400">Linked Payout Destination</div>
+                  <div className="text-sm font-bold text-white">
+                    {payoutAccount ? (
+                      payoutAccount.accountType === 'UPI' ? (
+                        <span>UPI: <span className="font-mono text-emerald-300">{payoutAccount.upiId}</span></span>
+                      ) : (
+                        <span>{payoutAccount.bankName} ••••{payoutAccount.accountNumber?.slice(-4)}</span>
+                      )
+                    ) : (
+                      <span className="text-amber-300 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        No account linked yet
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPayoutModal(true)}
+                className="text-xs font-bold text-blue-300 hover:text-white underline ml-2"
+              >
+                {payoutAccount ? 'Manage' : 'Link Now'}
+              </button>
+            </div>
+
+            {/* Right: Latest Withdrawal Request Status */}
+            <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
+              <div>
+                <div className="text-[10px] uppercase font-bold text-gray-400">Latest Disbursal Status</div>
+                {withdrawals && withdrawals.length > 0 ? (
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="font-mono font-bold text-white">
+                      ₹{Number(withdrawals[0].amount).toFixed(2)}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                        withdrawals[0].status === 'DISTRIBUTED'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : withdrawals[0].status === 'APPROVED'
+                          ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                          : withdrawals[0].status === 'REJECTED'
+                          ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      }`}
+                    >
+                      {withdrawals[0].status === 'DISTRIBUTED'
+                        ? '🟢 Distributed'
+                        : withdrawals[0].status === 'APPROVED'
+                        ? '🔵 Approved'
+                        : withdrawals[0].status === 'REJECTED'
+                        ? '🔴 Rejected'
+                        : '🟡 Pending'}
+                    </span>
+                    {withdrawals[0].utrReference && (
+                      <span className="text-[10px] text-gray-300 font-mono">
+                        UTR: {withdrawals[0].utrReference}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-gray-400 text-xs mt-0.5">No withdrawal requests filed yet</div>
+                )}
+              </div>
+              <Link
+                href="/delivery/earnings"
+                className="text-xs font-bold text-blue-300 hover:text-white underline"
+              >
+                View Ledger
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -405,6 +622,19 @@ export default function DeliveryDashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Payout Account Modal */}
+      <PayoutAccountModal
+        isOpen={showPayoutModal}
+        onClose={() => setShowPayoutModal(false)}
+      />
+
+      {/* Withdrawal Request Modal */}
+      <WithdrawalModal
+        isOpen={showWithdrawalModal}
+        onClose={() => setShowWithdrawalModal(false)}
+        onOpenPayoutAccountModal={() => setShowPayoutModal(true)}
+      />
     </div>
   );
 }

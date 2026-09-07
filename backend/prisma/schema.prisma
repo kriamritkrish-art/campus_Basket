@@ -280,6 +280,7 @@ model DeliveryBoy {
   perDeliveryRate       Decimal             @default(10.00) @db.Decimal(10, 2)
   monthlySalary         Decimal             @default(0.00) @db.Decimal(10, 2)
   walletBalance         Decimal             @default(0.00) @db.Decimal(10, 2)
+  totalSettled          Decimal             @default(0.00) @db.Decimal(10, 2)
   plainPassword         String?
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
@@ -288,6 +289,8 @@ model DeliveryBoy {
   laundryOrders         LaundryOrder[]
   codCollections        CODCollection[]
   earnings              DeliveryBoyEarning[]
+  payoutAccount         DeliveryBoyPayoutAccount?
+  withdrawals           DeliveryBoyWithdrawal[]
 
   @@index([mobileNumber])
 }
@@ -1191,3 +1194,49 @@ model DeliveryBoyEarning {
   @@index([deliveryBoyId])
   @@index([createdAt])
 }
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  DISTRIBUTED
+  REJECTED
+}
+
+model DeliveryBoyPayoutAccount {
+  id                String      @id @default(cuid())
+  deliveryBoyId     String      @unique
+  deliveryBoy       DeliveryBoy @relation(fields: [deliveryBoyId], references: [id], onDelete: Cascade)
+  accountType       String      @default("UPI") // UPI or BANK_TRANSFER
+  accountHolderName String
+  bankName          String?
+  accountNumber     String?
+  ifscCode          String?
+  upiId             String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+}
+
+model DeliveryBoyWithdrawal {
+  id               String           @id @default(cuid())
+  withdrawalNumber String           @unique // e.g. WDR-2026-0001
+  deliveryBoyId    String
+  deliveryBoy      DeliveryBoy      @relation(fields: [deliveryBoyId], references: [id], onDelete: Cascade)
+  amount           Decimal          @db.Decimal(10, 2)
+  status           WithdrawalStatus @default(PENDING)
+  payoutMethod     String           @default("UPI") // UPI or BANK_TRANSFER
+  accountDetails   String?          @db.Text        // JSON snapshot of bank/upi at request time
+  adminNotes       String?          @db.Text
+  processedBy      String?          // Admin Name / ID
+  utrReference     String?          // Bank UTR / IMPS / UPI reference code
+  requestedAt      DateTime         @default(now())
+  approvedAt       DateTime?
+  distributedAt    DateTime?
+  rejectedAt       DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([deliveryBoyId])
+  @@index([status])
+  @@index([createdAt])
+}
+
