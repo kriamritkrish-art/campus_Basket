@@ -9,7 +9,7 @@ export default function BookLaundryPage() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f1f8e9] text-[#2e7d32] text-xs font-bold border border-[#dcedc8]">
-            <span>NIT Durgapur Doorstep Laundry</span>
+            <span>Campus Basket Doorstep Laundry</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
             Schedule Doorstep Laundry Pickup

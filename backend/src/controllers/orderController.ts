@@ -5,6 +5,8 @@ import { generateOrderNumber } from '../utils/crypto';
 import { RazorpayService } from '../services/payment/RazorpayService';
 import { EmailService } from '../services/email/EmailService';
 import { ReceiptService } from '../services/receipt/ReceiptService';
+import { LedgerService } from '../services/financial/LedgerService';
+import { RefundService } from '../services/financial/RefundService';
 import { env } from '../config/environment';
 
 const razorpayService = new RazorpayService();
@@ -216,6 +218,21 @@ export class OrderController {
         }
       }
 
+      let serviceType: 'FOOD' | 'LAUNDRY' | 'FRESH_PRODUCE' | 'STATIONERY' = 'FOOD';
+      const catSlug = (products[0] as any)?.category?.slug?.toLowerCase() || '';
+      const catName = (products[0] as any)?.category?.name?.toLowerCase() || '';
+      if (catSlug.includes('fruit') || catName.includes('fruit') || catName.includes('produce')) {
+        serviceType = 'FRESH_PRODUCE';
+      } else if (catSlug.includes('station') || catName.includes('station') || catName.includes('essential')) {
+        serviceType = 'STATIONERY';
+      } else if (catSlug.includes('laund') || catName.includes('laund')) {
+        serviceType = 'LAUNDRY';
+      }
+
+      const commissionRate = 5.0;
+      const commissionAmount = Math.round(totalAmount * (commissionRate / 100) * 100) / 100;
+      const providerPayable = Math.round((totalAmount - commissionAmount) * 100) / 100;
+
       // Transactionally deduct stock, create order, order items, status history
       const createdOrder = await prisma.$transaction(async (tx) => {
         // Decrement stock
@@ -232,13 +249,19 @@ export class OrderController {
             studentId,
             providerId: targetProviderId,
             deliveryBoyId: assignedDeliveryBoyId,
+            serviceType,
             status: initialStatus,
             subtotal,
             deliveryFee,
             discountAmount,
             totalAmount,
             paymentMethod: data.paymentMethod,
-            paymentStatus: data.paymentMethod === 'CASH_ON_DELIVERY' ? 'PENDING' : 'PENDING',
+            paymentStatus: data.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD_PENDING' : 'PENDING',
+            refundStatus: 'NOT_APPLICABLE',
+            settlementStatus: 'PENDING',
+            commissionRate,
+            commissionAmount,
+            providerPayable,
             hallName: data.hallName,
             hallNumber: data.hallNumber || null,
             roomNumber: data.roomNumber,
@@ -275,6 +298,21 @@ export class OrderController {
           });
         }
 
+        // Create COD collection entry if cash on delivery
+        if (data.paymentMethod === 'CASH_ON_DELIVERY') {
+          await (tx as any).cODCollection.create({
+            data: {
+              orderId: newOrder.id,
+              deliveryBoyId: assignedDeliveryBoyId || null,
+              amountExpected: totalAmount,
+              amountCollected: 0,
+              difference: 0,
+              collectionStatus: 'PENDING',
+              reconciliationStatus: 'PENDING'
+            }
+          }).catch(() => {});
+        }
+
         // Clear student cart
         const cart = await tx.cart.findUnique({ where: { studentId } });
         if (cart) {
@@ -283,6 +321,18 @@ export class OrderController {
 
         return newOrder;
       });
+
+      // Record double-entry financial ledger entry
+      await LedgerService.recordOrderPayment({
+        id: createdOrder.id,
+        orderNumber: createdOrder.orderNumber,
+        totalAmount,
+        providerId: targetProviderId,
+        paymentMethod: data.paymentMethod,
+        commissionRate,
+        commissionAmount,
+        providerPayable
+      }).catch((err) => console.warn('[LedgerService] recordOrderPayment notice:', err));
 
       // If Razorpay, generate Razorpay order
       let razorpayOrderData = null;
@@ -513,15 +563,16 @@ export class OrderController {
   }
 
   /**
-   * Cancel an order (within allowed window)
+   * Cancel an order (service-adaptive rules & automatic refund sequence)
    */
   public static async cancelOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
+      const { reason } = req.body;
       const student = await resolveStudentProfile(req.user);
       const studentId = student?.id;
 
-      const order = await prisma.order.findUnique({
+      const order = await (prisma as any).order.findUnique({
         where: { id },
         include: { items: true }
       });
@@ -531,47 +582,124 @@ export class OrderController {
         return;
       }
 
-      if (order.studentId !== studentId) {
+      if (req.user?.role === 'STUDENT' && order.studentId !== studentId) {
         res.status(403).json({ success: false, message: 'Unauthorized' });
         return;
       }
 
-      if (['OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED'].includes(order.status)) {
+      // Check service-specific cancellation rules
+      const check = RefundService.checkCancellationEligibility(order);
+      if (!check.eligible) {
         res.status(400).json({
           success: false,
-          message: `Cannot cancel order in ${order.status.replace(/_/g, ' ')} status.`
+          message: check.reason || `Cannot cancel order in ${order.status.replace(/_/g, ' ')} status.`
         });
         return;
       }
 
-      // Cancel order & restore inventory
-      await prisma.$transaction(async (tx) => {
-        for (const item of order.items) {
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { stock: { increment: item.quantity } }
-          });
-        }
+      const callerRole: 'STUDENT' | 'PROVIDER' | 'ADMIN' =
+        req.user?.role === 'SERVICE_PROVIDER' ? 'PROVIDER' : (req.user?.role === 'ADMIN' ? 'ADMIN' : 'STUDENT');
 
-        await tx.order.update({
-          where: { id },
-          data: {
-            status: 'CANCELLED',
-            statusHistory: {
-              create: {
-                previousStatus: order.status,
-                newStatus: 'CANCELLED',
-                changedBy: 'STUDENT',
-                notes: 'Student cancelled order'
-              }
-            }
+      const updated = await RefundService.cancelOrder(
+        id,
+        req.user?.userId || studentId || 'unknown_user',
+        callerRole,
+        reason || 'Customer requested cancellation'
+      );
+
+      // Restore inventory
+      if (order.items && Array.isArray(order.items)) {
+        for (const item of order.items) {
+          if (item.productId) {
+            await (prisma as any).product.update({
+              where: { id: item.productId },
+              data: { stock: { increment: item.quantity } }
+            }).catch(() => {});
           }
-        });
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Order cancelled successfully. Refund initiated.',
+        order: updated
+      });
+    } catch (err: any) {
+      next(err);
+    }
+  }
+
+  /**
+   * Save student confidential refund account
+   */
+  public static async saveRefundAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const student = await resolveStudentProfile(req.user);
+      if (!student) {
+        res.status(403).json({ success: false, message: 'Student profile required' });
+        return;
+      }
+
+      const { accountType, accountHolderName, bankName, accountNumber, ifscCode, upiId } = req.body;
+      if (!accountType || !accountHolderName) {
+        res.status(400).json({ success: false, message: 'Account Type and Account Holder Name are required' });
+        return;
+      }
+
+      const account = await RefundService.saveRefundAccount(student.id, {
+        accountType,
+        accountHolderName,
+        bankName,
+        accountNumber,
+        ifscCode,
+        upiId
       });
 
       res.status(200).json({
         success: true,
-        message: 'Order cancelled successfully. Restored inventory.'
+        message: 'Refund destination account saved securely.',
+        data: {
+          id: account.id,
+          accountType: account.accountType,
+          accountHolderName: account.accountHolderName,
+          bankName: account.bankName,
+          accountNumberMasked: account.accountNumberMasked,
+          upiIdMasked: account.upiIdMasked,
+          isVerified: account.isVerified
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get student confidential refund account (Masked for privacy)
+   */
+  public static async getRefundAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const student = await resolveStudentProfile(req.user);
+      if (!student) {
+        res.status(403).json({ success: false, message: 'Student profile required' });
+        return;
+      }
+
+      const account = await (prisma as any).refundAccount.findFirst({
+        where: { studentId: student.id }
+      });
+
+      res.status(200).json({
+        success: true,
+        data: account ? {
+          id: account.id,
+          accountType: account.accountType,
+          accountHolderName: account.accountHolderName,
+          bankName: account.bankName,
+          accountNumberMasked: account.accountNumberMasked,
+          ifscCode: account.ifscCode,
+          upiIdMasked: account.upiIdMasked,
+          isVerified: account.isVerified
+        } : null
       });
     } catch (err) {
       next(err);

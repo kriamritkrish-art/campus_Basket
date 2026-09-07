@@ -175,7 +175,7 @@ async function main() {
       isActive: true,
       provider: {
         create: {
-          fullName: 'NIT Durgapur Campus Laundry Cell',
+          fullName: 'Campus Laundry Hub',
           mobileNumber: '9876543210',
           serviceCategory: 'Express Laundry',
           assignedZones: 'ALL',
@@ -529,8 +529,8 @@ async function main() {
     where: { code: 'NITFRESH' },
     update: {},
     create: {
-      code: 'NITFRESH',
-      description: 'Welcome offer for NIT Durgapur students - 20% off up to ₹50',
+      code: 'CAMPUSFRESH',
+      description: 'Welcome offer for campus students - 20% off up to ₹50',
       discountType: 'PERCENTAGE',
       discountValue: 20,
       minOrderAmount: 100,
@@ -557,14 +557,14 @@ async function main() {
   // 9. Admin Settings
   console.info('Configuring Admin Settings...');
   const settings = [
-    { key: 'APP_NAME', value: 'NIT Durgapur Campus Services' },
+    { key: 'APP_NAME', value: 'Campus Basket' },
     { key: 'APP_TAGLINE', value: 'Food, Fruits, Laundry & Essentials — Made for Campus Life' },
     { key: 'ENABLE_CASH_ON_DELIVERY', value: 'true' },
     { key: 'MAX_COD_AMOUNT', value: '1500' },
     { key: 'DELIVERY_FEE_FLAT', value: '15' },
     { key: 'FREE_DELIVERY_THRESHOLD', value: '250' },
     { key: 'MAINTENANCE_MODE', value: 'false' },
-    { key: 'SUPPORT_EMAIL', value: 'services@nitdgp.ac.in' },
+    { key: 'SUPPORT_EMAIL', value: 'support@campusbasket.in' },
     { key: 'SUPPORT_PHONE', value: '+91 343 275 4000' }
   ];
 
@@ -580,8 +580,8 @@ async function main() {
   console.info('Creating Campus Announcements...');
   await prisma.announcement.create({
     data: {
-      title: 'Welcome to NIT Durgapur Campus Marketplace',
-      message: 'Verified student services are now live across all 14 residence halls! Order meals, fresh fruits, express laundry, and academic essentials with direct room delivery.',
+      title: 'Welcome to Campus Basket Marketplace',
+      message: 'Verified student services are now live across all residence halls! Order meals, fresh fruits, express laundry, and academic essentials with direct room delivery.',
       targetService: 'ALL',
       targetZone: 'ALL',
       isActive: true

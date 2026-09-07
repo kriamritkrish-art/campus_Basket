@@ -491,12 +491,12 @@ export default function AdminSettingsPage() {
                         : 'bg-amber-50 text-amber-800 border-amber-200'
                     }`}
                   >
-                    {isGeofenceEnforced ? 'GEOFENCE ENFORCED (NIT Durgapur Perimeter)' : 'GEOFENCE BYPASSED (Universal Access Allowed)'}
+                    {isGeofenceEnforced ? 'GEOFENCE ENFORCED (Campus Perimeter)' : 'GEOFENCE BYPASSED (Universal Access Allowed)'}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500">
                   {isGeofenceEnforced
-                    ? 'Students must be physically located inside NIT Durgapur campus boundaries to place orders.'
+                    ? 'Students must be physically located inside verified campus boundaries to place orders.'
                     : 'Geofence is OFF. Students, testers, and alumni from any location or network can place orders.'}
                 </p>
               </div>

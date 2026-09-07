@@ -688,7 +688,7 @@ function LoginForm() {
               {/* Student Trust Badge */}
               <div className="flex items-center justify-center gap-1.5 mt-2.5 text-[11px] text-gray-500 font-medium">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Instant sign-in for verified NIT Durgapur students</span>
+                <span>Instant sign-in for verified campus students</span>
               </div>
             </div>
 
@@ -705,7 +705,7 @@ function LoginForm() {
         <div className="pt-3 border-t border-gray-100 text-center space-y-2 text-xs text-gray-500">
           {activeRole === 'STUDENT' ? (
             <div>
-              New NIT Durgapur student?{' '}
+              New student?{' '}
               <Link href="/register" className="text-[#689f38] font-bold hover:underline">
                 Create Student Account
               </Link>
@@ -734,7 +734,7 @@ function LoginForm() {
             <div className="text-center space-y-1.5">
               <h3 className="text-base font-bold text-gray-900">Google Authentication Status</h3>
               <p className="text-xs text-gray-600 leading-relaxed">
-                {googleInfoModalMessage || 'Google Sign-In is active for verified NIT Durgapur student accounts.'}
+                {googleInfoModalMessage || 'Google Sign-In is active for verified student accounts.'}
               </p>
             </div>
 
@@ -743,7 +743,7 @@ function LoginForm() {
                 <span>💡 Note for Google Authentication:</span>
               </p>
               <p className="text-[11px] text-amber-800 leading-normal">
-                Please ensure your Google account is registered with your NIT Durgapur credentials or use your student email and password to log in.
+                Please ensure your Google account is registered with your verified campus credentials or use your student email and password to log in.
               </p>
             </div>
 

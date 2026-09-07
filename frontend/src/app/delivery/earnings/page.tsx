@@ -152,7 +152,7 @@ export default function DeliveryEarningsPage() {
               Earnings Overview
             </h3>
             <p className="text-xs text-gray-500">
-              Daily revenue breakdown for current week (NIT Durgapur Campus Shift)
+              Daily revenue breakdown for current week (Campus Operations Shift)
             </p>
           </div>
 

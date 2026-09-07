@@ -101,7 +101,7 @@ export function Navbar() {
                   <span className="text-[#4F9D2F]">basket</span>
                 </div>
                 <div className="hidden sm:block text-[9px] sm:text-[10px] font-semibold tracking-wide text-[#667085] uppercase mt-0.5">
-                  A NIT Durgapur Campus Marketplace
+                  Campus Marketplace & Services
                 </div>
               </div>
             </Link>
@@ -366,7 +366,7 @@ export function Navbar() {
               {/* Verified Campus Hub Status */}
               <div className="flex items-center gap-2 text-[11px] text-gray-500 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#4F9D2F]" />
-                <span>NIT Durgapur Verified Campus Hub</span>
+                <span>Verified Campus Marketplace Hub</span>
               </div>
             </div>
           </div>

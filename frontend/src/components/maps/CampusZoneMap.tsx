@@ -20,7 +20,7 @@ interface CampusZoneMapProps {
 export function CampusZoneMap({ zones, isAdmin = false, onUpdateZone }: CampusZoneMapProps) {
   const [selectedZone, setSelectedZone] = useState<Zone | null>(zones[0] || null);
 
-  // Approximate coordinate bounding box for NIT Durgapur
+  // Approximate coordinate bounding box for Campus Perimeter
   const minLat = 23.5400;
   const maxLat = 23.5560;
   const minLng = 87.2840;
@@ -36,7 +36,7 @@ export function CampusZoneMap({ zones, isAdmin = false, onUpdateZone }: CampusZo
         <div>
           <div className="flex items-center gap-2">
             <Layers className="w-5 h-5 text-sky-400" />
-            <h3 className="text-base font-bold text-white">NIT Durgapur Service Geofence Map</h3>
+            <h3 className="text-base font-bold text-white">Campus Basket Service Geofence Map</h3>
           </div>
           <p className="text-xs text-slate-400 mt-1">
             Real-time visual map of verified delivery perimeters across academic and hostel complexes.
@@ -141,7 +141,7 @@ export function CampusZoneMap({ zones, isAdmin = false, onUpdateZone }: CampusZo
         </svg>
 
         <div className="absolute bottom-3 right-3 bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-800 text-[11px] text-slate-400">
-          Center: 23.5484° N, 87.2931° E &bull; NIT Durgapur WGS84
+          Center: 23.5484° N, 87.2931° E &bull; Campus Geofence WGS84
         </div>
       </div>
 

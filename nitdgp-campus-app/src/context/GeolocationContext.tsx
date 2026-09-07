@@ -25,8 +25,8 @@ const GeolocationContext = createContext<GeolocationContextType>({
   requestLocation: async () => {},
 });
 
-// NIT Durgapur Campus Center & Max Perimeter Check
-const NIT_CAMPUS_CENTER = { lat: 23.5484, lng: 87.2931 };
+// Campus Center & Max Perimeter Check
+const CAMPUS_PERIMETER_CENTER = { lat: 23.5484, lng: 87.2931 };
 const MAX_CAMPUS_RADIUS_KM = 3.0; // Covers all academic blocks and halls 1 to 14
 
 function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -82,13 +82,13 @@ export function GeolocationProvider({ children }: { children: React.ReactNode })
           lng: pos.coords.longitude,
         };
         setCoords(studentCoords);
-        localStorage.setItem('nit_student_coords', JSON.stringify(studentCoords));
+        localStorage.setItem('campus_student_coords', JSON.stringify(studentCoords));
 
         const dist = getDistanceKm(
           studentCoords.lat,
           studentCoords.lng,
-          NIT_CAMPUS_CENTER.lat,
-          NIT_CAMPUS_CENTER.lng
+          CAMPUS_PERIMETER_CENTER.lat,
+          CAMPUS_PERIMETER_CENTER.lng
         );
 
         const inside = dist <= MAX_CAMPUS_RADIUS_KM;

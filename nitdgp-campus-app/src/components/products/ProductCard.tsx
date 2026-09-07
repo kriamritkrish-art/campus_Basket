@@ -6,7 +6,6 @@ import { CartItem, Product } from '../../types';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../lib/api';
-import { getOptimizedImageUrl, getGoogleDriveFallbackUrl } from '../../lib/imageUtils';
 import { Plus, Minus, Heart, Zap, Star } from 'lucide-react';
 
 interface ProductCardProps {
@@ -83,16 +82,10 @@ export function ProductCard({ product }: ProductCardProps) {
     }
   };
 
-  const initialImage = getOptimizedImageUrl(
-    product.primaryImage || product.images?.[0]?.googleDriveUrl
-  );
-  const [imgSrc, setImgSrc] = useState(initialImage);
-
-  useEffect(() => {
-    setImgSrc(
-      getOptimizedImageUrl(product.primaryImage || product.images?.[0]?.googleDriveUrl)
-    );
-  }, [product.primaryImage, product.images]);
+  const displayImage =
+    product.primaryImage ||
+    product.images?.[0]?.googleDriveUrl ||
+    'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=600';
 
   const origPrice = product.originalPrice ?? product.price;
   const sellPrice = product.sellingPrice ?? product.discountPrice ?? product.price;
@@ -150,18 +143,8 @@ export function ProductCard({ product }: ProductCardProps) {
       <Link href={`/products/${product.slug}`} className="block">
         <div className="h-28 sm:h-32 w-full bg-[#F7F8F6] rounded-xl overflow-hidden flex items-center justify-center p-2 relative">
           <img
-            src={imgSrc}
+            src={displayImage}
             alt={product.name}
-            referrerPolicy="no-referrer"
-            crossOrigin="anonymous"
-            onError={() => {
-              const fallback = getGoogleDriveFallbackUrl(imgSrc);
-              if (fallback && fallback !== imgSrc) {
-                setImgSrc(fallback);
-              } else {
-                setImgSrc('https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=600');
-              }
-            }}
             className={`max-h-full max-w-full object-contain ${isOutOfStock ? 'grayscale-50' : 'group-hover:scale-104'} transition-transform duration-200`}
             loading="lazy"
           />

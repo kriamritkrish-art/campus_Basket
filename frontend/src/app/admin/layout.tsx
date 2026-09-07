@@ -218,7 +218,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 Campus Basket
               </div>
               <div className="text-[10px] text-[#4F9D32] font-bold tracking-wider uppercase mt-1">
-                NIT Durgapur Ops &amp; BI
+                Central Campus Ops &amp; BI
               </div>
             </div>
           </Link>

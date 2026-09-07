@@ -1,26 +1,25 @@
 import { z } from 'zod';
 
-export const NIT_EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@nitdgp\.ac\.in$/i;
+export const NIT_EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/i;
 
 /**
- * Validates strictly that the provided email belongs to the NIT Durgapur domain (@nitdgp.ac.in).
+ * Validates that the provided email is a valid student/campus email.
  */
 export function isValidNitEmail(email: string): boolean {
   if (!email || typeof email !== 'string') return false;
   const clean = email.trim().toLowerCase();
-  if (clean === 'souravsenapati055@gmail.com' || clean === 'souravsenapati408@gmail.com') return true;
-  return NIT_EMAIL_REGEX.test(clean);
+  return /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(clean);
 }
 
 /**
- * Stage 1: Send OTP to official College Email (@nitdgp.ac.in)
+ * Stage 1: Send OTP to Student / Campus Email
  */
 export const sendCollegeOtpSchema = z.object({
   collegeEmail: z
     .string()
     .email('Please enter a valid email address')
     .refine((val) => isValidNitEmail(val), {
-      message: 'Only official NIT Durgapur college email addresses (@nitdgp.ac.in) are permitted.'
+      message: 'Please enter a valid email address.'
     })
 });
 
@@ -30,20 +29,20 @@ export const sendOtpSchema = z.object({
     .string()
     .email('Please enter a valid email address')
     .refine((val) => isValidNitEmail(val), {
-      message: 'Only official NIT Durgapur college email addresses (@nitdgp.ac.in) are permitted.'
+      message: 'Please enter a valid email address.'
     }),
   password: z.string().optional()
 });
 
 /**
- * Stage 2: Verify College Email OTP
+ * Stage 2: Verify Campus Email OTP
  */
 export const verifyCollegeOtpSchema = z.object({
   collegeEmail: z
     .string()
     .email('Please enter a valid email address')
     .refine((val) => isValidNitEmail(val), {
-      message: 'Only official NIT Durgapur college email addresses (@nitdgp.ac.in) are permitted.'
+      message: 'Please enter a valid email address.'
     }),
   otp: z
     .string()
@@ -68,9 +67,6 @@ export const sendPersonalOtpSchema = z.object({
   personalEmail: z
     .string()
     .email('Please enter a valid personal email address')
-    .refine((val) => !val.trim().toLowerCase().endsWith('@nitdgp.ac.in'), {
-      message: 'Personal email cannot be your official @nitdgp.ac.in college email.'
-    })
 });
 
 /**
@@ -92,7 +88,7 @@ export const completeRegistrationSchema = z.object({
     .string()
     .email()
     .refine((val) => isValidNitEmail(val), {
-      message: 'Only official NIT Durgapur college email addresses (@nitdgp.ac.in) are permitted.'
+      message: 'Please enter a valid email address.'
     }),
   personalEmail: z.string().email('Please enter a valid personal email address'),
   fullName: z.string().min(2, 'Full name must be at least 2 characters').max(100),

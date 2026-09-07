@@ -720,7 +720,7 @@ export const fallbackUsers = [
     provider: {
       id: 'prov_laundry',
       userId: 'user_prov_laundry',
-      fullName: 'NIT Durgapur Campus Laundry Cell',
+      fullName: 'Campus Laundry Cell',
       mobileNumber: '9876543210',
       serviceCategory: 'Express Laundry',
       assignedZones: 'ALL',
@@ -2129,13 +2129,13 @@ export const fallbackAuditLogs = [
 ];
 
 export const fallbackSettings = [
-  { id: 'set_1', key: 'APP_NAME', value: 'NIT Durgapur Campus Services', description: 'Institutional portal title' },
+  { id: 'set_1', key: 'APP_NAME', value: 'Campus Basket', description: 'Campus marketplace title' },
   { id: 'set_2', key: 'ENABLE_CASH_ON_DELIVERY', value: 'true', description: 'Allow COD for hostel room drop' },
   { id: 'set_3', key: 'MAX_COD_AMOUNT', value: '1500', description: 'Maximum INR ceiling for Cash on Delivery' },
   { id: 'set_4', key: 'DELIVERY_FEE_FLAT', value: '15', description: 'Flat room delivery fee' },
   { id: 'set_5', key: 'FREE_DELIVERY_THRESHOLD', value: '250', description: 'Cart threshold for free delivery' },
   { id: 'set_6', key: 'MAINTENANCE_MODE', value: 'false', description: 'Emergency campus maintenance toggle' },
-  { id: 'set_7', key: 'SUPPORT_EMAIL', value: 'services@nitdgp.ac.in', description: 'Support email address' },
+  { id: 'set_7', key: 'SUPPORT_EMAIL', value: 'support@campusbasket.in', description: 'Support email address' },
   { id: 'set_8', key: 'SUPPORT_PHONE', value: '+91 343 275 4000', description: 'Direct campus helpline' },
   { id: 'set_9', key: 'HOURS_FOOD', value: JSON.stringify({ open: '08:00', close: '23:30', days: ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'], isOpen: true, notice: 'Normal operation' }), description: 'Food & Meals Operating Timings' },
   { id: 'set_10', key: 'HOURS_FRUITS', value: JSON.stringify({ open: '07:00', close: '21:00', days: ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'], isOpen: true, notice: 'Fresh morning & evening batches' }), description: 'Fresh Fruits Operating Timings' },
@@ -2175,3 +2175,439 @@ export const fallbackOtpStore: Array<{
   expiresAt: Date;
   createdAt: Date;
 }> = [];
+
+// ==========================================
+// UNIFIED PLATFORM FINANCIAL & SERVICE STORES
+// ==========================================
+
+export const fallbackLaundryProviderConfigs = [
+  {
+    id: 'lpc_1',
+    providerId: 'prov_laundry',
+    minWeightKg: 2.0,
+    turnaroundHours: 24,
+    allowsIroningOnly: true,
+    emergencyServiceActive: true,
+    pricingConfig: JSON.stringify({
+      washAndFold: 20,
+      washAndIron: 35,
+      steamIronOnly: 15,
+      dryCleanSuit: 180,
+      dryCleanJacket: 120,
+      blanketHeavy: 150
+    }),
+    createdAt: new Date('2026-01-10'),
+    updatedAt: new Date()
+  }
+];
+
+export const fallbackProviderSettlementAccounts = [
+  {
+    id: 'psa_canteen',
+    providerId: 'prov_canteen',
+    accountType: 'BANK_ACCOUNT',
+    beneficiaryName: 'Campus Food Vendor Operations',
+    bankName: 'State Bank of India',
+    accountNumberMasked: 'XXXXXXXX7890',
+    accountNumberEncrypted: 'enc_acc_7890',
+    ifscCode: 'SBIN0001234',
+    upiIdMasked: 'can****@sbi',
+    upiIdEncrypted: 'enc_can_upi',
+    isVerified: true,
+    isPrimary: true,
+    createdAt: new Date('2026-01-15'),
+    updatedAt: new Date()
+  },
+  {
+    id: 'psa_laundry',
+    providerId: 'prov_laundry',
+    accountType: 'UPI',
+    beneficiaryName: 'Campus Laundry Services Cell',
+    bankName: 'Punjab National Bank',
+    accountNumberMasked: 'XXXXXXXX4521',
+    accountNumberEncrypted: 'enc_acc_4521',
+    ifscCode: 'PUNB0005678',
+    upiIdMasked: 'lnd****@pnb',
+    upiIdEncrypted: 'enc_lnd_upi',
+    isVerified: true,
+    isPrimary: true,
+    createdAt: new Date('2026-01-15'),
+    updatedAt: new Date()
+  },
+  {
+    id: 'psa_general',
+    providerId: 'prov_general',
+    accountType: 'BANK_ACCOUNT',
+    beneficiaryName: 'Stationery & Essentials Hub',
+    bankName: 'HDFC Bank',
+    accountNumberMasked: 'XXXXXXXX9912',
+    accountNumberEncrypted: 'enc_acc_9912',
+    ifscCode: 'HDFC0000456',
+    upiIdMasked: 'sta****@hdfc',
+    upiIdEncrypted: 'enc_sta_upi',
+    isVerified: true,
+    isPrimary: true,
+    createdAt: new Date('2026-01-15'),
+    updatedAt: new Date()
+  }
+];
+
+export const fallbackRefundAccounts = [
+  {
+    id: 'rfa_sourav',
+    studentId: 'stud_sourav',
+    accountType: 'UPI',
+    accountHolderName: 'Sourav Senapati',
+    bankName: 'State Bank of India',
+    accountNumberMasked: 'XXXXXXXX1234',
+    accountNumberEncrypted: 'enc_acc_1234',
+    ifscCode: 'SBIN0009999',
+    upiIdMasked: 'sou****@okaxis',
+    upiIdEncrypted: 'enc_sou_upi',
+    isVerified: true,
+    isPrimary: true,
+    createdAt: new Date('2026-01-20'),
+    updatedAt: new Date()
+  },
+  {
+    id: 'rfa_rohit',
+    studentId: 'stud_rohit',
+    accountType: 'BANK_ACCOUNT',
+    accountHolderName: 'Rohit Sharma',
+    bankName: 'Canara Bank',
+    accountNumberMasked: 'XXXXXXXX8831',
+    accountNumberEncrypted: 'enc_acc_8831',
+    ifscCode: 'CNRB0002345',
+    upiIdMasked: 'roh****@upi',
+    upiIdEncrypted: 'enc_roh_upi',
+    isVerified: true,
+    isPrimary: true,
+    createdAt: new Date('2026-02-01'),
+    updatedAt: new Date()
+  }
+];
+
+export const fallbackSettlements = [
+  {
+    id: 'stl_101',
+    settlementNumber: 'STL-202602-001',
+    providerId: 'prov_canteen',
+    periodStart: new Date('2026-02-01T00:00:00Z'),
+    periodEnd: new Date('2026-02-15T23:59:59Z'),
+    grossSales: 15420.00,
+    discountsTotal: 350.00,
+    refundsDeducted: 140.00,
+    commissionDeducted: 771.00, // 5%
+    netPayable: 14509.00,
+    status: 'SETTLED',
+    payoutReference: 'NEFT_SBI_892348123',
+    notes: 'Bi-weekly canteen settlement completed via SBI Corporate Portal.',
+    processedAt: new Date('2026-02-16T11:30:00Z'),
+    createdAt: new Date('2026-02-16T10:00:00Z'),
+    updatedAt: new Date('2026-02-16T11:30:00Z')
+  },
+  {
+    id: 'stl_102',
+    settlementNumber: 'STL-202602-002',
+    providerId: 'prov_laundry',
+    periodStart: new Date('2026-02-01T00:00:00Z'),
+    periodEnd: new Date('2026-02-15T23:59:59Z'),
+    grossSales: 6240.00,
+    discountsTotal: 0.00,
+    refundsDeducted: 0.00,
+    commissionDeducted: 312.00, // 5%
+    netPayable: 5928.00,
+    status: 'SETTLED',
+    payoutReference: 'UPI_PAYOUT_912839',
+    notes: 'First fortnight laundry settlement transferred.',
+    processedAt: new Date('2026-02-16T12:00:00Z'),
+    createdAt: new Date('2026-02-16T10:30:00Z'),
+    updatedAt: new Date('2026-02-16T12:00:00Z')
+  },
+  {
+    id: 'stl_103',
+    settlementNumber: 'STL-202603-001',
+    providerId: 'prov_canteen',
+    periodStart: new Date('2026-02-16T00:00:00Z'),
+    periodEnd: new Date('2026-02-28T23:59:59Z'),
+    grossSales: 18950.00,
+    discountsTotal: 400.00,
+    refundsDeducted: 265.00,
+    commissionDeducted: 947.50,
+    netPayable: 17737.50,
+    status: 'PENDING',
+    payoutReference: null,
+    notes: 'Awaiting admin batch disbursement approval.',
+    processedAt: null,
+    createdAt: new Date('2026-03-01T09:00:00Z'),
+    updatedAt: new Date('2026-03-01T09:00:00Z')
+  }
+];
+
+export const fallbackSettlementItems = [
+  {
+    id: 'si_101a',
+    settlementId: 'stl_101',
+    orderId: 'ord_101',
+    orderAmount: 265.00,
+    refundDeducted: 0.00,
+    commissionRate: 5.0,
+    commissionAmount: 13.25,
+    netPayable: 251.75
+  },
+  {
+    id: 'si_101b',
+    settlementId: 'stl_101',
+    orderId: 'ord_105',
+    orderAmount: 85.00,
+    refundDeducted: 0.00,
+    commissionRate: 5.0,
+    commissionAmount: 4.25,
+    netPayable: 80.75
+  }
+];
+
+export const fallbackCodCollections = [
+  {
+    id: 'cod_col_1',
+    orderId: 'ord_108',
+    deliveryBoyId: 'db_boy_1',
+    amountExpected: 180.00,
+    amountCollected: 180.00,
+    difference: 0.00,
+    collectionStatus: 'HANDED_OVER',
+    reconciliationStatus: 'RECONCILED',
+    reconciliationNotes: 'Verified and matched with cash vault deposit.',
+    collectedAt: pastDays(6, 11),
+    createdAt: pastDays(6, 12),
+    updatedAt: pastDays(6, 10)
+  },
+  {
+    id: 'cod_col_2',
+    orderId: 'ord_102',
+    deliveryBoyId: 'db_boy_2',
+    amountExpected: 1350.00,
+    amountCollected: 1350.00,
+    difference: 0.00,
+    collectionStatus: 'COLLECTED',
+    reconciliationStatus: 'PENDING',
+    reconciliationNotes: 'Cash collected by runner; physical handover scheduled for evening reconciliation.',
+    collectedAt: pastDays(1, 1),
+    createdAt: pastDays(1, 2),
+    updatedAt: pastDays(1, 1)
+  },
+  {
+    id: 'cod_col_3',
+    orderId: 'ord_110',
+    deliveryBoyId: 'db_boy_2',
+    amountExpected: 220.00,
+    amountCollected: 200.00,
+    difference: -20.00,
+    collectionStatus: 'COLLECTED',
+    reconciliationStatus: 'MISMATCH',
+    reconciliationNotes: 'Runner reported student provided short change by ₹20; student agreed to adjust in next order.',
+    collectedAt: pastDays(3, 2),
+    createdAt: pastDays(3, 4),
+    updatedAt: pastDays(3, 1)
+  }
+];
+
+export const fallbackFinancialLedger = [
+  {
+    id: 'fl_001',
+    orderId: 'ord_101',
+    settlementId: null,
+    entryType: 'ORDER_PAYMENT',
+    debitAccount: 'CAMPUS_ESCROW_RAZORPAY',
+    creditAccount: 'STUDENT_RECEIVABLES',
+    amount: 265.00,
+    currency: 'INR',
+    referenceId: 'PAY_ORD_101_RAZORPAY',
+    description: 'Online student checkout via Razorpay for Order NIT-ORD-9021',
+    metadata: JSON.stringify({ method: 'UPI', orderNumber: 'NIT-ORD-9021' }),
+    createdAt: pastDays(0, 2)
+  },
+  {
+    id: 'fl_002',
+    orderId: 'ord_101',
+    settlementId: null,
+    entryType: 'COMMISSION_EARNED',
+    debitAccount: 'CAMPUS_ESCROW_RAZORPAY',
+    creditAccount: 'PLATFORM_COMMISSION_REVENUE',
+    amount: 13.25,
+    currency: 'INR',
+    referenceId: 'COMM_ORD_101',
+    description: 'Platform 5.0% commission recognized on Order NIT-ORD-9021',
+    metadata: JSON.stringify({ rate: 5.0, baseAmount: 265.00 }),
+    createdAt: pastDays(0, 2)
+  },
+  {
+    id: 'fl_003',
+    orderId: 'ord_101',
+    settlementId: null,
+    entryType: 'PROVIDER_PAYABLE',
+    debitAccount: 'CAMPUS_ESCROW_RAZORPAY',
+    creditAccount: 'PROVIDER_PAYABLE_prov_canteen',
+    amount: 251.75,
+    currency: 'INR',
+    referenceId: 'PAYABLE_ORD_101',
+    description: 'Net payable allocated to Canteen Vendor for Order NIT-ORD-9021',
+    metadata: JSON.stringify({ providerId: 'prov_canteen', gross: 265.00, commission: 13.25 }),
+    createdAt: pastDays(0, 2)
+  },
+  {
+    id: 'fl_004',
+    orderId: 'ord_112',
+    settlementId: null,
+    entryType: 'REFUND_ISSUED',
+    debitAccount: 'STUDENT_REFUND_LIABILITY',
+    creditAccount: 'CAMPUS_ESCROW_RAZORPAY',
+    amount: 75.00,
+    currency: 'INR',
+    referenceId: 'REF_ORD_112_SOURAV',
+    description: 'Full refund credited for cancelled food order NIT-ORD-9032',
+    metadata: JSON.stringify({ studentId: 'stud_arun', reason: 'Student cancelled before kitchen preparation' }),
+    createdAt: pastDays(20, 8)
+  },
+  {
+    id: 'fl_005',
+    orderId: null,
+    settlementId: 'stl_101',
+    entryType: 'SETTLEMENT_PAYOUT',
+    debitAccount: 'PROVIDER_PAYABLE_prov_canteen',
+    creditAccount: 'CAMPUS_BANK_CURRENT_ACCOUNT',
+    amount: 14509.00,
+    currency: 'INR',
+    referenceId: 'NEFT_SBI_892348123',
+    description: 'Fortnightly provider settlement payout disbursed via NEFT',
+    metadata: JSON.stringify({ settlementNumber: 'STL-202602-001', provider: 'Campus Food & Cafeteria Vendor' }),
+    createdAt: new Date('2026-02-16T11:30:00Z')
+  },
+  {
+    id: 'fl_006',
+    orderId: 'ord_108',
+    settlementId: null,
+    entryType: 'COD_COLLECTION',
+    debitAccount: 'RUNNER_CASH_IN_HAND_db_boy_1',
+    creditAccount: 'STUDENT_RECEIVABLES_COD',
+    amount: 180.00,
+    currency: 'INR',
+    referenceId: 'COD_ORD_108',
+    description: 'Physical cash collected at Hall 5 gate for Order NIT-ORD-9028',
+    metadata: JSON.stringify({ runner: 'Bikash Mondal (Lead Runner)', orderNumber: 'NIT-ORD-9028' }),
+    createdAt: pastDays(6, 11)
+  }
+];
+
+export const fallbackAdminStatusOverrides = [
+  {
+    id: 'aso_1',
+    orderId: 'ord_112',
+    adminUserId: 'user_admin_sourav',
+    previousStatus: 'PENDING',
+    newStatus: 'REFUNDED',
+    statusType: 'REFUND',
+    reason: 'Student cancelled order within permitted 60-second window before canteen accepted.',
+    notes: 'Approved without penalty as per campus dining cancellation policy.',
+    createdAt: pastDays(20, 8)
+  }
+];
+
+export const fallbackCancellationRequests = [
+  {
+    id: 'cnl_1',
+    orderId: 'ord_112',
+    requestedByUserId: 'user_student_sourav',
+    role: 'STUDENT',
+    reason: 'Mistakenly ordered extra portion',
+    status: 'APPROVED',
+    adminNotes: 'Order was not yet preparing.',
+    reviewedByUserId: 'user_admin_sourav',
+    createdAt: pastDays(20, 9),
+    reviewedAt: pastDays(20, 8)
+  }
+];
+
+export const fallbackFoodOrderDetails = [
+  {
+    id: 'fod_101',
+    orderId: 'ord_101',
+    prepTimeMinutes: 20,
+    dietaryFlag: 'REGULAR',
+    kitchenNotes: 'Keep packaging sealed and deliver hot to room B-304',
+    spicinessLevel: 'MEDIUM',
+    acceptedAt: pastDays(0, 2),
+    prepStartedAt: pastDays(0, 2),
+    readyAt: pastDays(0, 1),
+    createdAt: pastDays(0, 2),
+    updatedAt: pastDays(0, 1)
+  },
+  {
+    id: 'fod_201',
+    orderId: 'ord_201',
+    prepTimeMinutes: 15,
+    dietaryFlag: 'HALAL',
+    kitchenNotes: 'Add extra green chutney with samosas',
+    spicinessLevel: 'MILD',
+    acceptedAt: pastDays(0, 1),
+    prepStartedAt: pastDays(0, 1),
+    readyAt: pastDays(0, 0),
+    createdAt: pastDays(0, 1),
+    updatedAt: pastDays(0, 0)
+  }
+];
+
+export const fallbackLaundryOrderDetails = [
+  {
+    id: 'lod_501',
+    orderId: 'ord_lnd_501',
+    serviceOption: 'WASH_STEAM_IRON',
+    clothesCount: 6,
+    weightKg: 2.5,
+    expressDelivery: true,
+    pickupOtp: '482910',
+    deliveryOtp: '739182',
+    pickupOtpVerified: true,
+    deliveryOtpVerified: false,
+    specialInstructions: 'White shirts - use gentle detergent and steam press collar',
+    washCyclesApplied: 'Gentle Warm 40C',
+    detergentPreference: 'Hypoallergenic Gentle',
+    ironingTemperature: 'Medium Cotton',
+    stainNotes: 'Light tea stain on blue polo - pretreated',
+    weighingProofUrl: null,
+    actualPickupTime: pastDays(1, 2),
+    actualDeliveryTime: null,
+    createdAt: pastDays(1, 4),
+    updatedAt: pastDays(1, 1)
+  }
+];
+
+export const fallbackProduceOrderDetails = [
+  {
+    id: 'pod_1',
+    orderId: 'ord_produce_1',
+    organicCertified: true,
+    harvestDate: pastDays(1),
+    storageTemperatureCelsius: 12.0,
+    freshnessGuaranteeHours: 48,
+    gradingTier: 'A_GRADE',
+    createdAt: pastDays(0, 5),
+    updatedAt: pastDays(0, 5)
+  }
+];
+
+export const fallbackStationeryOrderDetails = [
+  {
+    id: 'sod_104',
+    orderId: 'ord_104',
+    isExamEssential: true,
+    paperGsm: null,
+    bindingType: null,
+    printSpecJson: null,
+    brandCertification: 'Camlin / Faber-Castell Engineering Certified',
+    warrantyMonths: 6,
+    createdAt: pastDays(1, 3),
+    updatedAt: pastDays(1, 2)
+  }
+];
+

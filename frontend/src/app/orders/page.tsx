@@ -382,8 +382,8 @@ export default function AllOrdersPage() {
             order.items?.map((i) => i.productName).join(', ') || 'Cough Syrup, Antifungal Cream 20g, Insulin Pen';
           const deliveryAddressText =
             order.roomNumber || order.hallName
-              ? `${order.roomNumber ? `Room ${order.roomNumber}, ` : ''}${order.hallName || 'Hall 11'}, NIT Durgapur Campus`
-              : order.deliveryAddress || '45/A Park Street, Sector 5, Salt Lake, Kolkata, West Bengal';
+              ? `${order.roomNumber ? `Room ${order.roomNumber}, ` : ''}${order.hallName || 'Hostel Hall'}, Campus Central Residence`
+              : order.deliveryAddress || 'Campus Hostel Residence';
           const partnerName = order.deliveryBoy?.fullName || 'Ravi Kumar';
           const partnerId = order.deliveryBoy?.id
             ? order.deliveryBoy.id.startsWith('DEL')
@@ -682,7 +682,7 @@ export default function AllOrdersPage() {
                 </div>
                 <div>
                   <h3 className="text-base font-black text-gray-900">Official Campus Receipt</h3>
-                  <p className="text-[11px] text-gray-400">Order #{receiptModalOrder.orderNumber} • NIT Durgapur Delivery</p>
+                  <p className="text-[11px] text-gray-400">Order #{receiptModalOrder.orderNumber} • Campus Basket Delivery</p>
                 </div>
               </div>
               <button

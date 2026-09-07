@@ -136,7 +136,7 @@ export default function DeliverySettingsPage() {
                   }`}
                 >
                   <div className="font-bold text-gray-900">In-App Campus Blueprint</div>
-                  <div className="text-[11px] text-gray-500">NIT Durgapur hostel corridors & hall gates</div>
+                  <div className="text-[11px] text-gray-500">Campus hostel corridors & hall gates</div>
                 </button>
               </div>
             </div>
@@ -186,7 +186,7 @@ export default function DeliverySettingsPage() {
                 onChange={(e) => setLanguage(e.target.value as any)}
                 className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#4F9D2F]"
               >
-                <option value="EN">English (NIT Durgapur Standard)</option>
+                <option value="EN">English (Campus Standard)</option>
                 <option value="BN">বাংলা (Bengali)</option>
                 <option value="HI">हिन्दी (Hindi)</option>
               </select>

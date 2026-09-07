@@ -81,7 +81,7 @@ export default function AdminExpressLaundryPage() {
             </span>
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Hostel bag pickups, wash-dry-fold cycles, steam press &amp; verified room deliveries
+            Hostel bag pickups, wash-dry-fold cycles, steam press &amp; verified room deliveries (Default: Laundry vendor self-fulfillment without runner)
           </p>
         </div>
       </div>
@@ -126,7 +126,7 @@ export default function AdminExpressLaundryPage() {
         <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-bold text-[#17202A]">Active Laundry Operations Pipeline</h3>
-            <p className="text-xs text-slate-500">Dual-OTP status checks &amp; stage progress</p>
+            <p className="text-xs text-slate-500">Dual-OTP status checks, fulfillment stage &amp; optional runner assignment</p>
           </div>
           <button
             onClick={fetchLaundryData}
@@ -175,14 +175,14 @@ export default function AdminExpressLaundryPage() {
                     <td className="py-3.5 px-4 font-medium text-slate-700">
                       <div>{o.serviceType || 'Standard Wash & Fold'}</div>
                       <div className="text-[10px] text-slate-400 font-mono">
-                        {o.bagWeight ? `${o.bagWeight} kg` : `${o.itemCount || 8} items`} &bull; ₹{o.totalAmount}
+                        {o.bagWeight ? `${o.bagWeight} kg` : `${o.itemsCount || 1} items`} &bull; ₹{o.finalPrice || o.estimatedPrice}
                       </div>
                     </td>
 
                     <td className="py-3.5 px-4">
                       <div className="flex flex-col gap-1">
                         <OtpStatusBadge type="PICKUP" status={o.pickupOtpStatus || 'VERIFIED'} />
-                        <OtpStatusBadge type="DELIVERY" status={o.deliveryOtpStatus || (o.status === 'DELIVERED' ? 'VERIFIED' : 'PENDING')} />
+                        <OtpStatusBadge type="DELIVERY" status={o.deliveryOtpStatus || (o.status === 'COMPLETED' ? 'VERIFIED' : 'PENDING')} />
                       </div>
                     </td>
 
@@ -209,7 +209,7 @@ export default function AdminExpressLaundryPage() {
                     <td className="py-3.5 px-4">
                       <span
                         className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                          o.status === 'DELIVERED'
+                          o.status === 'COMPLETED' || o.status === 'DELIVERED'
                             ? 'bg-emerald-50 text-[#347A27] border-emerald-200'
                             : 'bg-amber-50 text-amber-800 border-amber-200'
                         }`}
@@ -224,12 +224,15 @@ export default function AdminExpressLaundryPage() {
                         onChange={(e) => handleUpdateStatus(o.id, e.target.value)}
                         className="bg-slate-50 border border-slate-200 text-slate-700 font-bold text-[11px] rounded-lg px-2 py-1 cursor-pointer focus:outline-none focus:border-[#4F9D32]"
                       >
-                        <option value="PICKUP_PENDING">Pickup Pending</option>
-                        <option value="PICKED_UP">Picked Up</option>
-                        <option value="IN_WASH">In Wash &amp; Dry</option>
+                        <option value="REQUESTED">Requested</option>
+                        <option value="ACCEPTED">Accepted</option>
+                        <option value="PICKUP_SCHEDULED">Pickup Scheduled</option>
+                        <option value="CLOTHES_COLLECTED">Clothes Collected</option>
+                        <option value="WASHING">Washing</option>
                         <option value="IRONING">Ironing</option>
-                        <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
-                        <option value="DELIVERED">Delivered</option>
+                        <option value="READY">Ready for Return</option>
+                        <option value="DELIVERY_SCHEDULED">Out for Delivery</option>
+                        <option value="COMPLETED">Completed</option>
                       </select>
                     </td>
                   </tr>

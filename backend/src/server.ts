@@ -82,7 +82,7 @@ app.use(cookieParser(env.SESSION_SECRET));
 app.get(['/health', '/api/health'], (req, res) => {
   res.status(200).json({
     status: 'ok',
-    service: 'NIT Durgapur Campus Services REST API',
+    service: 'Campus Basket Platform REST API',
     brevoConfigured: Boolean(env.BREVO_API_KEY),
     sender: env.BREVO_SENDER_EMAIL,
     timestamp: new Date().toISOString()
@@ -117,7 +117,7 @@ app.use(errorHandler);
 const PORT = env.PORT;
 app.listen(PORT, async () => {
   console.info(`================================================================`);
-  console.info(` NIT Durgapur Campus Services Platform REST API`);
+  console.info(` Campus Basket Platform REST API`);
   console.info(` Server running on http://localhost:${PORT}`);
   console.info(` Healthcheck available at http://localhost:${PORT}/health`);
   console.info(` Environment: ${env.NODE_ENV}`);

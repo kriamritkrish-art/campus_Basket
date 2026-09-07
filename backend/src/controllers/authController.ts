@@ -37,7 +37,7 @@ export class AuthController {
       if (!emailInput) {
         res.status(400).json({
           success: false,
-          message: 'Please enter your official NIT Durgapur email.'
+          message: 'Please enter your campus email address.'
         });
         return;
       }
@@ -45,7 +45,7 @@ export class AuthController {
       if (!isValidNitEmail(emailInput)) {
         res.status(400).json({
           success: false,
-          message: 'Only @nitdgp.ac.in email addresses are accepted.'
+          message: 'Please enter a valid email address.'
         });
         return;
       }
@@ -110,7 +110,7 @@ export class AuthController {
         }
       });
 
-      await emailService.sendOtpEmail(emailInput, plainOtp, 'NIT Durgapur College Email Verification');
+      await emailService.sendOtpEmail(emailInput, plainOtp, 'Campus Basket Email Verification');
 
       await AuditService.log(prisma, {
         action: 'College OTP Sent',
@@ -121,7 +121,7 @@ export class AuthController {
 
       res.status(200).json({
         success: true,
-        message: 'OTP sent to your NIT Durgapur email.'
+        message: 'OTP sent to your campus email.'
       });
     } catch (err) {
       next(err);
@@ -140,7 +140,7 @@ export class AuthController {
       const otpInput = (req.body.otp || '').trim();
 
       if (!emailInput) {
-        res.status(400).json({ success: false, message: 'Please enter your official NIT Durgapur email.' });
+        res.status(400).json({ success: false, message: 'Please enter your campus email address.' });
         return;
       }
 
@@ -652,7 +652,7 @@ export class AuthController {
 
       res.status(201).json({
         success: true,
-        message: 'Account created successfully. Welcome to NIT Durgapur Campus Basket!',
+        message: 'Account created successfully. Welcome to Campus Basket!',
         token,
         user: {
           id: newUser.user.id,

@@ -38,7 +38,7 @@ export class EmailService {
     if (env.BREVO_API_KEY) {
       try {
         const fromMatch = env.EMAIL_FROM.match(/^(.*?)\s*<(.+?)>$/);
-        const senderName = fromMatch ? fromMatch[1].trim() : 'NIT Durgapur Campus Services';
+        const senderName = fromMatch ? fromMatch[1].trim() : 'Campus Basket';
         const senderEmail = env.BREVO_SENDER_EMAIL || (fromMatch ? fromMatch[2].trim() : 'souravsenapati055@gmail.com');
 
         const controller = new AbortController();
@@ -98,16 +98,16 @@ export class EmailService {
    */
   async sendOtpEmail(recipientEmail: string, otp: string, purposeDescription?: string): Promise<boolean> {
     const purpose = purposeDescription || 'Verification';
-    const subject = `[NIT Durgapur Campus Basket] ${purpose} Code: ${otp}`;
+    const subject = `[Campus Basket] ${purpose} Code: ${otp}`;
     const html = `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 540px; margin: 0 auto; padding: 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;">
         <div style="text-align: center; margin-bottom: 24px;">
-          <h2 style="color: #0f172a; margin: 0; font-size: 22px;">NIT Durgapur Campus Basket</h2>
+          <h2 style="color: #0f172a; margin: 0; font-size: 22px;">Campus Basket</h2>
           <p style="color: #689f38; font-weight: 600; font-size: 14px; margin-top: 4px;">${purpose}</p>
         </div>
         
         <p style="color: #334155; font-size: 15px; line-height: 1.6;">
-          Hello NIT Durgapur Student,
+          Hello Campus Basket Student,
         </p>
         <p style="color: #334155; font-size: 15px; line-height: 1.6;">
           Your 6-digit security code for <strong>${purpose}</strong> is provided below. This code is strictly valid for <strong>5 minutes</strong> only and expires after 5 attempts.
@@ -125,7 +125,7 @@ export class EmailService {
         
         <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
         <p style="color: #94a3b8; font-size: 12px; text-align: center; margin: 0;">
-          NIT Durgapur Campus Marketplace & Services Platform &bull; Mahatma Gandhi Avenue, Durgapur
+          Campus Basket Marketplace & Services Platform &bull; Student Services Cell
         </p>
       </div>
     `;
@@ -148,10 +148,10 @@ export class EmailService {
     itemsSummary: string,
     totalAmount: number
   ): Promise<boolean> {
-    const subject = `[Confirmed] Your Campus Order ${orderNumber}`;
+    const subject = `[Confirmed] Your Campus Basket Order ${orderNumber}`;
     const html = `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 540px; margin: 0 auto; padding: 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;">
-        <h2 style="color: #2e7d32; margin-top: 0;">NIT Durgapur Campus Order Confirmed!</h2>
+        <h2 style="color: #2e7d32; margin-top: 0;">Campus Basket Order Confirmed!</h2>
         <p>Order Number: <strong>${orderNumber}</strong></p>
         <p>Total Paid: <strong>₹${totalAmount}</strong></p>
         <p>Items: ${itemsSummary}</p>
@@ -173,7 +173,7 @@ export class EmailService {
     const subject = `[Laundry Update] Order ${laundryOrderNumber} is now ${statusText}`;
     const html = `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 540px; margin: 0 auto; padding: 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;">
-        <h2 style="color: #0284c7; margin-top: 0;">NIT Durgapur Express Laundry Update</h2>
+        <h2 style="color: #0284c7; margin-top: 0;">Campus Basket Express Laundry Update</h2>
         <p>Order Number: <strong>${laundryOrderNumber}</strong></p>
         <p>Current Status: <strong>${statusText}</strong></p>
         ${otpNotice ? `<div style="padding: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; margin: 16px 0; color: #166534;">${otpNotice}</div>` : ''}
@@ -182,3 +182,5 @@ export class EmailService {
     return this.dispatchEmail(recipientEmail, subject, html);
   }
 }
+
+export const emailService = new EmailService();

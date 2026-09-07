@@ -137,7 +137,7 @@ export default function ForgotPasswordPage() {
             Reset Password
           </h1>
           <p className="text-xs text-slate-400">
-            NIT Durgapur Campus Basket &bull; Account Recovery
+            Campus Basket Platform &bull; Account Recovery
           </p>
         </div>
 

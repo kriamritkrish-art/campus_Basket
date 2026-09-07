@@ -162,7 +162,7 @@ export default function DeliveryProfilePage() {
           <div className="space-y-3 text-xs">
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-400 font-semibold">Campus</span>
-              <span className="font-bold text-gray-900">NIT Durgapur Campus</span>
+              <span className="font-bold text-gray-900">Campus Central Operations</span>
             </div>
             <div className="py-1 border-b border-gray-50 space-y-1.5">
               <span className="text-gray-400 font-semibold block">Service Area Halls</span>

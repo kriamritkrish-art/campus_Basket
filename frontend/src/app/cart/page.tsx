@@ -430,7 +430,7 @@ export default function CartPage() {
 
                 <div className="pt-2 flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
                   <ShieldCheck className="w-3.5 h-3.5 text-[#4F9D2F]" />
-                  <span>Verified NIT Durgapur Campus Order</span>
+                  <span>Verified Campus Basket Order</span>
                 </div>
               </div>
             </div>

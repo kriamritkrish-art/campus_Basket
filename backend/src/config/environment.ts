@@ -28,7 +28,7 @@ export const env = {
   SMTP_PORT: parseInt(process.env.SMTP_PORT || '587', 10),
   SMTP_USER: process.env.SMTP_USER || '',
   SMTP_PASSWORD: process.env.SMTP_PASSWORD || '',
-  EMAIL_FROM: process.env.EMAIL_FROM || 'NIT Durgapur Campus Services <souravsenapati055@gmail.com>',
+  EMAIL_FROM: process.env.EMAIL_FROM || 'Campus Basket <souravsenapati055@gmail.com>',
 
   BREVO_API_KEY:
     process.env.BREVO_API_KEY ||

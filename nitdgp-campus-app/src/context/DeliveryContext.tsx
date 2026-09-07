@@ -425,7 +425,7 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return true;
       }
     } catch {
-      // Offline / fallback check
+      // Offline / fallback fallback check
       const expectedCode = target.orderNumber.replace(/\D/g, '').slice(-4);
       if (enteredOtp.trim() === expectedCode || enteredOtp.trim() === target.orderNumber.slice(-4)) {
         setActiveOrders((prev) =>

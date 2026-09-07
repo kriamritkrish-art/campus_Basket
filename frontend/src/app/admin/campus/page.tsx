@@ -204,7 +204,7 @@ export default function CampusBusinessHoursPage() {
             <div>
               <h1 className="text-xl font-bold text-[#17202A] tracking-tight">Campus Business Hours &amp; Service Schedule</h1>
               <p className="text-xs text-slate-500">
-                Configure live operating hours, day shifts, and instant emergency shutdown notices across NIT Durgapur services
+                Configure live operating hours, day shifts, and instant emergency shutdown notices across Campus Basket services
               </p>
             </div>
           </div>
@@ -373,7 +373,7 @@ export default function CampusBusinessHoursPage() {
                 <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs text-slate-500">
                     <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Configured for NIT Durgapur Campus</span>
+                    <span>Configured for Campus Residence Halls</span>
                   </div>
 
                   <button

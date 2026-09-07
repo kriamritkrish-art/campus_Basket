@@ -197,7 +197,7 @@ export async function autoSeedDatabase(prisma: any): Promise<void> {
         isActive: true,
         provider: {
           create: {
-            fullName: 'NIT Durgapur Campus Laundry Cell',
+            fullName: 'Campus Laundry Cell',
             mobileNumber: '9876543210',
             serviceCategory: 'Express Laundry',
             assignedZones: 'ALL',
@@ -575,7 +575,7 @@ export async function autoSeedDatabase(prisma: any): Promise<void> {
       update: {},
       create: {
         code: 'NITFRESH',
-        description: 'Welcome offer for NIT Durgapur students - 20% off up to ₹50',
+        description: 'Welcome offer for campus students - 20% off up to ₹50',
         discountType: 'PERCENTAGE',
         discountValue: 20,
         minOrderAmount: 100,
@@ -599,7 +599,7 @@ export async function autoSeedDatabase(prisma: any): Promise<void> {
       }
     });
 
-    console.info('[AutoSeed] NIT Durgapur Platform seeding completed successfully!');
+    console.info('[AutoSeed] Campus Basket Platform seeding completed successfully!');
   } catch (err) {
     console.error('[AutoSeed] Error during auto-seeding:', err);
   }

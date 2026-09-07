@@ -43,7 +43,7 @@ export function CampusBanner() {
       {isChecking && (
         <div className="bg-[#eef7e9] border-b border-[#dcedc8] px-3 py-1.5 text-xs text-[#36751F] flex items-center justify-center gap-2 text-center">
           <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#4F9D2F] shrink-0" />
-          <span className="text-[11px] sm:text-xs">Verifying NIT Durgapur Campus GPS Perimeter...</span>
+          <span className="text-[11px] sm:text-xs">Verifying Campus GPS Service Perimeter...</span>
         </div>
       )}
 
@@ -54,7 +54,7 @@ export function CampusBanner() {
             <div className="flex items-center gap-1.5 min-w-0 flex-1">
               <AlertCircle className="w-3.5 h-3.5 text-[#d97706] shrink-0" />
               <span className="text-[11px] sm:text-xs leading-tight truncate">
-                Hostel room delivery active for verified NIT Durgapur halls.
+                Hostel room delivery active for verified campus residence halls.
               </span>
             </div>
             <button

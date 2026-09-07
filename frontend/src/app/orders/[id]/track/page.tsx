@@ -28,7 +28,17 @@ import {
   Printer,
   X,
   PackageCheck,
-  KeyRound
+  KeyRound,
+  Shirt,
+  Utensils,
+  BookOpen,
+  Apple,
+  CreditCard,
+  ShieldCheck,
+  Lock,
+  Copy,
+  Info,
+  ExternalLink
 } from 'lucide-react';
 
 interface OrderItem {
@@ -44,6 +54,7 @@ interface OrderItem {
 interface OrderData {
   id: string;
   orderNumber: string;
+  serviceType?: string;
   status: string;
   totalAmount: number;
   subtotal: number;
@@ -51,6 +62,12 @@ interface OrderData {
   discountAmount: number;
   paymentMethod: string;
   paymentStatus: string;
+  refundStatus?: string;
+  settlementStatus?: string;
+  refundAmount?: number;
+  refundReason?: string;
+  pickupOtp?: string;
+  deliveryOtp?: string;
   hallName: string;
   roomNumber: string;
   specialInstructions?: string;
@@ -66,16 +83,70 @@ interface OrderData {
   provider?: {
     fullName: string;
     mobileNumber?: string;
+    serviceCategory?: string;
+  };
+  foodDetails?: {
+    preparationTimeMinutes?: number;
+    isVegetarian?: boolean;
+    spiceLevel?: string;
+    cookingInstructions?: string;
+    prepStartTime?: string;
+    prepEndTime?: string;
+  };
+  laundryDetails?: {
+    serviceTier?: string;
+    weightKg?: number;
+    pieceCount?: number;
+    specialCareInstructions?: string;
+    washCycleStage?: string;
+    pickupSlot?: string;
+    deliverySlot?: string;
+    pickupOtp?: string;
+    deliveryOtp?: string;
+    isDamagedReported?: boolean;
+    damageDescription?: string;
+    damagePhotos?: string[];
+  };
+  produceDetails?: {
+    isOrganic?: boolean;
+    packagingType?: string;
+    qualityGrade?: string;
+    harvestDate?: string;
+  };
+  stationeryDetails?: {
+    paperGsm?: number;
+    bindingType?: string;
+    isExamEssential?: boolean;
+    colorType?: string;
   };
 }
 
-const CHECKPOINTS = [
-  { id: 'HUB', label: 'Hub', sub: 'Store / Canteen Hub' },
+const DEFAULT_CHECKPOINTS = [
+  { id: 'HUB', label: 'Hub', sub: 'Campus Central Hub' },
   { id: 'CONFIRMED', label: 'Order Confirmed', sub: 'Verified & Queued' },
   { id: 'ASSIGNED', label: 'Partner Assigned', sub: 'Runner Dispatched' },
   { id: 'PICKED_UP', label: 'Picked Up', sub: 'Bag Packed & Tagged' },
-  { id: 'TRANSIT', label: 'Highway Express', sub: 'Runner In Transit' },
+  { id: 'TRANSIT', label: 'Campus Transit', sub: 'Runner In Route' },
   { id: 'DELIVERED', label: 'Doorstep Delivered', sub: 'Handed Over' }
+];
+
+const FOOD_CHECKPOINTS = [
+  { id: 'RECEIVED', label: 'Order Placed', sub: 'Sent to Kitchen' },
+  { id: 'CONFIRMED', label: 'Kitchen Accepted', sub: 'Order Queued' },
+  { id: 'PREPARING', label: 'Freshly Cooking', sub: 'Chef at Work' },
+  { id: 'READY', label: 'Food Packed', sub: 'Awaiting Pickup' },
+  { id: 'TRANSIT', label: 'Hot Delivery', sub: 'Runner In Route' },
+  { id: 'DELIVERED', label: 'Enjoy Meal', sub: 'Delivered at Door' }
+];
+
+const LAUNDRY_CHECKPOINTS = [
+  { id: 'REQUESTED', label: 'Booking Placed', sub: 'Slot Confirmed' },
+  { id: 'PICKUP_SCHEDULED', label: 'Runner Scheduled', sub: 'Doorstep Pickup' },
+  { id: 'CLOTHES_COLLECTED', label: 'Clothes Collected', sub: 'Weighed & Tagged' },
+  { id: 'WASHING', label: 'Wash & Sanitize', sub: 'Gentle Cycle' },
+  { id: 'IRONING', label: 'Steam Press', sub: 'Folded & Bagged' },
+  { id: 'DELIVERY_SCHEDULED', label: 'Out for Return', sub: 'Hostel Dropoff' },
+  { id: 'COMPLETED', label: 'Delivered', sub: 'Doorstep Completed' }
 ];
 
 export default function OrderTrackingPage() {
@@ -96,6 +167,7 @@ export default function OrderTrackingPage() {
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelMessage, setCancelMessage] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('Changed mind');
 
   // Support ticket modal state
   const [supportModalOpen, setSupportModalOpen] = useState(false);
@@ -106,6 +178,22 @@ export default function OrderTrackingPage() {
 
   // View Receipt state
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+
+  // Confidential Refund Account state
+  const [refundAccountModalOpen, setRefundAccountModalOpen] = useState(false);
+  const [savedRefundAccount, setSavedRefundAccount] = useState<any>(null);
+  const [refundAccountLoading, setRefundAccountLoading] = useState(false);
+  const [refundAccountSaving, setRefundAccountSaving] = useState(false);
+  const [refundAccountSuccess, setRefundAccountSuccess] = useState<string | null>(null);
+  const [refundAccountError, setRefundAccountError] = useState<string | null>(null);
+  const [refundAccountForm, setRefundAccountForm] = useState({
+    accountType: 'UPI' as 'UPI' | 'BANK',
+    accountHolderName: '',
+    bankName: '',
+    accountNumber: '',
+    ifscCode: '',
+    upiId: ''
+  });
 
   // Fetch Current Order
   const fetchOrder = async (isInitial = false) => {
@@ -137,10 +225,35 @@ export default function OrderTrackingPage() {
     }
   };
 
+  // Fetch student confidential refund account
+  const fetchRefundAccount = async () => {
+    try {
+      setRefundAccountLoading(true);
+      const res = await apiRequest('/api/orders/refund-account');
+      if (res.success && res.data) {
+        setSavedRefundAccount(res.data);
+        if (res.data.accountHolderName) {
+          setRefundAccountForm(prev => ({
+            ...prev,
+            accountHolderName: res.data.accountHolderName || '',
+            accountType: res.data.accountType || 'UPI',
+            bankName: res.data.bankName || '',
+            upiId: res.data.upiIdMasked || '',
+            accountNumber: res.data.accountNumberMasked || ''
+          }));
+        }
+      }
+    } catch {
+      // Ignore if not created yet
+    } finally {
+      setRefundAccountLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchOrder(true);
     fetchAllOrders();
-    // Live polling every 6 seconds to update delivery runner & status in real time
+    fetchRefundAccount();
     const interval = setInterval(() => {
       fetchOrder(false);
       fetchAllOrders();
@@ -148,69 +261,222 @@ export default function OrderTrackingPage() {
     return () => clearInterval(interval);
   }, [id]);
 
-  // Determine active step index (0 to 5)
-  const getActiveStepIndex = (status: string) => {
+  const handleSaveRefundAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRefundAccountSaving(true);
+    setRefundAccountSuccess(null);
+    setRefundAccountError(null);
+
+    try {
+      const payload: any = {
+        accountType: refundAccountForm.accountType,
+        accountHolderName: refundAccountForm.accountHolderName
+      };
+
+      if (refundAccountForm.accountType === 'UPI') {
+        if (!refundAccountForm.upiId.includes('@')) {
+          setRefundAccountError('Please enter a valid UPI ID (e.g. name@okhdfcbank)');
+          setRefundAccountSaving(false);
+          return;
+        }
+        payload.upiId = refundAccountForm.upiId;
+      } else {
+        if (!refundAccountForm.accountNumber || !refundAccountForm.ifscCode) {
+          setRefundAccountError('Account Number and IFSC Code are required for Bank transfer');
+          setRefundAccountSaving(false);
+          return;
+        }
+        payload.accountNumber = refundAccountForm.accountNumber;
+        payload.ifscCode = refundAccountForm.ifscCode.toUpperCase();
+        payload.bankName = refundAccountForm.bankName || 'Bank';
+      }
+
+      const res = await apiRequest('/api/orders/refund-account', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+
+      if (res.success) {
+        setRefundAccountSuccess('Confidential refund destination saved securely.');
+        setSavedRefundAccount(res.data);
+        setTimeout(() => setRefundAccountModalOpen(false), 1500);
+      } else {
+        setRefundAccountError(res.message || 'Failed to save refund account details.');
+      }
+    } catch (err: any) {
+      setRefundAccountError(err.message || 'Network error saving refund account.');
+    } finally {
+      setRefundAccountSaving(false);
+    }
+  };
+
+  // Determine service checkpoints and active step
+  const serviceType = (order?.serviceType || 'FOOD').toUpperCase();
+  const isLaundry = serviceType === 'LAUNDRY';
+  const isFood = serviceType === 'FOOD';
+
+  const checkpoints = isLaundry ? LAUNDRY_CHECKPOINTS : isFood ? FOOD_CHECKPOINTS : DEFAULT_CHECKPOINTS;
+
+  const getActiveStepIndex = (status: string, laundryStage?: string) => {
+    if (status === 'CANCELLED') return -1;
+
+    if (isLaundry) {
+      const stage = (laundryStage || status).toUpperCase();
+      switch (stage) {
+        case 'REQUESTED':
+        case 'PENDING':
+        case 'PENDING_PAYMENT':
+          return 0;
+        case 'ACCEPTED':
+        case 'PICKUP_SCHEDULED':
+          return 1;
+        case 'CLOTHES_COLLECTED':
+          return 2;
+        case 'WASHING':
+          return 3;
+        case 'IRONING':
+          return 4;
+        case 'READY':
+        case 'DELIVERY_SCHEDULED':
+          return 5;
+        case 'COMPLETED':
+        case 'DELIVERED':
+          return 6;
+        default:
+          return 1;
+      }
+    }
+
+    if (isFood) {
+      switch (status) {
+        case 'PENDING_PAYMENT':
+        case 'PENDING':
+          return 0;
+        case 'CONFIRMED':
+        case 'ACCEPTED':
+          return 1;
+        case 'PREPARING':
+          return 2;
+        case 'READY':
+        case 'READY_FOR_PICKUP':
+        case 'DELIVERY_ASSIGNED':
+          return 3;
+        case 'PICKED_UP':
+        case 'OUT_FOR_DELIVERY':
+        case 'IN_TRANSIT':
+        case 'AT_HOSTEL':
+        case 'OTP_VERIFIED':
+          return 4;
+        case 'DELIVERED':
+          return 5;
+        default:
+          return 1;
+      }
+    }
+
+    // Default Retail / Produce / Stationery
     switch (status) {
       case 'PENDING_PAYMENT':
       case 'PENDING':
-        return 0; // Pharmacy Hub
+        return 0;
       case 'CONFIRMED':
       case 'ACCEPTED':
       case 'PREPARING':
-        return 1; // Order Confirmed
+        return 1;
       case 'DELIVERY_ASSIGNED':
       case 'READY':
       case 'READY_FOR_PICKUP':
-        return 2; // Partner Assigned
+        return 2;
       case 'PICKED_UP':
-        return 3; // Picked Up
+        return 3;
       case 'OUT_FOR_DELIVERY':
       case 'IN_TRANSIT':
       case 'AT_HOSTEL':
       case 'OTP_VERIFIED':
-        return 4; // Highway Express
+        return 4;
       case 'DELIVERED':
-        return 5; // Doorstep Delivered
-      case 'CANCELLED':
-        return -1;
+        return 5;
       default:
         return 1;
     }
   };
 
-  const activeStep = order ? getActiveStepIndex(order.status) : 1;
+  const activeStep = order ? getActiveStepIndex(order.status, order.laundryDetails?.washCycleStage) : 1;
 
   // Radar status headline
   const getRadarHeadline = (status: string) => {
+    if (status === 'CANCELLED') return 'This order has been cancelled.';
+    if (isLaundry) {
+      const stage = (order?.laundryDetails?.washCycleStage || status).toUpperCase();
+      switch (stage) {
+        case 'COMPLETED':
+        case 'DELIVERED':
+          return 'Fresh laundry delivered back to your hostel room! 🧺✨';
+        case 'DELIVERY_SCHEDULED':
+        case 'READY':
+          return 'Cleaned & ironed garments are out for delivery to your room 🛵';
+        case 'IRONING':
+          return 'Garments are being steam ironed and packed neatly 👔';
+        case 'WASHING':
+          return 'Clothes are undergoing eco-friendly washing and sanitization 🫧';
+        case 'CLOTHES_COLLECTED':
+          return 'Garments collected from your room and weighed at facility ⚖️';
+        case 'PICKUP_SCHEDULED':
+          return 'Runner is assigned to collect laundry from your hostel room 🚪';
+        default:
+          return 'Laundry pickup booked! Please keep clothes ready 🧺';
+      }
+    }
+
+    if (isFood) {
+      switch (status) {
+        case 'DELIVERED':
+          return 'Delivered at your hostel doorstep! Bon appétit 🎉';
+        case 'OUT_FOR_DELIVERY':
+        case 'IN_TRANSIT':
+        case 'AT_HOSTEL':
+          return 'Campus runner is speeding your hot meal to your hostel 🛵💨';
+        case 'PICKED_UP':
+        case 'READY':
+        case 'READY_FOR_PICKUP':
+          return 'Food freshly packed and picked up from kitchen counter 🎒';
+        case 'PREPARING':
+          return 'Chef is cooking your order right now in the kitchen 🍳🔥';
+        case 'CONFIRMED':
+        case 'ACCEPTED':
+          return 'Kitchen confirmed your order! Preparation starting shortly 📋';
+        default:
+          return 'Order placed and queued in campus cafeteria 📦';
+      }
+    }
+
     switch (status) {
       case 'DELIVERED':
         return 'Delivered at doorstep 🎉';
       case 'OUT_FOR_DELIVERY':
       case 'IN_TRANSIT':
       case 'AT_HOSTEL':
-        return 'Highway Express: Runner is on the way to your hostel 🛵';
+        return 'Express: Runner is on the way to your hostel 🛵';
       case 'PICKED_UP':
-        return 'Order picked up from cafeteria counter & packed 🎒';
+        return 'Order picked up from provider hub & packed 🎒';
       case 'DELIVERY_ASSIGNED':
       case 'READY':
         return 'Delivery partner assigned & heading to store 🏃';
       case 'PREPARING':
       case 'CONFIRMED':
-        return 'Order confirmed! Freshly preparing your items 🍳';
-      case 'CANCELLED':
-        return 'This order has been cancelled.';
+        return 'Order confirmed! Items being assembled & packed 📦';
       default:
-        return 'Order placed and logged at store hub 📦';
+        return 'Order placed and logged at campus store hub 📦';
     }
   };
 
   // Status badge config
   const getStatusBadge = (status: string) => {
-    if (status === 'DELIVERED') {
+    if (status === 'DELIVERED' || status === 'COMPLETED') {
       return (
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#e8f5e9] text-[#2e7d32] border border-[#c8e6c9]">
           <CheckCircle2 className="w-3.5 h-3.5 text-[#2e7d32]" />
-          Delivered Successfully
+          Delivered
         </span>
       );
     }
@@ -250,9 +516,9 @@ export default function OrderTrackingPage() {
         price: item.unitPrice,
         stock: 50,
         isOutOfStock: false,
-        unit: 'portion',
+        unit: 'piece',
         primaryImage: item.image || null,
-        category: { id: 'cat_food', name: 'Food', slug: 'food' }
+        category: { id: 'cat_campus', name: 'Campus', slug: 'campus' }
       } as any, item.quantity);
       addedCount += item.quantity;
     }
@@ -260,16 +526,55 @@ export default function OrderTrackingPage() {
     router.push('/cart');
   };
 
+  // Service-Adaptive Cancellation Eligibility
+  const cancellationEligibility = (() => {
+    if (!order) return { cancellable: false, reason: 'Order not loaded' };
+    if (order.status === 'CANCELLED') return { cancellable: false, reason: 'Order is already cancelled' };
+    if (order.status === 'DELIVERED' || order.status === 'COMPLETED') {
+      return { cancellable: false, reason: 'Order has already been delivered' };
+    }
+
+    if (isFood) {
+      if (['PREPARING', 'READY', 'READY_FOR_PICKUP', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'IN_TRANSIT'].includes(order.status)) {
+        return {
+          cancellable: false,
+          reason: 'Kitchen has already started cooking your food. Meals in preparation cannot be cancelled.'
+        };
+      }
+      return { cancellable: true, reason: 'Allowed prior to kitchen preparation.' };
+    }
+
+    if (isLaundry) {
+      const stage = (order.laundryDetails?.washCycleStage || order.status).toUpperCase();
+      if (['CLOTHES_COLLECTED', 'WASHING', 'IRONING', 'READY', 'DELIVERY_SCHEDULED', 'COMPLETED'].includes(stage)) {
+        return {
+          cancellable: false,
+          reason: 'Garments have already been collected from your room and sent for washing. Cancellation is closed.'
+        };
+      }
+      return { cancellable: true, reason: 'Allowed prior to room collection.' };
+    }
+
+    // Default Retail / Produce / Stationery
+    if (['OUT_FOR_DELIVERY', 'IN_TRANSIT', 'PICKED_UP'].includes(order.status)) {
+      return { cancellable: false, reason: 'Order is already out for delivery with runner.' };
+    }
+    return { cancellable: true, reason: 'Allowed prior to dispatch.' };
+  })();
+
   // Order Cancellation Handler
   const handleCancelOrder = async () => {
     setCancelling(true);
     setCancelMessage(null);
     try {
-      const res = await apiRequest(`/api/orders/${id}/cancel`, { method: 'POST' });
+      const res = await apiRequest(`/api/orders/${id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: cancelReason })
+      });
       if (res.success) {
         setCancelMessage('Order cancelled successfully.');
         await fetchOrder(false);
-        setTimeout(() => setCancelModalOpen(false), 2000);
+        setTimeout(() => setCancelModalOpen(false), 1800);
       } else {
         setCancelMessage(res.message || 'Cancellation could not be completed.');
       }
@@ -300,12 +605,9 @@ export default function OrderTrackingPage() {
       });
 
       if (res.success) {
-        setSupportSuccess('Support query submitted. Campus runner support will contact you shortly.');
+        setSupportSuccess('Support ticket submitted. Campus helpdesk will contact your mobile shortly.');
         setSupportMessage('');
-        setTimeout(() => {
-          setSupportModalOpen(false);
-          setSupportSuccess(null);
-        }, 2200);
+        setTimeout(() => setSupportModalOpen(false), 2200);
       } else {
         setCancelMessage(res.message || 'Failed to submit ticket');
       }
@@ -316,36 +618,33 @@ export default function OrderTrackingPage() {
     }
   };
 
-  if (loading) {
+  if (loading && !order) {
     return (
-      <div className="min-h-[75vh] flex flex-col items-center justify-center p-8 bg-[#f8fafc]">
-        <div className="w-12 h-12 border-4 border-[#0284c7] border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-xs font-bold text-gray-700">Connecting to live campus tracking...</p>
+      <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-4">
+        <div className="text-center space-y-3">
+          <div className="w-10 h-10 border-4 border-[#0284c7] border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-xs font-bold text-gray-500">Connecting to Campus Basket Dispatch...</p>
+        </div>
       </div>
     );
   }
 
   if (error || !order) {
     return (
-      <div className="min-h-[75vh] flex items-center justify-center p-6 bg-[#f8fafc]">
-        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-gray-200 text-center shadow-sm">
-          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle className="w-8 h-8" />
+      <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-gray-200 text-center space-y-4 shadow-sm">
+          <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+            <AlertTriangle className="w-6 h-6" />
           </div>
-          <h2 className="text-xl font-black text-gray-900">Order Not Found</h2>
-          <p className="text-xs text-gray-500 mt-2">{error || 'The requested order details could not be retrieved.'}</p>
-          <div className="mt-6 flex flex-col gap-2">
-            <button
-              onClick={() => fetchOrder(true)}
-              className="px-5 py-2.5 bg-[#0284c7] text-white font-bold text-xs rounded-xl shadow-sm hover:bg-[#0369a1]"
-            >
-              Try Again
-            </button>
+          <h2 className="text-lg font-black text-gray-900">Order Not Located</h2>
+          <p className="text-xs text-gray-500">{error || 'Unable to find order details.'}</p>
+          <div className="pt-2">
             <Link
-              href="/dashboard?tab=orders"
-              className="px-5 py-2.5 bg-gray-100 text-gray-700 font-bold text-xs rounded-xl hover:bg-gray-200"
+              href="/orders"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gray-900 text-white text-xs font-bold hover:bg-black transition"
             >
-              Back to My Orders
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to My Orders</span>
             </Link>
           </div>
         </div>
@@ -358,32 +657,34 @@ export default function OrderTrackingPage() {
   const countAll = ordersList.length;
   const countProcessing = ordersList.filter((o) => ['PENDING', 'CONFIRMED', 'ACCEPTED', 'PREPARING'].includes(o.status)).length;
   const countTransit = ordersList.filter((o) => ['READY', 'DELIVERY_ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'IN_TRANSIT'].includes(o.status)).length;
-  const countDelivered = ordersList.filter((o) => o.status === 'DELIVERED').length;
+  const countDelivered = ordersList.filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED').length;
   const countCancelled = ordersList.filter((o) => o.status === 'CANCELLED').length;
 
   const purchasedItemsText =
     order.items && order.items.length > 0
-      ? order.items.map((i) => i.productName).join(', ')
-      : 'Cough Syrup, Antifungal Cream 20g, Insulin Pen';
+      ? order.items.map((i) => `${i.productName} (×${i.quantity})`).join(', ')
+      : isLaundry ? 'Doorstep Laundry Service' : 'Campus Essential Items';
+
   const deliveryAddressText =
     order.roomNumber || order.hallName
-      ? `${order.roomNumber ? `Room ${order.roomNumber}, ` : ''}${order.hallName || 'Hall 11'}, NIT Durgapur Campus`
-      : '45/A Park Street, Sector 5, Salt Lake, Kolkata, West Bengal';
-  const partnerName = order.deliveryBoy?.fullName || 'Ravi Kumar';
+      ? `${order.roomNumber ? `Room ${order.roomNumber}, ` : ''}${order.hallName || 'Hostel Hall'}, Campus Central Residence`
+      : 'Campus Hostel Residence';
+
+  const partnerName = order.deliveryBoy?.fullName || 'Campus Runner';
   const partnerId = order.deliveryBoy?.id
     ? (order.deliveryBoy.id.startsWith('DEL') ? order.deliveryBoy.id : `DEL${order.deliveryBoy.id.slice(-4).toUpperCase()}`)
-    : 'DEL1001';
-  const partnerPhone = order.deliveryBoy?.mobileNumber || '9876543210';
+    : 'DEL-RUNNER';
+  const partnerPhone = order.deliveryBoy?.mobileNumber || 'Campus Helpdesk';
   const orderDate = new Date(order.createdAt).toLocaleDateString('en-GB');
 
-  const isCancellable = ['CONFIRMED', 'PENDING', 'PENDING_PAYMENT'].includes(order.status);
+  const showRefundSection = order.refundStatus && order.refundStatus !== 'NOT_APPLICABLE';
 
   return (
     <div className="min-h-screen bg-[#f8fafc] py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto space-y-6">
 
         {/* ==================================================
-            1. TOP PILL FILTER TABS (Exact match to screenshot)
+            1. TOP PILL FILTER TABS
            ================================================== */}
         <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none">
           <button
@@ -443,17 +744,51 @@ export default function OrderTrackingPage() {
         </div>
 
         {/* ==================================================
-            2. THE ORDER CARD (Exact pixel-accurate reproduction)
+            2. THE ORDER CARD
            ================================================== */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-200 shadow-sm space-y-6">
 
-          {/* Top Row: Order Header, Status Badge, Calendar Date */}
+          {/* Top Row: Order Header, Multi-Dimensional Status Badges, Date */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-5">
             <div className="flex items-center gap-3 flex-wrap">
               <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
                 Order #{order.orderNumber}
               </h2>
+
+              {/* Service Type Badge */}
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
+                isLaundry ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                isFood ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                serviceType === 'FRESH_PRODUCE' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                'bg-blue-50 text-blue-800 border-blue-200'
+              }`}>
+                {isLaundry && <Shirt className="w-3.5 h-3.5" />}
+                {isFood && <Utensils className="w-3.5 h-3.5" />}
+                {serviceType === 'FRESH_PRODUCE' && <Apple className="w-3.5 h-3.5" />}
+                {serviceType === 'STATIONERY' && <BookOpen className="w-3.5 h-3.5" />}
+                <span>{serviceType.replace(/_/g, ' ')}</span>
+              </span>
+
+              {/* Primary Order Status */}
               {getStatusBadge(order.status)}
+
+              {/* Payment Status Badge */}
+              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                order.paymentStatus === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                order.paymentStatus === 'REFUNDED' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                'bg-slate-100 text-slate-700 border-slate-200'
+              }`}>
+                <CreditCard className="w-3 h-3" />
+                <span>{order.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD' : 'ONLINE'}: {order.paymentStatus}</span>
+              </span>
+
+              {/* Refund Badge (if active) */}
+              {order.refundStatus && order.refundStatus !== 'NOT_APPLICABLE' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                  <RotateCcw className="w-3 h-3" />
+                  <span>REFUND: {order.refundStatus.replace(/_/g, ' ')}</span>
+                </span>
+              )}
             </div>
 
             <div className="flex items-center gap-1.5 text-xs text-gray-400 font-medium self-start sm:self-auto">
@@ -468,11 +803,16 @@ export default function OrderTrackingPage() {
             {/* Column 1: PURCHASED ITEMS */}
             <div className="space-y-1.5">
               <div className="text-[11px] font-extrabold uppercase tracking-wider text-gray-400">
-                PURCHASED ITEMS
+                {isLaundry ? 'SERVICE TYPE' : 'PURCHASED ITEMS'}
               </div>
               <p className="text-sm font-bold text-gray-900 leading-snug">
                 {purchasedItemsText}
               </p>
+              {isLaundry && order.laundryDetails && (
+                <div className="text-[11px] text-indigo-700 font-semibold mt-1">
+                  Tier: {order.laundryDetails.serviceTier || 'Wash & Fold'} • Weight: {order.laundryDetails.weightKg ? `${order.laundryDetails.weightKg} kg` : 'Pending weigh-in'}
+                </div>
+              )}
             </div>
 
             {/* Column 2: DELIVERY DESTINATION */}
@@ -488,10 +828,10 @@ export default function OrderTrackingPage() {
               </div>
             </div>
 
-            {/* Column 3: DELIVERY PARTNER */}
+            {/* Column 3: DELIVERY PARTNER / RUNNER */}
             <div className="space-y-1.5">
               <div className="text-[11px] font-extrabold uppercase tracking-wider text-gray-400">
-                DELIVERY PARTNER
+                CAMPUS RUNNER
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-5 h-5 rounded-full bg-emerald-100 text-[#2e7d32] flex items-center justify-center shrink-0">
@@ -500,228 +840,356 @@ export default function OrderTrackingPage() {
                 <span className="font-black text-gray-900 text-sm">
                   {partnerName}
                 </span>
-                <span className="px-1.5 py-0.5 rounded bg-sky-100 text-[#0284c7] text-[10px] font-black tracking-wide">
-                  {partnerId}
-                </span>
               </div>
-              <div className="flex items-center gap-1.5 text-gray-600 font-medium pl-0.5">
-                <Phone className="w-3.5 h-3.5 text-[#0284c7]" />
-                <a href={`tel:${partnerPhone}`} className="hover:underline text-gray-700 font-semibold">
-                  {partnerPhone}
-                </a>
-              </div>
+              <p className="text-[11px] text-gray-500 font-mono">
+                ID: {partnerId} • {partnerPhone}
+              </p>
             </div>
 
-            {/* Column 4: TOTAL AMOUNT & View Receipt */}
-            <div className="space-y-2 lg:text-left">
+            {/* Column 4: TOTAL AMOUNT & RECEIPT */}
+            <div className="space-y-1.5 sm:text-right">
               <div className="text-[11px] font-extrabold uppercase tracking-wider text-gray-400">
-                TOTAL AMOUNT
+                TOTAL PAID
               </div>
-              <div className="text-2xl font-black text-gray-900 tracking-tight">
-                ₹{order.totalAmount}
+              <div className="text-xl font-black text-gray-900">
+                ₹{Number(order.totalAmount).toLocaleString('en-IN')}
               </div>
-              <div>
-                <button
-                  onClick={() => setShowReceiptModal(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50 text-gray-700 text-xs font-bold transition shadow-2xs"
-                >
-                  <FileText className="w-3.5 h-3.5 text-gray-500" />
-                  <span>View Receipt</span>
-                </button>
-              </div>
+              <button
+                onClick={() => setShowReceiptModal(true)}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-[#0284c7] hover:underline cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>View Receipt</span>
+              </button>
             </div>
           </div>
 
-          {/* Secure Delivery Handover OTP Card */}
-          {order.status !== 'CANCELLED' && (
-            <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-sky-50 border-2 border-emerald-300/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
-              <div className="flex items-start gap-3.5">
-                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-                  <KeyRound className="w-5 h-5" />
+          {/* =======================================================
+              SERVICE-SPECIFIC DETAIL PANELS
+             ======================================================= */}
+          
+          {/* FOOD PREP PROGRESS PANEL */}
+          {isFood && order.status !== 'CANCELLED' && (
+            <div className="bg-amber-50/60 border border-amber-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Utensils className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black uppercase tracking-wider text-emerald-900">
-                      Hostel Doorstep Delivery OTP
-                    </span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      order.status === 'DELIVERED'
-                        ? 'bg-emerald-200 text-emerald-900'
-                        : 'bg-emerald-100 text-emerald-800'
-                    }`}>
-                      {order.status === 'DELIVERED' ? '✓ Delivery Confirmed' : 'Secure Handover'}
-                    </span>
-                  </div>
-                  <p className="text-xs text-emerald-800/90 mt-0.5 max-w-lg leading-relaxed">
-                    {order.status === 'DELIVERED'
-                      ? 'Package was verified and delivered at your hostel room door.'
-                      : 'Share this 4-digit code with your delivery runner at your hostel room door to collect your package.'}
+                  <h4 className="text-xs font-bold text-amber-900">Kitchen Preparation Status</h4>
+                  <p className="text-[11px] text-amber-700">
+                    {order.status === 'PREPARING'
+                      ? `Cooking in progress • Approx ${order.foodDetails?.preparationTimeMinutes || 15} mins remaining`
+                      : order.status === 'CONFIRMED' || order.status === 'ACCEPTED'
+                      ? 'Order accepted by cafeteria. Preparation starting shortly.'
+                      : 'Meal cooked & ready for runner dispatch.'}
                   </p>
+                  {order.foodDetails?.cookingInstructions && (
+                    <div className="text-[10px] text-amber-800 italic mt-0.5">
+                      Chef Note: "{order.foodDetails.cookingInstructions}"
+                    </div>
+                  )}
                 </div>
               </div>
-
-              <div className="bg-white px-5 py-2.5 rounded-xl border border-emerald-300 shadow-xs flex items-center gap-3 shrink-0 self-stretch sm:self-auto justify-center">
-                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Your OTP:</span>
-                <span className="font-mono text-2xl font-black tracking-[0.25em] text-emerald-700">
-                  {order.orderNumber.replace(/\D/g, '').slice(-4) || order.orderNumber.slice(-4) || '4829'}
+              <div className="text-right">
+                <span className="text-[11px] font-bold text-amber-900 bg-amber-100 px-2.5 py-1 rounded-lg border border-amber-200">
+                  {order.status === 'PREPARING' ? '🔥 Cooking Live' : '📋 Queued in Kitchen'}
                 </span>
               </div>
             </div>
           )}
 
-          {/* ==================================================
-              3. LIVE GPS TRACK RADAR — Refined Whitish High-Tech Tracker
-             ================================================== */}
-          <div
-            className="rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-[#f8fafc] shadow-xs overflow-hidden relative"
-            style={{
-              backgroundImage: 'radial-gradient(#cbd5e1 1.2px, transparent 1.2px)',
-              backgroundSize: '20px 20px'
-            }}
-          >
-            {/* Very subtle top gradient hairline */}
-            <div className="h-[2px] w-full bg-gradient-to-r from-sky-400 via-emerald-400 to-sky-400 opacity-60" />
-
-            <div className="px-5 py-5 sm:px-7 sm:py-6 space-y-6">
-
-              {/* Header Row: Live Radar Badge & Status Headline */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                {/* Live Badge */}
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 border border-sky-300 text-sky-700 text-[10px] font-black tracking-wider uppercase shrink-0 self-start shadow-xs">
-                  <span className="relative flex h-2 w-2 shrink-0">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#0284c7]" />
-                  </span>
-                  LIVE GPS TRACK RADAR
-                </div>
-
-                {/* Status text */}
-                <p className="text-xs sm:text-[13px] font-bold text-slate-800 leading-snug">
-                  {getRadarHeadline(order.status)}
-                </p>
-              </div>
-
-              {/* Timeline Container */}
-              <div className="overflow-x-auto scrollbar-none pb-2 pt-6">
-                <div className="relative min-w-[560px] sm:min-w-0 pt-6">
-
-                  {/* Gray inactive rail */}
-                  <div className="absolute top-[38px] left-[8.3333%] right-[8.3333%] h-[3px] bg-slate-200 rounded-full" />
-
-                  {/* Vibrant Glowing Green active rail */}
-                  <div
-                    className="absolute top-[38px] left-[8.3333%] h-[3px] bg-gradient-to-r from-emerald-400 via-emerald-500 to-green-500 rounded-full transition-all duration-700 ease-out shadow-[0_0_12px_rgba(16,185,129,0.55)]"
-                    style={{ width: activeStep >= 0 ? `${(activeStep / 5) * 83.3333}%` : '0%' }}
-                  />
-
-                  {/* Steps Grid (6 Columns) */}
-                  <div className="relative grid grid-cols-6 z-10">
-                    {CHECKPOINTS.map((step, idx) => {
-                      const isDeliveredOrder = order.status === 'DELIVERED';
-                      const isCompleted = isDeliveredOrder || activeStep > idx;
-                      const isActive = activeStep === idx;
-                      const showScooterHere = isDeliveredOrder ? idx === 5 : isActive;
-
-                      return (
-                        <div key={step.id} className="flex flex-col items-center text-center relative">
-
-                          {/* Delivery Scooter graphic floating above active/delivered step */}
-                          {showScooterHere && (
-                            <div className="absolute -top-10 sm:-top-11 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center animate-bounce duration-1000">
-                              <div className="flex items-center justify-center">
-                                <svg
-                                  className="w-10 h-10 sm:w-11 sm:h-11 filter drop-shadow(0 3px 6px rgba(0,0,0,0.2))"
-                                  viewBox="0 0 48 48"
-                                  fill="none"
-                                >
-                                  {/* Delivery Cargo Box on Rear Rack with Cyan/Blue color and Cross Icon */}
-                                  <rect x="6" y="14" width="13" height="13" rx="2.5" fill="#0284c7" stroke="#0369a1" strokeWidth="1.2" />
-                                  {/* Cross icon on cargo box */}
-                                  <path d="M12.5 17v7M9 20.5h7" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
-                                  
-                                  {/* Rear rack bar */}
-                                  <path d="M10 27v3h8" stroke="#334155" strokeWidth="1.5" strokeLinecap="round" />
-
-                                  {/* Main Scooter Body */}
-                                  <path d="M18 30h9l4-9h6" stroke="#0f172a" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-                                  {/* Scooter floorboard & engine casing */}
-                                  <path d="M17 29h11l1-3h-10z" fill="#0284c7" />
-                                  
-                                  {/* Seat */}
-                                  <path d="M16 23h7c1 0 1.5 1 1 2h-9c-0.5-1 0-2 1-2z" fill="#1e293b" />
-                                  
-                                  {/* Steering Column & Handlebar */}
-                                  <path d="M31 21l3-8h-3" stroke="#0f172a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                                  <circle cx="34" cy="13" r="1.5" fill="#0284c7" />
-                                  
-                                  {/* Headlight beam */}
-                                  <path d="M34 16l8-3v7l-8-1z" fill="#38bdf8" opacity="0.35" />
-                                  <circle cx="34" cy="16" r="1.8" fill="#38bdf8" />
-                                  
-                                  {/* Rear Wheel with Spoked Hub */}
-                                  <circle cx="12" cy="33" r="5" fill="#0f172a" stroke="#64748b" strokeWidth="1.2" />
-                                  <circle cx="12" cy="33" r="2.5" fill="#0284c7" />
-                                  <path d="M12 28v10M7 33h10M8.5 29.5l7 7M8.5 36.5l7-7" stroke="#cbd5e1" strokeWidth="0.8" opacity="0.75" />
-                                  
-                                  {/* Front Wheel with Spoked Hub */}
-                                  <circle cx="35" cy="33" r="5" fill="#0f172a" stroke="#64748b" strokeWidth="1.2" />
-                                  <circle cx="35" cy="33" r="2.5" fill="#0284c7" />
-                                  <path d="M35 28v10M30 33h10M31.5 29.5l7 7M31.5 36.5l7-7" stroke="#cbd5e1" strokeWidth="0.8" opacity="0.75" />
-                                </svg>
-                              </div>
-                              {/* Pointer indicator */}
-                              <div className="w-0 h-0 border-l-[4px] border-r-[4px] border-t-[5px] border-l-transparent border-r-transparent border-t-emerald-500 -mt-1" />
-                            </div>
-                          )}
-
-                          {/* Node Circle (Centered along line at top:38px) */}
-                          <div className="h-8 flex items-center justify-center mb-0">
-                            {isCompleted ? (
-                              <div className="relative flex items-center justify-center">
-                                {showScooterHere && (
-                                  <div className="absolute -inset-1.5 rounded-full bg-emerald-400/30 animate-ping" style={{ animationDuration: '2.5s' }} />
-                                )}
-                                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-[0_0_10px_rgba(16,185,129,0.5)] border-2 border-white transition-all">
-                                  <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[3]" />
-                                </div>
-                              </div>
-                            ) : isActive ? (
-                              <div className="relative flex items-center justify-center">
-                                <div className="absolute -inset-1 rounded-full bg-emerald-400/30 animate-ping" style={{ animationDuration: '2s' }} />
-                                <div className="relative w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center ring-4 ring-emerald-400/20 shadow-[0_0_12px_rgba(16,185,129,0.6)] border-2 border-white">
-                                  <Check className="w-4 h-4 stroke-[3]" />
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white border-2 border-slate-300 flex items-center justify-center shadow-2xs">
-                                <span className="text-[10px] font-bold text-slate-400">{idx + 1}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Checkpoint Label */}
-                          <div
-                            className={`mt-2 text-[10px] sm:text-[11px] leading-tight font-bold px-0.5 transition-colors ${
-                              isCompleted || isActive
-                                ? 'text-slate-900 font-extrabold'
-                                : 'text-slate-400 font-semibold'
-                            }`}
-                          >
-                            {step.label}
-                          </div>
-                        </div>
-                      );
-                    })}
+          {/* LAUNDRY DOORSTEP DUAL-OTP & WASH CYCLE PANEL */}
+          {isLaundry && order.status !== 'CANCELLED' && (
+            <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 sm:p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
+                    <Shirt className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-indigo-950">Campus Doorstep Laundry Verification</h4>
+                    <p className="text-[11px] text-indigo-700">Dual-OTP secure handover protocol</p>
                   </div>
                 </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-indigo-800 bg-indigo-100/80 px-2.5 py-1 rounded-md">
+                    Stage: {(order.laundryDetails?.washCycleStage || order.status).replace(/_/g, ' ')}
+                  </span>
+                </div>
               </div>
 
-            </div>
-          </div>
+              {/* OTP Display Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Pickup OTP */}
+                <div className="bg-white p-3.5 rounded-xl border border-indigo-200 shadow-2xs space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
+                    <span className="flex items-center gap-1 text-indigo-900">
+                      <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
+                      Step 1: Doorstep Pickup OTP
+                    </span>
+                    <span className="text-[10px] text-slate-400">Share during pickup</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-lg font-black tracking-widest text-indigo-700 font-mono">
+                      {order.pickupOtp || order.laundryDetails?.pickupOtp || '••••••'}
+                    </span>
+                    <button
+                      onClick={() => {
+                        const otp = order.pickupOtp || order.laundryDetails?.pickupOtp;
+                        if (otp) {
+                          navigator.clipboard.writeText(otp);
+                          showToast('Pickup OTP copied to clipboard');
+                        }
+                      }}
+                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                    >
+                      <Copy className="w-3 h-3" /> Copy
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    Provide this code to runner when handing over your laundry bag.
+                  </p>
+                </div>
 
-          {/* Action Row at Bottom of Card */}
+                {/* Delivery OTP */}
+                <div className="bg-white p-3.5 rounded-xl border border-indigo-200 shadow-2xs space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
+                    <span className="flex items-center gap-1 text-emerald-900">
+                      <KeyRound className="w-3.5 h-3.5 text-emerald-600" />
+                      Step 2: Clean Clothes Delivery OTP
+                    </span>
+                    <span className="text-[10px] text-slate-400">Share after inspecting</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-lg font-black tracking-widest text-emerald-700 font-mono">
+                      {order.deliveryOtp || order.laundryDetails?.deliveryOtp || '••••••'}
+                    </span>
+                    <button
+                      onClick={() => {
+                        const otp = order.deliveryOtp || order.laundryDetails?.deliveryOtp;
+                        if (otp) {
+                          navigator.clipboard.writeText(otp);
+                          showToast('Delivery OTP copied to clipboard');
+                        }
+                      }}
+                      className="text-xs font-bold text-emerald-600 hover:text-emerald-800 flex items-center gap-1"
+                    >
+                      <Copy className="w-3 h-3" /> Copy
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    Share only after checking that all clothes have been returned intact.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ==================================================
+              3. RADAR & PROGRESS STEPPER
+             ================================================== */}
+          {order.status !== 'CANCELLED' && (
+            <div className="bg-[#f0f9ff] border border-[#bae6fd] rounded-2xl p-5 sm:p-6 space-y-6">
+
+              {/* Headline Banner */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full bg-[#0284c7] animate-ping" />
+                  <span className="text-xs sm:text-sm font-black text-gray-900">
+                    {getRadarHeadline(order.status)}
+                  </span>
+                </div>
+                <div className="text-[11px] font-bold text-[#0284c7] bg-white px-3 py-1 rounded-full border border-[#bae6fd] self-start sm:self-auto">
+                  Live Dispatch Tracking
+                </div>
+              </div>
+
+              {/* Horizontal Stepper */}
+              <div className="relative pt-2 pb-2">
+                <div className="hidden sm:block absolute top-5 left-8 right-8 h-1 bg-gray-200 rounded-full">
+                  <div
+                    className="h-full bg-[#0284c7] rounded-full transition-all duration-700 ease-out"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, (activeStep / (checkpoints.length - 1)) * 100))}%`
+                    }}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-6 gap-4 sm:gap-2 relative z-10">
+                  {checkpoints.map((cp, idx) => {
+                    const isCompleted = idx < activeStep;
+                    const isCurrent = idx === activeStep;
+
+                    return (
+                      <div key={cp.id} className="flex flex-col items-center text-center space-y-1.5">
+                        <div
+                          className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-xs transition-all duration-300 ${
+                            isCompleted
+                              ? 'bg-[#2e7d32] text-white shadow-xs'
+                              : isCurrent
+                              ? 'bg-[#0284c7] text-white ring-4 ring-sky-200 shadow-md scale-105'
+                              : 'bg-white border-2 border-gray-300 text-gray-400'
+                          }`}
+                        >
+                          {isCompleted ? <Check className="w-4 h-4 stroke-[3]" /> : idx + 1}
+                        </div>
+
+                        <div className="space-y-0.5">
+                          <span
+                            className={`block text-xs font-bold leading-tight ${
+                              isCurrent
+                                ? 'text-[#0284c7]'
+                                : isCompleted
+                                ? 'text-gray-900'
+                                : 'text-gray-400'
+                            }`}
+                          >
+                            {cp.label}
+                          </span>
+                          <span className="hidden sm:block text-[10px] text-gray-400 font-medium">
+                            {cp.sub}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* =======================================================
+              4. TRANSPARENT REFUND STATUS TRACKER (IF REFUND ACTIVE)
+             ======================================================= */}
+          {showRefundSection && (
+            <div className="bg-rose-50/70 border-2 border-rose-200 rounded-3xl p-5 sm:p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-rose-200/80 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0">
+                    <RotateCcw className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-rose-950 flex items-center gap-2">
+                      Refund Tracking & Financial Disbursal
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-200 text-rose-800">
+                        {order.refundStatus?.replace(/_/g, ' ')}
+                      </span>
+                    </h4>
+                    <p className="text-xs text-rose-700">
+                      Transparent status of funds returning to your source account
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-xs text-rose-700 font-semibold block">Refund Amount</span>
+                  <span className="text-lg font-black text-rose-900">
+                    ₹{Number(order.refundAmount || order.totalAmount).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Refund Stepper */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                {/* Stage 1: Requested */}
+                <div className="bg-white p-3.5 rounded-xl border border-rose-200 shadow-2xs space-y-1">
+                  <span className="text-[10px] font-bold uppercase text-slate-400">Step 1</span>
+                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    Refund Requested
+                  </div>
+                  <p className="text-[11px] text-slate-500">Order cancelled and refund ticket logged.</p>
+                </div>
+
+                {/* Stage 2: Central Review */}
+                <div className={`p-3.5 rounded-xl border shadow-2xs space-y-1 ${
+                  ['APPROVED', 'PROCESSING', 'COMPLETED'].includes(order.refundStatus || '')
+                    ? 'bg-white border-rose-200'
+                    : 'bg-rose-100/50 border-rose-300'
+                }`}>
+                  <span className="text-[10px] font-bold uppercase text-slate-400">Step 2</span>
+                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                    {['APPROVED', 'PROCESSING', 'COMPLETED'].includes(order.refundStatus || '') ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : (
+                      <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    )}
+                    Finance Approval
+                  </div>
+                  <p className="text-[11px] text-slate-500">Central Finance Cell audits transaction.</p>
+                </div>
+
+                {/* Stage 3: Payment Gateway Disbursal */}
+                <div className={`p-3.5 rounded-xl border shadow-2xs space-y-1 ${
+                  ['PROCESSING', 'COMPLETED'].includes(order.refundStatus || '')
+                    ? 'bg-white border-rose-200'
+                    : 'bg-slate-50 border-slate-200 text-slate-400'
+                }`}>
+                  <span className="text-[10px] font-bold uppercase text-slate-400">Step 3</span>
+                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                    {order.refundStatus === 'COMPLETED' ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : order.refundStatus === 'PROCESSING' ? (
+                      <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    ) : (
+                      <Lock className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                    Gateway Transfer
+                  </div>
+                  <p className="text-[11px] text-slate-500">Disbursed to destination UPI / Bank account.</p>
+                </div>
+
+                {/* Stage 4: Completed */}
+                <div className={`p-3.5 rounded-xl border shadow-2xs space-y-1 ${
+                  order.refundStatus === 'COMPLETED'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-slate-50 border-slate-200 text-slate-400'
+                }`}>
+                  <span className="text-[10px] font-bold uppercase text-slate-400">Step 4</span>
+                  <div className="font-bold flex items-center gap-1.5">
+                    {order.refundStatus === 'COMPLETED' ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : (
+                      <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                    Refund Credited
+                  </div>
+                  <p className="text-[11px] text-slate-500">Funds credited. UTR reference updated.</p>
+                </div>
+              </div>
+
+              {/* Confidential Account Warning & Action */}
+              <div className="bg-white p-4 rounded-2xl border border-rose-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0" />
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 block">
+                      Refund Destination Account: {savedRefundAccount ? `${savedRefundAccount.accountType} (${savedRefundAccount.upiIdMasked || savedRefundAccount.accountNumberMasked})` : 'Default Payment Source'}
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Encrypted institutional record. Strictly protected from delivery runners and providers.
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setRefundAccountModalOpen(true)}
+                  className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>{savedRefundAccount ? 'Change Refund Account' : 'Set Refund Account'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ==================================================
+              5. ACTION ROW AT BOTTOM OF CARD
+             ================================================== */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={() => setSupportModalOpen(true)}
                 className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-xs font-bold text-gray-700 transition flex items-center gap-1.5"
@@ -737,10 +1205,18 @@ export default function OrderTrackingPage() {
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Reorder Items</span>
               </button>
+
+              <button
+                onClick={() => setRefundAccountModalOpen(true)}
+                className="px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition flex items-center gap-1.5"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Confidential Refund A/C</span>
+              </button>
             </div>
 
             <div className="flex items-center gap-2">
-              {isCancellable && (
+              {cancellationEligibility.cancellable ? (
                 <button
                   onClick={() => setCancelModalOpen(true)}
                   className="px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold transition flex items-center gap-1.5"
@@ -748,13 +1224,21 @@ export default function OrderTrackingPage() {
                   <XCircle className="w-3.5 h-3.5" />
                   <span>Cancel Order</span>
                 </button>
+              ) : order.status !== 'CANCELLED' && (
+                <span
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-400 text-[11px] font-semibold flex items-center gap-1 cursor-not-allowed"
+                  title={cancellationEligibility.reason}
+                >
+                  <Lock className="w-3 h-3" />
+                  <span>Cancellation Closed</span>
+                </span>
               )}
 
               <Link
-                href="/food"
+                href={isLaundry ? '/laundry/book' : isFood ? '/food' : '/dashboard'}
                 className="px-5 py-2 rounded-xl bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-extrabold transition shadow-xs"
               >
-                Browse Campus Menu
+                {isLaundry ? 'Book More Laundry' : isFood ? 'Browse Campus Menu' : 'Campus Store'}
               </Link>
             </div>
           </div>
@@ -802,8 +1286,8 @@ export default function OrderTrackingPage() {
                 <strong className="text-gray-900">{order.paymentMethod.replace(/_/g, ' ')} ({order.paymentStatus})</strong>
               </div>
               <div>
-                <span className="text-gray-400 block text-[10px] font-bold uppercase">Delivery Partner</span>
-                <strong className="text-gray-900">{partnerName} ({partnerId})</strong>
+                <span className="text-gray-400 block text-[10px] font-bold uppercase">Service Category</span>
+                <strong className="text-gray-900">{serviceType.replace(/_/g, ' ')}</strong>
               </div>
             </div>
 
@@ -838,7 +1322,7 @@ export default function OrderTrackingPage() {
                 </div>
               )}
               <div className="flex justify-between">
-                <span>Hostel Delivery Fee</span>
+                <span>Campus Delivery Fee</span>
                 <span className="font-semibold text-gray-900">{order.deliveryFee === 0 ? 'FREE' : `₹${order.deliveryFee}`}</span>
               </div>
               <div className="pt-2 border-t border-gray-200 flex justify-between items-baseline text-base font-black text-gray-900">
@@ -867,7 +1351,9 @@ export default function OrderTrackingPage() {
         </div>
       )}
 
-      {/* Cancel Order Modal */}
+      {/* ==================================================
+          CANCEL ORDER MODAL (Service-Adaptive)
+         ================================================== */}
       {cancelModalOpen && (
         <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 text-center space-y-4 shadow-2xl">
@@ -876,8 +1362,27 @@ export default function OrderTrackingPage() {
             </div>
             <h3 className="text-lg font-black text-gray-900">Cancel Order #{order.orderNumber}?</h3>
             <p className="text-xs text-gray-500 max-w-xs mx-auto">
-              Are you sure you want to cancel this order? Any payments will be refunded to your source account.
+              {isFood
+                ? 'Your order has not started kitchen cooking yet. You may cancel now for a full refund.'
+                : isLaundry
+                ? 'Your laundry bag has not been collected yet. You may cancel now for a full refund.'
+                : 'Are you sure you want to cancel this order? Any payments will be refunded to your source account.'}
             </p>
+
+            <div className="text-left space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-600">Reason for cancellation:</label>
+              <select
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:outline-hidden focus:ring-2 focus:ring-[#0284c7]"
+              >
+                <option value="Changed mind">Changed my mind</option>
+                <option value="Ordered by mistake">Ordered by mistake</option>
+                <option value="Wait time too long">Wait time too long</option>
+                <option value="Need to change items">Need to change items</option>
+                <option value="Other">Other campus reason</option>
+              </select>
+            </div>
 
             {cancelMessage && (
               <div className="p-3 rounded-xl bg-gray-100 text-xs font-bold text-gray-800">
@@ -888,18 +1393,197 @@ export default function OrderTrackingPage() {
             <div className="flex items-center gap-2 pt-2">
               <button
                 onClick={() => setCancelModalOpen(false)}
-                className="flex-1 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold"
+                className="flex-1 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold cursor-pointer"
               >
                 Go Back
               </button>
               <button
                 onClick={handleCancelOrder}
                 disabled={cancelling}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold disabled:opacity-50"
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold disabled:opacity-50 cursor-pointer"
               >
                 {cancelling ? 'Cancelling...' : 'Confirm Cancel'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================
+          CONFIDENTIAL STUDENT REFUND ACCOUNT MODAL
+         ================================================== */}
+      {refundAccountModalOpen && (
+        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Confidential Refund Account</h3>
+                  <p className="text-[11px] text-slate-500">Campus Bank & UPI Payout Privacy Vault</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setRefundAccountModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Privacy Alert */}
+            <div className="p-3.5 bg-indigo-50/80 border border-indigo-200 rounded-2xl flex items-start gap-2.5 text-xs text-indigo-950">
+              <Lock className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold block">Protected Institutional Privacy</span>
+                Your banking & UPI details are encrypted and accessible exclusively by Central Campus Finance Administrators for disbursing refund claims. Service providers and delivery runners have <strong>zero</strong> visibility to this account.
+              </div>
+            </div>
+
+            {savedRefundAccount && (
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-1">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Currently Stored Account</div>
+                <div className="font-bold text-slate-800">
+                  {savedRefundAccount.accountType === 'UPI' ? `UPI: ${savedRefundAccount.upiIdMasked}` : `Bank A/C: ${savedRefundAccount.accountNumberMasked} (${savedRefundAccount.bankName})`}
+                </div>
+                <div className="text-[11px] text-slate-500">Beneficiary: {savedRefundAccount.accountHolderName}</div>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveRefundAccount} className="space-y-4 text-xs">
+              {/* Account Type Selector */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1.5">Disbursal Method</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setRefundAccountForm(prev => ({ ...prev, accountType: 'UPI' }))}
+                    className={`py-2 px-3 rounded-xl font-bold border transition flex items-center justify-center gap-1.5 ${
+                      refundAccountForm.accountType === 'UPI'
+                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-2xs'
+                        : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Instant UPI ID</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRefundAccountForm(prev => ({ ...prev, accountType: 'BANK' }))}
+                    className={`py-2 px-3 rounded-xl font-bold border transition flex items-center justify-center gap-1.5 ${
+                      refundAccountForm.accountType === 'BANK'
+                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-2xs'
+                        : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <Building className="w-3.5 h-3.5" />
+                    <span>Bank Account (IMPS/NEFT)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Beneficiary Name */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Account Holder Full Name</label>
+                <input
+                  type="text"
+                  required
+                  value={refundAccountForm.accountHolderName}
+                  onChange={(e) => setRefundAccountForm(prev => ({ ...prev, accountHolderName: e.target.value }))}
+                  placeholder="e.g. Rahul Sharma"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-medium"
+                />
+              </div>
+
+              {/* UPI Fields */}
+              {refundAccountForm.accountType === 'UPI' ? (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">UPI ID (VPA)</label>
+                  <input
+                    type="text"
+                    required
+                    value={refundAccountForm.upiId}
+                    onChange={(e) => setRefundAccountForm(prev => ({ ...prev, upiId: e.target.value }))}
+                    placeholder="e.g. rahul@oksbi, rahul@paytm"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-mono"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Campus refunds are disbursed instantly through the campus banking gateway.
+                  </span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Bank Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={refundAccountForm.bankName}
+                      onChange={(e) => setRefundAccountForm(prev => ({ ...prev, bankName: e.target.value }))}
+                      placeholder="e.g. State Bank of India"
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Account Number</label>
+                      <input
+                        type="text"
+                        required
+                        value={refundAccountForm.accountNumber}
+                        onChange={(e) => setRefundAccountForm(prev => ({ ...prev, accountNumber: e.target.value }))}
+                        placeholder="e.g. 30291823901"
+                        className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">IFSC Code</label>
+                      <input
+                        type="text"
+                        required
+                        value={refundAccountForm.ifscCode}
+                        onChange={(e) => setRefundAccountForm(prev => ({ ...prev, ifscCode: e.target.value.toUpperCase() }))}
+                        placeholder="e.g. SBIN0002108"
+                        className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-mono uppercase"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {refundAccountError && (
+                <div className="p-3 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl font-medium">
+                  {refundAccountError}
+                </div>
+              )}
+
+              {refundAccountSuccess && (
+                <div className="p-3 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl font-medium flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>{refundAccountSuccess}</span>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setRefundAccountModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={refundAccountSaving}
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-xs"
+                >
+                  {refundAccountSaving ? 'Encrypting & Saving...' : 'Save Confidential Account'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -921,56 +1605,59 @@ export default function OrderTrackingPage() {
               </button>
             </div>
 
-            {supportSuccess ? (
-              <div className="p-4 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold text-center">
-                {supportSuccess}
+            <form onSubmit={handleSupportSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-gray-500 font-bold mb-1">Issue Category</label>
+                <select
+                  value={supportCategory}
+                  onChange={(e) => setSupportCategory(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:outline-hidden focus:ring-2 focus:ring-[#0284c7]"
+                >
+                  <option>Order hasn't arrived</option>
+                  <option>Missing items or wrong item delivered</option>
+                  <option>Runner unreachable or delayed</option>
+                  <option>Refund or billing issue</option>
+                  <option>Other hostel delivery assistance</option>
+                </select>
               </div>
-            ) : (
-              <form onSubmit={handleSupportSubmit} className="space-y-3 text-xs">
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Issue Type</label>
-                  <select
-                    value={supportCategory}
-                    onChange={(e) => setSupportCategory(e.target.value)}
-                    className="w-full p-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white font-semibold text-gray-900 focus:outline-none"
-                  >
-                    <option value="Order hasn't arrived">Order hasn't arrived</option>
-                    <option value="Missing item">Missing item</option>
-                    <option value="Wrong item delivered">Wrong item delivered</option>
-                    <option value="Delivery partner unreachable">Delivery partner unreachable</option>
-                    <option value="Other delivery query">Other delivery query</option>
-                  </select>
-                </div>
 
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Describe your query</label>
-                  <textarea
-                    rows={3}
-                    value={supportMessage}
-                    onChange={(e) => setSupportMessage(e.target.value)}
-                    placeholder="Provide details for campus runner desk..."
-                    className="w-full p-2.5 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white font-semibold text-gray-900 focus:outline-none"
-                  />
-                </div>
+              <div>
+                <label className="block text-gray-500 font-bold mb-1">Message Description</label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="Describe your issue in detail for campus operators..."
+                  value={supportMessage}
+                  onChange={(e) => setSupportMessage(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:outline-hidden focus:ring-2 focus:ring-[#0284c7] text-xs"
+                />
+              </div>
 
-                <div className="flex items-center gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setSupportModalOpen(false)}
-                    className="flex-1 py-2 rounded-xl bg-gray-100 text-gray-700 font-bold"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={supportSubmitting || !supportMessage.trim()}
-                    className="flex-1 py-2 rounded-xl bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold disabled:opacity-50"
-                  >
-                    {supportSubmitting ? 'Submitting...' : 'Submit Query'}
-                  </button>
+              {supportSuccess && (
+                <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{supportSuccess}</span>
                 </div>
-              </form>
-            )}
+              )}
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSupportModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={supportSubmitting}
+                  className="flex-1 py-2.5 rounded-xl bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-xs"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{supportSubmitting ? 'Submitting...' : 'Send Ticket'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -155,11 +155,11 @@ export default function CheckoutPage() {
           amount: res.razorpay.amount,
           currency: res.razorpay.currency,
           name: 'Campus Basket',
-          description: `NIT Durgapur Hostel Order #${order.orderNumber}`,
+          description: `Campus Hostel Order #${order.orderNumber}`,
           order_id: res.razorpay.razorpayOrderId,
           image: '/icons/icon-192x192.svg',
           prefill: {
-            name: user?.student?.fullName || 'NIT Durgapur Student',
+            name: user?.student?.fullName || 'Campus Student',
             email: user?.email || '',
             contact: user?.student?.mobileNumber || '',
           },
@@ -228,7 +228,7 @@ export default function CheckoutPage() {
                 campus<span className="text-[#4F9D2F]">basket</span>
               </span>
               <span className="hidden sm:inline-block text-[11px] text-[#667085] pl-2 border-l border-gray-200">
-                NIT Durgapur Campus Marketplace
+                Campus Basket Marketplace
               </span>
             </Link>
             <span className="text-xs font-bold text-[#667085] flex items-center gap-1.5">
@@ -245,7 +245,7 @@ export default function CheckoutPage() {
             </div>
             <h2 className="text-lg font-bold text-[#172033]">Your Basket is Empty</h2>
             <p className="text-xs text-[#667085] mt-1.5 leading-relaxed">
-              Explore meals, hostel stationery, fresh produce, and daily essentials across NIT Durgapur.
+              Explore meals, hostel stationery, fresh produce, and daily essentials across campus residence halls.
             </p>
             <Link
               href="/"
@@ -285,7 +285,7 @@ export default function CheckoutPage() {
     );
   }
 
-  const studentName = user?.student?.fullName || user?.email?.split('@')[0] || 'NIT Durgapur Student';
+  const studentName = user?.student?.fullName || user?.email?.split('@')[0] || 'Campus Student';
   const studentMobile = user?.student?.mobileNumber || '+91 ••••• •••••';
 
   return (
@@ -305,7 +305,7 @@ export default function CheckoutPage() {
                 campus basket
               </div>
               <div className="text-[10px] text-[#667085] font-medium tracking-wide">
-                NIT Durgapur Campus Marketplace
+                Campus Basket Marketplace
               </div>
             </div>
           </Link>
@@ -371,7 +371,7 @@ export default function CheckoutPage() {
             Complete Your Order
           </h1>
           <p className="text-xs text-[#667085] mt-1">
-            Fast and secure delivery to your NIT Durgapur hostel room.
+            Fast and secure delivery to your campus hostel room.
           </p>
         </div>
 
@@ -380,7 +380,7 @@ export default function CheckoutPage() {
           <div className="mb-5 p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2.5 text-amber-900 text-xs shadow-2xs">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold">Campus Geofence Notice:</span> Deliveries are strictly restricted to verified NIT Durgapur residence halls.
+              <span className="font-bold">Campus Geofence Notice:</span> Deliveries are strictly restricted to verified campus residence halls.
             </div>
           </div>
         )}
@@ -750,7 +750,7 @@ export default function CheckoutPage() {
                   <span>🔒 Secure payment &bull; Powered by Razorpay</span>
                 </div>
                 <div className="text-[10px] text-gray-400">
-                  Direct hostel delivery across NIT Durgapur residence halls
+                  Direct hostel delivery across campus residence halls
                 </div>
               </div>
             </div>

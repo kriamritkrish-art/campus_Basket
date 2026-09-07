@@ -17,27 +17,27 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: 'NIT Durgapur Campus Services — Food, Fruits, Laundry & Essentials',
-    template: '%s | NIT Durgapur Campus Services'
+    default: 'Campus Basket — Food, Fruits, Laundry & Essentials',
+    template: '%s | Campus Basket'
   },
   description:
-    'Exclusive campus-only delivery marketplace for verified NIT Durgapur students. Hot meals, fresh fruits, express room-pickup laundry with dual OTPs, and academic stationery delivered to your residence hall room.',
+    'Exclusive campus delivery marketplace for verified campus students. Hot meals, fresh fruits, express room-pickup laundry with dual OTPs, and academic stationery delivered to your residence hall room.',
   keywords: [
-    'NIT Durgapur',
-    'NIT Durgapur campus delivery',
-    'NIT Durgapur food delivery',
-    'NIT Durgapur laundry service',
-    'NIT Durgapur fresh fruits',
-    'NIT Durgapur student essentials',
-    'Hostel delivery NIT Durgapur'
+    'Campus Basket',
+    'Campus delivery',
+    'Campus food delivery',
+    'Campus laundry service',
+    'Campus fresh fruits',
+    'Campus student essentials',
+    'Hostel room delivery'
   ],
-  authors: [{ name: 'NIT Durgapur Student Services Cell' }],
+  authors: [{ name: 'Campus Basket Student Services Cell' }],
   manifest: '/manifest.json',
   openGraph: {
-    title: 'NIT Durgapur Campus Services Platform',
-    description: 'Food, Fruits, Laundry & Essentials — Made for Campus Life at NIT Durgapur.',
-    url: 'https://services.nitdgp.ac.in',
-    siteName: 'NIT Durgapur Campus Services',
+    title: 'Campus Basket Platform',
+    description: 'Food, Fruits, Laundry & Essentials — Made for Campus Life.',
+    url: 'https://campusbasket.in',
+    siteName: 'Campus Basket',
     type: 'website',
     locale: 'en_IN'
   },

@@ -423,7 +423,7 @@ export default function AdminSupportTicketsPage() {
                   <Building className="w-4 h-4 text-purple-600" />
                   <span className="text-slate-500">Residence Hall:</span>
                   <span className="font-semibold text-[#17202A]">
-                    {selectedTicket.user?.hall?.name || 'NIT Durgapur Hostel'} (Room: {selectedTicket.user?.roomNumber || 'Assigned'})
+                    {selectedTicket.user?.hall?.name || 'Campus Residence Hall'} (Room: {selectedTicket.user?.roomNumber || 'Assigned'})
                   </span>
                 </div>
                 <div className="flex items-center gap-2">

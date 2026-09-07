@@ -270,7 +270,7 @@ function DeliveryLayoutInner({ children }: { children: React.ReactNode }) {
                   </span>
                 </div>
                 <p className="text-[10px] text-gray-400 font-semibold mt-0.5">
-                  NIT Durgapur Partner Portal
+                  Campus Basket Partner Portal
                 </p>
               </div>
             )}
@@ -424,7 +424,7 @@ function DeliveryLayoutInner({ children }: { children: React.ReactNode }) {
                 {getPageTitle()}
               </h1>
               <p className="text-[11px] text-gray-500 hidden sm:block">
-                Campus Basket Runner Dispatch • NIT Durgapur
+                Campus Basket Runner Dispatch • Central Logistics
               </p>
             </div>
           </div>

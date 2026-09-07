@@ -140,7 +140,7 @@ export default function AdminStudentsPage() {
             </span>
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Registered NIT Durgapur students, dual verified emails, academic details, and account lifecycle management
+            Registered campus students, verified institutional emails, academic details, and account lifecycle management
           </p>
         </div>
       </div>

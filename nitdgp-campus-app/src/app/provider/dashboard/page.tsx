@@ -48,7 +48,9 @@ import {
   PackageX,
   ChefHat,
   Bike,
-  Menu
+  Menu,
+  Building,
+  Zap
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -73,6 +75,7 @@ export default function ProviderDashboardPage() {
   const [activeTab, setActiveTab] = useState<
     'OVERVIEW' | 'LIVE_OPERATIONS' | 'CUSTOMERS' | 'PRODUCTS' | 'DELIVERY' | 'FINANCE' | 'LAUNDRY' | 'GARMENT_INSPECTION' | 'RATES'
   >('OVERVIEW');
+  const [laundryFilter, setLaundryFilter] = useState<'ALL' | 'PICKUP' | 'WASH' | 'READY' | 'COMPLETED'>('ALL');
 
   // Global Date Filter
   const [timeframe, setTimeframe] = useState<string>('30d');
@@ -152,9 +155,8 @@ export default function ProviderDashboardPage() {
 
   // Laundry Jobs State (Doorstep dual-OTP feature preserved)
   const [laundryJobs, setLaundryJobs] = useState<any[]>([]);
-  const [laundryFilter, setLaundryFilter] = useState<'ALL' | 'PICKUP' | 'WASH' | 'READY' | 'COMPLETED'>('ALL');
   const [selectedGarmentPhotos, setSelectedGarmentPhotos] = useState<{
-    photos: string[];
+    photos: any[];
     orderNumber: string;
     studentName?: string;
   } | null>(null);
@@ -168,6 +170,129 @@ export default function ProviderDashboardPage() {
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpSuccess, setOtpSuccess] = useState<string | null>(null);
   const [submittingOtp, setSubmittingOtp] = useState(false);
+
+  // Settlement Destination Account State
+  const [settlementAccount, setSettlementAccount] = useState<any>(null);
+  const [settlementModalOpen, setSettlementModalOpen] = useState(false);
+  const [settlementSaving, setSettlementSaving] = useState(false);
+  const [settlementMessage, setSettlementMessage] = useState<string | null>(null);
+  const [settlementForm, setSettlementForm] = useState({
+    accountType: 'BANK' as 'BANK' | 'UPI',
+    accountHolderName: '',
+    bankName: '',
+    accountNumber: '',
+    ifscCode: '',
+    upiId: ''
+  });
+
+  const loadSettlementAccount = async () => {
+    try {
+      const res = await apiRequest('/api/provider/settlement-account');
+      if (res.success && res.data) {
+        setSettlementAccount(res.data);
+        setSettlementForm({
+          accountType: res.data.accountType || 'BANK',
+          accountHolderName: res.data.accountHolderName || '',
+          bankName: res.data.bankName || '',
+          accountNumber: res.data.accountNumberMasked || '',
+          ifscCode: res.data.ifscCode || '',
+          upiId: res.data.upiIdMasked || ''
+        });
+      }
+    } catch (err) {}
+  };
+
+  const handleSaveSettlementAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSettlementSaving(true);
+    setSettlementMessage(null);
+    try {
+      const res = await apiRequest('/api/provider/settlement-account', {
+        method: 'POST',
+        body: JSON.stringify(settlementForm)
+      });
+      if (res.success) {
+        showToast('Settlement destination account saved successfully');
+        setSettlementAccount(res.data);
+        setSettlementMessage('Account verified & updated successfully');
+        setTimeout(() => setSettlementModalOpen(false), 1500);
+      } else {
+        setSettlementMessage(res.message || 'Failed to update settlement account');
+      }
+    } catch (err: any) {
+      setSettlementMessage(err.message || 'Error saving settlement account');
+    } finally {
+      setSettlementSaving(false);
+    }
+  };
+
+  // Laundry Rate Card Configuration State
+  const [laundryConfig, setLaundryConfig] = useState<any>(null);
+  const [laundryConfigSaving, setLaundryConfigSaving] = useState(false);
+  const [laundryConfigForm, setLaundryConfigForm] = useState({
+    perKgWashFold: 15,
+    perKgWashIron: 22,
+    perPieceIron: 8,
+    expressSurcharge: 40,
+    turnaroundHours: 36,
+    minWeightKg: 2.0
+  });
+
+  const loadLaundryConfig = async () => {
+    try {
+      const res = await apiRequest('/api/provider/laundry-config');
+      if (res.success && res.data) {
+        setLaundryConfig(res.data);
+        setLaundryConfigForm({
+          perKgWashFold: res.data.perKgWashFold ?? 15,
+          perKgWashIron: res.data.perKgWashIron ?? 22,
+          perPieceIron: res.data.perPieceIron ?? 8,
+          expressSurcharge: res.data.expressSurcharge ?? 40,
+          turnaroundHours: res.data.turnaroundHours ?? 36,
+          minWeightKg: res.data.minWeightKg ?? 2.0
+        });
+      }
+    } catch (err) {}
+  };
+
+  const handleSaveLaundryConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLaundryConfigSaving(true);
+    try {
+      const res = await apiRequest('/api/provider/laundry-config', {
+        method: 'POST',
+        body: JSON.stringify(laundryConfigForm)
+      });
+      if (res.success) {
+        showToast('Laundry rates & SLA updated successfully');
+        setLaundryConfig(res.data);
+      } else {
+        alert(res.message || 'Failed to update rate card');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error updating rate card');
+    } finally {
+      setLaundryConfigSaving(false);
+    }
+  };
+
+  // Update laundry status handler (self-fulfillment control)
+  const handleUpdateLaundryStatus = async (jobId: string, status: string) => {
+    try {
+      const res = await apiRequest(`/api/laundry/${jobId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      });
+      if (res.success) {
+        showToast(`Laundry stage updated to ${status}`);
+        loadLaundryJobs();
+      } else {
+        alert(res.message || 'Failed to update laundry status');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error updating laundry status');
+    }
+  };
 
   // Toast / notification feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -205,7 +330,7 @@ export default function ProviderDashboardPage() {
       const res = await apiRequest(query);
       if (res.success) {
         setAnalytics(res);
-        const cat = (res?.provider?.serviceCategory || '').toLowerCase();
+        const cat = (res.provider?.serviceCategory || '').toLowerCase();
         if (cat.includes('laundry')) {
           setActiveTab((prev) => (['PRODUCTS', 'LIVE_OPERATIONS', 'CUSTOMERS', 'DELIVERY', 'OVERVIEW'].includes(prev) ? 'LAUNDRY' : prev));
         }
@@ -254,28 +379,13 @@ export default function ProviderDashboardPage() {
     } catch (err) {}
   };
 
-  const handleUpdateLaundryStatus = async (jobId: string, status: string) => {
-    try {
-      const res = await apiRequest(`/api/laundry/${jobId}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status }),
-      });
-      if (res.success) {
-        showToast(`Laundry order status updated to ${status.replace(/_/g, ' ')}`);
-        loadLaundryJobs();
-      } else {
-        showToast(res.message || 'Failed to update laundry status');
-      }
-    } catch (err: any) {
-      showToast(err.message || 'Error updating laundry status');
-    }
-  };
-
   const refreshAll = (isDemo = demoMode) => {
     loadAnalytics(isDemo);
     loadProducts();
     loadOrders();
     loadLaundryJobs();
+    loadSettlementAccount();
+    loadLaundryConfig();
   };
 
   useEffect(() => {
@@ -566,58 +676,49 @@ export default function ProviderDashboardPage() {
     }
   }, [isPureLaundry]);
 
-  // Quick statistics and filtered views for Laundry
   const laundryActiveJobs = useMemo(() => {
-    return laundryJobs.filter((j: any) => j.status !== 'COMPLETED' && j.status !== 'CANCELLED');
+    return laundryJobs.filter((j) => j.status !== 'COMPLETED' && j.status !== 'CANCELLED');
   }, [laundryJobs]);
 
   const laundryPickupPending = useMemo(() => {
-    return laundryJobs.filter((j: any) => j.status === 'REQUESTED' || j.status === 'ACCEPTED' || j.status === 'PICKUP_SCHEDULED');
+    return laundryJobs.filter((j) => ['REQUESTED', 'ACCEPTED', 'PICKUP_SCHEDULED'].includes(j.status));
   }, [laundryJobs]);
 
   const laundryInWash = useMemo(() => {
-    return laundryJobs.filter((j: any) => j.status === 'CLOTHES_COLLECTED' || j.status === 'WASHING' || j.status === 'IRONING');
+    return laundryJobs.filter((j) => ['CLOTHES_COLLECTED', 'WASHING', 'IRONING'].includes(j.status));
   }, [laundryJobs]);
 
   const laundryReadyDropoff = useMemo(() => {
-    return laundryJobs.filter((j: any) => j.status === 'READY' || j.status === 'DELIVERY_SCHEDULED');
+    return laundryJobs.filter((j) => ['READY', 'DELIVERY_SCHEDULED'].includes(j.status));
   }, [laundryJobs]);
 
   const laundryCompleted = useMemo(() => {
-    return laundryJobs.filter((j: any) => j.status === 'COMPLETED');
+    return laundryJobs.filter((j) => j.status === 'COMPLETED');
   }, [laundryJobs]);
 
   const filteredLaundryJobs = useMemo(() => {
-    if (laundryFilter === 'ALL') return laundryJobs;
     if (laundryFilter === 'PICKUP') return laundryPickupPending;
     if (laundryFilter === 'WASH') return laundryInWash;
     if (laundryFilter === 'READY') return laundryReadyDropoff;
     if (laundryFilter === 'COMPLETED') return laundryCompleted;
     return laundryJobs;
-  }, [laundryJobs, laundryFilter, laundryPickupPending, laundryInWash, laundryReadyDropoff, laundryCompleted]);
+  }, [laundryFilter, laundryJobs, laundryPickupPending, laundryInWash, laundryReadyDropoff, laundryCompleted]);
 
-  // Aggregate all student-attached garment photos across laundry orders
+  // Aggregate all photos uploaded across active laundry jobs for the Garment Inspection tab
   const allGarmentPhotos = useMemo(() => {
-    const list: Array<{
-      photo: string;
-      orderNumber: string;
-      studentName: string;
-      hall?: string;
-      room?: string;
-      itemsSummary?: string;
-      status?: string;
-    }> = [];
-    laundryJobs.forEach((job: any) => {
+    const list: any[] = [];
+    laundryJobs.forEach((job) => {
       if (Array.isArray(job.photos)) {
-        job.photos.forEach((p: string) => {
+        job.photos.forEach((p: any) => {
           list.push({
-            photo: p,
+            ...p,
             orderNumber: job.orderNumber,
+            jobId: job.id,
             studentName: job.student?.fullName || 'Student',
-            hall: job.hallName,
-            room: job.roomNumber,
-            itemsSummary: job.itemsSummary,
+            hallName: job.hallName,
+            roomNumber: job.roomNumber,
             status: job.status,
+            pickupDate: job.pickupDate
           });
         });
       }
@@ -628,7 +729,7 @@ export default function ProviderDashboardPage() {
   const activeTabTitle = useMemo(() => {
     switch (activeTab) {
       case 'OVERVIEW':
-        return isPureLaundry ? 'Laundry Turnaround Analytics & Metrics' : 'Overview & Business Analytics';
+        return isPureLaundry ? 'Laundry Performance & Revenue Analytics' : 'Overview & Business Analytics';
       case 'LIVE_OPERATIONS':
         return 'Live Operations & Order Pipeline';
       case 'CUSTOMERS':
@@ -638,13 +739,13 @@ export default function ProviderDashboardPage() {
       case 'DELIVERY':
         return 'Delivery Fleet & Partner Performance';
       case 'FINANCE':
-        return isPureLaundry ? 'Laundry Revenue & Campus Settlements' : 'Finance, Revenue & Settlement Statement';
+        return 'Finance, Revenue & Settlement Statement';
       case 'LAUNDRY':
-        return 'Express Laundry Doorstep Command Center';
+        return 'Express Laundry Command Center';
       case 'GARMENT_INSPECTION':
-        return 'Garment Inspection & Pre-Wash Condition Gallery';
+        return 'Garment Photos & Condition Gallery';
       case 'RATES':
-        return 'Campus Official Laundry Rate Card & SLAs';
+        return 'Campus Laundry Service Rate Card';
       default:
         return 'Overview & Business Analytics';
     }
@@ -694,7 +795,7 @@ export default function ProviderDashboardPage() {
               {isPureLaundry ? (
                 <>
                   <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-indigo-400 flex items-center justify-between">
-                    <span>Laundry Partner Console</span>
+                    <span>Laundry Operations</span>
                     <span className="text-[9px] bg-indigo-900/60 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-700">Self-Fulfill</span>
                   </div>
 
@@ -2779,7 +2880,7 @@ export default function ProviderDashboardPage() {
                     </span>
                   </div>
                   <div className="flex justify-between py-2 border-b border-slate-100 text-rose-600">
-                    <span>Discounts & Coupons</span>
+                    <span>Discounts &amp; Coupons</span>
                     <span className="font-bold">
                       -₹{Number(analytics?.revenueBreakdown?.discounts || 0).toLocaleString('en-IN')}
                     </span>
@@ -2790,14 +2891,18 @@ export default function ProviderDashboardPage() {
                       -₹{Number(analytics?.revenueBreakdown?.refunds || 0).toLocaleString('en-IN')}
                     </span>
                   </div>
-                  <div className="flex justify-between py-2 border-b border-slate-100 text-slate-500">
-                    <span>Campus Platform / Service Fees</span>
-                    <span className="font-bold text-slate-700">₹0 (None)</span>
+                  <div className="flex justify-between py-2 border-b border-slate-100 text-indigo-700">
+                    <span>Campus Platform Fee (5% Commission)</span>
+                    <span className="font-bold">
+                      -₹{Number((analytics?.revenueBreakdown?.grossSales || 0) * 0.05).toFixed(2)}
+                    </span>
                   </div>
                   <div className="flex justify-between py-3 border-t-2 border-slate-900 text-sm font-bold text-slate-900 bg-emerald-50 px-3 rounded-lg">
-                    <span className="text-emerald-900">Final Provider Earnings</span>
+                    <span className="text-emerald-900">Final Net Provider Earnings</span>
                     <span className="text-emerald-700">
-                      ₹{Number(analytics?.revenueBreakdown?.finalEarnings || 0).toLocaleString('en-IN')}
+                      ₹{Number(
+                        Math.max(0, (analytics?.revenueBreakdown?.grossSales || 0) * 0.95 - (analytics?.revenueBreakdown?.discounts || 0) - (analytics?.revenueBreakdown?.refunds || 0))
+                      ).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
@@ -2807,7 +2912,7 @@ export default function ProviderDashboardPage() {
               <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
                 <h4 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
                   <IndianRupee className="w-4 h-4 text-emerald-600" />
-                  Payment & Settlement Tracking
+                  Payment &amp; Settlement Tracking
                 </h4>
 
                 <div className="grid grid-cols-2 gap-3.5 mb-4">
@@ -2838,16 +2943,52 @@ export default function ProviderDashboardPage() {
                 </div>
 
                 <div className="p-3 bg-slate-100 rounded-lg text-xs text-slate-600">
-                  Campus settlements are reconciled directly via the NIT Durgapur Institutional Finance Cell on a bi-weekly cycle.
+                  Campus settlements are reconciled directly via the Campus Basket Central Finance Cell on a weekly cycle.
                 </div>
               </div>
+            </div>
+
+            {/* Provider Settlement Destination Account Card */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    Settlement Destination Account
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {settlementAccount?.isVerified !== false ? 'Verified Institutional Account' : 'Pending Verification'}
+                    </span>
+                  </h4>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    {settlementAccount ? (
+                      settlementAccount.accountType === 'UPI' ? (
+                        <>UPI VPA: <span className="font-mono font-bold text-slate-800">{settlementAccount.upiIdMasked}</span> • Beneficiary: {settlementAccount.accountHolderName}</>
+                      ) : (
+                        <>Bank A/C: <span className="font-mono font-bold text-slate-800">{settlementAccount.accountNumberMasked}</span> ({settlementAccount.bankName}) • IFSC: {settlementAccount.ifscCode} • Beneficiary: {settlementAccount.accountHolderName}</>
+                      )
+                    ) : (
+                      'No settlement destination registered yet. Automatic payouts require verified UPI or Bank account.'
+                    )}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Net weekly sales proceeds (after 5% platform fee) are credited directly to this account.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSettlementModalOpen(true)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-xs cursor-pointer"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                <span>{settlementAccount ? 'Update Payout Account' : 'Set Payout Account'}</span>
+              </button>
             </div>
           </div>
         )}
 
-        {/* =======================================================
-            TAB 7: LAUNDRY SERVICES & DUAL-OTP VERIFICATION
-            ======================================================= */}
         {/* =======================================================
             TAB 7: LAUNDRY SERVICES & DUAL-OTP VERIFICATION
             ======================================================= */}
@@ -3218,21 +3359,123 @@ export default function ProviderDashboardPage() {
             TAB 9: CAMPUS LAUNDRY RATE CARD & SLAs
             ======================================================= */}
         {activeTab === 'RATES' && (
-          <div className="space-y-4">
-            <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-amber-500" />
-                    NIT Durgapur Campus Official Laundry Rate Card
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Standard rates approved for hostel student wash, fold, ironing, and express turnaround services.
-                  </p>
+          <div className="space-y-6">
+            {/* Interactive Rate Card Configuration for Providers */}
+            <div className="bg-white p-6 rounded-2xl border border-indigo-200/80 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-100 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                    <Sparkles className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900">
+                      Live Laundry Service Rates &amp; SLA Configuration
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Customize approved hostel wash, fold, ironing rates, and turnaround promises.
+                    </p>
+                  </div>
                 </div>
+
                 <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Campus Subsidized Rates
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Active Campus Tariff
                 </div>
+              </div>
+
+              <form onSubmit={handleSaveLaundryConfig} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Per Kg Wash &amp; Fold Rate (₹)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={laundryConfigForm.perKgWashFold}
+                      onChange={(e) => setLaundryConfigForm({ ...laundryConfigForm, perKgWashFold: Number(e.target.value) })}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <span className="text-[10px] text-slate-400">Everyday regular student wash rate</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Per Kg Wash &amp; Steam Iron (₹)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={laundryConfigForm.perKgWashIron}
+                      onChange={(e) => setLaundryConfigForm({ ...laundryConfigForm, perKgWashIron: Number(e.target.value) })}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <span className="text-[10px] text-slate-400">Formal wear wash with steam press</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Per Piece Steam Iron Rate (₹)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={laundryConfigForm.perPieceIron}
+                      onChange={(e) => setLaundryConfigForm({ ...laundryConfigForm, perPieceIron: Number(e.target.value) })}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <span className="text-[10px] text-slate-400">Collared shirts, suits, blazer press</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Express Turnaround Surcharge (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={laundryConfigForm.expressSurcharge}
+                      onChange={(e) => setLaundryConfigForm({ ...laundryConfigForm, expressSurcharge: Number(e.target.value) })}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <span className="text-[10px] text-slate-400">Added for 24-hr rush orders</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Turnaround SLA (Hours)</label>
+                    <input
+                      type="number"
+                      min="6"
+                      value={laundryConfigForm.turnaroundHours}
+                      onChange={(e) => setLaundryConfigForm({ ...laundryConfigForm, turnaroundHours: Number(e.target.value) })}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <span className="text-[10px] text-slate-400">Default cycle completion window</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Minimum Order Weight (Kg)</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="1"
+                      value={laundryConfigForm.minWeightKg}
+                      onChange={(e) => setLaundryConfigForm({ ...laundryConfigForm, minWeightKg: Number(e.target.value) })}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <span className="text-[10px] text-slate-400">Minimum threshold for room pickup</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    disabled={laundryConfigSaving}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{laundryConfigSaving ? 'Saving Tariffs...' : 'Save Rate Card Updates'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Standard Campus Rate Reference Grid */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
+              <div className="mb-4">
+                <h4 className="text-sm font-bold text-slate-900">Campus Standard Reference Rates</h4>
+                <p className="text-xs text-slate-500">Current baseline campus subsidized tariffs across residence halls</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -3242,14 +3485,13 @@ export default function ProviderDashboardPage() {
                     <h4 className="text-sm font-bold text-slate-900">Standard Wash &amp; Fold</h4>
                     <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">Everyday</span>
                   </div>
-                  <div className="text-2xl font-black text-slate-900">₹12 - ₹15 <span className="text-xs font-normal text-slate-500">/ piece</span></div>
+                  <div className="text-2xl font-black text-slate-900">₹{laundryConfigForm.perKgWashFold} <span className="text-xs font-normal text-slate-500">/ kg</span></div>
                   <ul className="text-xs text-slate-600 space-y-1.5 border-t border-slate-200 pt-3">
-                    <li className="flex items-center gap-1.5">✓ T-Shirts, Shirts, Polos: ₹12</li>
-                    <li className="flex items-center gap-1.5">✓ Jeans, Trousers, Trackpants: ₹15</li>
-                    <li className="flex items-center gap-1.5">✓ Shorts, Undergarments, Hand Towels: ₹8</li>
-                    <li className="flex items-center gap-1.5">✓ Antimicrobial wash &amp; detergent sanitized</li>
+                    <li className="flex items-center gap-1.5">✓ T-Shirts, Shirts, Polos, Jeans</li>
+                    <li className="flex items-center gap-1.5">✓ Trackpants, Shorts, Towels</li>
+                    <li className="flex items-center gap-1.5">✓ Antimicrobial detergent sanitized</li>
                   </ul>
-                  <div className="text-[11px] font-semibold text-slate-400">SLA: 48 Hours Turnaround</div>
+                  <div className="text-[11px] font-semibold text-slate-400">SLA: {laundryConfigForm.turnaroundHours} Hours Turnaround</div>
                 </div>
 
                 {/* Wash & Steam Press */}
@@ -3258,65 +3500,16 @@ export default function ProviderDashboardPage() {
                     <h4 className="text-sm font-bold text-slate-900">Wash &amp; Steam Press</h4>
                     <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">Formal Ready</span>
                   </div>
-                  <div className="text-2xl font-black text-indigo-900">₹20 - ₹25 <span className="text-xs font-normal text-slate-500">/ piece</span></div>
+                  <div className="text-2xl font-black text-indigo-900">₹{laundryConfigForm.perKgWashIron} <span className="text-xs font-normal text-slate-500">/ kg</span></div>
                   <ul className="text-xs text-slate-600 space-y-1.5 border-t border-indigo-100 pt-3">
-                    <li className="flex items-center gap-1.5">✓ Crisp Collared Formal Shirts: ₹20</li>
-                    <li className="flex items-center gap-1.5">✓ Formal Trousers / Chinos: ₹22</li>
-                    <li className="flex items-center gap-1.5">✓ Lab Coats / Aprons: ₹25</li>
+                    <li className="flex items-center gap-1.5">✓ Crisp Collared Formal Shirts</li>
+                    <li className="flex items-center gap-1.5">✓ Formal Trousers, Lab Coats &amp; Aprons</li>
                     <li className="flex items-center gap-1.5">✓ Professional Steam Iron &amp; Hanger packing</li>
                   </ul>
-                  <div className="text-[11px] font-semibold text-indigo-500">SLA: 36 Hours Turnaround</div>
+                  <div className="text-[11px] font-semibold text-indigo-500">SLA: {laundryConfigForm.turnaroundHours} Hours Turnaround</div>
                 </div>
 
-                {/* Bedding & Winterwear */}
-                <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/30 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-slate-900">Bedding &amp; Winterwear</h4>
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Heavy Wash</span>
-                  </div>
-                  <div className="text-2xl font-black text-amber-900">₹60 - ₹80 <span className="text-xs font-normal text-slate-500">/ item</span></div>
-                  <ul className="text-xs text-slate-600 space-y-1.5 border-t border-amber-100 pt-3">
-                    <li className="flex items-center gap-1.5">✓ Single Blanket / Quilt: ₹80</li>
-                    <li className="flex items-center gap-1.5">✓ Bedsheet + Pillow Covers: ₹40</li>
-                    <li className="flex items-center gap-1.5">✓ Hoodies, Jackets &amp; Sweaters: ₹60</li>
-                    <li className="flex items-center gap-1.5">✓ Deep fabric care &amp; sun drying</li>
-                  </ul>
-                  <div className="text-[11px] font-semibold text-amber-600">SLA: 48 - 72 Hours</div>
-                </div>
-
-                {/* Shoes & Sneaker Spa */}
-                <div className="p-4 rounded-xl border border-teal-200 bg-teal-50/30 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-slate-900">Campus Sneaker &amp; Shoe Spa</h4>
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">Deep Cleaning</span>
-                  </div>
-                  <div className="text-2xl font-black text-teal-900">₹60 - ₹120 <span className="text-xs font-normal text-slate-500">/ pair</span></div>
-                  <ul className="text-xs text-slate-600 space-y-1.5 border-t border-teal-100 pt-3">
-                    <li className="flex items-center gap-1.5">✓ Sports Running Shoes / Canvas: ₹60</li>
-                    <li className="flex items-center gap-1.5">✓ White Sneaker Deep Whitening: ₹90</li>
-                    <li className="flex items-center gap-1.5">✓ Leather / Suede Formal Shoes: ₹120</li>
-                    <li className="flex items-center gap-1.5">✓ Sole de-greasing, deodorizing, lace wash</li>
-                  </ul>
-                  <div className="text-[11px] font-semibold text-teal-600">SLA: 48 Hours</div>
-                </div>
-
-                {/* Express 24h Turnaround */}
-                <div className="p-4 rounded-xl border border-rose-200 bg-rose-50/30 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-slate-900">Express Priority Service</h4>
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800">Emergency</span>
-                  </div>
-                  <div className="text-2xl font-black text-rose-900">+₹10 <span className="text-xs font-normal text-slate-500">/ piece extra</span></div>
-                  <ul className="text-xs text-slate-600 space-y-1.5 border-t border-rose-100 pt-3">
-                    <li className="flex items-center gap-1.5">✓ Guaranteed 24-hour return to hostel room</li>
-                    <li className="flex items-center gap-1.5">✓ Priority wash cycle scheduling</li>
-                    <li className="flex items-center gap-1.5">✓ Direct SMS/Push notification on ready status</li>
-                    <li className="flex items-center gap-1.5">✓ Best for placements, interviews, college fests</li>
-                  </ul>
-                  <div className="text-[11px] font-semibold text-rose-600">SLA: Strictly under 24 Hours</div>
-                </div>
-
-                {/* Hostel Doorstep SLA */}
+                {/* Hostel Doorstep Fulfillment */}
                 <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-bold text-slate-900">Hostel Doorstep Fulfillment</h4>
@@ -3324,12 +3517,12 @@ export default function ProviderDashboardPage() {
                   </div>
                   <div className="text-2xl font-black text-emerald-900">FREE <span className="text-xs font-normal text-slate-500">above ₹100</span></div>
                   <ul className="text-xs text-slate-600 space-y-1.5 border-t border-emerald-100 pt-3">
-                    <li className="flex items-center gap-1.5">✓ Covers Hall 1 to 14 &amp; Mother Teresa Hall</li>
-                    <li className="flex items-center gap-1.5">✓ Dual OTP security (Zero Brevo dependency)</li>
+                    <li className="flex items-center gap-1.5">✓ Covers all campus residence halls</li>
+                    <li className="flex items-center gap-1.5">✓ Dual OTP security (Doorstep pickup &amp; delivery)</li>
                     <li className="flex items-center gap-1.5">✓ Pre-wash garment photo inspection</li>
-                    <li className="flex items-center gap-1.5">✓ Standard Doorstep Delivery fee below ₹100: ₹10</li>
+                    <li className="flex items-center gap-1.5">✓ Express surcharge: ₹{laundryConfigForm.expressSurcharge}</li>
                   </ul>
-                  <div className="text-[11px] font-semibold text-emerald-600">Coverage: 100% NIT Durgapur Campus</div>
+                  <div className="text-[11px] font-semibold text-emerald-600">Coverage: 100% Campus Central Halls</div>
                 </div>
               </div>
             </div>
@@ -3651,7 +3844,7 @@ export default function ProviderDashboardPage() {
 
               {/* Report Footer */}
               <div className="border-t border-slate-200 pt-4 text-center text-[10px] text-slate-500">
-                Generated securely by Campus Basket Platform • NIT Durgapur Campus Services • Verified Institutional Record
+                Generated securely by Campus Basket Platform • Campus Marketplace Services • Verified Institutional Record
               </div>
             </div>
           </div>
@@ -3980,7 +4173,6 @@ export default function ProviderDashboardPage() {
           </div>
         </div>
       )}
-
       {/* =======================================================
           STUDENT GARMENT PHOTOS INSPECTION MODAL
           ======================================================= */}
@@ -4006,32 +4198,29 @@ export default function ProviderDashboardPage() {
             </div>
 
             <div className="py-4 overflow-y-auto flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {selectedGarmentPhotos.photos.map((photo: any, index: number) => {
-                const photoSrc = typeof photo === 'string' ? photo : (photo.url || photo);
-                return (
-                  <div
-                    key={photo.id || index}
-                    className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50 flex flex-col shadow-xs"
-                  >
-                    <div className="relative aspect-video sm:aspect-square bg-slate-900/5 flex items-center justify-center overflow-hidden">
-                      <img
-                        src={photoSrc}
-                        alt={photo.description || `Cloth ${index + 1}`}
-                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                      />
+              {selectedGarmentPhotos.photos.map((photo: any, index: number) => (
+                <div
+                  key={photo.id || index}
+                  className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50 flex flex-col shadow-xs"
+                >
+                  <div className="relative aspect-video sm:aspect-square bg-slate-900/5 flex items-center justify-center overflow-hidden">
+                    <img
+                      src={photo.url}
+                      alt={photo.description || `Cloth ${index + 1}`}
+                      className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                    />
+                  </div>
+                  <div className="p-3 bg-white border-t border-slate-100 flex-1 flex flex-col justify-between">
+                    <div className="text-xs font-semibold text-slate-800">
+                      {photo.description || `Garment verification photo ${index + 1}`}
                     </div>
-                    <div className="p-3 bg-white border-t border-slate-100 flex-1 flex flex-col justify-between">
-                      <div className="text-xs font-semibold text-slate-800">
-                        {photo.description || `Garment verification photo ${index + 1}`}
-                      </div>
-                      <div className="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
-                        <span>Photo #{index + 1}</span>
-                        <span className="text-indigo-600 font-medium">Uploaded by Student</span>
-                      </div>
+                    <div className="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
+                      <span>Photo #{index + 1}</span>
+                      <span className="text-indigo-600 font-medium">Uploaded by Student</span>
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
 
             <div className="pt-3 border-t border-slate-200 flex justify-end">
@@ -4042,6 +4231,162 @@ export default function ProviderDashboardPage() {
                 Close Inspection
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* =======================================================
+          SETTLEMENT ACCOUNT CONFIGURATION MODAL
+          ======================================================= */}
+      {settlementModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Settlement Payout Account</h3>
+                  <p className="text-xs text-slate-500">Configure your verified campus merchant payout destination</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSettlementModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="py-3">
+              <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs text-indigo-950 flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                <span>
+                  Disbursements are calculated as <strong>Gross Sales − Discounts − Refunds − 5% Platform Fee</strong> and settled directly to this account by Central Finance.
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveSettlementAccount} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1.5">Payout Method</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSettlementForm(prev => ({ ...prev, accountType: 'BANK' }))}
+                    className={`py-2 px-3 rounded-xl font-bold border transition flex items-center justify-center gap-1.5 ${
+                      settlementForm.accountType === 'BANK'
+                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-2xs'
+                        : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <Building className="w-3.5 h-3.5" />
+                    <span>Bank Account (NEFT/IMPS)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSettlementForm(prev => ({ ...prev, accountType: 'UPI' }))}
+                    className={`py-2 px-3 rounded-xl font-bold border transition flex items-center justify-center gap-1.5 ${
+                      settlementForm.accountType === 'UPI'
+                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-2xs'
+                        : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Instant UPI VPA</span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Beneficiary Legal / Registered Name</label>
+                <input
+                  type="text"
+                  required
+                  value={settlementForm.accountHolderName}
+                  onChange={(e) => setSettlementForm(prev => ({ ...prev, accountHolderName: e.target.value }))}
+                  placeholder="e.g. Ramesh Catering Services"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-medium"
+                />
+              </div>
+
+              {settlementForm.accountType === 'UPI' ? (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">UPI ID (VPA)</label>
+                  <input
+                    type="text"
+                    required
+                    value={settlementForm.upiId}
+                    onChange={(e) => setSettlementForm(prev => ({ ...prev, upiId: e.target.value }))}
+                    placeholder="e.g. vendor@okhdfcbank"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-mono"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Bank Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={settlementForm.bankName}
+                      onChange={(e) => setSettlementForm(prev => ({ ...prev, bankName: e.target.value }))}
+                      placeholder="e.g. State Bank of India"
+                      className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Account Number</label>
+                      <input
+                        type="text"
+                        required
+                        value={settlementForm.accountNumber}
+                        onChange={(e) => setSettlementForm(prev => ({ ...prev, accountNumber: e.target.value }))}
+                        placeholder="e.g. 5010049281729"
+                        className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">IFSC Code</label>
+                      <input
+                        type="text"
+                        required
+                        value={settlementForm.ifscCode}
+                        onChange={(e) => setSettlementForm(prev => ({ ...prev, ifscCode: e.target.value.toUpperCase() }))}
+                        placeholder="e.g. HDFC0001234"
+                        className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-mono uppercase"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {settlementMessage && (
+                <div className="p-3 bg-indigo-50 text-indigo-800 border border-indigo-200 rounded-xl font-medium">
+                  {settlementMessage}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setSettlementModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={settlementSaving}
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50 cursor-pointer shadow-xs"
+                >
+                  {settlementSaving ? 'Verifying & Saving...' : 'Save Settlement Details'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

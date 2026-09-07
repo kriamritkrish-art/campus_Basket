@@ -57,7 +57,7 @@ export function ReceiptModal({ isOpen, onClose, order }: ReceiptModalProps) {
           <div className="flex items-start justify-between border-b border-slate-200 pb-3">
             <div>
               <div className="text-xs font-black tracking-wider text-[#347A27] uppercase">
-                NIT Durgapur Campus Services
+                Campus Basket Platform Services
               </div>
               <div className="text-[11px] text-slate-500">Order Delivery Voucher</div>
             </div>

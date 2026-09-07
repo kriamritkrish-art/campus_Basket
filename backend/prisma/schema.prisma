@@ -14,6 +14,15 @@ enum Role {
   DELIVERY_BOY
 }
 
+enum ServiceType {
+  FOOD
+  FRESH_PRODUCE
+  LAUNDRY
+  STATIONERY
+  HOSTEL_ESSENTIALS
+  OTHER
+}
+
 enum OrderStatus {
   PENDING_PAYMENT
   PAYMENT_FAILED
@@ -66,11 +75,53 @@ enum PaymentMethod {
 
 enum PaymentStatus {
   PENDING
+  PROCESSING
   AUTHORIZED
   SUCCESS
+  PAID
   FAILED
-  REFUND_REQUESTED
+  COD_PENDING
+  COD_COLLECTED
+  PARTIALLY_REFUNDED
+  REFUND_PENDING
+  REFUND_PROCESSING
   REFUNDED
+  REFUND_FAILED
+}
+
+enum RefundStatus {
+  NOT_APPLICABLE
+  REQUESTED
+  PENDING_ADMIN_REVIEW
+  APPROVED
+  PROCESSING
+  COMPLETED
+  FAILED
+  REJECTED
+  AWAITING_STUDENT_DETAILS
+}
+
+enum SettlementStatus {
+  NOT_ELIGIBLE
+  PENDING
+  ELIGIBLE
+  PROCESSING
+  SETTLED
+  ON_HOLD
+  ADJUSTED
+}
+
+enum CodCollectionStatus {
+  PENDING
+  COLLECTED
+  FAILED
+}
+
+enum CodReconciliationStatus {
+  PENDING
+  RECONCILED
+  MISMATCH
+  ADJUSTED
 }
 
 enum TicketCategory {
@@ -166,6 +217,7 @@ model Student {
   supportTickets     SupportTicket[]
   couponUsages       CouponUsage[]
   receipts           Receipt[]
+  refundAccounts     RefundAccount[]
 
   @@index([rollNumber])
   @@index([registrationNumber])
@@ -185,41 +237,45 @@ model Admin {
 }
 
 model ServiceProvider {
-  id              String         @id @default(cuid())
-  userId          String         @unique
-  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fullName        String
-  mobileNumber    String         @unique
-  serviceCategory String         // e.g. FOOD, FRUITS, LAUNDRY, ESSENTIALS
-  assignedZones   String         @default("ALL") // JSON array or comma separated
-  activeStatus    Boolean        @default(true)
-  autoAssignDelivery Boolean     @default(false)
-  plainPassword   String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id                 String                     @id @default(cuid())
+  userId             String                     @unique
+  user               User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName           String
+  mobileNumber       String                     @unique
+  serviceCategory    String                     // e.g. FOOD, FRUITS, LAUNDRY, ESSENTIALS
+  assignedZones      String                     @default("ALL") // JSON array or comma separated
+  activeStatus       Boolean                    @default(true)
+  autoAssignDelivery Boolean                    @default(false)
+  plainPassword      String?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
 
-  orders          Order[]
-  laundryOrders   LaundryOrder[]
-  products        Product[]
+  orders             Order[]
+  laundryOrders      LaundryOrder[]
+  products           Product[]
+  settlementAccount  ProviderSettlementAccount?
+  settlements        Settlement[]
+  laundryConfig      LaundryProviderConfig?
 
   @@index([serviceCategory])
 }
 
 model DeliveryBoy {
-  id            String         @id @default(cuid())
-  userId        String         @unique
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fullName      String
-  mobileNumber  String         @unique
-  activeStatus  Boolean        @default(true)
-  vehicleType   String?        @default("Bicycle / Walk")
-  currentZone   String?        @default("ALL")
-  plainPassword String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id             String          @id @default(cuid())
+  userId         String          @unique
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName       String
+  mobileNumber   String          @unique
+  activeStatus   Boolean         @default(true)
+  vehicleType    String?         @default("Bicycle / Walk")
+  currentZone    String?         @default("ALL")
+  plainPassword  String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
-  orders        Order[]
-  laundryOrders LaundryOrder[]
+  orders         Order[]
+  laundryOrders  LaundryOrder[]
+  codCollections CODCollection[]
 
   @@index([mobileNumber])
 }
@@ -241,16 +297,16 @@ model Hall {
 }
 
 model ServiceZone {
-  id                String   @id @default(cuid())
-  name              String   @unique
-  polygonCoordinates String  @db.Text // JSON array of [lat, lng] coordinates
-  isActive          Boolean  @default(true)
-  availableServices String   @default("ALL") // JSON array of services e.g. ["FOOD","FRUITS","LAUNDRY","ESSENTIALS"]
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  name               String   @unique
+  polygonCoordinates String   @db.Text // JSON array of [lat, lng] coordinates
+  isActive           Boolean  @default(true)
+  availableServices  String   @default("ALL") // JSON array of services e.g. ["FOOD","FRUITS","LAUNDRY","ESSENTIALS"]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  halls             Hall[]
-  serviceZoneHalls  ServiceZoneHall[]
+  halls              Hall[]
+  serviceZoneHalls   ServiceZoneHall[]
 }
 
 model ServiceZoneHall {
@@ -281,45 +337,45 @@ model Category {
 }
 
 model Product {
-  id                String         @id @default(cuid())
-  name              String
-  slug              String         @unique
-  categoryId        String
-  category          Category       @relation(fields: [categoryId], references: [id])
-  description       String?        @db.Text
-  price             Decimal        @db.Decimal(10, 2)
-  discountPrice     Decimal?       @db.Decimal(10, 2)
-  unit              String         @default("piece") // kg, dozen, plate, piece, pack
-  sku               String?        @unique
-  stock             Int            @default(0)
-  lowStockThreshold Int            @default(5)
-  availability      Boolean        @default(true)
-  isFeatured        Boolean        @default(false)
-  isPopular         Boolean        @default(false)
-  subcategory       String?
-  dietaryType       String?        @default("Not Applicable") // "Pure Veg" | "Non-Veg" | "Not Applicable"
-  tags              String?        @db.Text
-  image             String?        @db.Text
-  deliveryType      String?
-  discountPercentage Int?          @default(0)
-  providerId        String?
-  provider          ServiceProvider? @relation(fields: [providerId], references: [id])
-  availableToday    Boolean        @default(true)
-  startTime         String?        // e.g. "12:00"
-  endTime           String?        // e.g. "22:00"
-  approvalStatus    ProductApprovalStatus @default(APPROVED)
-  approvedBy        String?
-  approvedAt        DateTime?
-  rejectionReason   String?        @db.Text
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  id                 String                @id @default(cuid())
+  name               String
+  slug               String                @unique
+  categoryId         String
+  category           Category              @relation(fields: [categoryId], references: [id])
+  description        String?               @db.Text
+  price              Decimal               @db.Decimal(10, 2)
+  discountPrice      Decimal?              @db.Decimal(10, 2)
+  unit               String                @default("piece") // kg, dozen, plate, piece, pack
+  sku                String?               @unique
+  stock              Int                   @default(0)
+  lowStockThreshold  Int                   @default(5)
+  availability       Boolean               @default(true)
+  isFeatured         Boolean               @default(false)
+  isPopular          Boolean               @default(false)
+  subcategory        String?
+  dietaryType        String?               @default("Not Applicable") // "Pure Veg" | "Non-Veg" | "Not Applicable"
+  tags               String?               @db.Text
+  image              String?               @db.Text
+  deliveryType       String?
+  discountPercentage Int?                  @default(0)
+  providerId         String?
+  provider           ServiceProvider?      @relation(fields: [providerId], references: [id])
+  availableToday     Boolean               @default(true)
+  startTime          String?               // e.g. "12:00"
+  endTime            String?               // e.g. "22:00"
+  approvalStatus     ProductApprovalStatus @default(APPROVED)
+  approvedBy         String?
+  approvedAt         DateTime?
+  rejectionReason    String?               @db.Text
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
 
-  images            ProductImage[]
-  inventory         Inventory?
-  cartItems         CartItem[]
-  orderItems        OrderItem[]
-  favorites         Favorite[]
-  reviews           Review[]
+  images             ProductImage[]
+  inventory          Inventory?
+  cartItems          CartItem[]
+  orderItems         OrderItem[]
+  favorites          Favorite[]
+  reviews            Review[]
 
   @@index([categoryId])
   @@index([slug])
@@ -347,14 +403,14 @@ model ProductImage {
 }
 
 model Inventory {
-  id                String   @id @default(cuid())
-  productId         String   @unique
-  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  currentStock      Int      @default(0)
-  lowStockThreshold Int      @default(5)
-  isOutOfStock      Boolean  @default(false)
+  id                String    @id @default(cuid())
+  productId         String    @unique
+  product           Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  currentStock      Int       @default(0)
+  lowStockThreshold Int       @default(5)
+  isOutOfStock      Boolean   @default(false)
   lastRestockedAt   DateTime?
-  updatedAt         DateTime @updatedAt
+  updatedAt         DateTime  @updatedAt
 }
 
 model Cart {
@@ -383,20 +439,29 @@ model CartItem {
 
 model Order {
   id                  String               @id @default(cuid())
-  orderNumber         String               @unique // e.g. NIT-2026-000001
+  orderNumber         String               @unique // e.g. CB-ORD-000001
   studentId           String
   student             Student              @relation(fields: [studentId], references: [id])
+  serviceType         ServiceType          @default(FOOD)
   providerId          String?
   provider            ServiceProvider?     @relation(fields: [providerId], references: [id])
   deliveryBoyId       String?
   deliveryBoy         DeliveryBoy?         @relation(fields: [deliveryBoyId], references: [id])
   status              OrderStatus          @default(PENDING_PAYMENT)
+  paymentMethod       PaymentMethod        @default(RAZORPAY)
+  paymentStatus       PaymentStatus        @default(PENDING)
+  refundStatus        RefundStatus         @default(NOT_APPLICABLE)
+  settlementStatus    SettlementStatus     @default(NOT_ELIGIBLE)
   totalAmount         Decimal              @db.Decimal(10, 2)
   subtotal            Decimal              @db.Decimal(10, 2)
   deliveryFee         Decimal              @default(0.00) @db.Decimal(10, 2)
   discountAmount      Decimal              @default(0.00) @db.Decimal(10, 2)
-  paymentMethod       PaymentMethod        @default(RAZORPAY)
-  paymentStatus       PaymentStatus        @default(PENDING)
+  commissionRate      Decimal              @default(5.00) @db.Decimal(5, 2)
+  commissionAmount    Decimal              @default(0.00) @db.Decimal(10, 2)
+  providerPayable     Decimal              @default(0.00) @db.Decimal(10, 2)
+  cancellationReason  String?              @db.Text
+  cancelledBy         String?
+  cancelledAt         DateTime?
   hallName            String
   hallNumber          String?
   roomNumber          String
@@ -407,16 +472,85 @@ model Order {
   items               OrderItem[]
   statusHistory       OrderStatusHistory[]
   payment             Payment?
+  refunds             Refund[]
   receipt             Receipt?
   supportTickets      SupportTicket[]
   couponUsage         CouponUsage?
+  foodDetails         FoodOrderDetails?
+  laundryDetails      LaundryOrderDetails?
+  produceDetails      ProduceOrderDetails?
+  stationeryDetails   StationeryOrderDetails?
+  cancellationRequest CancellationRequest?
+  settlementItem      SettlementItem?
+  codCollection       CODCollection?
+  statusOverrides     AdminStatusOverride[]
+  ledgerEntries       FinancialLedger[]
 
   @@index([orderNumber])
   @@index([studentId])
+  @@index([serviceType])
   @@index([providerId])
   @@index([deliveryBoyId])
   @@index([status])
+  @@index([paymentStatus])
+  @@index([refundStatus])
+  @@index([settlementStatus])
   @@index([createdAt])
+}
+
+model FoodOrderDetails {
+  id                    String    @id @default(cuid())
+  orderId               String    @unique
+  order                 Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  preparationNotes      String?   @db.Text
+  dietarySummary        String?   // "Pure Veg", "Non-Veg", "Mixed"
+  estimatedReadyMinutes Int       @default(15)
+  readyAt               DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model LaundryOrderDetails {
+  id                       String    @id @default(cuid())
+  orderId                  String    @unique
+  order                    Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  serviceName              String    // Wash & Fold, Wash & Iron, Iron Only, Dry Cleaning, Express
+  pickupDate               DateTime
+  pickupSlot               String    // e.g. "4 PM – 6 PM"
+  deliverySlot             String?   // e.g. "Next Day 5 PM"
+  estimatedCompletionHours Int       @default(48)
+  weightKg                 Decimal?  @db.Decimal(6, 2)
+  garmentCount             Int       @default(0)
+  itemsBreakdownJson       String?   @db.Text
+  specialInstructions      String?   @db.Text
+  pickupOtpHash            String?
+  pickupOtpVerified        Boolean   @default(false)
+  deliveryOtpHash          String?
+  deliveryOtpVerified      Boolean   @default(false)
+  laundryLifecycleStatus   String    @default("REQUESTED")
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+}
+
+model ProduceOrderDetails {
+  id             String    @id @default(cuid())
+  orderId        String    @unique
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  packagingType  String?   // eco-crate, paper-bag
+  freshnessNotes String?   @db.Text
+  verifiedWeight Decimal?  @db.Decimal(6, 2)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model StationeryOrderDetails {
+  id                String    @id @default(cuid())
+  orderId           String    @unique
+  order             Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  brandRequirements String?   @db.Text
+  labSpecification  String?   @db.Text
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 
 model OrderItem {
@@ -448,35 +582,35 @@ model OrderStatusHistory {
 }
 
 model LaundryOrder {
-  id                   String                 @id @default(cuid())
-  orderNumber          String                 @unique // e.g. LAU-2026-000124
-  trackingNumber       String                 @unique
-  qrCodeData           String                 @db.Text
-  studentId            String
-  student              Student                @relation(fields: [studentId], references: [id])
-  providerId           String?
-  provider             ServiceProvider?       @relation(fields: [providerId], references: [id])
-  deliveryBoyId        String?
-  deliveryBoy          DeliveryBoy?           @relation(fields: [deliveryBoyId], references: [id])
-  status               LaundryStatus          @default(REQUESTED)
-  estimatedPrice       Decimal                @db.Decimal(10, 2)
-  finalPrice           Decimal?               @db.Decimal(10, 2)
-  hallName             String
-  hallNumber           String?
-  roomNumber           String
-  pickupDate           DateTime
-  preferredPickupTime  String
-  preferredReturnTime  String
-  specialInstructions  String?                @db.Text
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
+  id                  String                 @id @default(cuid())
+  orderNumber         String                 @unique // e.g. LAU-2026-000124
+  trackingNumber      String                 @unique
+  qrCodeData          String                 @db.Text
+  studentId           String
+  student             Student                @relation(fields: [studentId], references: [id])
+  providerId          String?
+  provider            ServiceProvider?       @relation(fields: [providerId], references: [id])
+  deliveryBoyId       String?
+  deliveryBoy         DeliveryBoy?           @relation(fields: [deliveryBoyId], references: [id])
+  status              LaundryStatus          @default(REQUESTED)
+  estimatedPrice      Decimal                @db.Decimal(10, 2)
+  finalPrice          Decimal?               @db.Decimal(10, 2)
+  hallName            String
+  hallNumber          String?
+  roomNumber          String
+  pickupDate          DateTime
+  preferredPickupTime String
+  preferredReturnTime String
+  specialInstructions String?                @db.Text
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
 
-  items                LaundryItem[]
-  photos               LaundryItemPhoto[]
-  otps                 LaundryOtp[]
-  statusHistory        LaundryStatusHistory[]
-  payment              Payment?
-  receipt              Receipt?
+  items               LaundryItem[]
+  photos              LaundryItemPhoto[]
+  otps                LaundryOtp[]
+  statusHistory       LaundryStatusHistory[]
+  payment             Payment?
+  receipt             Receipt?
 
   @@index([orderNumber])
   @@index([trackingNumber])
@@ -540,26 +674,26 @@ model LaundryStatusHistory {
 }
 
 model Payment {
-  id                 String               @id @default(cuid())
-  orderId            String?              @unique
-  order              Order?               @relation(fields: [orderId], references: [id])
-  laundryOrderId     String?              @unique
-  laundryOrder       LaundryOrder?        @relation(fields: [laundryOrderId], references: [id])
-  studentId          String
-  amount             Decimal              @db.Decimal(10, 2)
-  currency           String               @default("INR")
-  status             PaymentStatus        @default(PENDING)
-  paymentMethod      PaymentMethod        @default(RAZORPAY)
-  razorpayOrderId    String?              @unique
-  razorpayPaymentId  String?              @unique
-  razorpaySignature  String?              @db.Text
-  cashCollectedBy    String?
-  cashCollectedAt    DateTime?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  id                String               @id @default(cuid())
+  orderId           String?              @unique
+  order             Order?               @relation(fields: [orderId], references: [id])
+  laundryOrderId    String?              @unique
+  laundryOrder      LaundryOrder?        @relation(fields: [laundryOrderId], references: [id])
+  studentId         String
+  amount            Decimal              @db.Decimal(10, 2)
+  currency          String               @default("INR")
+  status            PaymentStatus        @default(PENDING)
+  paymentMethod     PaymentMethod        @default(RAZORPAY)
+  razorpayOrderId   String?              @unique
+  razorpayPaymentId String?              @unique
+  razorpaySignature String?              @db.Text
+  cashCollectedBy   String?
+  cashCollectedAt   DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
-  transactions       PaymentTransaction[]
-  refunds            Refund[]
+  transactions      PaymentTransaction[]
+  refunds           Refund[]
 
   @@index([razorpayOrderId])
   @@index([razorpayPaymentId])
@@ -579,16 +713,202 @@ model PaymentTransaction {
   @@index([transactionId])
 }
 
+model RefundAccount {
+  id                  String   @id @default(cuid())
+  studentId           String
+  student             Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  accountType         String   // "UPI" or "BANK"
+  accountHolderName   String
+  accountNumber       String?
+  maskedAccountNumber String?  // e.g. "XXXXXXXX4821"
+  ifscCode            String?
+  bankName            String?
+  upiId               String?  // e.g. "ra****@upi"
+  isDefault           Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([studentId])
+}
+
+model ProviderSettlementAccount {
+  id                  String          @id @default(cuid())
+  providerId          String          @unique
+  provider            ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  accountHolderName   String
+  bankName            String
+  accountNumber       String
+  maskedAccountNumber String
+  ifscCode            String
+  upiId               String?
+  isVerified          Boolean         @default(true)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+}
+
+model LaundryProviderConfig {
+  id                    String          @id @default(cuid())
+  providerId            String          @unique
+  provider              ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  supportedServicesJson String          @db.Text // JSON e.g. ["Wash & Fold", "Wash & Iron", "Dry Clean"]
+  pricingRateCardJson   String          @db.Text // JSON rate card per kg / per item
+  minimumOrderValue     Decimal         @default(50.00) @db.Decimal(10, 2)
+  turnaroundHours       Int             @default(48)
+  workingHours          String          @default("8:00 AM – 8:00 PM")
+  pickupSlotsJson       String          @db.Text
+  deliverySlotsJson     String          @db.Text
+  specialInstructions   String?         @db.Text
+  isActive              Boolean         @default(true)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+}
+
+model Settlement {
+  id                String          @id @default(cuid())
+  settlementNumber  String          @unique // e.g. CB-SET-000001
+  providerId        String
+  provider          ServiceProvider @relation(fields: [providerId], references: [id])
+  serviceType       ServiceType     @default(FOOD)
+  periodStart       DateTime
+  periodEnd         DateTime
+  ordersCount       Int             @default(0)
+  grossSales        Decimal         @db.Decimal(10, 2)
+  discountsTotal    Decimal         @default(0.00) @db.Decimal(10, 2)
+  refundsDeducted   Decimal         @default(0.00) @db.Decimal(10, 2)
+  commissionRate    Decimal         @default(5.00) @db.Decimal(5, 2)
+  commissionAmount  Decimal         @db.Decimal(10, 2)
+  adjustmentsAmount Decimal         @default(0.00) @db.Decimal(10, 2)
+  netPayable        Decimal         @db.Decimal(10, 2)
+  status            String          @default("SETTLED") // PENDING, PROCESSING, SETTLED, ON_HOLD, ADJUSTED
+  settledAt         DateTime?
+  settledBy         String?         // Admin user ID
+  paymentReference  String?         // UTR or bank reference number
+  notes             String?         @db.Text
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  items             SettlementItem[]
+
+  @@index([providerId])
+  @@index([settlementNumber])
+  @@index([status])
+}
+
+model SettlementItem {
+  id               String     @id @default(cuid())
+  settlementId     String
+  settlement       Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  orderId          String     @unique
+  order            Order      @relation(fields: [orderId], references: [id])
+  orderAmount      Decimal    @db.Decimal(10, 2)
+  commissionAmount Decimal    @db.Decimal(10, 2)
+  providerPayable  Decimal    @db.Decimal(10, 2)
+  createdAt        DateTime   @default(now())
+
+  @@index([settlementId])
+}
+
+model CODCollection {
+  id                   String                  @id @default(cuid())
+  collectionNumber     String                  @unique // e.g. CB-COD-2026-0001
+  orderId              String                  @unique
+  order                Order                   @relation(fields: [orderId], references: [id])
+  deliveryBoyId        String?
+  deliveryBoy          DeliveryBoy?            @relation(fields: [deliveryBoyId], references: [id])
+  expectedAmount       Decimal                 @db.Decimal(10, 2)
+  collectedAmount      Decimal                 @default(0.00) @db.Decimal(10, 2)
+  difference           Decimal                 @default(0.00) @db.Decimal(10, 2)
+  collectionStatus     CodCollectionStatus     @default(PENDING)
+  reconciliationStatus CodReconciliationStatus @default(PENDING)
+  collectedAt          DateTime?
+  reconciledAt         DateTime?
+  reconciledBy         String?                 // Admin ID
+  adjustmentReason     String?                 @db.Text
+  notes                String?                 @db.Text
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+
+  @@index([orderId])
+  @@index([deliveryBoyId])
+  @@index([reconciliationStatus])
+}
+
+model FinancialLedger {
+  id            String      @id @default(cuid())
+  entryNumber   String      @unique // e.g. CB-LED-000001
+  orderId       String?
+  order         Order?      @relation(fields: [orderId], references: [id])
+  transactionId String?
+  providerId    String?
+  studentId     String?
+  eventType     String      // PAYMENT_RECEIVED, REFUND_COMPLETED, COMMISSION_EARNED, PROVIDER_PAYABLE_CREATED, SETTLEMENT_COMPLETED, ADMIN_STATUS_OVERRIDE, etc.
+  serviceType   ServiceType @default(FOOD)
+  amount        Decimal     @db.Decimal(10, 2)
+  currency      String      @default("INR")
+  direction     String      // CREDIT or DEBIT
+  balanceAfter  Decimal?    @db.Decimal(10, 2)
+  metadataJson  String?     @db.Text
+  recordedBy    String?     // System or Admin User ID
+  createdAt     DateTime    @default(now())
+
+  @@index([orderId])
+  @@index([eventType])
+  @@index([providerId])
+  @@index([createdAt])
+}
+
+model AdminStatusOverride {
+  id            String   @id @default(cuid())
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  entityType    String   // ORDER_STATUS, PAYMENT_STATUS, REFUND_STATUS, SETTLEMENT_STATUS, COD_STATUS
+  previousValue String
+  newValue      String
+  reason        String   @db.Text // MANDATORY justification
+  adminId       String
+  internalNote  String?  @db.Text
+  ipAddress     String?
+  createdAt     DateTime @default(now())
+
+  @@index([orderId])
+  @@index([adminId])
+}
+
+model CancellationRequest {
+  id                String   @id @default(cuid())
+  orderId           String   @unique
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  requestedBy       String   // STUDENT, PROVIDER, ADMIN
+  userId            String
+  reason            String   @db.Text
+  cancellationStage String   // PRE_PREP, DURING_PREP, PICKUP_PENDING, PROCESSING, OUT_FOR_DELIVERY
+  status            String   @default("APPROVED") // PENDING, APPROVED, REJECTED
+  reviewedBy        String?
+  reviewNotes       String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
 model Refund {
   id               String    @id @default(cuid())
+  refundNumber     String?   @unique // e.g. CB-REF-000001
   paymentId        String
   payment          Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  orderId          String?
+  order            Order?    @relation(fields: [orderId], references: [id])
   razorpayRefundId String?   @unique
   amount           Decimal   @db.Decimal(10, 2)
   reason           String?   @db.Text
-  status           String    @default("REQUESTED") // REQUESTED, PROCESSING, REFUNDED, FAILED
+  status           String    @default("REQUESTED") // REQUESTED, PENDING_ADMIN_REVIEW, APPROVED, PROCESSING, COMPLETED, FAILED, REJECTED, AWAITING_STUDENT_DETAILS
   processedAt      DateTime?
+  processedBy      String?
+  rejectionReason  String?   @db.Text
   createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([paymentId])
+  @@index([orderId])
+  @@index([status])
 }
 
 model Receipt {
@@ -610,22 +930,22 @@ model Receipt {
 }
 
 model Coupon {
-  id               String        @id @default(cuid())
-  code             String        @unique
-  description      String?       @db.Text
-  discountType     DiscountType  @default(PERCENTAGE)
-  discountValue    Decimal       @db.Decimal(10, 2)
-  minOrderAmount   Decimal       @default(0.00) @db.Decimal(10, 2)
-  maxDiscountAmount Decimal?     @db.Decimal(10, 2)
-  expiryDate       DateTime?
-  usageLimit       Int?
-  perUserLimit     Int           @default(1)
-  categoryId       String?
-  category         Category?     @relation(fields: [categoryId], references: [id])
-  isActive         Boolean       @default(true)
-  createdAt        DateTime      @default(now())
+  id                String        @id @default(cuid())
+  code              String        @unique
+  description       String?       @db.Text
+  discountType      DiscountType  @default(PERCENTAGE)
+  discountValue     Decimal       @db.Decimal(10, 2)
+  minOrderAmount    Decimal       @default(0.00) @db.Decimal(10, 2)
+  maxDiscountAmount Decimal?      @db.Decimal(10, 2)
+  expiryDate        DateTime?
+  usageLimit        Int?
+  perUserLimit      Int           @default(1)
+  categoryId        String?
+  category          Category?     @relation(fields: [categoryId], references: [id])
+  isActive          Boolean       @default(true)
+  createdAt         DateTime      @default(now())
 
-  usages           CouponUsage[]
+  usages            CouponUsage[]
 
   @@index([code])
 }

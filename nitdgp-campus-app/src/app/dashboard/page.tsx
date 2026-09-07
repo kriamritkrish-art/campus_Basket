@@ -370,7 +370,7 @@ function DashboardContent() {
             <div>
               <div className="flex items-center gap-2.5">
                 <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
-                  {user?.student?.fullName || 'NIT Durgapur Student'}
+                  {user?.student?.fullName || 'Campus Student'}
                 </h1>
                 <span className="text-[10px] font-extrabold bg-[#e8f5e9] text-[#2e7d32] border border-[#c8e6c9] px-2.5 py-0.5 rounded-full flex items-center gap-1">
                   <ShieldCheck className="w-3 h-3" /> College Verified
@@ -398,7 +398,7 @@ function DashboardContent() {
               <div className="text-sm font-black text-white mt-0.5">
                 {hallName}, Room {roomNumber}
               </div>
-              <div className="text-[10px] text-gray-400">NIT Durgapur Campus</div>
+              <div className="text-[10px] text-gray-400">Campus Residence</div>
             </div>
           </div>
         </div>
@@ -756,7 +756,7 @@ function DashboardContent() {
                   <input
                     type="text"
                     disabled
-                    value={user?.student?.fullName || 'NIT Durgapur Student'}
+                    value={user?.student?.fullName || 'Campus Student'}
                     className="w-full bg-gray-100 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-600 font-semibold cursor-not-allowed"
                   />
                   <span className="text-[10px] text-gray-400">Verified via College Identity Roll</span>
@@ -1082,7 +1082,7 @@ function DashboardContent() {
             <div>
               <h2 className="text-lg font-black text-gray-900">Payment Methods</h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Convenient payment channels enabled for NIT Durgapur hostel deliveries.
+                Convenient payment channels enabled for campus hostel deliveries.
               </p>
             </div>
 
@@ -1141,7 +1141,7 @@ function DashboardContent() {
             <div>
               <h2 className="text-lg font-black text-gray-900">Campus Delivery Details</h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Campus Basket is designed specifically for fast 10–15 min hostel delivery across NIT Durgapur.
+                Campus Basket is designed specifically for fast 10–15 min hostel delivery across campus residence halls.
               </p>
             </div>
 
@@ -1149,7 +1149,7 @@ function DashboardContent() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                 <div>
                   <span className="text-gray-500 block font-semibold">Campus</span>
-                  <strong className="text-gray-900 text-sm">NIT Durgapur</strong>
+                  <strong className="text-gray-900 text-sm">Campus Basket Central</strong>
                 </div>
                 <div>
                   <span className="text-gray-500 block font-semibold">Hall / Hostel</span>
@@ -1310,7 +1310,7 @@ function DashboardContent() {
             <div>
               <h2 className="text-lg font-black text-gray-900">Campus Offers &amp; Promo Codes</h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Exclusive discounts for NIT Durgapur students. Apply at basket checkout!
+                Exclusive discounts for campus students. Apply at basket checkout!
               </p>
             </div>
 
@@ -1503,7 +1503,7 @@ function DashboardContent() {
                 <div className="font-bold text-gray-900">
                   {selectedOrder.hallName || 'Hall 11'}, Room {selectedOrder.roomNumber || '123'}
                 </div>
-                <div className="text-gray-500">NIT Durgapur Campus Hostel Delivery</div>
+                <div className="text-gray-500">Campus Basket Hostel Delivery</div>
               </div>
 
               {/* Products */}

@@ -32,15 +32,15 @@ export function Footer() {
                   campus<span className="text-[#4F9D2F]">basket</span>
                 </div>
                 <div className="text-[9.5px] font-semibold text-gray-400 uppercase mt-0.5">
-                  A NIT Durgapur Campus Marketplace
+                  Campus Marketplace & Services
                 </div>
               </div>
             </div>
             <p className="text-xs leading-relaxed text-gray-500">
-              National Institute of Technology Durgapur&apos;s dedicated student marketplace. Fast campus delivery across all residence halls in 10–15 minutes.
+              Campus Basket dedicated student marketplace. Fast campus delivery across all residence halls in 10–15 minutes.
             </p>
             <div className="flex items-center gap-1.5 text-xs text-[#36751F] font-bold">
-              <ShieldCheck className="w-4 h-4 text-[#4F9D2F]" /> Verified NIT Durgapur Campus Platform
+              <ShieldCheck className="w-4 h-4 text-[#4F9D2F]" /> Verified Campus Marketplace Platform
             </div>
           </div>
 
@@ -126,7 +126,7 @@ export function Footer() {
               <div className="flex items-start gap-2">
                 <MapPin className="w-4 h-4 text-[#689f38] mt-0.5 shrink-0" />
                 <span>
-                  Student Activity Centre (SAC), NIT Durgapur, Mahatma Gandhi Avenue, Durgapur, WB 713209
+                  Student Activity Centre (SAC), Campus Marketplace Operations, Student Services Cell
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -135,7 +135,7 @@ export function Footer() {
               </div>
               <div className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-[#689f38] shrink-0" />
-                <span>services@nitdgp.ac.in</span>
+                <span>support@campusbasket.in</span>
               </div>
             </div>
 
@@ -146,9 +146,9 @@ export function Footer() {
         </div>
 
         <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between text-xs text-gray-500 gap-4">
-          <p>&copy; {new Date().getFullYear()} NIT Durgapur Campus Marketplace. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} Campus Basket Marketplace. All rights reserved.</p>
           <p className="flex items-center gap-1 font-medium">
-            Designed for the <strong className="text-gray-800">NIT Durgapur Student Community</strong>
+            Designed for the <strong className="text-gray-800">Campus Student Community</strong>
           </p>
         </div>
       </div>

@@ -37,7 +37,7 @@ export async function geofenceGuard(req: Request, res: Response, next: NextFunct
       res.status(403).json({
         success: false,
         code: 'LOCATION_REQUIRED',
-        message: 'Campus location verification required. Please enable browser location permissions to confirm you are within the NIT Durgapur service perimeter.'
+        message: 'Campus location verification required. Please enable browser location permissions to confirm you are within the Campus Basket service perimeter.'
       });
       return;
     }
@@ -71,7 +71,7 @@ export async function geofenceGuard(req: Request, res: Response, next: NextFunct
       res.status(403).json({
         success: false,
         code: 'OUTSIDE_SERVICE_AREA',
-        message: 'Services are currently available only within the NIT Durgapur campus service area.'
+        message: 'Services are currently available only within the Campus Basket service area.'
       });
       return;
     }

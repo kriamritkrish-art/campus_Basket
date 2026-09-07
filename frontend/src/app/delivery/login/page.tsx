@@ -111,7 +111,7 @@ function DeliveryLoginForm() {
             Campus Basket Delivery Partner
           </h1>
           <p className="text-xs text-gray-500 mt-1 font-medium">
-            NIT Durgapur Campus Runner &amp; Logistics Portal
+            Campus Basket Runner &amp; Logistics Portal
           </p>
         </div>
 
@@ -261,7 +261,7 @@ function DeliveryLoginForm() {
 
         {/* Footer */}
         <div className="mt-8 text-center text-xs text-gray-400">
-          Official NIT Durgapur Campus Logistics &bull; Fast Room Deliveries across Halls 1–14
+          Campus Basket Logistics &bull; Fast Room Deliveries across Halls 1–14
         </div>
       </div>
     </div>

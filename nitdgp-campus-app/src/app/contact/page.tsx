@@ -61,7 +61,7 @@ export default function ContactPage() {
               <MapPin className="w-5 h-5 text-sky-400 flex-shrink-0 mt-0.5" />
               <div>
                 <strong className="text-white">Physical Helpdesk</strong>
-                <p className="text-slate-400 mt-0.5">Student Activity Centre (SAC), Ground Floor, NIT Durgapur</p>
+                <p className="text-slate-400 mt-0.5">Student Activity Centre (SAC), Ground Floor, Central Campus</p>
               </div>
             </div>
 
@@ -69,7 +69,7 @@ export default function ContactPage() {
               <Mail className="w-5 h-5 text-sky-400 flex-shrink-0" />
               <div>
                 <strong className="text-white">Support Email</strong>
-                <p className="text-slate-400 mt-0.5">services@nitdgp.ac.in</p>
+                <p className="text-slate-400 mt-0.5">support@campusbasket.in</p>
               </div>
             </div>
 

@@ -382,7 +382,7 @@ export default function HomePage() {
               What do you need today?
             </p>
             <p className="text-xs sm:text-sm text-[#667085]">
-              Fast delivery across NIT Durgapur campus halls in 10–15 minutes.
+              Fast delivery across campus residence halls in 10–15 minutes.
             </p>
 
             {/* Embedded Contextual Search Input */}

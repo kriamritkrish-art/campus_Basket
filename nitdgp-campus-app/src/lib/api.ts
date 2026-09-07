@@ -1,9 +1,28 @@
 export const getApiBase = () => {
-  return (
+  let raw = (
     process.env.NEXT_PUBLIC_BACKEND_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    'https://campusbasket-production.up.railway.app'
-  ).replace(/\/+$/, '');
+    ''
+  ).trim();
+
+  // If executing in browser
+  if (typeof window !== 'undefined') {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    // When deployed on Vercel or custom domain without a valid remote backend URL,
+    // return '' so relative requests are routed via Next.js rewrites to Railway.
+    if (!isLocal && (!raw || raw.includes('localhost') || raw.includes('127.0.0.1'))) {
+      return '';
+    }
+  }
+
+  if (!raw) {
+    return 'http://localhost:5000';
+  }
+
+  if (!raw.startsWith('http://') && !raw.startsWith('https://')) {
+    raw = `https://${raw}`;
+  }
+  return raw.replace(/\/+$/, '');
 };
 
 export const API_BASE = getApiBase();

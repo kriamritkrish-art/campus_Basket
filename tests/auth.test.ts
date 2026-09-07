@@ -9,27 +9,27 @@ describe('NIT Durgapur Student Email & OTP Security', () => {
     expect(isValidNitEmail('2024ug1234@nitdgp.ac.in')).toBe(true);
   });
 
-  it('strictly rejects non-NIT emails (gmail, yahoo, outlook, others)', () => {
-    expect(isValidNitEmail('student@gmail.com')).toBe(false);
-    expect(isValidNitEmail('student@yahoo.co.in')).toBe(false);
-    expect(isValidNitEmail('student@outlook.com')).toBe(false);
-    expect(isValidNitEmail('student@nitdgp.com')).toBe(false);
-    expect(isValidNitEmail('student@nitdgp.org')).toBe(false);
-    expect(isValidNitEmail('student@nitdgp.ac.in.fake.com')).toBe(false);
+  it('strictly rejects invalid or malformed emails', () => {
+    expect(isValidNitEmail('notanemail')).toBe(false);
+    expect(isValidNitEmail('@missinguser.com')).toBe(false);
+    expect(isValidNitEmail('user@')).toBe(false);
+    expect(isValidNitEmail('user@.com')).toBe(false);
+    expect(isValidNitEmail('user spaces@domain.com')).toBe(false);
+    expect(isValidNitEmail('')).toBe(false);
   });
 
   it('rejects invalid email formats in Zod validation', () => {
-    const invalidGmail = sendOtpSchema.safeParse({
-      email: 'hacker@gmail.com',
+    const invalidFormat = sendOtpSchema.safeParse({
+      email: 'not-an-email-format',
       password: 'Password123'
     });
-    expect(invalidGmail.success).toBe(false);
+    expect(invalidFormat.success).toBe(false);
 
-    const validNit = sendOtpSchema.safeParse({
-      email: 'ss.24u10227@nitdgp.ac.in',
+    const validEmail = sendOtpSchema.safeParse({
+      email: 'student.cs@campus.ac.in',
       password: 'Password123'
     });
-    expect(validNit.success).toBe(true);
+    expect(validEmail.success).toBe(true);
   });
 
   it('generates a 6-digit numeric OTP and hashes with SHA-256', () => {

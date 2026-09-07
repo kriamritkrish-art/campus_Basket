@@ -14,12 +14,25 @@ export default function AdminZonesPage() {
   const [services, setServices] = useState('["FOOD","FRUITS","LAUNDRY","ESSENTIALS"]');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [geofenceEnforced, setGeofenceEnforced] = useState<boolean>(true);
+  const [togglingGeofence, setTogglingGeofence] = useState<boolean>(false);
+
   const fetchZones = async () => {
     setLoading(true);
     try {
-      const res = await apiRequest('/api/admin/zones');
-      if (res.success && res.zones) {
-        setZones(res.zones);
+      const [zonesRes, settingsRes] = await Promise.allSettled([
+        apiRequest('/api/admin/zones'),
+        apiRequest('/api/admin/settings')
+      ]);
+
+      if (zonesRes.status === 'fulfilled' && zonesRes.value?.success && zonesRes.value?.zones) {
+        setZones(zonesRes.value.zones);
+      }
+      if (settingsRes.status === 'fulfilled' && settingsRes.value?.success && Array.isArray(settingsRes.value?.settings)) {
+        const geoSetting = settingsRes.value.settings.find((s: any) => s.key === 'GEOFENCE_ENFORCED');
+        if (geoSetting) {
+          setGeofenceEnforced(geoSetting.value !== 'false');
+        }
       }
     } catch (err) {
       console.warn('Zones error:', err);
@@ -31,6 +44,28 @@ export default function AdminZonesPage() {
   useEffect(() => {
     fetchZones();
   }, []);
+
+  const handleToggleGeofence = async () => {
+    const nextVal = !geofenceEnforced;
+    setTogglingGeofence(true);
+    try {
+      const res = await apiRequest('/api/admin/settings', {
+        method: 'POST',
+        body: JSON.stringify({
+          key: 'GEOFENCE_ENFORCED',
+          value: String(nextVal),
+          description: 'Master GPS Geofencing perimeter restriction toggle'
+        })
+      });
+      if (res.success) {
+        setGeofenceEnforced(nextVal);
+      }
+    } catch (err) {
+      alert('Failed to update geofence master switch');
+    } finally {
+      setTogglingGeofence(false);
+    }
+  };
 
   const handleCreateZone = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,17 +103,53 @@ export default function AdminZonesPage() {
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-[#17202A] flex items-center gap-2">
-          <MapPin className="w-5 h-5 text-[#4F9D32]" />
-          <span>Campus Service Zones &amp; Geofencing</span>
-          <span className="text-[10px] bg-[#4F9D32]/10 text-[#347A27] font-bold px-2.5 py-0.5 rounded-full border border-[#4F9D32]/20">
-            {zones.length} Boundaries
-          </span>
-        </h1>
-        <p className="text-xs text-slate-500 mt-1">
-          NIT Durgapur GPS boundary coordinates, serviceable hostel quadrants &amp; delivery restrictions
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-[#17202A] flex items-center gap-2">
+            <MapPin className="w-5 h-5 text-[#4F9D32]" />
+            <span>Campus Service Zones &amp; Geofencing</span>
+            <span className="text-[10px] bg-[#4F9D32]/10 text-[#347A27] font-bold px-2.5 py-0.5 rounded-full border border-[#4F9D32]/20">
+              {zones.length} Boundaries
+            </span>
+          </h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Campus GPS boundary coordinates, serviceable hostel quadrants &amp; delivery restrictions
+          </p>
+        </div>
+
+        {/* MASTER GEOFENCE TOGGLE */}
+        <div className="flex items-center gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
+          <div>
+            <div className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+              <span>Geo-Mapping &amp; Geofencing:</span>
+              <span className={`text-[11px] font-black px-2 py-0.5 rounded-md ${
+                geofenceEnforced
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-amber-100 text-amber-800'
+              }`}>
+                {geofenceEnforced ? 'ENFORCED (Campus Only)' : 'OFF (Works Everywhere)'}
+              </span>
+            </div>
+            <div className="text-[10px] text-gray-500">
+              {geofenceEnforced
+                ? 'Orders restricted to verified campus perimeter coordinates.'
+                : 'Geofence disabled: students can order from anywhere.'}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleToggleGeofence}
+            disabled={togglingGeofence}
+            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer shrink-0 ${
+              geofenceEnforced
+                ? 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100'
+                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+            }`}
+          >
+            {togglingGeofence ? 'Saving...' : geofenceEnforced ? 'Turn OFF' : 'Turn ON'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

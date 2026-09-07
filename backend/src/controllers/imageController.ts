@@ -25,7 +25,7 @@ export class ImageController {
       res.status(200).send(`
         <svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300" fill="#0f172a">
           <rect width="400" height="300" fill="#1e293b"/>
-          <text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" fill="#38bdf8" font-family="sans-serif" font-weight="bold" font-size="20">NIT Durgapur Campus</text>
+          <text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" fill="#38bdf8" font-family="sans-serif" font-weight="bold" font-size="20">Campus Basket</text>
           <text x="50%" y="60%" dominant-baseline="middle" text-anchor="middle" fill="#94a3b8" font-family="sans-serif" font-size="14">Google Drive Asset</text>
         </svg>
       `);

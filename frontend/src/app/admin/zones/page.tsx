@@ -113,7 +113,7 @@ export default function AdminZonesPage() {
             </span>
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            NIT Durgapur GPS boundary coordinates, serviceable hostel quadrants &amp; delivery restrictions
+            Campus GPS boundary coordinates, serviceable hostel quadrants &amp; delivery restrictions
           </p>
         </div>
 
@@ -132,7 +132,7 @@ export default function AdminZonesPage() {
             </div>
             <div className="text-[10px] text-gray-500">
               {geofenceEnforced
-                ? 'Orders restricted to NIT Durgapur coordinates.'
+                ? 'Orders restricted to verified campus perimeter coordinates.'
                 : 'Geofence disabled: students can order from anywhere.'}
             </div>
           </div>

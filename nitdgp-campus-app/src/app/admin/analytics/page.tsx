@@ -312,7 +312,7 @@ export default function AdminAnalyticsPage() {
                   </span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Multi-metric time-series analytics for NIT Durgapur student commerce
+                  Multi-metric time-series analytics for campus student commerce
                 </p>
               </div>
 

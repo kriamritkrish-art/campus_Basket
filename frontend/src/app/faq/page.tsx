@@ -1,7 +1,7 @@
 import React from 'react';
 
 export const metadata = {
-  title: 'Campus Services FAQ — NIT Durgapur',
+  title: 'Campus Services FAQ — Campus Basket',
   description: 'Frequently asked questions about ordering meals, booking laundry, delivery fees, and dual-OTP verification.',
 };
 
@@ -9,23 +9,23 @@ export default function FaqPage() {
   const faqs = [
     {
       q: 'Who can place orders on this platform?',
-      a: 'Only students and residents with a verified @nitdgp.ac.in college email address can place orders. Outside domains (Gmail, Yahoo, Outlook) are strictly blocked.'
+      a: 'Students, faculty, and campus residents with verified institutional or college credentials can place orders seamlessly.'
     },
     {
       q: 'How does the Dual-OTP Laundry system work?',
-      a: 'When you book laundry, you are assigned two distinct OTPs. When the vendor arrives at your hostel door, you provide the Pickup OTP. Once your clothes are washed, ironed, and returned to your room, you provide the Delivery OTP. The pickup code cannot be used to verify delivery.'
+      a: 'When you book laundry, you are assigned two distinct OTPs. When the runner arrives at your hostel door, you provide the Pickup OTP. Once your clothes are washed, ironed, and returned to your room, you provide the Delivery OTP. The pickup code cannot be used to verify delivery.'
     },
     {
       q: 'What are the delivery fees for hostel rooms?',
-      a: 'We offer flat ₹15 delivery across all 14 residence halls. All orders above ₹250 qualify for 100% FREE room delivery.'
+      a: 'We offer flat ₹15 delivery across all campus residence halls. All orders above ₹250 qualify for 100% FREE room delivery.'
     },
     {
       q: 'Is Cash on Delivery (COD) supported?',
-      a: 'Yes, Cash on Delivery is supported for orders up to ₹1,500 across food, fruits, and stationery. You can also pay seamlessly online via Razorpay (UPI, Google Pay, Cards).'
+      a: 'Yes, Cash on Delivery is supported for orders up to ₹1,500 across food, fruits, and stationery. You can also pay seamlessly online via UPI, Google Pay, and Cards.'
     },
     {
-      q: 'Can I order when I am outside the NIT Durgapur campus?',
-      a: 'You can browse products from anywhere, but placing an order requires being within the active NIT Durgapur campus service area as verified by your browser GPS.'
+      q: 'Can I order when I am outside the campus perimeter?',
+      a: 'You can browse products from anywhere, but placing an order requires being within the active campus service geofence as verified by your device GPS.'
     }
   ];
 

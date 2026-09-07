@@ -86,18 +86,16 @@ describe('NIT Durgapur Student Authentication & Lifecycle Test Suite', () => {
   });
 
   // -------------------------------------------------------------
-  // TEST 2: Non-NIT email -> Rejected
+  // TEST 2: Malformed or invalid email -> Rejected
   // -------------------------------------------------------------
-  it('TEST 2: Non-NIT email is strictly rejected for college email verification', () => {
+  it('TEST 2: Malformed or invalid email is strictly rejected for college email verification', () => {
     const invalidEmails = [
-      'student@gmail.com',
-      'student@yahoo.co.in',
-      'student@outlook.com',
-      'student@hotmail.com',
-      'student@nitdgp.org',
-      'student@nitdgp.com',
-      'ss.24u10227@nitdgp.ac.in.attacker.com',
-      'notanemail'
+      'notanemail',
+      '@missinguser.com',
+      'user@',
+      'user@.com',
+      'user spaces@domain.com',
+      ''
     ];
 
     for (const email of invalidEmails) {

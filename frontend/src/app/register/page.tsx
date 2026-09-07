@@ -172,7 +172,7 @@ export default function RegisterPage() {
       });
 
       if (res.success) {
-        setSuccessMsg('OTP sent to your NIT Durgapur email.');
+        setSuccessMsg('OTP sent to your campus email.');
         setCollegeOtp('');
         setCollegeResendTimer(60);
         setStep(2);
@@ -420,11 +420,9 @@ export default function RegisterPage() {
             Create Your Campus Basket Account
           </h1>
           <p className="text-xs text-gray-500">
-            NIT Durgapur Verified Student Registration
+            Campus Basket Verified Student Registration
           </p>
         </div>
-
-
 
         {/* Alerts */}
         {error && (
@@ -442,19 +440,19 @@ export default function RegisterPage() {
         )}
 
         {/* ======================================================== */}
-        {/* STEP 1: Official NIT Durgapur College Email               */}
+        {/* STEP 1: Campus / Student Email                           */}
         {/* ======================================================== */}
         {step === 1 && (
           <form onSubmit={handleSendCollegeOtp} className="space-y-4">
             <div>
               <label className="text-xs font-bold text-gray-700 block mb-1">
-                Official NIT Durgapur Email
+                Campus / Student Email
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-gray-400 absolute left-3.5 top-3" />
                 <input
                   type="email"
-                  placeholder="e.g. student@nitdgp.ac.in"
+                  placeholder="e.g. student@college.edu"
                   value={collegeEmail}
                   onChange={(e) => setCollegeEmail(e.target.value)}
                   className="w-full bg-white border border-gray-300 rounded-lg pl-10 pr-4 py-2.5 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#84c225] focus:ring-1 focus:ring-[#84c225] transition-colors"
@@ -464,7 +462,7 @@ export default function RegisterPage() {
               </div>
               <p className="text-[11px] text-gray-500 mt-1.5 flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5 text-[#689f38]" />
-                Strictly restricted to official <strong className="text-gray-700 font-mono">@nitdgp.ac.in</strong> addresses.
+                Enter your valid campus or student email address to receive your 6-digit OTP.
               </p>
             </div>
 
@@ -489,7 +487,7 @@ export default function RegisterPage() {
         {step === 2 && (
           <form onSubmit={handleVerifyCollegeOtp} className="space-y-4">
             <div className="p-3 bg-[#f8fafc] border border-gray-200 rounded-xl text-xs text-gray-600 text-center space-y-1">
-              <div>OTP sent to your NIT Durgapur email:</div>
+              <div>OTP sent to your campus email:</div>
               <div className="font-mono font-bold text-gray-900 text-sm">{collegeEmail}</div>
             </div>
 

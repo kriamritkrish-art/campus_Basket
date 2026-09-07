@@ -71,7 +71,7 @@ export default function AdminHallsPage() {
           </span>
         </h1>
         <p className="text-xs text-slate-500 mt-1">
-          NIT Durgapur student hostels, drop-off gate instructions &amp; room distributions
+          Campus student residence halls, drop-off gate instructions &amp; room distributions
         </p>
       </div>
 

@@ -41,7 +41,7 @@ export class PdfReportService {
         size: 'A4',
         info: {
           Title: data.reportTitle,
-          Author: 'NIT Durgapur Campus Services Platform',
+          Author: 'Campus Basket Platform',
           Subject: 'Administrative Operations & Performance Report',
           CreationDate: new Date()
         }
@@ -61,7 +61,7 @@ export class PdfReportService {
       doc.rect(40, 40, doc.page.width - 80, 65).fill('#f8fafc');
 
       doc.fillColor(primaryColor).fontSize(16).font('Helvetica-Bold')
-        .text('NATIONAL INSTITUTE OF TECHNOLOGY DURGAPUR', 55, 50);
+        .text('CAMPUS BASKET MARKETPLACE', 55, 50);
 
       doc.fillColor(darkColor).fontSize(11).font('Helvetica-Bold')
         .text('CAMPUS SERVICES PLATFORM — ADMINISTRATIVE AUDIT REPORT', 55, 70);
@@ -157,7 +157,7 @@ export class PdfReportService {
       doc.moveTo(40, footerY - 5).lineTo(doc.page.width - 40, footerY - 5).strokeColor(borderLineColor).stroke();
 
       doc.fillColor(mutedColor).fontSize(7).font('Helvetica')
-        .text('NIT Durgapur Campus Services Platform • System Generated Administrative Document • Verified by Security Operations Cell', 40, footerY);
+        .text('Campus Basket Platform • System Generated Administrative Document • Operations Cell', 40, footerY);
 
       doc.text(`Page 1 of 1 • Internal Audit Circulation`, doc.page.width - 200, footerY, { width: 160, align: 'right' });
 

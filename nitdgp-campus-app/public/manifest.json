@@ -1,11 +1,11 @@
 {
-  "name": "NIT Durgapur Campus Services",
+  "name": "Campus Basket Platform Services",
   "short_name": "CampusBasket",
-  "description": "Campus-only verified student service marketplace for NIT Durgapur. Food, Fruits, Laundry & Essentials delivered to hostel rooms.",
+  "description": "Campus-only verified student commerce & service platform. Food, Fruits, Laundry & Essentials delivered to hostel rooms.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#689f38",
+  "theme_color": "#4F9D2F",
   "orientation": "portrait",
   "icons": [
     {

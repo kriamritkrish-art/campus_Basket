@@ -7,818 +7,665 @@ import {
   CreditCard,
   Banknote,
   RotateCcw,
-  CheckCircle,
-  Save,
-  Calendar,
+  CheckCircle2,
+  AlertTriangle,
   Search,
   Download,
   IndianRupee,
   Store,
-  Users,
-  RefreshCw,
   Clock,
   ArrowUpRight,
-  TrendingUp,
   Percent,
-  Receipt
+  Receipt,
+  ShieldAlert,
+  FileText,
+  Check,
+  X,
+  Filter,
+  Layers,
+  Scale,
+  RefreshCw,
+  AlertCircle,
+  TrendingUp
 } from 'lucide-react';
 
+type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'REFUNDS' | 'SETTLEMENTS' | 'COD' | 'LEDGER';
+
 export default function AdminPaymentsPage() {
-  const [activeTab, setActiveTab] = useState<'PROVIDERS' | 'CUSTOMERS' | 'TRANSACTIONS' | 'COD' | 'REFUNDS'>('PROVIDERS');
-  
-  // Timeframe Filter (Default to 30 Days as requested)
-  const [timeframe, setTimeframe] = useState<string>('30d');
-  const [customStartDate, setCustomStartDate] = useState<string>('');
-  const [customEndDate, setCustomEndDate] = useState<string>('');
-  const [isCustomDateOpen, setIsCustomDateOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<AdminTab>('OVERVIEW');
+  const [loading, setLoading] = useState(true);
 
-  // Financial Data State
-  const [financialData, setFinancialData] = useState<any>(null);
-  const [financialLoading, setFinancialLoading] = useState(true);
+  // Overview Metrics State
+  const [overviewMetrics, setOverviewMetrics] = useState<any>(null);
+  const [actionCenter, setActionCenter] = useState<any>(null);
 
-  // Search & Secondary Filters
-  const [providerSearch, setProviderSearch] = useState('');
-  const [providerCategoryFilter, setProviderCategoryFilter] = useState('ALL');
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [customerHallFilter, setCustomerHallFilter] = useState('ALL');
+  // Transactions State
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [serviceFilter, setServiceFilter] = useState('ALL');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('ALL');
+  const [refundStatusFilter, setRefundStatusFilter] = useState('ALL');
+  const [settlementStatusFilter, setSettlementStatusFilter] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Transactions Tab State
-  const [orders, setOrders] = useState<any[]>([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
+  // Refunds State
+  const [refunds, setRefunds] = useState<any[]>([]);
+  const [selectedRefundOrder, setSelectedRefundOrder] = useState<any>(null);
+  const [refundNotes, setRefundNotes] = useState('');
+  const [processingRefund, setProcessingRefund] = useState(false);
 
-  // COD config state
-  const [codEnabled, setCodEnabled] = useState(true);
-  const [maxCodAmount, setMaxCodAmount] = useState('1500');
-  const [isSaving, setIsSaving] = useState(false);
+  // Settlements State
+  const [settlements, setSettlements] = useState<any[]>([]);
+  const [selectedDisburseSettlement, setSelectedDisburseSettlement] = useState<any>(null);
+  const [payoutReference, setPayoutReference] = useState('');
+  const [disburseNotes, setDisburseNotes] = useState('');
+  const [disbursing, setDisbursing] = useState(false);
 
-  // Fetch Financial Ledger Data from backend
-  const fetchFinancialSummary = async () => {
-    setFinancialLoading(true);
-    try {
-      let query = `/api/admin/financial-summary?timeframe=${timeframe}`;
-      if (timeframe === 'custom' && customStartDate && customEndDate) {
-        query += `&startDate=${customStartDate}&endDate=${customEndDate}`;
-      }
-      const res = await apiRequest(query);
-      if (res.success) {
-        setFinancialData(res);
-      }
-    } catch (err) {
-      console.warn('Financial summary fetch error:', err);
-    } finally {
-      setFinancialLoading(false);
-    }
+  // COD Reconciliation State
+  const [codCollections, setCodCollections] = useState<any[]>([]);
+  const [selectedCodCollection, setSelectedCodCollection] = useState<any>(null);
+  const [reconcileAmount, setReconcileAmount] = useState('');
+  const [reconcileNotes, setReconcileNotes] = useState('');
+  const [reconciling, setReconciling] = useState(false);
+
+  // Financial Ledger State
+  const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
+  const [ledgerTypeFilter, setLedgerTypeFilter] = useState('ALL');
+
+  // Status Override Modal State
+  const [overrideModalOpen, setOverrideModalOpen] = useState(false);
+  const [overrideOrderId, setOverrideOrderId] = useState('');
+  const [overrideStatusType, setOverrideStatusType] = useState<'ORDER' | 'PAYMENT' | 'REFUND' | 'SETTLEMENT'>('ORDER');
+  const [overrideNewStatus, setOverrideNewStatus] = useState('');
+  const [overrideReason, setOverrideReason] = useState('');
+  const [overrideNotes, setOverrideNotes] = useState('');
+  const [overriding, setOverriding] = useState(false);
+
+  // Alerts
+  const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setToastMessage({ type, text });
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // Fetch raw orders and settings
-  const fetchGeneralData = async () => {
-    setOrdersLoading(true);
+  // Load Tab Data
+  const loadData = async () => {
+    setLoading(true);
     try {
-      const [ordersRes, settingsRes] = await Promise.all([
-        apiRequest('/api/admin/orders?limit=100'),
-        apiRequest('/api/admin/settings')
-      ]);
-
-      if (ordersRes.success && ordersRes.orders) {
-        setOrders(ordersRes.orders);
-      }
-      if (settingsRes.success && settingsRes.settings) {
-        const cod = settingsRes.settings.find((s: any) => s.key === 'ENABLE_CASH_ON_DELIVERY');
-        if (cod) setCodEnabled(cod.value === 'true');
-        const maxCod = settingsRes.settings.find((s: any) => s.key === 'MAX_COD_AMOUNT');
-        if (maxCod) setMaxCodAmount(maxCod.value);
+      if (activeTab === 'OVERVIEW') {
+        const res = await apiRequest('/api/admin/payments/overview');
+        if (res.success) {
+          setOverviewMetrics(res.data.metrics);
+          setActionCenter(res.data.actionCenter);
+        }
+      } else if (activeTab === 'TRANSACTIONS') {
+        let query = `/api/admin/payments/transactions?serviceType=${serviceFilter}&paymentStatus=${paymentStatusFilter}&refundStatus=${refundStatusFilter}&settlementStatus=${settlementStatusFilter}`;
+        if (searchQuery) query += `&search=${encodeURIComponent(searchQuery)}`;
+        const res = await apiRequest(query);
+        if (res.success) setTransactions(res.data || []);
+      } else if (activeTab === 'REFUNDS') {
+        const res = await apiRequest('/api/admin/payments/refunds');
+        if (res.success) setRefunds(res.data || []);
+      } else if (activeTab === 'SETTLEMENTS') {
+        const res = await apiRequest('/api/admin/payments/settlements');
+        if (res.success) setSettlements(res.data || []);
+      } else if (activeTab === 'COD') {
+        const res = await apiRequest('/api/admin/payments/cod');
+        if (res.success) setCodCollections(res.data || []);
+      } else if (activeTab === 'LEDGER') {
+        let query = '/api/admin/payments/ledger';
+        if (ledgerTypeFilter !== 'ALL') query += `?entryType=${ledgerTypeFilter}`;
+        const res = await apiRequest(query);
+        if (res.success) setLedgerEntries(res.data || []);
       }
     } catch (err) {
-      console.warn('General data fetch error:', err);
+      console.warn('Failed to load tab data:', err);
     } finally {
-      setOrdersLoading(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchFinancialSummary();
-  }, [timeframe]);
+    loadData();
+  }, [activeTab, serviceFilter, paymentStatusFilter, refundStatusFilter, settlementStatusFilter, ledgerTypeFilter]);
 
-  useEffect(() => {
-    fetchGeneralData();
-  }, []);
-
-  const handleApplyCustomDates = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (customStartDate && customEndDate) {
-      setTimeframe('custom');
-      fetchFinancialSummary();
-    }
-  };
-
-  const handleSaveCodSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
+  // Execute Refund Action
+  const handleProcessRefund = async () => {
+    if (!selectedRefundOrder) return;
+    setProcessingRefund(true);
     try {
-      await Promise.all([
-        apiRequest('/api/admin/settings', {
-          method: 'POST',
-          body: JSON.stringify({
-            key: 'ENABLE_CASH_ON_DELIVERY',
-            value: codEnabled ? 'true' : 'false',
-            description: 'Allow Cash on Delivery for hostel deliveries'
-          })
-        }),
-        apiRequest('/api/admin/settings', {
-          method: 'POST',
-          body: JSON.stringify({
-            key: 'MAX_COD_AMOUNT',
-            value: maxCodAmount,
-            description: 'Maximum permitted amount for Cash on Delivery orders'
-          })
+      const res = await apiRequest('/api/admin/payments/refunds/process', {
+        method: 'POST',
+        body: JSON.stringify({
+          orderId: selectedRefundOrder.id,
+          amount: selectedRefundOrder.totalAmount,
+          notes: refundNotes
         })
-      ]);
-      alert('COD parameters saved successfully to Railway MySQL database.');
-    } catch (err) {
-      alert('Error saving COD settings');
+      });
+      if (res.success) {
+        showToast('Refund processed successfully and recorded in financial ledger!');
+        setSelectedRefundOrder(null);
+        setRefundNotes('');
+        loadData();
+      } else {
+        showToast(res.message || 'Refund processing failed', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Refund failed', 'error');
     } finally {
-      setIsSaving(false);
+      setProcessingRefund(false);
     }
   };
 
-  const kpis = financialData?.kpis || {};
-  const rawProviders: any[] = financialData?.providers || [];
-  const rawCustomers: any[] = financialData?.customers || [];
+  // Execute Settlement Disbursement
+  const handleDisburseSettlement = async () => {
+    if (!selectedDisburseSettlement || !payoutReference) {
+      showToast('Payout Reference is required', 'error');
+      return;
+    }
+    setDisbursing(true);
+    try {
+      const res = await apiRequest('/api/admin/payments/settlements/disburse', {
+        method: 'POST',
+        body: JSON.stringify({
+          settlementId: selectedDisburseSettlement.id,
+          payoutReference,
+          notes: disburseNotes
+        })
+      });
+      if (res.success) {
+        showToast('Settlement disbursed and recognized in financial ledger!');
+        setSelectedDisburseSettlement(null);
+        setPayoutReference('');
+        setDisburseNotes('');
+        loadData();
+      } else {
+        showToast(res.message || 'Disbursement failed', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Disbursement error', 'error');
+    } finally {
+      setDisbursing(false);
+    }
+  };
 
-  // Filtered Providers
-  const filteredProviders = rawProviders.filter((p) => {
-    const matchesQuery =
-      p.name.toLowerCase().includes(providerSearch.toLowerCase()) ||
-      p.category.toLowerCase().includes(providerSearch.toLowerCase()) ||
-      p.username.toLowerCase().includes(providerSearch.toLowerCase());
-    const matchesCat =
-      providerCategoryFilter === 'ALL' ||
-      p.category.toLowerCase().includes(providerCategoryFilter.toLowerCase());
-    return matchesQuery && matchesCat;
-  });
+  // Execute COD Reconciliation
+  const handleReconcileCod = async () => {
+    if (!selectedCodCollection) return;
+    setReconciling(true);
+    try {
+      const res = await apiRequest('/api/admin/payments/cod/reconcile', {
+        method: 'POST',
+        body: JSON.stringify({
+          collectionId: selectedCodCollection.id,
+          amountCollected: reconcileAmount ? Number(reconcileAmount) : undefined,
+          notes: reconcileNotes
+        })
+      });
+      if (res.success) {
+        showToast('COD collection reconciled successfully!');
+        setSelectedCodCollection(null);
+        setReconcileAmount('');
+        setReconcileNotes('');
+        loadData();
+      } else {
+        showToast(res.message || 'Reconciliation failed', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Reconciliation error', 'error');
+    } finally {
+      setReconciling(false);
+    }
+  };
 
-  // Filtered Customers
-  const filteredCustomers = rawCustomers.filter((c) => {
-    const matchesQuery =
-      c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-      c.rollNumber.toLowerCase().includes(customerSearch.toLowerCase()) ||
-      c.email.toLowerCase().includes(customerSearch.toLowerCase()) ||
-      c.roomNumber.toLowerCase().includes(customerSearch.toLowerCase());
-    const matchesHall =
-      customerHallFilter === 'ALL' ||
-      c.hallName.toLowerCase().includes(customerHallFilter.toLowerCase());
-    return matchesQuery && matchesHall;
-  });
+  // Execute Status Override
+  const handleStatusOverride = async () => {
+    if (!overrideOrderId || !overrideNewStatus || overrideReason.trim().length < 5) {
+      showToast('Order ID, New Status, and Detailed Reason (min 5 characters) are required', 'error');
+      return;
+    }
+    setOverriding(true);
+    try {
+      const res = await apiRequest('/api/admin/payments/override-status', {
+        method: 'POST',
+        body: JSON.stringify({
+          orderId: overrideOrderId,
+          statusType: overrideStatusType,
+          newStatus: overrideNewStatus,
+          reason: overrideReason,
+          notes: overrideNotes
+        })
+      });
+      if (res.success) {
+        showToast(`Status overridden to ${overrideNewStatus} successfully!`);
+        setOverrideModalOpen(false);
+        setOverrideOrderId('');
+        setOverrideReason('');
+        setOverrideNotes('');
+        loadData();
+      } else {
+        showToast(res.message || 'Status override failed', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Status override error', 'error');
+    } finally {
+      setOverriding(false);
+    }
+  };
 
-  const refundOrders = orders.filter((o) => o.status === 'REFUNDED' || o.status === 'REFUND_REQUESTED');
-
-  const exportFinancialCsv = () => {
-    if (!rawProviders.length && !rawCustomers.length) return;
-    let csvContent = 'data:text/csv;charset=utf-8,';
-    csvContent += 'PROVIDER FINANCIAL LEDGER (Filtered Timeframe: ' + timeframe + ')\n';
-    csvContent += 'Provider Name,Category,Username,Total Orders,Delivered Orders,Gross Sales (INR),Discounts (INR),Refunds (INR),Platform Fee (INR),Net Payable (INR),Settled (INR),Pending Settlement (INR),Online Sales (INR),COD Sales (INR),AOV (INR)\n';
-    rawProviders.forEach((p) => {
-      csvContent += `"${p.name}","${p.category}","${p.username}",${p.totalOrders},${p.deliveredOrders},${p.grossSales},${p.totalDiscounts},${p.totalRefunds},${p.platformFee},${p.netPayable},${p.settledAmount},${p.pendingSettlement},${p.onlineSales},${p.codSales},${p.aov}\n`;
-    });
-    csvContent += '\nCUSTOMER FINANCIAL LEDGER\n';
-    csvContent += 'Student Name,Roll Number,Email,Hall,Room,Total Orders,Completed Orders,Total Spent (INR),Discounts Saved (INR),Refunds (INR),AOV (INR),Online Orders,COD Orders,Last Order Date\n';
-    rawCustomers.forEach((c) => {
-      csvContent += `"${c.name}","${c.rollNumber}","${c.email}","${c.hallName}","${c.roomNumber}",${c.totalOrders},${c.deliveredOrders},${c.totalSpent},${c.totalDiscounts},${c.totalRefunded},${c.aov},${c.onlineOrdersCount},${c.codOrdersCount},"${c.lastOrderDate || 'N/A'}"\n`;
-    });
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `campus_financial_summary_${timeframe}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // Filtered Export
+  const handleExport = (type: 'csv' | 'json') => {
+    let url = `/api/admin/payments/export?type=${type}&serviceType=${serviceFilter}&paymentStatus=${paymentStatusFilter}&refundStatus=${refundStatusFilter}`;
+    window.open(url, '_blank');
   };
 
   return (
-    <div className="space-y-6 animate-fade-in text-slate-800">
-      {/* Top Header & Global Timeframe Selector */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg border text-sm flex items-center gap-2 ${
+          toastMessage.type === 'success'
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          {toastMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4 text-red-600" />}
+          <span className="font-medium">{toastMessage.text}</span>
+        </div>
+      )}
+
+      {/* Header Banner */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-600">
-            <CreditCard className="w-4 h-4" />
-            <span>Campus Financial Audit &amp; Settlement System</span>
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#4F9D2F] animate-pulse" />
+            <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
+              Unified Financial Operations &amp; Settlements
+            </h1>
           </div>
-          <h1 className="text-xl font-black text-slate-900 mt-1">
-            Financial Ledger &amp; Money Analytics
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Provider settlements, student expenditure drilldowns, platform commissions &amp; automated fee ledger
+          <p className="text-xs sm:text-sm text-gray-500 mt-1">
+            Single source of truth across Food, Laundry, Fresh Produce, and Stationery. Double-entry immutable ledger &amp; audit control.
           </p>
         </div>
 
-        {/* Global Timeframe Selector */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="bg-slate-100 p-1 rounded-xl flex items-center border border-slate-200 text-xs font-semibold">
-            <button
-              onClick={() => { setTimeframe('today'); setIsCustomDateOpen(false); }}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                timeframe === 'today' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Today
-            </button>
-            <button
-              onClick={() => { setTimeframe('7d'); setIsCustomDateOpen(false); }}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                timeframe === '7d' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              7 Days
-            </button>
-            <button
-              onClick={() => { setTimeframe('30d'); setIsCustomDateOpen(false); }}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                timeframe === '30d' ? 'bg-emerald-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              30 Days
-            </button>
-            <button
-              onClick={() => { setTimeframe('90d'); setIsCustomDateOpen(false); }}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                timeframe === '90d' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              90 Days
-            </button>
-            <button
-              onClick={() => { setTimeframe('this_month'); setIsCustomDateOpen(false); }}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                timeframe === 'this_month' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              This Month
-            </button>
-            <button
-              onClick={() => { setTimeframe('all'); setIsCustomDateOpen(false); }}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
-                timeframe === 'all' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              All Time
-            </button>
-            <button
-              onClick={() => setIsCustomDateOpen(!isCustomDateOpen)}
-              className={`px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all ${
-                timeframe === 'custom' || isCustomDateOpen
-                  ? 'bg-emerald-700 text-white shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Custom</span>
-            </button>
-          </div>
-
+        <div className="flex items-center gap-2.5 flex-wrap">
           <button
-            onClick={fetchFinancialSummary}
-            className="p-2 bg-white border border-slate-200 text-slate-700 hover:text-slate-900 rounded-xl hover:bg-slate-50 transition shadow-xs"
-            title="Refresh financial ledger"
+            onClick={() => setOverrideModalOpen(true)}
+            className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
           >
-            <RefreshCw className={`w-4 h-4 ${financialLoading ? 'animate-spin' : ''}`} />
+            <ShieldAlert className="w-3.5 h-3.5" />
+            Status Override
           </button>
-
           <button
-            onClick={exportFinancialCsv}
-            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
+            onClick={() => handleExport('csv')}
+            className="px-3.5 py-2 bg-[#4F9D2F] hover:bg-[#36751F] text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
+            Export CSV
+          </button>
+          <button
+            onClick={loadData}
+            className="p-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-gray-600 transition-colors cursor-pointer"
+            title="Refresh Data"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#4F9D2F]' : ''}`} />
           </button>
         </div>
       </div>
 
-      {/* Custom Date Selector Drawer */}
-      {isCustomDateOpen && (
-        <form
-          onSubmit={handleApplyCustomDates}
-          className="bg-slate-900 text-white p-4 rounded-xl shadow-md border border-slate-800 flex flex-wrap items-center gap-4 animate-fade-in"
+      {/* 6 Dedicated Sections Tabs Navigation */}
+      <div className="flex items-center gap-1.5 p-1 bg-gray-100 rounded-2xl border border-gray-200 overflow-x-auto">
+        <button
+          onClick={() => setActiveTab('OVERVIEW')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'OVERVIEW'
+              ? 'bg-white text-gray-900 shadow-xs'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+          }`}
         >
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
-            <Calendar className="w-4 h-4 text-emerald-400" />
-            <span>Filter Financial Data by Custom Range:</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-400">From:</label>
-            <input
-              type="date"
-              value={customStartDate}
-              onChange={(e) => setCustomStartDate(e.target.value)}
-              className="bg-slate-800 border border-slate-700 text-white px-3 py-1.5 rounded-lg text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
-              required
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-400">To:</label>
-            <input
-              type="date"
-              value={customEndDate}
-              onChange={(e) => setCustomEndDate(e.target.value)}
-              className="bg-slate-800 border border-slate-700 text-white px-3 py-1.5 rounded-lg text-xs focus:ring-1 focus:ring-emerald-500 outline-none"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-lg text-xs transition"
-          >
-            Apply Range
-          </button>
-        </form>
-      )}
+          <TrendingUp className="w-4 h-4 text-[#4F9D2F]" />
+          Overview &amp; Action Center
+        </button>
 
-      {/* Financial Executive KPI Metric Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
-            <span>Gross Platform Volume</span>
-            <IndianRupee className="w-4 h-4 text-slate-600" />
-          </div>
-          <div className="mt-2 text-xl font-black text-slate-900">
-            ₹{Number(kpis.totalGrossVolume || 0).toLocaleString('en-IN')}
-          </div>
-          <div className="text-[11px] font-medium text-slate-500 mt-1">
-            {kpis.totalOrdersCount || 0} total campus orders
-          </div>
-        </div>
+        <button
+          onClick={() => setActiveTab('TRANSACTIONS')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'TRANSACTIONS'
+              ? 'bg-white text-gray-900 shadow-xs'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+          }`}
+        >
+          <Receipt className="w-4 h-4 text-blue-600" />
+          Transactions
+        </button>
 
-        <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/20 shadow-xs">
-          <div className="flex items-center justify-between text-emerald-700 text-xs font-semibold">
-            <span>Delivered &amp; Settled</span>
-            <CheckCircle className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div className="mt-2 text-xl font-black text-emerald-900">
-            ₹{Number(kpis.deliveredVolume || 0).toLocaleString('en-IN')}
-          </div>
-          <div className="text-[11px] font-medium text-emerald-700 mt-1">
-            {kpis.completedOrdersCount || 0} orders delivered
-          </div>
-        </div>
+        <button
+          onClick={() => setActiveTab('REFUNDS')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'REFUNDS'
+              ? 'bg-white text-gray-900 shadow-xs'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+          }`}
+        >
+          <RotateCcw className="w-4 h-4 text-amber-600" />
+          Refunds
+        </button>
 
-        <div className="bg-white p-4 rounded-xl border border-blue-200 bg-blue-50/20 shadow-xs">
-          <div className="flex items-center justify-between text-blue-700 text-xs font-semibold">
-            <span>Net Provider Payable</span>
-            <Store className="w-4 h-4 text-blue-600" />
-          </div>
-          <div className="mt-2 text-xl font-black text-blue-950">
-            ₹{Number(kpis.totalProviderPayable || 0).toLocaleString('en-IN')}
-          </div>
-          <div className="text-[11px] font-medium text-blue-700 mt-1">
-            Payable after 5% platform fee
-          </div>
-        </div>
+        <button
+          onClick={() => setActiveTab('SETTLEMENTS')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'SETTLEMENTS'
+              ? 'bg-white text-gray-900 shadow-xs'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+          }`}
+        >
+          <Store className="w-4 h-4 text-purple-600" />
+          Provider Settlements
+        </button>
 
-        <div className="bg-white p-4 rounded-xl border border-indigo-200 bg-indigo-50/20 shadow-xs">
-          <div className="flex items-center justify-between text-indigo-700 text-xs font-semibold">
-            <span>Platform Commission</span>
-            <TrendingUp className="w-4 h-4 text-indigo-600" />
-          </div>
-          <div className="mt-2 text-xl font-black text-indigo-950">
-            ₹{Number(kpis.netPlatformRevenue || 0).toLocaleString('en-IN')}
-          </div>
-          <div className="text-[11px] font-medium text-indigo-700 mt-1">
-            5% campus tech infrastructure fee
-          </div>
-        </div>
+        <button
+          onClick={() => setActiveTab('COD')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'COD'
+              ? 'bg-white text-gray-900 shadow-xs'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+          }`}
+        >
+          <Banknote className="w-4 h-4 text-emerald-600" />
+          COD Reconciliation
+        </button>
 
-        <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/20 shadow-xs">
-          <div className="flex items-center justify-between text-amber-800 text-xs font-semibold">
-            <span>Student Savings</span>
-            <Percent className="w-4 h-4 text-amber-600" />
-          </div>
-          <div className="mt-2 text-xl font-black text-amber-950">
-            ₹{Number(kpis.totalDiscounts || 0).toLocaleString('en-IN')}
-          </div>
-          <div className="text-[11px] font-medium text-amber-700 mt-1">
-            Coupon &amp; promo savings
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/20 shadow-xs">
-          <div className="flex items-center justify-between text-rose-700 text-xs font-semibold">
-            <span>Refunds Processed</span>
-            <RotateCcw className="w-4 h-4 text-rose-600" />
-          </div>
-          <div className="mt-2 text-xl font-black text-rose-950">
-            ₹{Number(kpis.totalRefunds || 0).toLocaleString('en-IN')}
-          </div>
-          <div className="text-[11px] font-medium text-rose-700 mt-1">
-            Deducted from payouts
-          </div>
-        </div>
+        <button
+          onClick={() => setActiveTab('LEDGER')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold whitespace-nowrap transition-all cursor-pointer ${
+            activeTab === 'LEDGER'
+              ? 'bg-white text-gray-900 shadow-xs'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+          }`}
+        >
+          <Layers className="w-4 h-4 text-indigo-600" />
+          Financial Ledger
+        </button>
       </div>
 
-      {/* Tab Navigation Controls */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-1">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
-          <button
-            onClick={() => setActiveTab('PROVIDERS')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'PROVIDERS'
-                ? 'bg-[#4F9D32] text-white shadow-sm'
-                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-            }`}
-          >
-            <Store className="w-4 h-4" />
-            <span>Service Provider Financials</span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] ${
-              activeTab === 'PROVIDERS' ? 'bg-emerald-800 text-white' : 'bg-slate-100 text-slate-700'
-            }`}>
-              {rawProviders.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('CUSTOMERS')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'CUSTOMERS'
-                ? 'bg-[#4F9D32] text-white shadow-sm'
-                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Customer &amp; Student Spend</span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] ${
-              activeTab === 'CUSTOMERS' ? 'bg-emerald-800 text-white' : 'bg-slate-100 text-slate-700'
-            }`}>
-              {rawCustomers.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('TRANSACTIONS')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'TRANSACTIONS'
-                ? 'bg-[#4F9D32] text-white shadow-sm'
-                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-            }`}
-          >
-            <Receipt className="w-4 h-4" />
-            <span>Transactions Ledger</span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] ${
-              activeTab === 'TRANSACTIONS' ? 'bg-emerald-800 text-white' : 'bg-slate-100 text-slate-700'
-            }`}>
-              {orders.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('REFUNDS')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'REFUNDS'
-                ? 'bg-[#4F9D32] text-white shadow-sm'
-                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-            }`}
-          >
-            <RotateCcw className="w-4 h-4" />
-            <span>Refunds &amp; Disputes</span>
-            {refundOrders.length > 0 && (
-              <span className="bg-rose-500 text-white px-2 py-0.5 rounded-full text-[10px]">
-                {refundOrders.length}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('COD')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-              activeTab === 'COD'
-                ? 'bg-[#4F9D32] text-white shadow-sm'
-                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-            }`}
-          >
-            <Banknote className="w-4 h-4" />
-            <span>COD Parameters</span>
-          </button>
-        </div>
-
-        <div className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-slate-500">
-          <span>Active Timeframe:</span>
-          <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-            {timeframe === '30d' ? 'Last 30 Days' : timeframe.toUpperCase()}
-          </span>
-        </div>
-      </div>
-
-      {/* =========================================================
-          TAB 1: SERVICE PROVIDER-WISE FINANCIAL LEDGER
-          ========================================================= */}
-      {activeTab === 'PROVIDERS' && (
-        <div className="space-y-4">
-          {/* Filter Bar */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search provider by name, category, or vendor username..."
-                value={providerSearch}
-                onChange={(e) => setProviderSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-500">Category:</span>
-              <select
-                value={providerCategoryFilter}
-                onChange={(e) => setProviderCategoryFilter(e.target.value)}
-                className="border border-slate-200 bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500"
+      {/* ======================================================== */}
+      {/* SECTION 1: OVERVIEW & ACTION CENTER                      */}
+      {/* ======================================================== */}
+      {activeTab === 'OVERVIEW' && (
+        <div className="space-y-6">
+          {/* Action Center Critical Alerts Widget */}
+          {actionCenter && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div
+                onClick={() => setActiveTab('REFUNDS')}
+                className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between cursor-pointer hover:bg-amber-100 transition-colors"
               >
-                <option value="ALL">All Categories</option>
-                <option value="Food">Food &amp; Meals</option>
-                <option value="Laundry">Express Laundry</option>
-                <option value="Essential">Stationery &amp; Essentials</option>
-                <option value="Fruit">Fresh Fruits</option>
-              </select>
+                <div>
+                  <div className="text-xs font-bold text-amber-800 uppercase tracking-wider">Action Center: Pending Refunds</div>
+                  <div className="text-2xl font-black text-amber-900 mt-1">{actionCenter.pendingRefunds} orders</div>
+                  <p className="text-[11px] text-amber-700 mt-0.5">Awaiting admin review &amp; disbursement</p>
+                </div>
+                <RotateCcw className="w-8 h-8 text-amber-600 opacity-80" />
+              </div>
+
+              <div
+                onClick={() => setActiveTab('SETTLEMENTS')}
+                className="bg-purple-50 border border-purple-200 rounded-2xl p-4 flex items-center justify-between cursor-pointer hover:bg-purple-100 transition-colors"
+              >
+                <div>
+                  <div className="text-xs font-bold text-purple-800 uppercase tracking-wider">Pending Settlements</div>
+                  <div className="text-2xl font-black text-purple-900 mt-1">{actionCenter.pendingSettlements} batches</div>
+                  <p className="text-[11px] text-purple-700 mt-0.5">Ready for provider payout approval</p>
+                </div>
+                <Store className="w-8 h-8 text-purple-600 opacity-80" />
+              </div>
+
+              <div
+                onClick={() => setActiveTab('COD')}
+                className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between cursor-pointer hover:bg-red-100 transition-colors"
+              >
+                <div>
+                  <div className="text-xs font-bold text-red-800 uppercase tracking-wider">COD Mismatches</div>
+                  <div className="text-2xl font-black text-red-900 mt-1">{actionCenter.codMismatches} flagged</div>
+                  <p className="text-[11px] text-red-700 mt-0.5">Runner collection discrepancies</p>
+                </div>
+                <AlertTriangle className="w-8 h-8 text-red-600 opacity-80" />
+              </div>
             </div>
+          )}
+
+          {/* KPI Metrics Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <AdminKpiCard
+              title="Total Gross Platform Volume"
+              value={`₹${(overviewMetrics?.totalGrossVolume || 0).toLocaleString('en-IN')}`}
+              subtitle={`${overviewMetrics?.totalOrdersCount || 0} total platform orders`}
+              icon={IndianRupee}
+              color="green"
+            />
+            <AdminKpiCard
+              title="Online Payments Collected"
+              value={`₹${(overviewMetrics?.totalOnlinePayments || 0).toLocaleString('en-IN')}`}
+              subtitle="Razorpay UPI / Cards / NetBanking"
+              icon={CreditCard}
+              color="blue"
+            />
+            <AdminKpiCard
+              title="COD Cash Reconciled"
+              value={`₹${(overviewMetrics?.totalCodCollected || 0).toLocaleString('en-IN')}`}
+              subtitle="Doorstep delivery collection"
+              icon={Banknote}
+              color="indigo"
+            />
+            <AdminKpiCard
+              title="Platform Commission (5%)"
+              value={`₹${(overviewMetrics?.totalCommissionEarned || 0).toLocaleString('en-IN')}`}
+              subtitle="Recognized institutional revenue"
+              icon={Percent}
+              color="purple"
+            />
           </div>
 
-          {/* Table */}
-          <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50/80 text-slate-600 font-bold border-b border-slate-200/80">
-                  <tr>
-                    <th className="py-3.5 px-4">Service Provider</th>
-                    <th className="py-3.5 px-4">Category</th>
-                    <th className="py-3.5 px-4 text-center">Orders (Done / Total)</th>
-                    <th className="py-3.5 px-4 text-right">Gross Volume</th>
-                    <th className="py-3.5 px-4 text-right">Discounts</th>
-                    <th className="py-3.5 px-4 text-right">Refunds</th>
-                    <th className="py-3.5 px-4 text-right">Platform Fee (5%)</th>
-                    <th className="py-3.5 px-4 text-right font-black text-slate-900">Net Provider Payable</th>
-                    <th className="py-3.5 px-4 text-center">Online vs COD</th>
-                    <th className="py-3.5 px-4 text-center">Settlement Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredProviders.length > 0 ? (
-                    filteredProviders.map((prov) => (
-                      <tr key={prov.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-3.5 px-4">
-                          <div className="font-bold text-slate-900">{prov.name}</div>
-                          <div className="text-[11px] text-slate-400 font-mono">
-                            {prov.username} • {prov.email}
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
-                            prov.category.toLowerCase().includes('laundry')
-                              ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                              : prov.category.toLowerCase().includes('food')
-                              ? 'bg-amber-50 text-amber-700 border-amber-200'
-                              : prov.category.toLowerCase().includes('fruit')
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-teal-50 text-teal-700 border-teal-200'
-                          }`}>
-                            {prov.category}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
-                          <div className="font-bold text-slate-900">
-                            {prov.deliveredOrders} <span className="text-slate-400 font-normal">/ {prov.totalOrders}</span>
-                          </div>
-                          <div className="text-[10px] text-slate-500">
-                            {prov.totalOrders > 0
-                              ? Math.round((prov.deliveredOrders / prov.totalOrders) * 100)
-                              : 0}% fulfillment
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-semibold text-slate-800">
-                          ₹{Number(prov.grossSales).toLocaleString('en-IN')}
-                        </td>
-                        <td className="py-3.5 px-4 text-right text-amber-700 font-medium">
-                          {prov.totalDiscounts > 0 ? `-₹${Number(prov.totalDiscounts).toLocaleString('en-IN')}` : '₹0'}
-                        </td>
-                        <td className="py-3.5 px-4 text-right text-rose-600 font-medium">
-                          {prov.totalRefunds > 0 ? `-₹${Number(prov.totalRefunds).toLocaleString('en-IN')}` : '₹0'}
-                        </td>
-                        <td className="py-3.5 px-4 text-right text-indigo-700 font-medium">
-                          ₹{Number(prov.platformFee).toLocaleString('en-IN')}
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-black text-emerald-800 text-sm">
-                          ₹{Number(prov.netPayable).toLocaleString('en-IN')}
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
-                          <div className="text-[11px] font-semibold text-slate-700">
-                            ₹{Number(prov.onlineSales).toLocaleString('en-IN')} <span className="text-blue-600 text-[10px] font-bold">UPI</span>
-                          </div>
-                          <div className="text-[10px] text-slate-500">
-                            ₹{Number(prov.codSales).toLocaleString('en-IN')} COD
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
-                          {prov.pendingSettlement > 0 ? (
-                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                              ₹{Number(prov.pendingSettlement).toLocaleString('en-IN')} Pending
-                            </span>
-                          ) : (
-                            <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                              Settled / Cleared
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={10} className="py-8 text-center text-slate-400">
-                        No service providers found matching filters for this timeframe.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
+              <div className="text-xs font-bold text-gray-500 uppercase">Provider Settlements Disbursed</div>
+              <div className="text-2xl font-black text-gray-900 mt-2">
+                ₹{(overviewMetrics?.settledPayoutsAmount || 0).toLocaleString('en-IN')}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Transferred via NEFT / UPI to verified accounts</p>
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
+              <div className="text-xs font-bold text-gray-500 uppercase">Pending Provider Payable</div>
+              <div className="text-2xl font-black text-amber-600 mt-2">
+                ₹{(overviewMetrics?.pendingSettlementsAmount || 0).toLocaleString('en-IN')}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Awaiting next disbursement cycle</p>
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
+              <div className="text-xs font-bold text-gray-500 uppercase">Total Completed Refunds</div>
+              <div className="text-2xl font-black text-emerald-600 mt-2">
+                ₹{(overviewMetrics?.completedRefundsAmount || 0).toLocaleString('en-IN')}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">{overviewMetrics?.completedRefundsCount || 0} student claims completed</p>
             </div>
           </div>
         </div>
       )}
 
-      {/* =========================================================
-          TAB 2: CUSTOMER / STUDENT-WISE FINANCIAL LEDGER
-          ========================================================= */}
-      {activeTab === 'CUSTOMERS' && (
-        <div className="space-y-4">
-          {/* Filter Bar */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search student by name, roll number, college email or room..."
-                value={customerSearch}
-                onChange={(e) => setCustomerSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-500">Residence Hall:</span>
-              <select
-                value={customerHallFilter}
-                onChange={(e) => setCustomerHallFilter(e.target.value)}
-                className="border border-slate-200 bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="ALL">All Campus Halls</option>
-                <option value="Hall 11">Hall 11</option>
-                <option value="Hall 2">Hall 2</option>
-                <option value="Hall 5">Hall 5</option>
-                <option value="Mother Teresa">Mother Teresa Hall</option>
-                <option value="Hall 14">Hall 14</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Table */}
-          <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50/80 text-slate-600 font-bold border-b border-slate-200/80">
-                  <tr>
-                    <th className="py-3.5 px-4">Student Name &amp; Roll</th>
-                    <th className="py-3.5 px-4">Hostel / Room</th>
-                    <th className="py-3.5 px-4 text-center">Orders Count</th>
-                    <th className="py-3.5 px-4 text-right">Total Money Spent</th>
-                    <th className="py-3.5 px-4 text-right">Discounts Saved</th>
-                    <th className="py-3.5 px-4 text-right">Refunds</th>
-                    <th className="py-3.5 px-4 text-right">Average Order (AOV)</th>
-                    <th className="py-3.5 px-4 text-center">Payment Channels</th>
-                    <th className="py-3.5 px-4 text-right">Last Order Date</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredCustomers.length > 0 ? (
-                    filteredCustomers.map((cust) => (
-                      <tr key={cust.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-3.5 px-4">
-                          <div className="font-bold text-slate-900">{cust.name}</div>
-                          <div className="text-[11px] text-slate-400 font-mono">
-                            {cust.rollNumber} • {cust.email}
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className="font-semibold text-slate-800">{cust.hallName}</span>
-                          <div className="text-[11px] text-slate-500 font-mono">Room {cust.roomNumber}</div>
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
-                          <span className="inline-block px-2.5 py-0.5 rounded-full font-bold bg-slate-100 text-slate-800">
-                            {cust.totalOrders} orders
-                          </span>
-                          <div className="text-[10px] text-emerald-600 mt-0.5">
-                            {cust.deliveredOrders} delivered
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-black text-slate-900 text-sm">
-                          ₹{Number(cust.totalSpent).toLocaleString('en-IN')}
-                        </td>
-                        <td className="py-3.5 px-4 text-right text-emerald-700 font-semibold">
-                          {cust.totalDiscounts > 0 ? `₹${Number(cust.totalDiscounts).toLocaleString('en-IN')}` : '₹0'}
-                        </td>
-                        <td className="py-3.5 px-4 text-right text-rose-600 font-semibold">
-                          {cust.totalRefunded > 0 ? `₹${Number(cust.totalRefunded).toLocaleString('en-IN')}` : '₹0'}
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-semibold text-slate-700">
-                          ₹{Number(cust.aov).toLocaleString('en-IN')}
-                        </td>
-                        <td className="py-3.5 px-4 text-center">
-                          <div className="text-[11px] font-semibold text-slate-700">
-                            {cust.onlineOrdersCount} Online <span className="text-slate-400">|</span> {cust.codOrdersCount} COD
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 text-right text-slate-500 font-mono text-[11px]">
-                          {cust.lastOrderDate ? new Date(cust.lastOrderDate).toLocaleDateString('en-IN', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric'
-                          }) : 'No orders yet'}
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={9} className="py-8 text-center text-slate-400">
-                        No students found matching filters for this timeframe.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================
-          TAB 3: TRANSACTIONS LIST
-          ========================================================= */}
+      {/* ======================================================== */}
+      {/* SECTION 2: UNIFIED TRANSACTIONS TABLE                    */}
+      {/* ======================================================== */}
       {activeTab === 'TRANSACTIONS' && (
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-900">Recent Gateway &amp; COD Transactions</h3>
-            <span className="text-xs text-slate-500">Showing last {orders.length} campus transactions</span>
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-4">
+          {/* Filters Bar */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div>
+              <label className="text-[11px] font-bold text-gray-600 uppercase block mb-1">Service</label>
+              <select
+                value={serviceFilter}
+                onChange={(e) => setServiceFilter(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-800"
+              >
+                <option value="ALL">All Services</option>
+                <option value="FOOD">Food &amp; Meals</option>
+                <option value="LAUNDRY">Express Laundry</option>
+                <option value="FRESH_PRODUCE">Fresh Produce</option>
+                <option value="STATIONERY">Stationery</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-gray-600 uppercase block mb-1">Payment Status</label>
+              <select
+                value={paymentStatusFilter}
+                onChange={(e) => setPaymentStatusFilter(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-800"
+              >
+                <option value="ALL">All Payment Statuses</option>
+                <option value="PAID">Paid / Success</option>
+                <option value="COD_PENDING">COD Pending</option>
+                <option value="COD_COLLECTED">COD Collected</option>
+                <option value="REFUNDED">Refunded</option>
+                <option value="REFUND_PENDING">Refund Pending</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-gray-600 uppercase block mb-1">Refund Status</label>
+              <select
+                value={refundStatusFilter}
+                onChange={(e) => setRefundStatusFilter(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-800"
+              >
+                <option value="ALL">All Refund Statuses</option>
+                <option value="NOT_APPLICABLE">Not Applicable</option>
+                <option value="REQUESTED">Requested</option>
+                <option value="APPROVED">Approved</option>
+                <option value="COMPLETED">Completed</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-gray-600 uppercase block mb-1">Settlement Status</label>
+              <select
+                value={settlementStatusFilter}
+                onChange={(e) => setSettlementStatusFilter(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-800"
+              >
+                <option value="ALL">All Settlement Statuses</option>
+                <option value="PENDING">Pending</option>
+                <option value="ELIGIBLE">Eligible</option>
+                <option value="PROCESSING">Processing</option>
+                <option value="SETTLED">Settled</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-gray-600 uppercase block mb-1">Search</label>
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Order ID, student, room..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && loadData()}
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl pl-8 pr-3 py-2 text-xs text-gray-800 placeholder-gray-400"
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-100">
+          {/* Transactions Table */}
+          <div className="overflow-x-auto border border-gray-100 rounded-xl">
+            <table className="w-full text-left text-xs text-gray-600">
+              <thead className="bg-gray-50 text-gray-700 font-extrabold border-b border-gray-200 uppercase text-[10px]">
                 <tr>
-                  <th className="py-3 px-4">Order ID</th>
-                  <th className="py-3 px-4">Student</th>
-                  <th className="py-3 px-4">Channel</th>
-                  <th className="py-3 px-4 text-right">Gross Amount</th>
-                  <th className="py-3 px-4 text-center">Payment Status</th>
-                  <th className="py-3 px-4 text-center">Fulfillment</th>
-                  <th className="py-3 px-4 text-right">Timestamp</th>
+                  <th className="py-3 px-3">Order Number</th>
+                  <th className="py-3 px-3">Service</th>
+                  <th className="py-3 px-3">Student</th>
+                  <th className="py-3 px-3">Provider</th>
+                  <th className="py-3 px-3">Amount</th>
+                  <th className="py-3 px-3">Payment</th>
+                  <th className="py-3 px-3">Refund</th>
+                  <th className="py-3 px-3">Settlement</th>
+                  <th className="py-3 px-3">Comm (5%)</th>
+                  <th className="py-3 px-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {orders.map((o) => (
-                  <tr key={o.id} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="py-3 px-4 font-mono font-bold text-slate-900">{o.orderNumber}</td>
-                    <td className="py-3 px-4">
-                      <div className="font-semibold text-slate-800">{o.student?.fullName || 'Student'}</div>
-                      <div className="text-[11px] text-slate-400">{o.hallName} • {o.roomNumber}</div>
+              <tbody className="divide-y divide-gray-100">
+                {transactions.map((o) => (
+                  <tr key={o.id} className="hover:bg-gray-50/80 transition-colors">
+                    <td className="py-3 px-3 font-mono font-bold text-gray-900">
+                      {o.orderNumber}
+                      <div className="text-[10px] text-gray-400 font-normal">
+                        {new Date(o.createdAt).toLocaleDateString('en-IN')}
+                      </div>
                     </td>
-                    <td className="py-3 px-4 font-semibold">
-                      <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                        o.paymentMethod === 'COD' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
+                    <td className="py-3 px-3">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        o.serviceType === 'FOOD' ? 'bg-amber-100 text-amber-800' :
+                        o.serviceType === 'LAUNDRY' ? 'bg-sky-100 text-sky-800' :
+                        o.serviceType === 'FRESH_PRODUCE' ? 'bg-emerald-100 text-emerald-800' :
+                        'bg-purple-100 text-purple-800'
                       }`}>
-                        {o.paymentMethod === 'COD' ? 'Cash on Delivery' : 'Razorpay UPI'}
+                        {o.serviceType || 'FOOD'}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-right font-black text-slate-900">
-                      ₹{Number(o.totalAmount || 0).toLocaleString('en-IN')}
+                    <td className="py-3 px-3">
+                      <div className="font-semibold text-gray-900">{o.student?.fullName || 'Student'}</div>
+                      <div className="text-[10px] text-gray-400">{o.hallName}, Room {o.roomNumber}</div>
                     </td>
-                    <td className="py-3 px-4 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        o.paymentStatus === 'PAID'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : o.paymentStatus === 'REFUNDED'
-                          ? 'bg-rose-100 text-rose-800'
-                          : 'bg-amber-100 text-amber-800'
+                    <td className="py-3 px-3">
+                      <div className="font-medium text-gray-800">{o.provider?.fullName || 'Campus Cell'}</div>
+                    </td>
+                    <td className="py-3 px-3 font-bold text-gray-900">
+                      ₹{Number(o.totalAmount).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                        ['PAID', 'SUCCESS'].includes(o.paymentStatus) ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                        o.paymentStatus === 'COD_PENDING' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                        o.paymentStatus === 'REFUNDED' ? 'bg-red-50 text-red-700 border border-red-200' :
+                        'bg-gray-100 text-gray-700'
                       }`}>
-                        {o.paymentStatus || 'PENDING'}
+                        {o.paymentStatus}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-center">
-                      <span className="text-[11px] font-semibold text-slate-600">
-                        {o.status}
+                    <td className="py-3 px-3">
+                      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                        o.refundStatus === 'COMPLETED' ? 'bg-purple-100 text-purple-800' :
+                        o.refundStatus === 'REQUESTED' ? 'bg-amber-100 text-amber-800 font-bold' :
+                        'text-gray-400'
+                      }`}>
+                        {o.refundStatus || 'N/A'}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-right text-slate-400 font-mono text-[11px]">
-                      {new Date(o.createdAt).toLocaleString('en-IN', {
-                        day: 'numeric',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
+                    <td className="py-3 px-3">
+                      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                        o.settlementStatus === 'SETTLED' ? 'bg-emerald-100 text-emerald-800' :
+                        o.settlementStatus === 'ELIGIBLE' ? 'bg-blue-100 text-blue-800' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {o.settlementStatus || 'PENDING'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 font-semibold text-purple-700">
+                      ₹{Number(o.commissionAmount || (o.totalAmount * 0.05)).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3 text-right">
+                      <button
+                        onClick={() => {
+                          setOverrideOrderId(o.id);
+                          setOverrideStatusType('ORDER');
+                          setOverrideNewStatus(o.status);
+                          setOverrideModalOpen(true);
+                        }}
+                        className="px-2.5 py-1 text-[11px] bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg transition-colors cursor-pointer"
+                      >
+                        Override
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -828,130 +675,592 @@ export default function AdminPaymentsPage() {
         </div>
       )}
 
-      {/* =========================================================
-          TAB 4: COD CONTROLS
-          ========================================================= */}
-      {activeTab === 'COD' && (
-        <div className="max-w-2xl bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-          <h2 className="text-base font-bold text-slate-900 mb-1 flex items-center gap-2">
-            <Banknote className="w-5 h-5 text-emerald-600" />
-            <span>Hostel Cash on Delivery (COD) Rules</span>
-          </h2>
-          <p className="text-xs text-slate-500 mb-6">
-            Configure COD availability and maximum ceiling limits across student halls.
-          </p>
+      {/* ======================================================== */}
+      {/* SECTION 3: REFUNDS MANAGEMENT QUEUE                      */}
+      {/* ======================================================== */}
+      {activeTab === 'REFUNDS' && (
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-gray-900">Student Cancellation &amp; Refund Queue</h3>
+            <span className="text-xs text-gray-500">{refunds.length} claims</span>
+          </div>
 
-          <form onSubmit={handleSaveCodSettings} className="space-y-6">
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
-              <div>
-                <span className="text-sm font-bold text-slate-900 block">Enable Cash on Delivery</span>
-                <span className="text-xs text-slate-500">Allow students to pay delivery runners upon physical delivery</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={codEnabled}
-                onChange={(e) => setCodEnabled(e.target.checked)}
-                className="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                Maximum COD Limit per Order (INR)
-              </label>
-              <div className="relative">
-                <IndianRupee className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="number"
-                  value={maxCodAmount}
-                  onChange={(e) => setMaxCodAmount(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
-                  placeholder="1500"
-                  required
-                />
-              </div>
-              <p className="text-xs text-slate-500 mt-1">Orders exceeding this value must use Razorpay Online Gateway.</p>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition"
-            >
-              <Save className="w-4 h-4" />
-              <span>{isSaving ? 'Saving parameters...' : 'Save COD Settings'}</span>
-            </button>
-          </form>
+          <div className="overflow-x-auto border border-gray-100 rounded-xl">
+            <table className="w-full text-left text-xs text-gray-600">
+              <thead className="bg-gray-50 text-gray-700 font-extrabold border-b border-gray-200 uppercase text-[10px]">
+                <tr>
+                  <th className="py-3 px-3">Order Number</th>
+                  <th className="py-3 px-3">Student</th>
+                  <th className="py-3 px-3">Confidential Refund Destination</th>
+                  <th className="py-3 px-3">Refund Amount</th>
+                  <th className="py-3 px-3">Reason</th>
+                  <th className="py-3 px-3">Status</th>
+                  <th className="py-3 px-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {refunds.map((r) => (
+                  <tr key={r.id} className="hover:bg-gray-50/80 transition-colors">
+                    <td className="py-3 px-3 font-mono font-bold text-gray-900">{r.orderNumber}</td>
+                    <td className="py-3 px-3">
+                      <div className="font-semibold text-gray-900">{r.student?.fullName || 'Student'}</div>
+                      <div className="text-[10px] text-gray-400">{r.student?.email}</div>
+                    </td>
+                    <td className="py-3 px-3">
+                      {r.refundAccount ? (
+                        <div className="font-mono text-xs text-gray-800 bg-gray-50 border border-gray-200 px-2 py-1 rounded-md inline-block">
+                          {r.refundAccount.accountType === 'UPI' ? (
+                            <span>UPI: {r.refundAccount.upiIdMasked}</span>
+                          ) : (
+                            <span>Bank: {r.refundAccount.bankName} ({r.refundAccount.accountNumberMasked})</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-amber-600 font-semibold text-[11px]">Awaiting Student Account</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-3 font-bold text-red-600">₹{Number(r.totalAmount).toFixed(2)}</td>
+                    <td className="py-3 px-3 text-gray-600 max-w-xs truncate">{r.cancellationReason || 'Student cancellation request'}</td>
+                    <td className="py-3 px-3">
+                      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                        r.refundStatus === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
+                        'bg-amber-100 text-amber-800'
+                      }`}>
+                        {r.refundStatus || 'REQUESTED'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-right">
+                      {r.refundStatus !== 'COMPLETED' && (
+                        <button
+                          onClick={() => setSelectedRefundOrder(r)}
+                          className="px-3 py-1.5 bg-[#4F9D2F] hover:bg-[#36751F] text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
+                        >
+                          Disburse Refund
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
-      {/* =========================================================
-          TAB 5: REFUNDS & DISPUTES
-          ========================================================= */}
-      {activeTab === 'REFUNDS' && (
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <RotateCcw className="w-4 h-4 text-rose-500" />
-              <span>Student Refund Requests &amp; Disputes</span>
-            </h3>
-            <span className="text-xs text-slate-500">{refundOrders.length} records requiring attention</span>
+      {/* ======================================================== */}
+      {/* SECTION 4: PROVIDER SETTLEMENTS                          */}
+      {/* ======================================================== */}
+      {activeTab === 'SETTLEMENTS' && (
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-bold text-gray-900">Provider Settlement Batches</h3>
+              <p className="text-xs text-gray-500">Gross sales, discounts, refunds, 5% commission, and net payable.</p>
+            </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-100">
+          <div className="overflow-x-auto border border-gray-100 rounded-xl">
+            <table className="w-full text-left text-xs text-gray-600">
+              <thead className="bg-gray-50 text-gray-700 font-extrabold border-b border-gray-200 uppercase text-[10px]">
                 <tr>
-                  <th className="py-3 px-4">Order ID</th>
-                  <th className="py-3 px-4">Student</th>
-                  <th className="py-3 px-4">Amount</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-slate-600">Payment Method</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-3">Batch Number</th>
+                  <th className="py-3 px-3">Provider</th>
+                  <th className="py-3 px-3">Gross Sales</th>
+                  <th className="py-3 px-3">Discounts</th>
+                  <th className="py-3 px-3">Refunds Deducted</th>
+                  <th className="py-3 px-3">Commission (5%)</th>
+                  <th className="py-3 px-3">Net Payable</th>
+                  <th className="py-3 px-3">Status</th>
+                  <th className="py-3 px-3 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {refundOrders.length > 0 ? (
-                  refundOrders.map((o) => (
-                    <tr key={o.id} className="hover:bg-slate-50/60">
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900">{o.orderNumber}</td>
-                      <td className="py-3 px-4 font-semibold">{o.student?.fullName || 'Student'}</td>
-                      <td className="py-3 px-4 font-black text-rose-700">₹{Number(o.totalAmount || 0)}</td>
-                      <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
-                          {o.status}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-slate-600">{o.paymentMethod}</td>
-                      <td className="py-3 px-4 text-right">
+              <tbody className="divide-y divide-gray-100">
+                {settlements.map((s) => (
+                  <tr key={s.id} className="hover:bg-gray-50/80 transition-colors">
+                    <td className="py-3 px-3 font-mono font-bold text-gray-900">{s.settlementNumber}</td>
+                    <td className="py-3 px-3 font-medium text-gray-900">{s.provider?.fullName || 'Provider'}</td>
+                    <td className="py-3 px-3">₹{Number(s.grossSales).toFixed(2)}</td>
+                    <td className="py-3 px-3 text-amber-600">-₹{Number(s.discountsTotal).toFixed(2)}</td>
+                    <td className="py-3 px-3 text-red-600">-₹{Number(s.refundsDeducted).toFixed(2)}</td>
+                    <td className="py-3 px-3 text-purple-700 font-bold">-₹{Number(s.commissionDeducted).toFixed(2)}</td>
+                    <td className="py-3 px-3 font-black text-[#4F9D2F] text-sm">₹{Number(s.netPayable).toFixed(2)}</td>
+                    <td className="py-3 px-3">
+                      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                        s.status === 'SETTLED' ? 'bg-emerald-100 text-emerald-800' :
+                        'bg-amber-100 text-amber-800'
+                      }`}>
+                        {s.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-right">
+                      {s.status !== 'SETTLED' && (
                         <button
-                          onClick={async () => {
-                            if (confirm(`Authorize refund of ₹${o.totalAmount} for ${o.orderNumber}?`)) {
-                              await apiRequest('/api/admin/orders/refund', {
-                                method: 'POST',
-                                body: JSON.stringify({ orderId: o.id, amount: o.totalAmount, reason: 'Admin Approved' })
-                              });
-                              alert('Refund processed successfully');
-                              fetchGeneralData();
-                              fetchFinancialSummary();
-                            }
-                          }}
-                          className="px-3 py-1 bg-rose-600 text-white rounded text-[11px] font-bold hover:bg-rose-700 transition"
+                          onClick={() => setSelectedDisburseSettlement(s)}
+                          className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
                         >
-                          Process Refund
+                          Disburse
                         </button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-400">
-                      No active refund requests or disputed orders pending.
+                      )}
                     </td>
                   </tr>
-                )}
+                ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* SECTION 5: COD RUNNER RECONCILIATION                     */}
+      {/* ======================================================== */}
+      {activeTab === 'COD' && (
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-bold text-gray-900">Cash on Delivery Reconciliation</h3>
+              <p className="text-xs text-gray-500">Runner vault collections, expected vs collected verification, mismatch logging.</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto border border-gray-100 rounded-xl">
+            <table className="w-full text-left text-xs text-gray-600">
+              <thead className="bg-gray-50 text-gray-700 font-extrabold border-b border-gray-200 uppercase text-[10px]">
+                <tr>
+                  <th className="py-3 px-3">Order Number</th>
+                  <th className="py-3 px-3">Delivery Runner</th>
+                  <th className="py-3 px-3">Expected Amount</th>
+                  <th className="py-3 px-3">Amount Collected</th>
+                  <th className="py-3 px-3">Difference</th>
+                  <th className="py-3 px-3">Collection Status</th>
+                  <th className="py-3 px-3">Reconciliation</th>
+                  <th className="py-3 px-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {codCollections.map((c) => (
+                  <tr key={c.id} className="hover:bg-gray-50/80 transition-colors">
+                    <td className="py-3 px-3 font-mono font-bold text-gray-900">{c.order?.orderNumber || c.orderId}</td>
+                    <td className="py-3 px-3 font-medium text-gray-900">{c.deliveryBoy?.fullName || 'Assigned Runner'}</td>
+                    <td className="py-3 px-3 font-bold text-gray-800">₹{Number(c.amountExpected).toFixed(2)}</td>
+                    <td className="py-3 px-3 font-bold text-emerald-700">₹{Number(c.amountCollected).toFixed(2)}</td>
+                    <td className={`py-3 px-3 font-bold ${Number(c.difference) < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                      ₹{Number(c.difference).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold bg-gray-100 text-gray-700">
+                        {c.collectionStatus}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                        c.reconciliationStatus === 'RECONCILED' ? 'bg-emerald-100 text-emerald-800' :
+                        c.reconciliationStatus === 'MISMATCH' ? 'bg-red-100 text-red-800 animate-pulse' :
+                        'bg-amber-100 text-amber-800'
+                      }`}>
+                        {c.reconciliationStatus}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-right">
+                      <button
+                        onClick={() => {
+                          setSelectedCodCollection(c);
+                          setReconcileAmount(String(c.amountCollected));
+                          setReconcileNotes(c.reconciliationNotes || '');
+                        }}
+                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                      >
+                        Reconcile
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* SECTION 6: FINANCIAL LEDGER                              */}
+      {/* ======================================================== */}
+      {activeTab === 'LEDGER' && (
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-bold text-gray-900">Double-Entry Immutable Financial Ledger</h3>
+              <p className="text-xs text-gray-500">Append-only audit trail of all platform disbursements, commissions, and collections.</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-gray-600">Entry Type:</label>
+              <select
+                value={ledgerTypeFilter}
+                onChange={(e) => setLedgerTypeFilter(e.target.value)}
+                className="bg-gray-50 border border-gray-300 rounded-xl px-3 py-1.5 text-xs font-semibold text-gray-800"
+              >
+                <option value="ALL">All Types</option>
+                <option value="ORDER_PAYMENT">Order Payment</option>
+                <option value="COMMISSION_EARNED">Commission Earned</option>
+                <option value="PROVIDER_PAYABLE">Provider Payable</option>
+                <option value="REFUND_ISSUED">Refund Issued</option>
+                <option value="SETTLEMENT_PAYOUT">Settlement Payout</option>
+                <option value="COD_COLLECTION">COD Collection</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto border border-gray-100 rounded-xl">
+            <table className="w-full text-left text-xs text-gray-600">
+              <thead className="bg-gray-50 text-gray-700 font-extrabold border-b border-gray-200 uppercase text-[10px]">
+                <tr>
+                  <th className="py-3 px-3">Entry ID &amp; Time</th>
+                  <th className="py-3 px-3">Entry Type</th>
+                  <th className="py-3 px-3">Debit Account</th>
+                  <th className="py-3 px-3">Credit Account</th>
+                  <th className="py-3 px-3">Amount</th>
+                  <th className="py-3 px-3">Reference ID</th>
+                  <th className="py-3 px-3">Description</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {ledgerEntries.map((l) => (
+                  <tr key={l.id} className="hover:bg-gray-50/80 transition-colors">
+                    <td className="py-3 px-3 font-mono text-[11px] text-gray-900">
+                      <div>{l.id}</div>
+                      <div className="text-[10px] text-gray-400 font-normal">
+                        {new Date(l.createdAt).toLocaleString('en-IN')}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        l.entryType === 'COMMISSION_EARNED' ? 'bg-purple-100 text-purple-800' :
+                        l.entryType === 'REFUND_ISSUED' ? 'bg-red-100 text-red-800' :
+                        l.entryType === 'SETTLEMENT_PAYOUT' ? 'bg-blue-100 text-blue-800' :
+                        'bg-emerald-100 text-emerald-800'
+                      }`}>
+                        {l.entryType}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 font-mono text-xs text-gray-800">{l.debitAccount}</td>
+                    <td className="py-3 px-3 font-mono text-xs text-gray-800">{l.creditAccount}</td>
+                    <td className="py-3 px-3 font-bold text-gray-900">₹{Number(l.amount).toFixed(2)}</td>
+                    <td className="py-3 px-3 font-mono text-[11px] text-gray-500">{l.referenceId || '—'}</td>
+                    <td className="py-3 px-3 text-gray-600">{l.description}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 1: PROCESS REFUND                                   */}
+      {/* ======================================================== */}
+      {selectedRefundOrder && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="text-base font-bold text-gray-900">Approve &amp; Disburse Refund</h3>
+              <button onClick={() => setSelectedRefundOrder(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <span className="text-gray-500">Order Number:</span>{' '}
+                <strong className="font-mono text-gray-900">{selectedRefundOrder.orderNumber}</strong>
+              </div>
+              <div>
+                <span className="text-gray-500">Student:</span>{' '}
+                <strong className="text-gray-900">{selectedRefundOrder.student?.fullName}</strong>
+              </div>
+              <div>
+                <span className="text-gray-500">Refund Amount:</span>{' '}
+                <strong className="text-red-600 font-bold text-sm">₹{Number(selectedRefundOrder.totalAmount).toFixed(2)}</strong>
+              </div>
+
+              {selectedRefundOrder.refundAccount && (
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <div className="font-bold text-gray-700 mb-1">Confidential Refund Account</div>
+                  {selectedRefundOrder.refundAccount.accountType === 'UPI' ? (
+                    <div>UPI: {selectedRefundOrder.refundAccount.upiIdMasked}</div>
+                  ) : (
+                    <div>Bank: {selectedRefundOrder.refundAccount.bankName} ({selectedRefundOrder.refundAccount.accountNumberMasked})</div>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Admin Resolution Notes:</label>
+                <textarea
+                  value={refundNotes}
+                  onChange={(e) => setRefundNotes(e.target.value)}
+                  placeholder="e.g. Student cancelled prior to kitchen cooking; refund approved per dining policy."
+                  className="w-full border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800"
+                  rows={3}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t">
+              <button
+                onClick={() => setSelectedRefundOrder(null)}
+                className="px-4 py-2 border rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleProcessRefund}
+                disabled={processingRefund}
+                className="px-4 py-2 bg-[#4F9D2F] hover:bg-[#36751F] text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                {processingRefund ? 'Processing...' : 'Confirm Disbursement'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 2: DISBURSE SETTLEMENT                             */}
+      {/* ======================================================== */}
+      {selectedDisburseSettlement && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="text-base font-bold text-gray-900">Disburse Provider Settlement</h3>
+              <button onClick={() => setSelectedDisburseSettlement(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <span className="text-gray-500">Batch:</span>{' '}
+                <strong className="font-mono text-gray-900">{selectedDisburseSettlement.settlementNumber}</strong>
+              </div>
+              <div>
+                <span className="text-gray-500">Provider:</span>{' '}
+                <strong className="text-gray-900">{selectedDisburseSettlement.provider?.fullName}</strong>
+              </div>
+              <div>
+                <span className="text-gray-500">Net Payable Amount:</span>{' '}
+                <strong className="text-emerald-600 font-black text-base">₹{Number(selectedDisburseSettlement.netPayable).toFixed(2)}</strong>
+              </div>
+
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Payout Bank Reference / UTR Number *</label>
+                <input
+                  type="text"
+                  value={payoutReference}
+                  onChange={(e) => setPayoutReference(e.target.value)}
+                  placeholder="e.g. NEFT_SBI_982348123 or UPI_918239"
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-mono text-gray-900"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Internal Notes:</label>
+                <textarea
+                  value={disburseNotes}
+                  onChange={(e) => setDisburseNotes(e.target.value)}
+                  placeholder="e.g. Fortnightly payout approved via SBI Corporate Banking."
+                  className="w-full border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800"
+                  rows={2}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t">
+              <button
+                onClick={() => setSelectedDisburseSettlement(null)}
+                className="px-4 py-2 border rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDisburseSettlement}
+                disabled={disbursing || !payoutReference}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                {disbursing ? 'Disbursing...' : 'Mark as Settled'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 3: RECONCILE COD                                   */}
+      {/* ======================================================== */}
+      {selectedCodCollection && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="text-base font-bold text-gray-900">Reconcile COD Collection</h3>
+              <button onClick={() => setSelectedCodCollection(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <span className="text-gray-500">Order:</span>{' '}
+                <strong className="font-mono text-gray-900">{selectedCodCollection.order?.orderNumber || selectedCodCollection.orderId}</strong>
+              </div>
+              <div>
+                <span className="text-gray-500">Runner:</span>{' '}
+                <strong className="text-gray-900">{selectedCodCollection.deliveryBoy?.fullName}</strong>
+              </div>
+              <div>
+                <span className="text-gray-500">Expected Amount:</span>{' '}
+                <strong className="text-gray-900 font-bold">₹{Number(selectedCodCollection.amountExpected).toFixed(2)}</strong>
+              </div>
+
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Actual Amount Collected (₹):</label>
+                <input
+                  type="number"
+                  value={reconcileAmount}
+                  onChange={(e) => setReconcileAmount(e.target.value)}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-mono text-gray-900"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Reconciliation Notes:</label>
+                <textarea
+                  value={reconcileNotes}
+                  onChange={(e) => setReconcileNotes(e.target.value)}
+                  placeholder="Verified and counted against physical cash vault drop."
+                  className="w-full border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800"
+                  rows={2}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t">
+              <button
+                onClick={() => setSelectedCodCollection(null)}
+                className="px-4 py-2 border rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReconcileCod}
+                disabled={reconciling}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                {reconciling ? 'Saving...' : 'Confirm Reconciliation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 4: ADMIN STATUS OVERRIDE WITH JUSTIFICATION        */}
+      {/* ======================================================== */}
+      {overrideModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2 text-amber-600">
+                <ShieldAlert className="w-5 h-5" />
+                <h3 className="text-base font-bold text-gray-900">Admin Status Override (Audited)</h3>
+              </div>
+              <button onClick={() => setOverrideModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 leading-relaxed">
+              <strong>Mandatory Compliance Notice:</strong> All administrative status overrides are recorded permanently in the financial audit log with your operator ID, IP address, and timestamp. A clear operational justification is strictly required.
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Target Order ID or Number *</label>
+                <input
+                  type="text"
+                  value={overrideOrderId}
+                  onChange={(e) => setOverrideOrderId(e.target.value)}
+                  placeholder="e.g. ord_101 or CB-ORD-9021"
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-mono text-gray-900"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-gray-700 block mb-1">Status Dimension *</label>
+                  <select
+                    value={overrideStatusType}
+                    onChange={(e: any) => setOverrideStatusType(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-semibold text-gray-800"
+                  >
+                    <option value="ORDER">Order Fulfillment</option>
+                    <option value="PAYMENT">Payment Status</option>
+                    <option value="REFUND">Refund Status</option>
+                    <option value="SETTLEMENT">Settlement Status</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-gray-700 block mb-1">New Value *</label>
+                  <input
+                    type="text"
+                    value={overrideNewStatus}
+                    onChange={(e) => setOverrideNewStatus(e.target.value)}
+                    placeholder="e.g. DELIVERED, REFUNDED"
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-mono text-gray-900"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Mandatory Justification / Audit Reason (min 5 characters) *</label>
+                <textarea
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  placeholder="e.g. Gate security verified runner completed physical handoff at 20:45; marking delivered."
+                  className="w-full border border-gray-300 rounded-xl p-2.5 text-xs text-gray-900"
+                  rows={3}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">Internal Note (Optional):</label>
+                <input
+                  type="text"
+                  value={overrideNotes}
+                  onChange={(e) => setOverrideNotes(e.target.value)}
+                  placeholder="Incident ticket number or student mobile reference"
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-800"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t">
+              <button
+                onClick={() => setOverrideModalOpen(false)}
+                className="px-4 py-2 border rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleStatusOverride}
+                disabled={overriding || !overrideOrderId || !overrideNewStatus || overrideReason.trim().length < 5}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {overriding ? 'Logging Override...' : 'Commit Status Override'}
+              </button>
+            </div>
           </div>
         </div>
       )}

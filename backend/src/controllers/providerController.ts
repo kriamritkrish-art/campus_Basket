@@ -3,6 +3,7 @@ import { prisma } from '../config/database';
 import { ImageProcessingService } from '../services/image/ImageProcessingService';
 import { GoogleDriveStorageService } from '../services/storage/GoogleDriveStorageService';
 import { AuditService } from '../services/audit/AuditService';
+import { SettlementService } from '../services/financial/SettlementService';
 
 const storageService = new GoogleDriveStorageService();
 
@@ -1314,6 +1315,180 @@ export class ProviderController {
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', 'attachment; filename="orders_report.csv"');
       res.send(header + rows.join('\n'));
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get Provider Settlement Account (Masked for Security)
+   */
+  public static async getSettlementAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const providerId = req.user?.providerId;
+      if (!providerId) {
+        res.status(403).json({ success: false, message: 'Provider profile required' });
+        return;
+      }
+
+      const account = await (prisma as any).providerSettlementAccount.findFirst({
+        where: { providerId }
+      });
+
+      res.status(200).json({
+        success: true,
+        data: account ? {
+          id: account.id,
+          accountType: account.accountType,
+          beneficiaryName: account.beneficiaryName,
+          bankName: account.bankName,
+          accountNumberMasked: account.accountNumberMasked,
+          ifscCode: account.ifscCode,
+          upiIdMasked: account.upiIdMasked,
+          isVerified: account.isVerified
+        } : null
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Save or Update Provider Settlement Account
+   */
+  public static async saveSettlementAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const providerId = req.user?.providerId;
+      if (!providerId) {
+        res.status(403).json({ success: false, message: 'Provider profile required' });
+        return;
+      }
+
+      const { accountType, beneficiaryName, bankName, accountNumber, ifscCode, upiId } = req.body;
+      if (!accountType || !beneficiaryName) {
+        res.status(400).json({ success: false, message: 'Account Type and Beneficiary Name are required' });
+        return;
+      }
+
+      const account = await SettlementService.saveSettlementAccount(providerId, {
+        accountType,
+        beneficiaryName,
+        bankName,
+        accountNumber,
+        ifscCode,
+        upiId
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Settlement disbursement account saved successfully.',
+        data: {
+          id: account.id,
+          accountType: account.accountType,
+          beneficiaryName: account.beneficiaryName,
+          bankName: account.bankName,
+          accountNumberMasked: account.accountNumberMasked,
+          upiIdMasked: account.upiIdMasked,
+          isVerified: account.isVerified
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get Laundry Provider Rate Card & Service Configuration
+   */
+  public static async getLaundryConfig(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const providerId = req.user?.providerId;
+      if (!providerId) {
+        res.status(403).json({ success: false, message: 'Provider profile required' });
+        return;
+      }
+
+      const config = await (prisma as any).laundryProviderConfig.findFirst({
+        where: { providerId }
+      });
+
+      let parsedPricing = null;
+      if (config?.pricingConfig) {
+        try {
+          parsedPricing = typeof config.pricingConfig === 'string'
+            ? JSON.parse(config.pricingConfig)
+            : config.pricingConfig;
+        } catch {}
+      }
+
+      res.status(200).json({
+        success: true,
+        data: config ? {
+          ...config,
+          pricingConfig: parsedPricing
+        } : {
+          providerId,
+          minWeightKg: 2.0,
+          turnaroundHours: 24,
+          allowsIroningOnly: true,
+          emergencyServiceActive: true,
+          pricingConfig: {
+            washAndFold: 20,
+            washAndIron: 35,
+            steamIronOnly: 15,
+            dryCleanSuit: 180,
+            dryCleanJacket: 120,
+            blanketHeavy: 150
+          }
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Save Laundry Provider Rate Card & Service Configuration
+   */
+  public static async saveLaundryConfig(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const providerId = req.user?.providerId;
+      if (!providerId) {
+        res.status(403).json({ success: false, message: 'Provider profile required' });
+        return;
+      }
+
+      const { minWeightKg, turnaroundHours, allowsIroningOnly, emergencyServiceActive, pricingConfig } = req.body;
+
+      const pricingString = typeof pricingConfig === 'object' && pricingConfig !== null
+        ? JSON.stringify(pricingConfig)
+        : (typeof pricingConfig === 'string' ? pricingConfig : null);
+
+      const config = await (prisma as any).laundryProviderConfig.upsert({
+        where: { providerId },
+        update: {
+          minWeightKg: minWeightKg !== undefined ? Number(minWeightKg) : 2.0,
+          turnaroundHours: turnaroundHours !== undefined ? Number(turnaroundHours) : 24,
+          allowsIroningOnly: allowsIroningOnly !== undefined ? Boolean(allowsIroningOnly) : true,
+          emergencyServiceActive: emergencyServiceActive !== undefined ? Boolean(emergencyServiceActive) : true,
+          pricingConfig: pricingString,
+          updatedAt: new Date()
+        },
+        create: {
+          providerId,
+          minWeightKg: minWeightKg !== undefined ? Number(minWeightKg) : 2.0,
+          turnaroundHours: turnaroundHours !== undefined ? Number(turnaroundHours) : 24,
+          allowsIroningOnly: allowsIroningOnly !== undefined ? Boolean(allowsIroningOnly) : true,
+          emergencyServiceActive: emergencyServiceActive !== undefined ? Boolean(emergencyServiceActive) : true,
+          pricingConfig: pricingString
+        }
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Laundry rate card and operations configuration saved.',
+        data: config
+      });
     } catch (err) {
       next(err);
     }

@@ -6,6 +6,7 @@ import { AdminAnalyticsController } from '../controllers/adminAnalyticsControlle
 import { AdminReportController } from '../controllers/adminReportController';
 import { AdminPeopleController } from '../controllers/adminPeopleController';
 import { AdminCampusController } from '../controllers/adminCampusController';
+import { AdminPaymentController } from '../controllers/adminPaymentController';
 import { authGuard } from '../middleware/authGuard';
 import { rbacGuard } from '../middleware/rbacGuard';
 
@@ -22,6 +23,20 @@ router.use(rbacGuard(['ADMIN']));
 
 // 1. Dashboard Executive Overview & KPIs
 router.get('/dashboard', AdminController.getDashboardMetrics);
+
+// UNIFIED FINANCIAL PLATFORM & PAYMENTS (6 Dedicated Sections + Overrides + Exports)
+router.get('/payments/overview', AdminPaymentController.getOverview);
+router.get('/payments/transactions', AdminPaymentController.getTransactions);
+router.get('/payments/refunds', AdminPaymentController.getRefunds);
+router.post('/payments/refunds/process', AdminPaymentController.processRefund);
+router.get('/payments/settlements', AdminPaymentController.getSettlements);
+router.post('/payments/settlements/generate', AdminPaymentController.generateSettlement);
+router.post('/payments/settlements/disburse', AdminPaymentController.disburseSettlement);
+router.get('/payments/cod', AdminPaymentController.getCodReconciliation);
+router.post('/payments/cod/reconcile', AdminPaymentController.reconcileCod);
+router.get('/payments/ledger', AdminPaymentController.getFinancialLedger);
+router.post('/payments/override-status', AdminPaymentController.overrideStatus);
+router.get('/payments/export', AdminPaymentController.exportData);
 
 // 2. Commerce: Products & Inventory
 router.get('/products', AdminController.getAllProducts);

@@ -82,7 +82,7 @@ export function CampusLocationModal({ isOpen, onClose, onLocationChange }: Campu
             </div>
             <div>
               <h3 className="text-base font-extrabold text-[#172033]">Delivering to</h3>
-              <p className="text-xs text-gray-500">10–15 min hostel doorstep delivery at NIT Durgapur</p>
+              <p className="text-xs text-gray-500">10–15 min hostel doorstep delivery across campus</p>
             </div>
           </div>
           <button

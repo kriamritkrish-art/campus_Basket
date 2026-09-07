@@ -94,7 +94,7 @@ export class ReceiptService {
       <html lang="en">
       <head>
         <meta charset="UTF-8">
-        <title>Receipt ${receipt.receiptNumber} - NIT Durgapur</title>
+        <title>Receipt ${receipt.receiptNumber} - Campus Basket</title>
         <style>
           @page { size: A4; margin: 20mm; }
           body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; color: #0f172a; margin: 0; padding: 24px; }
@@ -114,7 +114,7 @@ export class ReceiptService {
         <div class="receipt-container">
           <div class="header">
             <div>
-              <h1 style="margin: 0; font-size: 20px; color: #0284c7;">NIT Durgapur Campus Services</h1>
+              <h1 style="margin: 0; font-size: 20px; color: #0284c7;">Campus Basket Marketplace</h1>
               <p style="margin: 4px 0 0; color: #64748b; font-size: 13px;">Official Verified Student Marketplace</p>
             </div>
             <div style="text-align: right;">
@@ -175,7 +175,7 @@ export class ReceiptService {
           </div>
 
           <div style="margin-top: 36px; padding-top: 16px; border-top: 1px solid #f1f5f9; text-align: center; font-size: 12px; color: #94a3b8;">
-            National Institute of Technology Durgapur &bull; Student Services Cell &bull; Support: services@nitdgp.ac.in
+            Campus Basket Marketplace &bull; Student Services Cell
           </div>
         </div>
       </body>

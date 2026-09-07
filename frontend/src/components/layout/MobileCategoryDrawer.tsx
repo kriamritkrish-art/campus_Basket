@@ -89,7 +89,7 @@ export function MobileCategoryDrawer({ isOpen, onClose }: MobileCategoryDrawerPr
                 Shop by Campus Category
               </h2>
               <p className="text-[11px] text-gray-500">
-                Delivering to all NIT Durgapur Halls
+                Delivering across all Campus Residence Halls
               </p>
             </div>
           </div>

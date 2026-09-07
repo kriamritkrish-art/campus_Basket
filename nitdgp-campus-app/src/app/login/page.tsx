@@ -261,40 +261,9 @@ function LoginForm() {
     }
   };
 
-  // Native Android Google OAuth Token Listener (via AndroidNativeAuth)
-  useEffect(() => {
-    (window as any).handleAndroidGoogleToken = (data: any) => {
-      console.log('[AndroidGoogleToken] Received token payload:', data);
-      if (data?.credential) {
-        handleGoogleSuccess({ credential: data.credential });
-      } else if (data?.access_token || data?.accessToken) {
-        handleGoogleSuccess({ accessToken: data.access_token || data.accessToken });
-      } else if (typeof data === 'string' && data.startsWith('ey')) {
-        handleGoogleSuccess({ credential: data });
-      }
-    };
-    (window as any).handleAndroidGoogleError = (statusCode: number) => {
-      setGoogleLoading(false);
-      if (statusCode === 12501 || statusCode === 16) {
-        // User cancelled account picker by tapping outside
-        return;
-      }
-      setError(`Google Sign-In canceled or failed (status ${statusCode}).`);
-    };
-    return () => {
-      delete (window as any).handleAndroidGoogleToken;
-      delete (window as any).handleAndroidGoogleError;
-    };
-  }, []);
-
   // Google Identity Services (GSI) Client Integration
   useEffect(() => {
     if (activeRole !== 'STUDENT') return;
-
-    // If native Android is present, skip web GSI script loading
-    if (typeof window !== 'undefined' && (window as any).AndroidNativeAuth) {
-      return;
-    }
 
     const clientId =
       process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
@@ -369,16 +338,6 @@ function LoginForm() {
   const handleGoogleSignIn = () => {
     setError(null);
     setGoogleLoading(true);
-
-    // 1. Native Android: Trigger Google Play Services native system account picker!
-    if (typeof window !== 'undefined' && (window as any).AndroidNativeAuth?.triggerNativeGoogleSignIn) {
-      try {
-        (window as any).AndroidNativeAuth.triggerNativeGoogleSignIn();
-        return;
-      } catch (nativeErr) {
-        console.warn('[NativeAuth] Trigger error, falling back:', nativeErr);
-      }
-    }
 
     const clientId =
       process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
@@ -729,7 +688,7 @@ function LoginForm() {
               {/* Student Trust Badge */}
               <div className="flex items-center justify-center gap-1.5 mt-2.5 text-[11px] text-gray-500 font-medium">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Instant sign-in for verified NIT Durgapur students</span>
+                <span>Instant sign-in for verified campus students</span>
               </div>
             </div>
 
@@ -746,7 +705,7 @@ function LoginForm() {
         <div className="pt-3 border-t border-gray-100 text-center space-y-2 text-xs text-gray-500">
           {activeRole === 'STUDENT' ? (
             <div>
-              New NIT Durgapur student?{' '}
+              New student?{' '}
               <Link href="/register" className="text-[#689f38] font-bold hover:underline">
                 Create Student Account
               </Link>
@@ -775,7 +734,7 @@ function LoginForm() {
             <div className="text-center space-y-1.5">
               <h3 className="text-base font-bold text-gray-900">Google Authentication Status</h3>
               <p className="text-xs text-gray-600 leading-relaxed">
-                {googleInfoModalMessage || 'Google Sign-In is active for verified NIT Durgapur student accounts.'}
+                {googleInfoModalMessage || 'Google Sign-In is active for verified student accounts.'}
               </p>
             </div>
 
@@ -784,7 +743,7 @@ function LoginForm() {
                 <span>💡 Note for Google Authentication:</span>
               </p>
               <p className="text-[11px] text-amber-800 leading-normal">
-                Please ensure your Google account is registered with your NIT Durgapur credentials or use your student email and password to log in.
+                Please ensure your Google account is registered with your verified campus credentials or use your student email and password to log in.
               </p>
             </div>
 

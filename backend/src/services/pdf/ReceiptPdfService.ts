@@ -41,7 +41,7 @@ export class ReceiptPdfService {
         size: 'A4',
         info: {
           Title: `Receipt-${order.receiptNumber}`,
-          Author: 'NIT Durgapur Campus Services Platform',
+          Author: 'Campus Basket Platform',
           Subject: 'Official Student Order & Delivery Receipt'
         }
       });
@@ -60,13 +60,13 @@ export class ReceiptPdfService {
       doc.rect(40, 40, doc.page.width - 80, 75).fill('#f8fafc');
 
       doc.fillColor(primaryColor).fontSize(16).font('Helvetica-Bold')
-        .text('NIT DURGAPUR CAMPUS SERVICES', 55, 52);
+        .text('CAMPUS BASKET MARKETPLACE', 55, 52);
 
       doc.fillColor(darkColor).fontSize(10).font('Helvetica-Bold')
         .text('OFFICIAL STUDENT ORDER DELIVERY RECEIPT', 55, 72);
 
       doc.fillColor(mutedColor).fontSize(8).font('Helvetica')
-        .text('Mahatma Gandhi Avenue, Durgapur, West Bengal 713209 • services@nitdgp.ac.in', 55, 87);
+        .text('Campus Marketplace Operations • Student Services Cell', 55, 87);
 
       // Receipt Metadata Badge
       doc.roundedRect(doc.page.width - 210, 50, 155, 55, 4).fillAndStroke('#ffffff', borderColor);
@@ -152,12 +152,12 @@ export class ReceiptPdfService {
       doc.fillColor(mutedColor).fontSize(7).font('Helvetica')
         .text('1. Present room number and delivery receipt upon hostel gate / common room dispatch.', 40, summaryStartY + 30)
         .text('2. Dual-OTP authentication applies for laundry pickups and returns.', 40, summaryStartY + 43)
-        .text('3. In case of discrepancies, contact services@nitdgp.ac.in within 24 hours of delivery.', 40, summaryStartY + 56);
+        .text('3. In case of discrepancies, contact support via Campus Basket within 24 hours of delivery.', 40, summaryStartY + 56);
 
       // Footer
       const footerY = doc.page.height - 45;
       doc.moveTo(40, footerY - 5).lineTo(doc.page.width - 40, footerY - 5).strokeColor(borderColor).stroke();
-      doc.fillColor(mutedColor).fontSize(7).text('Computer-generated electronic receipt issued by NIT Durgapur Campus Marketplace Operations.', 40, footerY);
+      doc.fillColor(mutedColor).fontSize(7).text('Computer-generated electronic receipt issued by Campus Basket Marketplace Operations.', 40, footerY);
 
       doc.end();
     });

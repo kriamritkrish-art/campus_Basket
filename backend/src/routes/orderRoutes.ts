@@ -11,6 +11,8 @@ router.use(authGuard);
 // Placing an order requires geofence verification within campus
 router.post('/', rbacGuard(['STUDENT', 'ADMIN']), geofenceGuard, OrderController.createOrder);
 router.get('/', rbacGuard(['STUDENT', 'ADMIN']), OrderController.getStudentOrders);
+router.get('/refund-account', rbacGuard(['STUDENT', 'ADMIN']), OrderController.getRefundAccount);
+router.post('/refund-account', rbacGuard(['STUDENT', 'ADMIN']), OrderController.saveRefundAccount);
 router.get('/:id', OrderController.getOrderById);
 router.post('/:id/cancel', rbacGuard(['STUDENT', 'ADMIN']), OrderController.cancelOrder);
 
