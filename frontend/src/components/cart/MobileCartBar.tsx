@@ -16,6 +16,8 @@ export function MobileCartBar() {
     pathname?.startsWith('/delivery') ||
     pathname === '/cart' ||
     pathname === '/checkout' ||
+    pathname === '/laundry/checkout' ||
+    pathname?.startsWith('/laundry') ||
     itemCount === 0
   ) {
     return null;

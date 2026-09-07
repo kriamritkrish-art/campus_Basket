@@ -22,11 +22,13 @@ export function MobileBottomNav({ onOpenCategories }: MobileBottomNavProps) {
   const { isAuthenticated } = useAuth();
   const { itemCount } = useCart();
 
-  // Hide on Enterprise Portals
+  // Hide on Enterprise Portals and Dedicated Checkouts
   if (
     pathname?.startsWith('/admin') ||
     pathname?.startsWith('/provider') ||
-    pathname?.startsWith('/delivery')
+    pathname?.startsWith('/delivery') ||
+    pathname === '/checkout' ||
+    pathname === '/laundry/checkout'
   ) {
     return null;
   }
