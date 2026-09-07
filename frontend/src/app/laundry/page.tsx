@@ -23,7 +23,8 @@ import {
   HelpCircle,
   ChevronRight,
   Copy,
-  Check
+  Check,
+  ArrowLeft
 } from 'lucide-react';
 
 const ORDER_STEPS = [
@@ -114,58 +115,91 @@ export default function LaundryPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Booking Success Notification Banner */}
-      {justBooked && (
-        <div className="bg-gradient-to-r from-[#e8f5e9] to-[#f1f8e9] border border-[#a5d6a7] p-5 rounded-3xl shadow-sm flex items-start justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#2e7d32] text-white flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
-              <CheckCircle2 className="w-5 h-5" />
+    <div className="min-h-screen bg-gray-50 flex flex-col text-gray-900">
+      {/* 1. MINIMAL CAMPUS BASKET HEADER (60–70px tall, clean, professional) */}
+      <header className="bg-white border-b border-gray-200/80 sticky top-0 z-30 shadow-2xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          {/* Left: Campus Basket Logo & Subtitle */}
+          <Link href="/" className="flex items-center gap-2.5 group">
+            <div className="w-8 h-8 rounded-xl bg-[#4F9D2F] flex items-center justify-center text-white font-extrabold text-xs shadow-xs group-hover:bg-[#36751F] transition-colors">
+              cb
             </div>
             <div>
-              <h3 className="text-sm font-black text-gray-900 flex items-center gap-2">
-                <span>Laundry Booking Confirmed &amp; Dispatched!</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#2e7d32] text-white">
-                  Verified via Razorpay
-                </span>
-              </h3>
-              <p className="text-xs text-gray-600 mt-1 leading-relaxed">
-                Your payment has been successfully recorded. Doorstep pickup is scheduled. Please share your <strong>In-App Pickup OTP</strong> with the delivery agent when they arrive at your hostel room.
-              </p>
+              <div className="font-extrabold text-[#172033] text-base tracking-tight leading-none">
+                campus<span className="text-[#4F9D2F]">basket</span>
+              </div>
+              <div className="text-[9px] sm:text-[9.5px] font-semibold tracking-wider text-[#667085] uppercase mt-0.5">
+                CAMPUS MARKETPLACE &amp; SERVICES
+              </div>
             </div>
-          </div>
-          <button
-            onClick={() => setJustBooked(false)}
-            className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-white/60 transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-      {/* 1. COMPACT HEADER (75–90px, white background, subtle border, title 20–22px, subtitle 12–13px, badges on right) */}
-      <header className="bg-white rounded-2xl border border-gray-200/80 px-5 sm:px-7 py-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-h-[75px]">
-        <div>
-          <h1 className="text-xl sm:text-[22px] font-bold text-gray-900 tracking-tight leading-snug">
-            Express Campus Laundry
-          </h1>
-          <p className="text-xs sm:text-[13px] text-gray-500">
-            Wash &bull; Steam Press &bull; Fold &bull; Doorstep Pickup
-          </p>
-        </div>
+          </Link>
 
-        {/* Right side supporting badges/info */}
-        <div className="flex items-center flex-wrap gap-2 text-[11px] sm:text-xs">
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#f1f8e9] text-[#2e7d32] font-semibold border border-[#dcedc8]">
-            <Check className="w-3 h-3 text-[#2e7d32]" /> Dual-OTP Protected
-          </span>
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 font-semibold border border-amber-200">
-            ⚡ 24h Express
-          </span>
-          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gray-100 text-gray-800 font-bold border border-gray-200">
-            ₹{tariff.providerPricePerUnit || 15} + ₹{tariff.serviceChargePerUnit || 1} / garment
-          </span>
+          {/* Right: Back to Campus Services */}
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 transition py-1.5 px-3 rounded-lg hover:bg-gray-100"
+          >
+            <ArrowLeft className="w-4 h-4 text-gray-500" />
+            <span className="hidden sm:inline">Back to Campus Services</span>
+            <span className="sm:hidden">Back</span>
+          </Link>
         </div>
       </header>
+
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 w-full">
+        {/* Booking Success Notification Banner */}
+        {justBooked && (
+          <div className="bg-gradient-to-r from-[#e8f5e9] to-[#f1f8e9] border border-[#a5d6a7] p-5 rounded-2xl shadow-sm flex items-start justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-[#2e7d32] text-white flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <span>Laundry Booking Confirmed &amp; Dispatched!</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#2e7d32] text-white">
+                    Verified via Razorpay
+                  </span>
+                </h3>
+                <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                  Your payment has been successfully recorded. Doorstep pickup is scheduled. Please share your <strong>In-App Pickup OTP</strong> with the delivery agent when they arrive at your hostel room.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setJustBooked(false)}
+              className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-white/60 transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* 2. COMPACT LAUNDRY SERVICE HEADER (80–100px tall) */}
+        <section className="bg-white rounded-2xl border border-gray-200/80 px-5 sm:px-6 py-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-h-[80px]">
+          <div>
+            <h1 className="text-xl sm:text-[22px] font-bold text-gray-900 tracking-tight leading-tight">
+              Express Campus Laundry
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+              Wash • Steam Press • Fold • Doorstep Pickup
+            </p>
+          </div>
+
+          {/* Badges on right / below */}
+          <div className="flex items-center flex-wrap gap-2 text-xs">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#f1f8e9] text-[#2e7d32] font-semibold border border-[#dcedc8] text-[11px] sm:text-xs">
+              <Check className="w-3 h-3 text-[#2e7d32]" /> Dual-OTP Protected
+            </span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 font-semibold border border-amber-200 text-[11px] sm:text-xs">
+              ⚡ 24h Express
+            </span>
+            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gray-100 text-gray-800 font-bold border border-gray-200 text-[11px] sm:text-xs">
+              ₹{tariff.providerPricePerUnit || 15} + ₹{tariff.serviceChargePerUnit || 1} / garment
+            </span>
+          </div>
+        </section>
 
       {/* 2. BOOKING NAVIGATION */}
       <div className="flex items-center">
@@ -509,6 +543,7 @@ export default function LaundryPage() {
           )}
         </div>
       )}
+      </main>
 
       {/* Garment Photos Viewer Modal */}
       {selectedPhotoModal && (

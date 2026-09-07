@@ -8,12 +8,8 @@ import { Phone, Mail, MapPin, ShieldCheck, Heart, Zap } from 'lucide-react';
 export function Footer() {
   const pathname = usePathname();
 
-  // Hide User Footer on Admin, Provider, and Delivery Portals
-  if (
-    pathname?.startsWith('/admin') ||
-    pathname?.startsWith('/provider') ||
-    pathname?.startsWith('/delivery')
-  ) {
+  // The institutional marketplace footer only displays on the landing page (home)
+  if (pathname !== '/') {
     return null;
   }
 

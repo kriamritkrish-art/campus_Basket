@@ -445,8 +445,36 @@ export default function LaundryCheckoutPage() {
 
   // State 4: Dedicated E-Commerce Style Laundry Checkout
   return (
-    <div className="min-h-screen bg-gray-50 py-6 sm:py-8 pb-28 md:pb-12 text-gray-900">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+    <div className="min-h-screen bg-gray-50 flex flex-col pb-28 md:pb-12 text-gray-900">
+      {/* Minimal Campus Basket Header */}
+      <header className="bg-white border-b border-gray-200/80 sticky top-0 z-30 shadow-2xs">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2.5 group">
+            <div className="w-8 h-8 rounded-xl bg-[#4F9D2F] flex items-center justify-center text-white font-extrabold text-xs shadow-xs group-hover:bg-[#36751F] transition-colors">
+              cb
+            </div>
+            <div>
+              <div className="font-extrabold text-[#172033] text-base tracking-tight leading-none">
+                campus<span className="text-[#4F9D2F]">basket</span>
+              </div>
+              <div className="text-[9px] sm:text-[9.5px] font-semibold tracking-wider text-[#667085] uppercase mt-0.5">
+                CAMPUS MARKETPLACE &amp; SERVICES
+              </div>
+            </div>
+          </Link>
+
+          <Link
+            href="/laundry"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 transition py-1.5 px-3 rounded-lg hover:bg-gray-100"
+          >
+            <ArrowLeft className="w-4 h-4 text-gray-500" />
+            <span className="hidden sm:inline">Back to Laundry</span>
+            <span className="sm:hidden">Back</span>
+          </Link>
+        </div>
+      </header>
+
+      <main className="flex-1 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 w-full">
 
         {/* 1. Top Header */}
         <header className="space-y-3">
@@ -862,7 +890,7 @@ export default function LaundryCheckoutPage() {
 
         </div>
 
-      </div>
+      </main>
 
       {/* 16. Mobile Sticky Bottom Payment CTA (Visible on Mobile only) */}
       <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200 px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] pb-safe">

@@ -25,10 +25,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <div className="min-h-screen w-full">{children}</div>;
   }
 
-  const isCheckoutRoute = pathname === '/checkout';
-  if (isCheckoutRoute) {
-    // Dedicated distraction-free checkout experience (Amazon/Flipkart style)
-    return <div className="min-h-screen bg-[#F7F8FA]">{children}</div>;
+  const isDedicatedServiceRoute =
+    pathname?.startsWith('/laundry') ||
+    pathname === '/checkout';
+
+  if (isDedicatedServiceRoute) {
+    // Dedicated standalone service & checkout flows (zero marketplace clutter, no cart ₹139, no floating basket, no marketplace footer)
+    return <div className="min-h-screen bg-[#f8f9fa] w-full">{children}</div>;
   }
 
   return (
