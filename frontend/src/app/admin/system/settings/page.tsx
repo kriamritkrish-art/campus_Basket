@@ -101,6 +101,7 @@ export default function AdminSettingsPage() {
         { key: 'MAX_COD_AMOUNT', desc: 'Maximum INR ceiling for Cash on Delivery' },
         { key: 'DELIVERY_FEE_FLAT', desc: 'Flat room delivery fee' },
         { key: 'FREE_DELIVERY_THRESHOLD', desc: 'Cart threshold for free delivery' },
+        { key: 'GEOFENCE_ENFORCED', desc: 'Global GPS perimeter geofence enforcement toggle' },
         { key: 'MAINTENANCE_MODE', desc: 'Emergency campus maintenance toggle' }
       ];
 
@@ -126,6 +127,7 @@ export default function AdminSettingsPage() {
 
   const isMaintenanceMode = settings['MAINTENANCE_MODE'] === 'true';
   const isCodEnabled = settings['ENABLE_CASH_ON_DELIVERY'] === 'true';
+  const isGeofenceEnforced = settings['GEOFENCE_ENFORCED'] !== 'false';
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -461,6 +463,59 @@ export default function AdminSettingsPage() {
                   Status: <strong>{settings['DELIVERY_BOY_OTP_ENABLED'] === 'true' ? 'Mandatory 6-Digit Email Verification' : 'Direct Password Login Allowed'}</strong>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Group 3.5: Master GPS Campus Geofence Switch */}
+          <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
+                <Truck className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#17202A]">Master Geofence &amp; Perimeter Bypass</h3>
+                <p className="text-xs text-slate-500">
+                  Enable or disable GPS location enforcement. When turned OFF, students anywhere can browse, add to cart, and place orders.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-[#17202A]">GPS Geofence Status</span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      isGeofenceEnforced
+                        ? 'bg-emerald-50 text-[#347A27] border-emerald-200'
+                        : 'bg-amber-50 text-amber-800 border-amber-200'
+                    }`}
+                  >
+                    {isGeofenceEnforced ? 'GEOFENCE ENFORCED (NIT Durgapur Perimeter)' : 'GEOFENCE BYPASSED (Universal Access Allowed)'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">
+                  {isGeofenceEnforced
+                    ? 'Students must be physically located inside NIT Durgapur campus boundaries to place orders.'
+                    : 'Geofence is OFF. Students, testers, and alumni from any location or network can place orders.'}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const next = isGeofenceEnforced ? 'false' : 'true';
+                  handleChange('GEOFENCE_ENFORCED', next);
+                  handleSaveSetting('GEOFENCE_ENFORCED', 'Global GPS perimeter geofence enforcement toggle');
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-bold border transition cursor-pointer shrink-0 ${
+                  isGeofenceEnforced
+                    ? 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 shadow-xs'
+                    : 'bg-[#4F9D32] hover:bg-[#347A27] text-white shadow-xs'
+                }`}
+              >
+                {isGeofenceEnforced ? 'Turn OFF Geofence (Allow Anywhere)' : 'Turn ON Geofence (Enforce Campus GPS)'}
+              </button>
             </div>
           </div>
 

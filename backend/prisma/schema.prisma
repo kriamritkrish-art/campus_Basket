@@ -295,6 +295,13 @@ model Product {
   lowStockThreshold Int            @default(5)
   availability      Boolean        @default(true)
   isFeatured        Boolean        @default(false)
+  isPopular         Boolean        @default(false)
+  subcategory       String?
+  dietaryType       String?        @default("Not Applicable") // "Pure Veg" | "Non-Veg" | "Not Applicable"
+  tags              String?        @db.Text
+  image             String?        @db.Text
+  deliveryType      String?
+  discountPercentage Int?          @default(0)
   providerId        String?
   provider          ServiceProvider? @relation(fields: [providerId], references: [id])
   availableToday    Boolean        @default(true)
@@ -317,6 +324,7 @@ model Product {
   @@index([categoryId])
   @@index([slug])
   @@index([isFeatured])
+  @@index([isPopular])
   @@index([approvalStatus])
   @@index([providerId])
 }

@@ -4,6 +4,19 @@ import { prisma } from '../config/database';
 
 export async function geofenceGuard(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    // Check if geofence enforcement is disabled by Admin
+    try {
+      const geofenceSetting = await prisma.adminSetting.findUnique({
+        where: { key: 'GEOFENCE_ENFORCED' }
+      });
+      if (geofenceSetting && geofenceSetting.value === 'false') {
+        next();
+        return;
+      }
+    } catch {
+      // Continue to standard check if setting query fails
+    }
+
     const latHeader = req.headers['x-student-lat'];
     const lngHeader = req.headers['x-student-lng'];
 

@@ -337,12 +337,31 @@ export class AdminController {
 
       res.status(200).json({
         success: true,
-        products: products.map((p) => ({
-          ...p,
-          price: Number(p.price),
-          discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
-          primaryImage: p.images.find((img) => img.isPrimary)?.googleDriveUrl || p.images[0]?.googleDriveUrl || null
-        })),
+        products: products.map((p) => {
+          const originalPrice = Number(p.price);
+          const sellingPrice = p.discountPrice ? Number(p.discountPrice) : originalPrice;
+          const discountPct =
+            p.discountPercentage !== null && p.discountPercentage !== undefined
+              ? p.discountPercentage
+              : originalPrice > 0 && sellingPrice < originalPrice
+              ? Math.max(0, Math.round(((originalPrice - sellingPrice) / originalPrice) * 100))
+              : 0;
+
+          return {
+            ...p,
+            price: originalPrice,
+            originalPrice,
+            discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
+            sellingPrice,
+            discountPercentage: discountPct,
+            subcategory: p.subcategory || null,
+            dietaryType: p.dietaryType || 'Not Applicable',
+            isPopular: Boolean(p.isPopular),
+            tags: p.tags || '',
+            deliveryType: p.deliveryType || '10-15 mins',
+            primaryImage: (p as any).image || p.images?.find((img) => img.isPrimary)?.googleDriveUrl || p.images?.[0]?.googleDriveUrl || null
+          };
+        }),
         pagination: {
           total,
           page: pageNum,
@@ -356,7 +375,7 @@ export class AdminController {
   }
 
   /**
-   * Product Creation with Sharp 4:3 Image Normalization & Google Drive Storage
+   * Product Creation with Dynamic Subcategory, Dietary Type, Popular on Campus & Auto Discount Calculation
    */
   public static async createProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -364,20 +383,85 @@ export class AdminController {
         name,
         slug,
         categoryId,
+        subcategory,
+        dietaryType,
         description,
-        price,
-        discountPrice,
+        price, // Original Price / MRP
+        discountPrice, // Selling Price
+        sellingPrice, // alternative name
+        isPopular,
         unit = 'piece',
         sku,
         stock = 20,
         lowStockThreshold = 5,
         isFeatured = false,
+        availability = true,
         availableToday = true,
         deliveryTime,
+        tags,
         providerId
       } = req.body;
 
       const file = req.file;
+
+      // Validation 1: Product name required
+      if (!name || !String(name).trim()) {
+        res.status(400).json({
+          success: false,
+          message: 'Product Name is strictly required.'
+        });
+        return;
+      }
+
+      // Validation 2: Category required
+      if (!categoryId || !String(categoryId).trim()) {
+        res.status(400).json({
+          success: false,
+          message: 'Product Category is required.'
+        });
+        return;
+      }
+
+      // Validation 3: Original price / MRP > 0
+      const origPrice = parseFloat(price);
+      if (isNaN(origPrice) || origPrice <= 0) {
+        res.status(400).json({
+          success: false,
+          message: 'Original Price / MRP must be a positive number greater than 0.'
+        });
+        return;
+      }
+
+      // Validation 4: Selling price > 0 and <= Original Price
+      let sellPrice = origPrice;
+      const rawSellPrice = discountPrice !== undefined && discountPrice !== ''
+        ? discountPrice
+        : sellingPrice !== undefined && sellingPrice !== ''
+        ? sellingPrice
+        : null;
+
+      if (rawSellPrice !== null) {
+        sellPrice = parseFloat(rawSellPrice);
+        if (isNaN(sellPrice) || sellPrice <= 0) {
+          res.status(400).json({
+            success: false,
+            message: 'Selling Price must be a positive number greater than 0.'
+          });
+          return;
+        }
+        if (sellPrice > origPrice) {
+          res.status(400).json({
+            success: false,
+            message: 'Selling Price cannot be greater than the Original Price / MRP.'
+          });
+          return;
+        }
+      }
+
+      // Automatic Discount Calculation
+      const calculatedDiscount = origPrice > 0 && sellPrice < origPrice
+        ? Math.max(0, Math.round(((origPrice - sellPrice) / origPrice) * 100))
+        : 0;
 
       if (!providerId || !String(providerId).trim()) {
         res.status(400).json({
@@ -412,27 +496,36 @@ export class AdminController {
       if (targetCategory) {
         resolvedCategoryId = targetCategory.id;
       } else {
-        // Fallback: check first category or keep provided
         const anyCat = await prisma.category.findFirst();
         if (anyCat) resolvedCategoryId = anyCat.id;
       }
 
       const productSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + `-${Date.now().toString().slice(-4)}`;
 
+      const isPop = isPopular === 'true' || isPopular === true;
+      const isAvail = availability !== undefined ? (availability === 'true' || availability === true || availability === 'Available') : true;
+      const cleanDietary = dietaryType && ['Pure Veg', 'Non-Veg', 'Not Applicable'].includes(dietaryType) ? dietaryType : 'Not Applicable';
+
       // Create product in MySQL or Fallback Engine
       const product = await prisma.product.create({
         data: {
-          name,
+          name: name.trim(),
           slug: productSlug,
           categoryId: resolvedCategoryId,
-          description,
-          price: parseFloat(price),
-          discountPrice: discountPrice ? parseFloat(discountPrice) : null,
+          subcategory: subcategory ? String(subcategory).trim() : null,
+          dietaryType: cleanDietary,
+          description: description ? String(description).trim() : null,
+          price: origPrice,
+          discountPrice: sellPrice < origPrice ? sellPrice : null,
+          discountPercentage: calculatedDiscount,
+          isPopular: isPop,
+          tags: tags ? String(tags).trim() : null,
+          deliveryType: deliveryTime || '10-15 mins',
           unit,
           sku: sku || `SKU-${Date.now().toString().slice(-6)}`,
-          stock: parseInt(stock, 10),
-          lowStockThreshold: parseInt(lowStockThreshold, 10),
-          availability: true,
+          stock: parseInt(stock, 10) || 0,
+          lowStockThreshold: parseInt(lowStockThreshold, 10) || 5,
+          availability: isAvail,
           isFeatured: isFeatured === 'true' || isFeatured === true,
           availableToday: availableToday === 'true' || availableToday === true,
           providerId: cleanProviderId,
@@ -441,9 +534,9 @@ export class AdminController {
           approvedAt: new Date(),
           inventory: {
             create: {
-              currentStock: parseInt(stock, 10),
-              lowStockThreshold: parseInt(lowStockThreshold, 10),
-              isOutOfStock: parseInt(stock, 10) <= 0
+              currentStock: parseInt(stock, 10) || 0,
+              lowStockThreshold: parseInt(lowStockThreshold, 10) || 5,
+              isOutOfStock: (parseInt(stock, 10) || 0) <= 0
             }
           }
         }
@@ -472,6 +565,12 @@ export class AdminController {
             uploadedBy: req.user?.email || 'ADMIN'
           }
         });
+
+        // Also save primary image URL directly
+        await prisma.product.update({
+          where: { id: product.id },
+          data: { image: uploadResult.webUrl }
+        }).catch(() => {});
       }
 
       await AuditService.log(prisma, {
@@ -479,13 +578,13 @@ export class AdminController {
         action: 'PRODUCT_CREATED',
         entity: 'Product',
         entityId: product.id,
-        newValue: { name, price, stock, categoryId },
+        newValue: { name, price: origPrice, sellingPrice: sellPrice, discountPercentage: calculatedDiscount, stock, categoryId },
         ipAddress: req.ip
       });
 
       res.status(201).json({
         success: true,
-        message: 'Product created with normalized 4:3 Google Drive asset.',
+        message: 'Product created successfully with automated discount calculation.',
         product
       });
     } catch (err) {
@@ -502,15 +601,21 @@ export class AdminController {
       const {
         name,
         categoryId,
+        subcategory,
+        dietaryType,
         description,
         price,
         discountPrice,
+        sellingPrice,
+        isPopular,
         unit,
         stock,
         lowStockThreshold,
         availability,
         isFeatured,
         availableToday,
+        deliveryTime,
+        tags,
         providerId
       } = req.body;
 
@@ -520,22 +625,70 @@ export class AdminController {
         return;
       }
 
+      const updateData: any = {};
+      if (name) updateData.name = name.trim();
+      if (categoryId) updateData.categoryId = categoryId;
+      if (subcategory !== undefined) updateData.subcategory = subcategory ? String(subcategory).trim() : null;
+      if (dietaryType !== undefined) {
+        updateData.dietaryType = ['Pure Veg', 'Non-Veg', 'Not Applicable'].includes(dietaryType) ? dietaryType : 'Not Applicable';
+      }
+      if (description !== undefined) updateData.description = description ? String(description).trim() : null;
+      if (tags !== undefined) updateData.tags = tags ? String(tags).trim() : null;
+      if (unit) updateData.unit = unit;
+      if (deliveryTime) updateData.deliveryType = deliveryTime;
+      if (providerId !== undefined) updateData.providerId = providerId;
+      if (stock !== undefined) updateData.stock = parseInt(stock, 10);
+      if (lowStockThreshold !== undefined) updateData.lowStockThreshold = parseInt(lowStockThreshold, 10);
+      if (availability !== undefined) {
+        updateData.availability = availability === true || availability === 'true' || availability === 'Available';
+      }
+      if (isFeatured !== undefined) updateData.isFeatured = isFeatured === true || isFeatured === 'true';
+      if (isPopular !== undefined) updateData.isPopular = isPopular === true || isPopular === 'true';
+      if (availableToday !== undefined) updateData.availableToday = availableToday === true || availableToday === 'true';
+
+      // Handle Prices & Automatic Discount Calculation
+      const currentOrigPrice = Number(oldProduct.price);
+      const currentSellPrice = oldProduct.discountPrice ? Number(oldProduct.discountPrice) : currentOrigPrice;
+
+      let newOrigPrice = price !== undefined ? parseFloat(price) : currentOrigPrice;
+      if (isNaN(newOrigPrice) || newOrigPrice <= 0) {
+        res.status(400).json({ success: false, message: 'Original Price must be greater than 0.' });
+        return;
+      }
+
+      let newSellPrice = newOrigPrice;
+      const rawSellPrice = discountPrice !== undefined && discountPrice !== ''
+        ? discountPrice
+        : sellingPrice !== undefined && sellingPrice !== ''
+        ? sellingPrice
+        : null;
+
+      if (rawSellPrice !== null) {
+        newSellPrice = parseFloat(rawSellPrice);
+        if (isNaN(newSellPrice) || newSellPrice <= 0) {
+          res.status(400).json({ success: false, message: 'Selling Price must be greater than 0.' });
+          return;
+        }
+      } else if (price !== undefined && oldProduct.discountPrice) {
+        newSellPrice = Math.min(newOrigPrice, Number(oldProduct.discountPrice));
+      } else {
+        newSellPrice = Math.min(newOrigPrice, currentSellPrice);
+      }
+
+      if (newSellPrice > newOrigPrice) {
+        res.status(400).json({ success: false, message: 'Selling Price cannot be greater than Original Price / MRP.' });
+        return;
+      }
+
+      updateData.price = newOrigPrice;
+      updateData.discountPrice = newSellPrice < newOrigPrice ? newSellPrice : null;
+      updateData.discountPercentage = newOrigPrice > 0 && newSellPrice < newOrigPrice
+        ? Math.max(0, Math.round(((newOrigPrice - newSellPrice) / newOrigPrice) * 100))
+        : 0;
+
       const updated = await prisma.product.update({
         where: { id },
-        data: {
-          ...(name ? { name } : {}),
-          ...(categoryId ? { categoryId } : {}),
-          ...(description !== undefined ? { description } : {}),
-          ...(price !== undefined ? { price: parseFloat(price) } : {}),
-          ...(discountPrice !== undefined ? { discountPrice: discountPrice ? parseFloat(discountPrice) : null } : {}),
-          ...(unit ? { unit } : {}),
-          ...(stock !== undefined ? { stock: parseInt(stock, 10) } : {}),
-          ...(lowStockThreshold !== undefined ? { lowStockThreshold: parseInt(lowStockThreshold, 10) } : {}),
-          ...(availability !== undefined ? { availability: availability === true || availability === 'true' } : {}),
-          ...(isFeatured !== undefined ? { isFeatured: isFeatured === true || isFeatured === 'true' } : {}),
-          ...(availableToday !== undefined ? { availableToday: availableToday === true || availableToday === 'true' } : {}),
-          ...(providerId !== undefined ? { providerId } : {})
-        }
+        data: updateData
       });
 
       // Update linked inventory record

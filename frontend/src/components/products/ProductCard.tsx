@@ -87,30 +87,52 @@ export function ProductCard({ product }: ProductCardProps) {
     product.images?.[0]?.googleDriveUrl ||
     'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=600';
 
+  const origPrice = product.originalPrice ?? product.price;
+  const sellPrice = product.sellingPrice ?? product.discountPrice ?? product.price;
+  const hasDiscount = origPrice > sellPrice;
   const discountPercent =
-    product.discountPrice && product.discountPrice < product.price
-      ? Math.round(((product.price - product.discountPrice) / product.price) * 100)
+    product.discountPercentage && product.discountPercentage > 0
+      ? product.discountPercentage
+      : hasDiscount && origPrice > 0
+      ? Math.round(((origPrice - sellPrice) / origPrice) * 100)
       : null;
 
-  const isNonVeg = product.name.toLowerCase().includes('chicken') || product.name.toLowerCase().includes('egg');
-  const categoryLabel = product.category?.name || (product.category?.slug === 'food' ? 'Food & Meals' : product.category?.slug === 'fruits' ? 'Fresh Produce' : 'Stationery');
+  const isOutOfStock = product.availability === false || (product.stock !== undefined && product.stock <= 0);
+  const showVegIcon = product.dietaryType === 'Pure Veg';
+  const showNonVegIcon = product.dietaryType === 'Non-Veg';
+
+  const categoryLabel =
+    product.category?.name ||
+    (product.category?.slug === 'food'
+      ? 'Food & Meals'
+      : product.category?.slug === 'fruits'
+      ? 'Fresh Produce'
+      : product.category?.slug === 'stationery'
+      ? 'Stationery'
+      : product.category?.slug === 'essentials'
+      ? 'Hostel Essentials'
+      : 'Campus Basket');
 
   return (
-    <div className="bg-white border border-[#E5E7EB] hover:border-gray-300 rounded-2xl overflow-hidden p-3 flex flex-col justify-between transition-all duration-200 hover:shadow-md group relative">
+    <div className={`bg-white border ${isOutOfStock ? 'border-gray-200 opacity-80' : 'border-[#E5E7EB] hover:border-gray-300'} rounded-2xl overflow-hidden p-3 flex flex-col justify-between transition-all duration-200 hover:shadow-md group relative`}>
       {/* Top action row: Favorite & subtle tag */}
       <div className="flex items-center justify-between gap-1 mb-1.5">
-        <div className="flex items-center gap-1.5">
-          {product.category?.slug === 'food' && (
-            <div className={isNonVeg ? 'non-veg-icon' : 'veg-icon'} title={isNonVeg ? 'Non-Vegetarian' : 'Vegetarian'} />
-          )}
-          <span className="text-[10.5px] font-bold text-gray-500 uppercase tracking-wide truncate max-w-[120px]">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {showVegIcon && <div className="veg-icon shrink-0" title="Pure Veg" />}
+          {showNonVegIcon && <div className="non-veg-icon shrink-0" title="Non-Veg" />}
+          <span className="text-[10.5px] font-bold text-gray-500 uppercase tracking-wide truncate max-w-[100px]">
             {categoryLabel}
           </span>
+          {product.isPopular && (
+            <span className="bg-amber-100 text-amber-800 text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 flex items-center gap-0.5">
+              🔥 Popular
+            </span>
+          )}
         </div>
 
         <button
           onClick={handleToggleFavorite}
-          className="p-1 rounded-full text-gray-400 hover:text-red-500 hover:bg-gray-50 transition-colors"
+          className="p-1 rounded-full text-gray-400 hover:text-red-500 hover:bg-gray-50 transition-colors shrink-0"
           title="Save to favorites"
         >
           <Heart className={`w-3.5 h-3.5 ${isFavorite ? 'fill-red-500 text-red-500' : ''}`} />
@@ -123,14 +145,22 @@ export function ProductCard({ product }: ProductCardProps) {
           <img
             src={displayImage}
             alt={product.name}
-            className="max-h-full max-w-full object-contain group-hover:scale-104 transition-transform duration-200"
+            className={`max-h-full max-w-full object-contain ${isOutOfStock ? 'grayscale-50' : 'group-hover:scale-104'} transition-transform duration-200`}
             loading="lazy"
           />
-          {/* Subtle delivery time tag */}
-          <div className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 bg-white/95 backdrop-blur-xs text-[#172033] px-1.5 py-0.5 rounded text-[9.5px] font-bold shadow-2xs border border-gray-100">
-            <Zap className="w-2.5 h-2.5 text-[#4F9D2F] fill-[#4F9D2F]" />
-            <span>10–15 min</span>
-          </div>
+          {/* Out of Stock overlay badge or delivery time tag */}
+          {isOutOfStock ? (
+            <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center">
+              <span className="bg-gray-900/80 text-white text-[10px] font-extrabold px-2 py-0.5 rounded shadow">
+                Out of Stock
+              </span>
+            </div>
+          ) : (
+            <div className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 bg-white/95 backdrop-blur-xs text-[#172033] px-1.5 py-0.5 rounded text-[9.5px] font-bold shadow-2xs border border-gray-100">
+              <Zap className="w-2.5 h-2.5 text-[#4F9D2F] fill-[#4F9D2F]" />
+              <span>10–15 min</span>
+            </div>
+          )}
         </div>
       </Link>
 
@@ -143,7 +173,7 @@ export function ProductCard({ product }: ProductCardProps) {
             </h3>
           </Link>
           <p className="text-[11px] text-gray-500 line-clamp-1 mt-0.5">
-            {product.description || `1 ${product.unit} • Campus Cafeteria`}
+            {product.subcategory ? `${product.subcategory} • ` : ''}{product.description || `1 ${product.unit || 'pc'} • Campus Basket`}
           </p>
         </div>
 
@@ -152,27 +182,30 @@ export function ProductCard({ product }: ProductCardProps) {
           <div>
             <div className="flex items-baseline gap-1">
               <span className="text-sm sm:text-base font-black text-[#172033]">
-                ₹{product.discountPrice || product.price}
+                ₹{sellPrice}
               </span>
-              {product.discountPrice && (
+              {hasDiscount && (
                 <span className="text-[10px] text-gray-400 line-through">
-                  ₹{product.price}
+                  ₹{origPrice}
                 </span>
               )}
             </div>
-            {discountPercent && (
-              <span className="text-[10px] font-bold text-[#4F9D2F]">
+            {discountPercent && discountPercent > 0 && (
+              <span className="text-[10px] font-extrabold text-[#4F9D2F]">
                 {discountPercent}% OFF
               </span>
             )}
           </div>
 
           {/* Stepper / Add CTA */}
-          {quantityInCart === 0 ? (
+          {isOutOfStock ? (
+            <span className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-400 font-bold text-[10.5px] select-none">
+              Out of Stock
+            </span>
+          ) : quantityInCart === 0 ? (
             <button
               onClick={handleAddToCart}
-              disabled={product.stock <= 0}
-              className="px-3 py-1.5 rounded-lg border border-[#4F9D2F] text-[#4F9D2F] hover:bg-[#4F9D2F] hover:text-white font-bold text-xs transition-all active:scale-95 disabled:border-gray-200 disabled:text-gray-300 shadow-2xs cursor-pointer"
+              className="px-3 py-1.5 rounded-lg border border-[#4F9D2F] text-[#4F9D2F] hover:bg-[#4F9D2F] hover:text-white font-bold text-xs transition-all active:scale-95 shadow-2xs cursor-pointer"
             >
               + Add
             </button>

@@ -1,7 +1,9 @@
 'use client';
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import { useDelivery } from '@/context/DeliveryContext';
+import { useAuth } from '@/context/AuthContext';
 import {
   User,
   Bike,
@@ -15,10 +17,18 @@ import {
   Star,
   CheckCircle2,
   Edit,
+  LogOut,
 } from 'lucide-react';
 
 export default function DeliveryProfilePage() {
+  const router = useRouter();
   const { isOnline } = useDelivery();
+  const { logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    router.replace('/delivery/login');
+  };
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -207,6 +217,21 @@ export default function DeliveryProfilePage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Runner Logout Action Card */}
+      <div className="bg-white p-5 rounded-2xl border border-red-100 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div>
+          <h4 className="text-sm font-bold text-gray-900">Sign Out of Delivery Partner Session</h4>
+          <p className="text-xs text-gray-500">Securely sign out of this device. You will stop receiving dispatch alerts until you sign back in.</p>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm shadow-red-600/20 transition cursor-pointer"
+        >
+          <LogOut className="w-4 h-4" />
+          <span>Log Out Delivery Partner</span>
+        </button>
       </div>
     </div>
   );

@@ -214,20 +214,54 @@ export default function HomePage() {
     let list = products;
 
     if (activeCategory !== 'all' && activeCategory !== 'laundry') {
-      if (activeCategory === 'stationery') {
+      if (activeCategory === 'food') {
+        list = list.filter(
+          (p) =>
+            p.category?.slug === 'food' ||
+            p.category?.name === 'Food & Meals' ||
+            p.categoryId === 'cat_food'
+        );
+      } else if (activeCategory === 'fruits') {
+        list = list.filter(
+          (p) =>
+            p.category?.slug === 'fruits' ||
+            p.category?.name === 'Fresh Produce' ||
+            p.categoryId === 'cat_fruits'
+        );
+      } else if (activeCategory === 'stationery') {
         list = list.filter(
           (p) =>
             p.category?.slug === 'stationery' ||
+            p.category?.name === 'Stationery' ||
             p.categoryId === 'cat_stationery' ||
+            p.subcategory?.toLowerCase().includes('notebook') ||
+            p.subcategory?.toLowerCase().includes('pen') ||
+            p.subcategory?.toLowerCase().includes('calculator') ||
+            p.subcategory?.toLowerCase().includes('art') ||
+            p.subcategory?.toLowerCase().includes('stationery') ||
             p.name.toLowerCase().includes('pen') ||
             p.name.toLowerCase().includes('notebook') ||
             p.name.toLowerCase().includes('calculator') ||
             p.name.toLowerCase().includes('sheet') ||
             p.name.toLowerCase().includes('drafter')
         );
-      } else {
+      } else if (activeCategory === 'essentials') {
         list = list.filter(
-          (p) => p.category?.slug === activeCategory || p.categoryId === 'cat_' + activeCategory
+          (p) =>
+            p.category?.slug === 'essentials' ||
+            p.category?.name === 'Hostel Essentials' ||
+            p.categoryId === 'cat_essentials' ||
+            p.subcategory?.toLowerCase().includes('personal care') ||
+            p.subcategory?.toLowerCase().includes('cleaning') ||
+            p.subcategory?.toLowerCase().includes('daily essentials')
+        );
+      } else {
+        const catStr: string = activeCategory;
+        list = list.filter(
+          (p) =>
+            p.category?.slug === catStr ||
+            p.categoryId === 'cat_' + catStr ||
+            p.category?.name?.toLowerCase() === catStr.toLowerCase()
         );
       }
     }
@@ -237,31 +271,42 @@ export default function HomePage() {
       list = list.filter(
         (p) =>
           p.name.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q) ||
-          p.category?.name.toLowerCase().includes(q)
+          (p.description && p.description.toLowerCase().includes(q)) ||
+          (p.category?.name && p.category.name.toLowerCase().includes(q)) ||
+          (p.subcategory && p.subcategory.toLowerCase().includes(q)) ||
+          (p.tags && p.tags.toLowerCase().includes(q))
       );
     }
 
     if (selectedSubfilter !== 'all') {
-      if (selectedSubfilter === 'discount') {
-        list = list.filter((p) => p.discountPrice && p.discountPrice < p.price);
+      if (selectedSubfilter === 'popular') {
+        list = list.filter((p) => p.isPopular === true);
+      } else if (selectedSubfilter === 'discount') {
+        list = list.filter((p) => {
+          if (typeof p.discountPercentage === 'number' && p.discountPercentage >= 10) return true;
+          const orig = p.originalPrice ?? p.price;
+          const sell = p.sellingPrice ?? p.discountPrice ?? p.price;
+          if (orig > 0 && orig > sell) {
+            return ((orig - sell) / orig) * 100 >= 10;
+          }
+          return false;
+        });
       } else if (selectedSubfilter === 'veg') {
-        list = list.filter(
-          (p) =>
-            !p.name.toLowerCase().includes('chicken') &&
-            !p.name.toLowerCase().includes('egg')
-        );
+        // STRICT: Only products marked Pure Veg. Stationery and Hostel Essentials must NEVER appear!
+        list = list.filter((p) => p.dietaryType === 'Pure Veg');
       } else if (selectedSubfilter === 'non-veg') {
-        list = list.filter(
-          (p) =>
-            p.name.toLowerCase().includes('chicken') ||
-            p.name.toLowerCase().includes('egg')
-        );
+        // STRICT: Only products marked Non-Veg. Stationery and Hostel Essentials must NEVER appear!
+        list = list.filter((p) => p.dietaryType === 'Non-Veg');
       }
     }
 
     return list;
   }, [products, activeCategory, searchFilter, selectedSubfilter]);
+
+  // Products explicitly marked Popular on Campus by admin
+  const popularCampusProducts = useMemo(() => {
+    return products.filter((p) => p.isPopular === true);
+  }, [products]);
 
   const handleCategoryClick = (svc: ServiceCard) => {
     setActiveCategory(svc.id);
@@ -683,16 +728,55 @@ export default function HomePage() {
         )}
 
         {/* ==================================================== */}
-        {/* 7. POPULAR ON CAMPUS (Product Discovery)             */}
+        {/* 6.5 POPULAR ON CAMPUS SECTION                        */}
         {/* ==================================================== */}
-        <section className="space-y-4 w-full min-w-0">
+        {popularCampusProducts.length > 0 && (
+          <section className="space-y-3 w-full min-w-0">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm sm:text-base font-black uppercase tracking-wider text-[#172033] flex items-center gap-1.5">
+                  <span>🔥 Popular on Campus</span>
+                  <span className="text-[10px] font-extrabold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                    Student Favorites
+                  </span>
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Products curated by campus administration and trending student orders
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveCategory('all');
+                  setSelectedSubfilter('popular');
+                  const el = document.getElementById('campus-marketplace-catalog');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="text-xs font-bold text-[#4F9D2F] hover:text-[#36751F] flex items-center gap-1 hover:underline cursor-pointer"
+              >
+                <span>View All Popular &rarr;</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 w-full min-w-0">
+              {popularCampusProducts.slice(0, 4).map((product) => (
+                <ProductCard key={`pop-${product.id}`} product={product} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ==================================================== */}
+        {/* 7. CAMPUS MARKETPLACE & PRODUCT DISCOVERY            */}
+        {/* ==================================================== */}
+        <section id="campus-marketplace-catalog" className="space-y-4 w-full min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <h2 className="text-sm sm:text-base font-black uppercase tracking-wider text-[#172033] flex items-center gap-1.5">
-                <span>🔥 Popular on Campus</span>
+                <span>🛒 Campus Marketplace</span>
               </h2>
               <p className="text-xs text-gray-500">
-                Trending snacks, cafeteria meals, fresh fruits and essentials based on student activity
+                Explore cafeteria meals, fresh fruits, stationery and hostel essentials
               </p>
             </div>
 
@@ -803,6 +887,18 @@ export default function HomePage() {
                 }`}
               >
                 All Items
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedSubfilter(selectedSubfilter === 'popular' ? 'all' : 'popular')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 flex items-center gap-1 ${
+                  selectedSubfilter === 'popular'
+                    ? 'bg-[#d97706] text-white'
+                    : 'bg-white border border-[#E5E7EB] text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <span>🔥</span>
+                <span>Popular on Campus</span>
               </button>
               <button
                 type="button"

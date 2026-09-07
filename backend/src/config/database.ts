@@ -403,26 +403,42 @@ const fallbackHandlers: Record<string, any> = {
     create: async (args: any) => {
       const prodData = args?.data || {};
       const newId = `prod_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+      const priceNum = Number(prodData.price) || 0;
+      const discountNum = prodData.discountPrice ? Number(prodData.discountPrice) : null;
+      const discPct =
+        prodData.discountPercentage !== undefined
+          ? Number(prodData.discountPercentage)
+          : discountNum && priceNum > 0 && discountNum < priceNum
+          ? Math.max(0, Math.round(((priceNum - discountNum) / priceNum) * 100))
+          : 0;
+
       const newProduct: any = {
         id: newId,
         name: prodData.name,
         slug: prodData.slug || prodData.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
         categoryId: prodData.categoryId,
+        subcategory: prodData.subcategory || null,
+        dietaryType: prodData.dietaryType || 'Not Applicable',
+        tags: prodData.tags || null,
+        image: prodData.image || null,
+        deliveryType: prodData.deliveryTime || prodData.deliveryType || '10-15 mins',
         description: prodData.description || '',
-        price: Number(prodData.price) || 0,
-        discountPrice: prodData.discountPrice ? Number(prodData.discountPrice) : null,
+        price: priceNum,
+        discountPrice: discountNum,
+        discountPercentage: discPct,
         unit: prodData.unit || 'piece',
         sku: prodData.sku || `SKU-${Date.now().toString().slice(-6)}`,
         stock: parseInt(prodData.stock, 10) || 0,
         lowStockThreshold: parseInt(prodData.lowStockThreshold, 10) || 5,
         availability: prodData.availability !== undefined ? Boolean(prodData.availability) : true,
         isFeatured: Boolean(prodData.isFeatured),
+        isPopular: Boolean(prodData.isPopular),
         availableToday: prodData.availableToday !== undefined ? Boolean(prodData.availableToday) : true,
         providerId: prodData.providerId || null,
         approvalStatus: prodData.approvalStatus || 'APPROVED',
         approvedBy: prodData.approvedBy || 'ADMIN',
         approvedAt: new Date(),
-        images: [],
+        images: prodData.image ? [{ id: `img_${newId}`, googleDriveUrl: prodData.image, isPrimary: true }] : [],
         inventory: {
           id: `inv_${Date.now()}`,
           productId: newId,
@@ -440,7 +456,17 @@ const fallbackHandlers: Record<string, any> = {
       const id = args?.where?.id;
       const prod = fallbackProducts.find((p: any) => p.id === id);
       if (prod && args.data) {
-        Object.assign(prod, args.data, { updatedAt: new Date() });
+        const updateData = { ...args.data };
+        if (updateData.price !== undefined || updateData.discountPrice !== undefined) {
+          const p = updateData.price !== undefined ? Number(updateData.price) : Number(prod.price);
+          const d = updateData.discountPrice !== undefined ? (updateData.discountPrice ? Number(updateData.discountPrice) : null) : (prod.discountPrice ? Number(prod.discountPrice) : null);
+          if (p > 0 && d && d < p) {
+            updateData.discountPercentage = Math.round(((p - d) / p) * 100);
+          } else {
+            updateData.discountPercentage = 0;
+          }
+        }
+        Object.assign(prod, updateData, { updatedAt: new Date() });
         if (args.data.stock !== undefined && prod.inventory) {
           prod.inventory.currentStock = parseInt(args.data.stock, 10);
           (prod.inventory as any).isOutOfStock = prod.inventory.currentStock <= 0;

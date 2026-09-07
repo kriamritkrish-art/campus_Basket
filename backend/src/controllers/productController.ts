@@ -44,7 +44,10 @@ export class ProductController {
         where.AND.push({
           OR: [
             { name: { contains: search as string } },
-            { description: { contains: search as string } }
+            { description: { contains: search as string } },
+            { subcategory: { contains: search as string } },
+            { tags: { contains: search as string } },
+            { category: { name: { contains: search as string } } }
           ]
         });
       }
@@ -91,22 +94,41 @@ export class ProductController {
 
         const images = p.images || [];
         const primaryImage =
+          (p as any).image ||
           images.find((img) => img.isPrimary)?.googleDriveUrl ||
           images[0]?.googleDriveUrl ||
           (p as any).primaryImage ||
           null;
+
+        const origPrice = Number(p.price);
+        const sellPrice = p.discountPrice ? Number(p.discountPrice) : origPrice;
+        const discountPct =
+          p.discountPercentage !== null && p.discountPercentage !== undefined
+            ? p.discountPercentage
+            : origPrice > 0 && sellPrice < origPrice
+            ? Math.max(0, Math.round(((origPrice - sellPrice) / origPrice) * 100))
+            : 0;
 
         return {
           id: p.id,
           name: p.name,
           slug: p.slug,
           description: p.description,
-          price: Number(p.price),
+          price: origPrice,
+          originalPrice: origPrice,
           discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
+          sellingPrice: sellPrice,
+          discountPercentage: discountPct,
+          subcategory: p.subcategory || null,
+          dietaryType: p.dietaryType || 'Not Applicable',
+          isPopular: Boolean(p.isPopular),
+          tags: p.tags || '',
+          deliveryType: p.deliveryType || '10-15 mins',
           unit: p.unit,
           stock: p.stock,
+          availability: p.availability !== undefined ? p.availability : true,
           isLowStock: p.stock <= (p.lowStockThreshold || 5) && p.stock > 0,
-          isOutOfStock: p.stock <= 0,
+          isOutOfStock: p.stock <= 0 || p.availability === false,
           isFeatured: p.isFeatured,
           availableToday: p.availableToday !== undefined ? p.availableToday : true,
           category: p.category,
@@ -134,7 +156,9 @@ export class ProductController {
           fallbacks = fallbacks.filter(
             (p) =>
               p.name.toLowerCase().includes(q) ||
-              p.description.toLowerCase().includes(q)
+              (p.description && p.description.toLowerCase().includes(q)) ||
+              (p.subcategory && p.subcategory.toLowerCase().includes(q)) ||
+              (p.tags && p.tags.toLowerCase().includes(q))
           );
         }
 
@@ -160,25 +184,43 @@ export class ProductController {
         formattedProducts = pagedFallbacks.map((p) => {
           const cat = fallbackCategories.find((c) => c.id === p.categoryId);
           const images = p.images || [];
-          const primaryImage = images[0]?.googleDriveUrl || (p as any).primaryImage || null;
+          const primaryImage = (p as any).image || images[0]?.googleDriveUrl || (p as any).primaryImage || null;
+          const origPrice = Number(p.price);
+          const sellPrice = p.discountPrice ? Number(p.discountPrice) : origPrice;
+          const discountPct =
+            p.discountPercentage !== null && p.discountPercentage !== undefined
+              ? p.discountPercentage
+              : origPrice > 0 && sellPrice < origPrice
+              ? Math.max(0, Math.round(((origPrice - sellPrice) / origPrice) * 100))
+              : 0;
+
           return {
             id: p.id,
             name: p.name,
             slug: p.slug,
             description: p.description,
-            price: Number(p.price),
+            price: origPrice,
+            originalPrice: origPrice,
             discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
+            sellingPrice: sellPrice,
+            discountPercentage: discountPct,
+            subcategory: p.subcategory || null,
+            dietaryType: p.dietaryType || 'Not Applicable',
+            isPopular: Boolean(p.isPopular),
+            tags: p.tags || '',
+            deliveryType: (p as any).deliveryType || (p as any).deliveryTime || '10-15 mins',
             unit: p.unit,
             stock: p.stock,
+            availability: p.availability !== undefined ? p.availability : true,
             isLowStock: p.stock <= (p.lowStockThreshold || 5) && p.stock > 0,
-            isOutOfStock: p.stock <= 0,
+            isOutOfStock: p.stock <= 0 || p.availability === false,
             isFeatured: p.isFeatured,
             availableToday: true,
             category: cat || { id: p.categoryId, name: 'Food & Meals', slug: (category as string) || 'food' },
             primaryImage,
             images,
             rating: 4.8,
-            reviewsCount: 18
+            reviewsCount: 12
           };
         });
       }

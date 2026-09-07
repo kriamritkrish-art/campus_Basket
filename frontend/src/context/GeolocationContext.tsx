@@ -10,6 +10,7 @@ interface Coords {
 interface GeolocationContextType {
   coords: Coords | null;
   isInsideCampus: boolean;
+  geofenceEnforced: boolean;
   isChecking: boolean;
   errorMessage: string | null;
   requestLocation: () => Promise<void>;
@@ -18,6 +19,7 @@ interface GeolocationContextType {
 const GeolocationContext = createContext<GeolocationContextType>({
   coords: null,
   isInsideCampus: true,
+  geofenceEnforced: true,
   isChecking: false,
   errorMessage: null,
   requestLocation: async () => {},
@@ -44,8 +46,25 @@ function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
 export function GeolocationProvider({ children }: { children: React.ReactNode }) {
   const [coords, setCoords] = useState<Coords | null>(null);
   const [isInsideCampus, setIsInsideCampus] = useState<boolean>(true);
+  const [geofenceEnforced, setGeofenceEnforced] = useState<boolean>(true);
   const [isChecking, setIsChecking] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Check if geofence is disabled by admin
+    fetch('/api/admin/settings')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.settings)) {
+          const setting = data.settings.find((s: any) => s.key === 'GEOFENCE_ENFORCED');
+          if (setting && setting.value === 'false') {
+            setGeofenceEnforced(false);
+            setIsInsideCampus(true);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const requestLocation = async () => {
     if (!navigator.geolocation) {
@@ -73,7 +92,7 @@ export function GeolocationProvider({ children }: { children: React.ReactNode })
         );
 
         const inside = dist <= MAX_CAMPUS_RADIUS_KM;
-        setIsInsideCampus(inside);
+        setIsInsideCampus(!geofenceEnforced ? true : inside);
         setIsChecking(false);
       },
       (err) => {
@@ -90,13 +109,14 @@ export function GeolocationProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     requestLocation();
-  }, []);
+  }, [geofenceEnforced]);
 
   return (
     <GeolocationContext.Provider
       value={{
         coords,
-        isInsideCampus,
+        isInsideCampus: !geofenceEnforced ? true : isInsideCampus,
+        geofenceEnforced,
         isChecking,
         errorMessage,
         requestLocation,

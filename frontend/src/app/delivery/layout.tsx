@@ -7,6 +7,7 @@ import {
   DeliveryProvider,
   useDelivery,
 } from '@/context/DeliveryContext';
+import { useAuth } from '@/context/AuthContext';
 import OtpModal from '@/components/delivery/OtpModal';
 import {
   LayoutDashboard,
@@ -159,8 +160,12 @@ function DeliveryLayoutInner({ children }: { children: React.ReactNode }) {
     },
   ];
 
+  const { logout } = useAuth();
+
   const handleLogout = () => {
-    router.push('/delivery/login');
+    logout();
+    setMobileDrawerOpen(false);
+    router.replace('/delivery/login');
   };
 
   return (
