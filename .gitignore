@@ -12,9 +12,21 @@ coverage/
 **/.next/
 frontend/.next/
 frontend/out/
+out/
+**/out/
 build/
 dist/
 *.tsbuildinfo
+
+# Android & Gradle
+.gradle/
+**/.gradle/
+android/build/
+android/app/build/
+**/android/build/
+**/android/app/build/
+**/android/.gradle/
+**/capacitor-cordova-android-plugins/build/
 
 # Environment files
 .env

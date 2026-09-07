@@ -49,7 +49,10 @@ export class ProviderController {
       monthStart.setHours(0, 0, 0, 0);
 
       const isLaundryProvider =
-        provider.serviceCategory?.toLowerCase().includes('laundry');
+        !provider.serviceCategory ||
+        provider.serviceCategory.toLowerCase().includes('laundry') ||
+        provider.serviceCategory.toLowerCase().includes('all') ||
+        provider.serviceCategory === 'LAUNDRY';
 
       const [products, orders, laundryJobs] = await Promise.all([
         prisma.product.findMany({

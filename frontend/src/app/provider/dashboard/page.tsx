@@ -71,8 +71,9 @@ export default function ProviderDashboardPage() {
 
   // Navigation Tabs
   const [activeTab, setActiveTab] = useState<
-    'OVERVIEW' | 'LIVE_OPERATIONS' | 'CUSTOMERS' | 'PRODUCTS' | 'DELIVERY' | 'FINANCE' | 'LAUNDRY'
+    'OVERVIEW' | 'LIVE_OPERATIONS' | 'CUSTOMERS' | 'PRODUCTS' | 'DELIVERY' | 'FINANCE' | 'LAUNDRY' | 'GARMENT_INSPECTION' | 'RATES'
   >('OVERVIEW');
+  const [laundryFilter, setLaundryFilter] = useState<'ALL' | 'PICKUP' | 'WASH' | 'READY' | 'COMPLETED'>('ALL');
 
   // Global Date Filter
   const [timeframe, setTimeframe] = useState<string>('30d');
@@ -222,6 +223,10 @@ export default function ProviderDashboardPage() {
       const res = await apiRequest(query);
       if (res.success) {
         setAnalytics(res);
+        const cat = (res.provider?.serviceCategory || '').toLowerCase();
+        if (cat.includes('laundry') && !cat.includes('all')) {
+          setActiveTab((prev) => (prev === 'OVERVIEW' ? 'LAUNDRY' : prev));
+        }
       }
     } catch (err) {
       console.warn('Analytics fetch error:', err);
@@ -539,10 +544,66 @@ export default function ProviderDashboardPage() {
     Boolean(analytics?.provider?.serviceCategory?.toLowerCase().includes('laundry')) ||
     analytics?.provider?.serviceCategory === 'ALL';
 
+  const isPureLaundry =
+    analytics?.provider?.serviceCategory === 'Express Laundry' ||
+    analytics?.provider?.serviceCategory === 'LAUNDRY' ||
+    (Boolean(analytics?.provider?.serviceCategory?.toLowerCase().includes('laundry')) &&
+     !Boolean(analytics?.provider?.serviceCategory?.toLowerCase().includes('all')));
+
+  const laundryActiveJobs = useMemo(() => {
+    return laundryJobs.filter((j) => j.status !== 'COMPLETED' && j.status !== 'CANCELLED');
+  }, [laundryJobs]);
+
+  const laundryPickupPending = useMemo(() => {
+    return laundryJobs.filter((j) => ['REQUESTED', 'ACCEPTED', 'PICKUP_SCHEDULED'].includes(j.status));
+  }, [laundryJobs]);
+
+  const laundryInWash = useMemo(() => {
+    return laundryJobs.filter((j) => ['CLOTHES_COLLECTED', 'WASHING', 'IRONING'].includes(j.status));
+  }, [laundryJobs]);
+
+  const laundryReadyDropoff = useMemo(() => {
+    return laundryJobs.filter((j) => ['READY', 'DELIVERY_SCHEDULED'].includes(j.status));
+  }, [laundryJobs]);
+
+  const laundryCompleted = useMemo(() => {
+    return laundryJobs.filter((j) => j.status === 'COMPLETED');
+  }, [laundryJobs]);
+
+  const filteredLaundryJobs = useMemo(() => {
+    if (laundryFilter === 'PICKUP') return laundryPickupPending;
+    if (laundryFilter === 'WASH') return laundryInWash;
+    if (laundryFilter === 'READY') return laundryReadyDropoff;
+    if (laundryFilter === 'COMPLETED') return laundryCompleted;
+    return laundryJobs;
+  }, [laundryFilter, laundryJobs, laundryPickupPending, laundryInWash, laundryReadyDropoff, laundryCompleted]);
+
+  // Aggregate all photos uploaded across active laundry jobs for the Garment Inspection tab
+  const allGarmentPhotos = useMemo(() => {
+    const list: any[] = [];
+    laundryJobs.forEach((job) => {
+      if (Array.isArray(job.photos)) {
+        job.photos.forEach((p: any) => {
+          list.push({
+            ...p,
+            orderNumber: job.orderNumber,
+            jobId: job.id,
+            studentName: job.student?.fullName || 'Student',
+            hallName: job.hallName,
+            roomNumber: job.roomNumber,
+            status: job.status,
+            pickupDate: job.pickupDate
+          });
+        });
+      }
+    });
+    return list;
+  }, [laundryJobs]);
+
   const activeTabTitle = useMemo(() => {
     switch (activeTab) {
       case 'OVERVIEW':
-        return 'Overview & Business Analytics';
+        return isPureLaundry ? 'Laundry Performance & Revenue Analytics' : 'Overview & Business Analytics';
       case 'LIVE_OPERATIONS':
         return 'Live Operations & Order Pipeline';
       case 'CUSTOMERS':
@@ -554,11 +615,15 @@ export default function ProviderDashboardPage() {
       case 'FINANCE':
         return 'Finance, Revenue & Settlement Statement';
       case 'LAUNDRY':
-        return 'Doorstep Laundry OTP Verification Desk';
+        return 'Express Laundry Command Center';
+      case 'GARMENT_INSPECTION':
+        return 'Garment Photos & Condition Gallery';
+      case 'RATES':
+        return 'Campus Laundry Service Rate Card';
       default:
         return 'Overview & Business Analytics';
     }
-  }, [activeTab]);
+  }, [activeTab, isPureLaundry]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex font-sans">
@@ -601,121 +666,217 @@ export default function ProviderDashboardPage() {
 
             {/* Nav list */}
             <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5">
-              <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Business Management
-              </div>
+              {isPureLaundry ? (
+                <>
+                  <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-indigo-400 flex items-center justify-between">
+                    <span>Laundry Operations</span>
+                    <span className="text-[9px] bg-indigo-900/60 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-700">Self-Fulfill</span>
+                  </div>
 
-              <button
-                onClick={() => { setActiveTab('OVERVIEW'); setIsMobileSidebarOpen(false); }}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === 'OVERVIEW'
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <BarChart3 className="w-4 h-4" />
-                  Overview & Analytics
-                </span>
-                {activeTab === 'OVERVIEW' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
-              </button>
+                  <button
+                    onClick={() => { setActiveTab('LAUNDRY'); setIsMobileSidebarOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeTab === 'LAUNDRY'
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Shirt className="w-4 h-4 text-indigo-400" />
+                      Laundry Command Center
+                    </span>
+                    {laundryActiveJobs.length > 0 ? (
+                      <span className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded-full text-[10px]">
+                        {laundryActiveJobs.length}
+                      </span>
+                    ) : activeTab === 'LAUNDRY' ? (
+                      <ChevronRight className="w-3.5 h-3.5 text-indigo-200" />
+                    ) : null}
+                  </button>
 
-              <button
-                onClick={() => { setActiveTab('LIVE_OPERATIONS'); setIsMobileSidebarOpen(false); }}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === 'LIVE_OPERATIONS'
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <Clock className="w-4 h-4 text-amber-400" />
-                  Live Operations & Orders
-                </span>
-                {kpis?.activeOrders?.value > 0 ? (
-                  <span className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded-full text-[10px]">
-                    {kpis?.activeOrders?.value}
-                  </span>
-                ) : activeTab === 'LIVE_OPERATIONS' ? (
-                  <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />
-                ) : null}
-              </button>
+                  <button
+                    onClick={() => { setActiveTab('GARMENT_INSPECTION'); setIsMobileSidebarOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeTab === 'GARMENT_INSPECTION'
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Camera className="w-4 h-4 text-cyan-400" />
+                      Garment Photos &amp; Inspection
+                    </span>
+                    {allGarmentPhotos.length > 0 ? (
+                      <span className="bg-cyan-900 text-cyan-200 font-bold px-1.5 py-0.5 rounded-full text-[10px]">
+                        {allGarmentPhotos.length}
+                      </span>
+                    ) : null}
+                  </button>
 
-              <button
-                onClick={() => { setActiveTab('CUSTOMERS'); setIsMobileSidebarOpen(false); }}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === 'CUSTOMERS'
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <Users className="w-4 h-4 text-blue-400" />
-                  Customer Analytics & Top Buyers
-                </span>
-                {activeTab === 'CUSTOMERS' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
-              </button>
+                  <button
+                    onClick={() => { setActiveTab('RATES'); setIsMobileSidebarOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeTab === 'RATES'
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Sparkles className="w-4 h-4 text-amber-400" />
+                      Campus Rate Card
+                    </span>
+                    {activeTab === 'RATES' && <ChevronRight className="w-3.5 h-3.5 text-indigo-200" />}
+                  </button>
 
-              <button
-                onClick={() => { setActiveTab('PRODUCTS'); setIsMobileSidebarOpen(false); }}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === 'PRODUCTS'
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <Boxes className="w-4 h-4 text-emerald-400" />
-                  Products & Catalog
-                </span>
-                {activeTab === 'PRODUCTS' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
-              </button>
+                  <button
+                    onClick={() => { setActiveTab('FINANCE'); setIsMobileSidebarOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeTab === 'FINANCE'
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <CircleDollarSign className="w-4 h-4 text-yellow-400" />
+                      Revenue &amp; Settlements
+                    </span>
+                    {activeTab === 'FINANCE' && <ChevronRight className="w-3.5 h-3.5 text-indigo-200" />}
+                  </button>
 
-              <button
-                onClick={() => { setActiveTab('DELIVERY'); setIsMobileSidebarOpen(false); }}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === 'DELIVERY'
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <Bike className="w-4 h-4 text-teal-400" />
-                  Delivery Performance
-                </span>
-                {activeTab === 'DELIVERY' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
-              </button>
+                  <button
+                    onClick={() => { setActiveTab('OVERVIEW'); setIsMobileSidebarOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeTab === 'OVERVIEW'
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <BarChart3 className="w-4 h-4 text-emerald-400" />
+                      Turnaround Analytics
+                    </span>
+                    {activeTab === 'OVERVIEW' && <ChevronRight className="w-3.5 h-3.5 text-indigo-200" />}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Business Management
+                  </div>
 
-              <button
-                onClick={() => { setActiveTab('FINANCE'); setIsMobileSidebarOpen(false); }}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeTab === 'FINANCE'
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <CircleDollarSign className="w-4 h-4 text-yellow-400" />
-                  Finance & Settlements
-                </span>
-                {activeTab === 'FINANCE' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
-              </button>
+                  <button
+                    onClick={() => { setActiveTab('OVERVIEW'); setIsMobileSidebarOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeTab === 'OVERVIEW'
+                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <BarChart3 className="w-4 h-4" />
+                      Overview &amp; Analytics
+                    </span>
+                    {activeTab === 'OVERVIEW' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+                  </button>
 
-              {isLaundryVendor && (
-                <button
-                  onClick={() => { setActiveTab('LAUNDRY'); setIsMobileSidebarOpen(false); }}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                    activeTab === 'LAUNDRY'
-                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                  }`}
-                >
-                  <span className="flex items-center gap-2.5">
-                    <Shirt className="w-4 h-4 text-indigo-400" />
-                    Doorstep Laundry OTPs
-                  </span>
-                  {activeTab === 'LAUNDRY' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
-                </button>
+                  <button
+                    onClick={() => { setActiveTab('LIVE_OPERATIONS'); setIsMobileSidebarOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeTab === 'LIVE_OPERATIONS'
+                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Clock className="w-4 h-4 text-amber-400" />
+                      Live Operations &amp; Orders
+                    </span>
+                    {kpis?.activeOrders?.value > 0 ? (
+                      <span className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded-full text-[10px]">
+                        {kpis?.activeOrders?.value}
+                      </span>
+                    ) : activeTab === 'LIVE_OPERATIONS' ? (
+                      <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />
+                    ) : null}
+                  </button>
+
+                  <button
+                    onClick={() => { setActiveTab('CUSTOMERS'); setIsMobileSidebarOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeTab === 'CUSTOMERS'
+                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Users className="w-4 h-4 text-blue-400" />
+                      Customer Analytics &amp; Top Buyers
+                    </span>
+                    {activeTab === 'CUSTOMERS' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+                  </button>
+
+                  <button
+                    onClick={() => { setActiveTab('PRODUCTS'); setIsMobileSidebarOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeTab === 'PRODUCTS'
+                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Boxes className="w-4 h-4 text-emerald-400" />
+                      Products &amp; Catalog
+                    </span>
+                    {activeTab === 'PRODUCTS' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+                  </button>
+
+                  <button
+                    onClick={() => { setActiveTab('DELIVERY'); setIsMobileSidebarOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeTab === 'DELIVERY'
+                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Bike className="w-4 h-4 text-teal-400" />
+                      Delivery Performance
+                    </span>
+                    {activeTab === 'DELIVERY' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+                  </button>
+
+                  <button
+                    onClick={() => { setActiveTab('FINANCE'); setIsMobileSidebarOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeTab === 'FINANCE'
+                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <CircleDollarSign className="w-4 h-4 text-yellow-400" />
+                      Finance &amp; Settlements
+                    </span>
+                    {activeTab === 'FINANCE' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+                  </button>
+
+                  {isLaundryVendor && (
+                    <button
+                      onClick={() => { setActiveTab('LAUNDRY'); setIsMobileSidebarOpen(false); }}
+                      className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                        activeTab === 'LAUNDRY'
+                          ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                          : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <Shirt className="w-4 h-4 text-indigo-400" />
+                        Doorstep Laundry OTPs
+                      </span>
+                      {activeTab === 'LAUNDRY' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+                    </button>
+                  )}
+                </>
               )}
 
               {/* Reports & Tools */}
@@ -803,121 +964,217 @@ export default function ProviderDashboardPage() {
 
         {/* Vertical Navigation Tabs */}
         <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-          <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-            Operations & Analytics
-          </div>
+          {isPureLaundry ? (
+            <>
+              <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-indigo-400 flex items-center justify-between">
+                <span>Laundry Partner Console</span>
+                <span className="text-[9px] bg-indigo-900/60 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-700">Self-Fulfill</span>
+              </div>
 
-          <button
-            onClick={() => setActiveTab('OVERVIEW')}
-            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === 'OVERVIEW'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <BarChart3 className="w-4 h-4" />
-              Overview & Analytics
-            </span>
-            {activeTab === 'OVERVIEW' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
-          </button>
+              <button
+                onClick={() => setActiveTab('LAUNDRY')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'LAUNDRY'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Shirt className="w-4 h-4 text-indigo-400" />
+                  Laundry Command Center
+                </span>
+                {laundryActiveJobs.length > 0 ? (
+                  <span className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded-full text-[10px]">
+                    {laundryActiveJobs.length}
+                  </span>
+                ) : activeTab === 'LAUNDRY' ? (
+                  <ChevronRight className="w-3.5 h-3.5 text-indigo-200" />
+                ) : null}
+              </button>
 
-          <button
-            onClick={() => setActiveTab('LIVE_OPERATIONS')}
-            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === 'LIVE_OPERATIONS'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Clock className="w-4 h-4 text-amber-400" />
-              Live Operations & Orders
-            </span>
-            {kpis?.activeOrders?.value > 0 ? (
-              <span className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded-full text-[10px]">
-                {kpis?.activeOrders?.value}
-              </span>
-            ) : activeTab === 'LIVE_OPERATIONS' ? (
-              <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />
-            ) : null}
-          </button>
+              <button
+                onClick={() => setActiveTab('GARMENT_INSPECTION')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'GARMENT_INSPECTION'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Camera className="w-4 h-4 text-cyan-400" />
+                  Garment Photos &amp; Inspection
+                </span>
+                {allGarmentPhotos.length > 0 ? (
+                  <span className="bg-cyan-900 text-cyan-200 font-bold px-1.5 py-0.5 rounded-full text-[10px]">
+                    {allGarmentPhotos.length}
+                  </span>
+                ) : null}
+              </button>
 
-          <button
-            onClick={() => setActiveTab('CUSTOMERS')}
-            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === 'CUSTOMERS'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Users className="w-4 h-4 text-blue-400" />
-              Customer Analytics & Top Buyers
-            </span>
-            {activeTab === 'CUSTOMERS' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
-          </button>
+              <button
+                onClick={() => setActiveTab('RATES')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'RATES'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  Campus Rate Card
+                </span>
+                {activeTab === 'RATES' && <ChevronRight className="w-3.5 h-3.5 text-indigo-200" />}
+              </button>
 
-          <button
-            onClick={() => setActiveTab('PRODUCTS')}
-            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === 'PRODUCTS'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Boxes className="w-4 h-4 text-emerald-400" />
-              Products & Catalog
-            </span>
-            {activeTab === 'PRODUCTS' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
-          </button>
+              <button
+                onClick={() => setActiveTab('FINANCE')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'FINANCE'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <CircleDollarSign className="w-4 h-4 text-yellow-400" />
+                  Revenue &amp; Settlements
+                </span>
+                {activeTab === 'FINANCE' && <ChevronRight className="w-3.5 h-3.5 text-indigo-200" />}
+              </button>
 
-          <button
-            onClick={() => setActiveTab('DELIVERY')}
-            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === 'DELIVERY'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Bike className="w-4 h-4 text-teal-400" />
-              Delivery Performance
-            </span>
-            {activeTab === 'DELIVERY' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
-          </button>
+              <button
+                onClick={() => setActiveTab('OVERVIEW')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'OVERVIEW'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <BarChart3 className="w-4 h-4 text-emerald-400" />
+                  Turnaround Analytics
+                </span>
+                {activeTab === 'OVERVIEW' && <ChevronRight className="w-3.5 h-3.5 text-indigo-200" />}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Operations &amp; Analytics
+              </div>
 
-          <button
-            onClick={() => setActiveTab('FINANCE')}
-            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-              activeTab === 'FINANCE'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <CircleDollarSign className="w-4 h-4 text-yellow-400" />
-              Finance & Settlements
-            </span>
-            {activeTab === 'FINANCE' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
-          </button>
+              <button
+                onClick={() => setActiveTab('OVERVIEW')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'OVERVIEW'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <BarChart3 className="w-4 h-4" />
+                  Overview &amp; Analytics
+                </span>
+                {activeTab === 'OVERVIEW' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+              </button>
 
-          {isLaundryVendor && (
-            <button
-              onClick={() => setActiveTab('LAUNDRY')}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'LAUNDRY'
-                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <Shirt className="w-4 h-4 text-indigo-400" />
-                Doorstep Laundry OTPs
-              </span>
-              {activeTab === 'LAUNDRY' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
-            </button>
+              <button
+                onClick={() => setActiveTab('LIVE_OPERATIONS')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'LIVE_OPERATIONS'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Clock className="w-4 h-4 text-amber-400" />
+                  Live Operations &amp; Orders
+                </span>
+                {kpis?.activeOrders?.value > 0 ? (
+                  <span className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded-full text-[10px]">
+                    {kpis?.activeOrders?.value}
+                  </span>
+                ) : activeTab === 'LIVE_OPERATIONS' ? (
+                  <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />
+                ) : null}
+              </button>
+
+              <button
+                onClick={() => setActiveTab('CUSTOMERS')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'CUSTOMERS'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Users className="w-4 h-4 text-blue-400" />
+                  Customer Analytics &amp; Top Buyers
+                </span>
+                {activeTab === 'CUSTOMERS' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+              </button>
+
+              <button
+                onClick={() => setActiveTab('PRODUCTS')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'PRODUCTS'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Boxes className="w-4 h-4 text-emerald-400" />
+                  Products &amp; Catalog
+                </span>
+                {activeTab === 'PRODUCTS' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+              </button>
+
+              <button
+                onClick={() => setActiveTab('DELIVERY')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'DELIVERY'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Bike className="w-4 h-4 text-teal-400" />
+                  Delivery Performance
+                </span>
+                {activeTab === 'DELIVERY' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+              </button>
+
+              <button
+                onClick={() => setActiveTab('FINANCE')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'FINANCE'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <CircleDollarSign className="w-4 h-4 text-yellow-400" />
+                  Finance &amp; Settlements
+                </span>
+                {activeTab === 'FINANCE' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+              </button>
+
+              {isLaundryVendor && (
+                <button
+                  onClick={() => setActiveTab('LAUNDRY')}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                    activeTab === 'LAUNDRY'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <Shirt className="w-4 h-4 text-indigo-400" />
+                    Doorstep Laundry OTPs
+                  </span>
+                  {activeTab === 'LAUNDRY' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
+                </button>
+              )}
+            </>
           )}
 
           {/* Section: Reports & Tools */}
@@ -2584,177 +2841,486 @@ export default function ProviderDashboardPage() {
             TAB 7: LAUNDRY SERVICES & DUAL-OTP VERIFICATION
             ======================================================= */}
         {activeTab === 'LAUNDRY' && isLaundryVendor && (
-          <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+          <div className="space-y-4">
+            {/* Laundry Command Center Header & KPI Stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center flex-shrink-0">
                   <Shirt className="w-5 h-5 text-indigo-600" />
-                  Express Laundry Doorstep Verification Desk
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Student dual-OTP room pickup &amp; delivery cycle &bull; Self-fulfillment control &bull; Photo inspection
-                </p>
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Active Wash Volume</div>
+                  <div className="text-xl font-black text-slate-900">{laundryActiveJobs.length} <span className="text-xs font-normal text-slate-400">jobs</span></div>
+                </div>
               </div>
-              <button
-                onClick={() => loadLaundryJobs()}
-                className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Refresh Jobs</span>
-              </button>
+
+              <div className="bg-white p-4 rounded-xl border border-amber-200/80 shadow-xs flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center flex-shrink-0">
+                  <Clock className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">Pickup Pending</div>
+                  <div className="text-xl font-black text-amber-900">{laundryPickupPending.length}</div>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-blue-200/80 shadow-xs flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center flex-shrink-0">
+                  <Sparkles className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-700">In Wash &amp; Press</div>
+                  <div className="text-xl font-black text-blue-900">{laundryInWash.length}</div>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-emerald-200/80 shadow-xs flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center flex-shrink-0">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">Ready for Dropoff</div>
+                  <div className="text-xl font-black text-emerald-900">{laundryReadyDropoff.length}</div>
+                </div>
+              </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 text-[10px]">
-                  <tr>
-                    <th className="py-3 px-4">Order #</th>
-                    <th className="py-3 px-4">Student &amp; Room</th>
-                    <th className="py-3 px-4">Garment Photos</th>
-                    <th className="py-3 px-4">Items Summary</th>
-                    <th className="py-3 px-4 text-right">Price</th>
-                    <th className="py-3 px-4 text-center">Pickup OTP (Give to Student)</th>
-                    <th className="py-3 px-4 text-center">Wash &amp; Return Stage</th>
-                    <th className="py-3 px-4 text-center">Return OTP Handover</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {laundryJobs.length > 0 ? (
-                    laundryJobs.map((job: any) => (
-                      <tr key={job.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                          #{job.orderNumber}
-                          <div className="text-[10px] text-slate-400 font-normal font-sans">
-                            {job.createdAt ? new Date(job.createdAt).toLocaleDateString('en-IN') : ''}
-                          </div>
-                        </td>
+            <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <Shirt className="w-5 h-5 text-indigo-600" />
+                    Express Laundry Doorstep Verification Desk
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Student dual-OTP room pickup &amp; delivery cycle &bull; Self-fulfillment control &bull; Photo inspection
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => loadLaundryJobs()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Refresh Jobs</span>
+                  </button>
+                </div>
+              </div>
 
-                        <td className="py-3 px-4 font-medium">
-                          <div className="font-bold text-slate-800">{job.student?.fullName || 'Student'}</div>
-                          <div className="text-slate-500 text-[11px] flex items-center gap-1 mt-0.5">
-                            <MapPin className="w-3 h-3 text-slate-400" />
-                            {job.hallName} {job.roomNumber}
-                          </div>
-                          {job.student?.mobileNumber && (
-                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                              📞 {job.student.mobileNumber}
+              {/* Stage Filter Buttons */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-100">
+                <span className="text-[11px] font-bold text-slate-400 mr-1 uppercase">Filter:</span>
+                <button
+                  onClick={() => setLaundryFilter('ALL')}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
+                    laundryFilter === 'ALL'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  All ({laundryJobs.length})
+                </button>
+                <button
+                  onClick={() => setLaundryFilter('PICKUP')}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
+                    laundryFilter === 'PICKUP'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200/60'
+                  }`}
+                >
+                  Pickup Pending ({laundryPickupPending.length})
+                </button>
+                <button
+                  onClick={() => setLaundryFilter('WASH')}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
+                    laundryFilter === 'WASH'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200/60'
+                  }`}
+                >
+                  In Washing / Iron ({laundryInWash.length})
+                </button>
+                <button
+                  onClick={() => setLaundryFilter('READY')}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
+                    laundryFilter === 'READY'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200/60'
+                  }`}
+                >
+                  Ready for Return ({laundryReadyDropoff.length})
+                </button>
+                <button
+                  onClick={() => setLaundryFilter('COMPLETED')}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition ${
+                    laundryFilter === 'COMPLETED'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/60'
+                  }`}
+                >
+                  Completed ({laundryCompleted.length})
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 text-[10px]">
+                    <tr>
+                      <th className="py-3 px-4">Order #</th>
+                      <th className="py-3 px-4">Student &amp; Room</th>
+                      <th className="py-3 px-4">Garment Photos</th>
+                      <th className="py-3 px-4">Items Summary</th>
+                      <th className="py-3 px-4 text-right">Price</th>
+                      <th className="py-3 px-4 text-center">Pickup OTP (Give to Student)</th>
+                      <th className="py-3 px-4 text-center">Wash &amp; Return Stage</th>
+                      <th className="py-3 px-4 text-center">Return OTP Handover</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredLaundryJobs.length > 0 ? (
+                      filteredLaundryJobs.map((job: any) => (
+                        <tr key={job.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                            #{job.orderNumber}
+                            <div className="text-[10px] text-slate-400 font-normal font-sans">
+                              {job.createdAt ? new Date(job.createdAt).toLocaleDateString('en-IN') : ''}
                             </div>
-                          )}
-                        </td>
+                          </td>
 
-                        <td className="py-3 px-4">
-                          {job.photos && job.photos.length > 0 ? (
-                            <button
-                              onClick={() =>
-                                setSelectedGarmentPhotos({
-                                  photos: job.photos,
-                                  orderNumber: job.orderNumber,
-                                  studentName: job.student?.fullName,
-                                })
-                              }
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] border border-indigo-200 transition"
-                            >
-                              <Camera className="w-3.5 h-3.5 text-indigo-600" />
-                              <span>View Clothes ({job.photos.length})</span>
-                            </button>
-                          ) : (
-                            <span className="text-slate-400 text-[11px] italic">No photos attached</span>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-4">
-                          <div className="text-slate-700 font-medium line-clamp-2 max-w-[180px]">
-                            {job.itemsSummary || `${job.totalClothesCount || 1} clothes`}
-                          </div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">
-                            Total: {job.totalClothesCount || 1} pcs
-                          </div>
-                        </td>
-
-                        <td className="py-3 px-4 text-right font-bold text-slate-900">
-                          ₹{job.finalPrice || job.estimatedPrice}
-                        </td>
-
-                        <td className="py-3 px-4 text-center">
-                          <div className="inline-flex flex-col items-center">
-                            <div className="font-mono font-black text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md border border-indigo-200 tracking-wider">
-                              {job.pickupOtp || '123456'}
+                          <td className="py-3 px-4 font-medium">
+                            <div className="font-bold text-slate-800">{job.student?.fullName || 'Student'}</div>
+                            <div className="text-slate-500 text-[11px] flex items-center gap-1 mt-0.5">
+                              <MapPin className="w-3 h-3 text-slate-400" />
+                              {job.hallName} {job.roomNumber}
                             </div>
-                            <span className="text-[9px] text-slate-500 mt-0.5">Tell to student</span>
-                            {job.pickupOtpStatus === 'PENDING' ? (
+                            {job.student?.mobileNumber && (
+                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                📞 {job.student.mobileNumber}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4">
+                            {job.photos && job.photos.length > 0 ? (
                               <button
-                                onClick={() => handleUpdateLaundryStatus(job.id, 'CLOTHES_COLLECTED')}
-                                className="mt-1 text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-2 py-0.5 rounded shadow-xs"
+                                onClick={() =>
+                                  setSelectedGarmentPhotos({
+                                    photos: job.photos,
+                                    orderNumber: job.orderNumber,
+                                    studentName: job.student?.fullName,
+                                  })
+                                }
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] border border-indigo-200 transition"
                               >
-                                Mark Collected
+                                <Camera className="w-3.5 h-3.5 text-indigo-600" />
+                                <span>View Clothes ({job.photos.length})</span>
                               </button>
                             ) : (
-                              <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-0.5 mt-0.5">
-                                <CheckCircle2 className="w-3 h-3" /> Collected
-                              </span>
+                              <span className="text-slate-400 text-[11px] italic">No photos attached</span>
                             )}
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="py-3 px-4 text-center">
-                          <div className="space-y-1 inline-block text-left">
-                            <select
-                              value={job.status}
-                              onChange={(e) => handleUpdateLaundryStatus(job.id, e.target.value)}
-                              className="bg-slate-50 border border-slate-200 text-slate-700 font-bold text-[11px] rounded-lg px-2 py-1 cursor-pointer focus:outline-none focus:border-indigo-600"
-                            >
-                              <option value="REQUESTED">Requested</option>
-                              <option value="ACCEPTED">Accepted</option>
-                              <option value="PICKUP_SCHEDULED">Pickup Scheduled</option>
-                              <option value="CLOTHES_COLLECTED">Clothes Collected</option>
-                              <option value="WASHING">Washing</option>
-                              <option value="IRONING">Ironing</option>
-                              <option value="READY">Ready for Return</option>
-                              <option value="DELIVERY_SCHEDULED">Out for Delivery</option>
-                              <option value="COMPLETED">Completed</option>
-                            </select>
-                            <div className="text-[9px] text-slate-400">
-                              {job.deliveryBoy ? `Runner: ${job.deliveryBoy.fullName}` : 'Self-Fulfillment'}
+                          <td className="py-3 px-4">
+                            <div className="text-slate-700 font-medium line-clamp-2 max-w-[180px]">
+                              {job.itemsSummary || `${job.totalClothesCount || 1} clothes`}
                             </div>
-                          </div>
-                        </td>
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                              Total: {job.totalClothesCount || 1} pcs
+                            </div>
+                          </td>
 
-                        <td className="py-3 px-4 text-center">
-                          {job.deliveryOtpStatus === 'VERIFIED' || job.status === 'COMPLETED' ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full text-[11px] font-bold">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              Delivered
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                setOtpModal({
-                                  isOpen: true,
-                                  jobId: job.id,
-                                  type: 'DELIVERY',
-                                  orderNumber: job.orderNumber,
-                                });
-                                setEnteredOtp('');
-                              }}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold shadow-xs flex items-center gap-1 mx-auto transition"
-                            >
-                              <KeyRound className="w-3 h-3" />
-                              <span>Verify Return OTP</span>
-                            </button>
-                          )}
+                          <td className="py-3 px-4 text-right font-bold text-slate-900">
+                            ₹{job.finalPrice || job.estimatedPrice}
+                          </td>
+
+                          <td className="py-3 px-4 text-center">
+                            <div className="inline-flex flex-col items-center">
+                              <div className="font-mono font-black text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md border border-indigo-200 tracking-wider">
+                                {job.pickupOtp || '123456'}
+                              </div>
+                              <span className="text-[9px] text-slate-500 mt-0.5">Tell to student</span>
+                              {job.pickupOtpStatus === 'PENDING' ? (
+                                <button
+                                  onClick={() => handleUpdateLaundryStatus(job.id, 'CLOTHES_COLLECTED')}
+                                  className="mt-1 text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-2 py-0.5 rounded shadow-xs"
+                                >
+                                  Mark Collected
+                                </button>
+                              ) : (
+                                <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-0.5 mt-0.5">
+                                  <CheckCircle2 className="w-3 h-3" /> Collected
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4 text-center">
+                            <div className="space-y-1 inline-block text-left">
+                              <select
+                                value={job.status}
+                                onChange={(e) => handleUpdateLaundryStatus(job.id, e.target.value)}
+                                className="bg-slate-50 border border-slate-200 text-slate-700 font-bold text-[11px] rounded-lg px-2 py-1 cursor-pointer focus:outline-none focus:border-indigo-600"
+                              >
+                                <option value="REQUESTED">Requested</option>
+                                <option value="ACCEPTED">Accepted</option>
+                                <option value="PICKUP_SCHEDULED">Pickup Scheduled</option>
+                                <option value="CLOTHES_COLLECTED">Clothes Collected</option>
+                                <option value="WASHING">Washing</option>
+                                <option value="IRONING">Ironing</option>
+                                <option value="READY">Ready for Return</option>
+                                <option value="DELIVERY_SCHEDULED">Out for Delivery</option>
+                                <option value="COMPLETED">Completed</option>
+                              </select>
+                              <div className="text-[9px] text-slate-400">
+                                {job.deliveryBoy ? `Runner: ${job.deliveryBoy.fullName}` : 'Self-Fulfillment'}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4 text-center">
+                            {job.deliveryOtpStatus === 'VERIFIED' || job.status === 'COMPLETED' ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full text-[11px] font-bold">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                Delivered
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setOtpModal({
+                                    isOpen: true,
+                                    jobId: job.id,
+                                    type: 'DELIVERY',
+                                    orderNumber: job.orderNumber,
+                                  });
+                                  setEnteredOtp('');
+                                }}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold shadow-xs flex items-center gap-1 mx-auto transition"
+                              >
+                                <KeyRound className="w-3 h-3" />
+                                <span>Verify Return OTP</span>
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={8} className="py-10 text-center text-slate-400">
+                          <Shirt className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                          No orders match the selected filter.
                         </td>
                       </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={8} className="py-10 text-center text-slate-400">
-                        <Shirt className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                        No active doorstep laundry orders right now.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* =======================================================
+            TAB 8: GARMENT PHOTOS & INSPECTION GALLERY
+            ======================================================= */}
+        {activeTab === 'GARMENT_INSPECTION' && (
+          <div className="space-y-4">
+            <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <Camera className="w-5 h-5 text-indigo-600" />
+                    Garment Inspection &amp; Pre-Wash Condition Gallery
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Verify pre-existing garment conditions, fabric colors, and tags uploaded by hostel students before wash cycles.
+                  </p>
+                </div>
+                <div className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg">
+                  Total Photos: <span className="text-indigo-600 font-bold">{allGarmentPhotos.length}</span>
+                </div>
+              </div>
+
+              {allGarmentPhotos.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  {allGarmentPhotos.map((item: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className="group relative rounded-xl border border-slate-200 overflow-hidden bg-slate-50 hover:shadow-md transition-all flex flex-col"
+                    >
+                      <div
+                        className="relative aspect-square w-full bg-slate-200 cursor-pointer overflow-hidden"
+                        onClick={() =>
+                          setSelectedGarmentPhotos({
+                            photos: [item.photo],
+                            orderNumber: item.orderNumber,
+                            studentName: item.studentName,
+                          })
+                        }
+                      >
+                        <img
+                          src={item.photo}
+                          alt={`Garment for #${item.orderNumber}`}
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <span className="text-white text-xs font-bold px-2 py-1 rounded bg-black/60 flex items-center gap-1">
+                            <Eye className="w-3.5 h-3.5" /> Inspect
+                          </span>
+                        </div>
+                      </div>
+                      <div className="p-2.5 flex-1 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-mono font-bold text-xs text-slate-900">#{item.orderNumber}</span>
+                            <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                              {item.status}
+                            </span>
+                          </div>
+                          <div className="text-xs font-bold text-slate-800 mt-1 truncate">{item.studentName}</div>
+                          <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                            <MapPin className="w-3 h-3 text-slate-400" />
+                            {item.hall} {item.room}
+                          </div>
+                        </div>
+                        {item.itemsSummary && (
+                          <div className="text-[10px] text-slate-400 mt-2 truncate border-t border-slate-100 pt-1">
+                            {item.itemsSummary}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-16 text-center text-slate-400">
+                  <Camera className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm font-semibold text-slate-600">No garment inspection photos uploaded yet</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    When students attach clothes photos during laundry bookings, they will appear here for quality checks.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* =======================================================
+            TAB 9: CAMPUS LAUNDRY RATE CARD & SLAs
+            ======================================================= */}
+        {activeTab === 'RATES' && (
+          <div className="space-y-4">
+            <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-amber-500" />
+                    NIT Durgapur Campus Official Laundry Rate Card
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Standard rates approved for hostel student wash, fold, ironing, and express turnaround services.
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Campus Subsidized Rates
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Standard Wash & Fold */}
+                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-slate-900">Standard Wash &amp; Fold</h4>
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">Everyday</span>
+                  </div>
+                  <div className="text-2xl font-black text-slate-900">₹12 - ₹15 <span className="text-xs font-normal text-slate-500">/ piece</span></div>
+                  <ul className="text-xs text-slate-600 space-y-1.5 border-t border-slate-200 pt-3">
+                    <li className="flex items-center gap-1.5">✓ T-Shirts, Shirts, Polos: ₹12</li>
+                    <li className="flex items-center gap-1.5">✓ Jeans, Trousers, Trackpants: ₹15</li>
+                    <li className="flex items-center gap-1.5">✓ Shorts, Undergarments, Hand Towels: ₹8</li>
+                    <li className="flex items-center gap-1.5">✓ Antimicrobial wash &amp; detergent sanitized</li>
+                  </ul>
+                  <div className="text-[11px] font-semibold text-slate-400">SLA: 48 Hours Turnaround</div>
+                </div>
+
+                {/* Wash & Steam Press */}
+                <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-slate-900">Wash &amp; Steam Press</h4>
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">Formal Ready</span>
+                  </div>
+                  <div className="text-2xl font-black text-indigo-900">₹20 - ₹25 <span className="text-xs font-normal text-slate-500">/ piece</span></div>
+                  <ul className="text-xs text-slate-600 space-y-1.5 border-t border-indigo-100 pt-3">
+                    <li className="flex items-center gap-1.5">✓ Crisp Collared Formal Shirts: ₹20</li>
+                    <li className="flex items-center gap-1.5">✓ Formal Trousers / Chinos: ₹22</li>
+                    <li className="flex items-center gap-1.5">✓ Lab Coats / Aprons: ₹25</li>
+                    <li className="flex items-center gap-1.5">✓ Professional Steam Iron &amp; Hanger packing</li>
+                  </ul>
+                  <div className="text-[11px] font-semibold text-indigo-500">SLA: 36 Hours Turnaround</div>
+                </div>
+
+                {/* Bedding & Winterwear */}
+                <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-slate-900">Bedding &amp; Winterwear</h4>
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Heavy Wash</span>
+                  </div>
+                  <div className="text-2xl font-black text-amber-900">₹60 - ₹80 <span className="text-xs font-normal text-slate-500">/ item</span></div>
+                  <ul className="text-xs text-slate-600 space-y-1.5 border-t border-amber-100 pt-3">
+                    <li className="flex items-center gap-1.5">✓ Single Blanket / Quilt: ₹80</li>
+                    <li className="flex items-center gap-1.5">✓ Bedsheet + Pillow Covers: ₹40</li>
+                    <li className="flex items-center gap-1.5">✓ Hoodies, Jackets &amp; Sweaters: ₹60</li>
+                    <li className="flex items-center gap-1.5">✓ Deep fabric care &amp; sun drying</li>
+                  </ul>
+                  <div className="text-[11px] font-semibold text-amber-600">SLA: 48 - 72 Hours</div>
+                </div>
+
+                {/* Shoes & Sneaker Spa */}
+                <div className="p-4 rounded-xl border border-teal-200 bg-teal-50/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-slate-900">Campus Sneaker &amp; Shoe Spa</h4>
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">Deep Cleaning</span>
+                  </div>
+                  <div className="text-2xl font-black text-teal-900">₹60 - ₹120 <span className="text-xs font-normal text-slate-500">/ pair</span></div>
+                  <ul className="text-xs text-slate-600 space-y-1.5 border-t border-teal-100 pt-3">
+                    <li className="flex items-center gap-1.5">✓ Sports Running Shoes / Canvas: ₹60</li>
+                    <li className="flex items-center gap-1.5">✓ White Sneaker Deep Whitening: ₹90</li>
+                    <li className="flex items-center gap-1.5">✓ Leather / Suede Formal Shoes: ₹120</li>
+                    <li className="flex items-center gap-1.5">✓ Sole de-greasing, deodorizing, lace wash</li>
+                  </ul>
+                  <div className="text-[11px] font-semibold text-teal-600">SLA: 48 Hours</div>
+                </div>
+
+                {/* Express 24h Turnaround */}
+                <div className="p-4 rounded-xl border border-rose-200 bg-rose-50/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-slate-900">Express Priority Service</h4>
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800">Emergency</span>
+                  </div>
+                  <div className="text-2xl font-black text-rose-900">+₹10 <span className="text-xs font-normal text-slate-500">/ piece extra</span></div>
+                  <ul className="text-xs text-slate-600 space-y-1.5 border-t border-rose-100 pt-3">
+                    <li className="flex items-center gap-1.5">✓ Guaranteed 24-hour return to hostel room</li>
+                    <li className="flex items-center gap-1.5">✓ Priority wash cycle scheduling</li>
+                    <li className="flex items-center gap-1.5">✓ Direct SMS/Push notification on ready status</li>
+                    <li className="flex items-center gap-1.5">✓ Best for placements, interviews, college fests</li>
+                  </ul>
+                  <div className="text-[11px] font-semibold text-rose-600">SLA: Strictly under 24 Hours</div>
+                </div>
+
+                {/* Hostel Doorstep SLA */}
+                <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-slate-900">Hostel Doorstep Fulfillment</h4>
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Halls 1 to 14</span>
+                  </div>
+                  <div className="text-2xl font-black text-emerald-900">FREE <span className="text-xs font-normal text-slate-500">above ₹100</span></div>
+                  <ul className="text-xs text-slate-600 space-y-1.5 border-t border-emerald-100 pt-3">
+                    <li className="flex items-center gap-1.5">✓ Covers Hall 1 to 14 &amp; Mother Teresa Hall</li>
+                    <li className="flex items-center gap-1.5">✓ Dual OTP security (Zero Brevo dependency)</li>
+                    <li className="flex items-center gap-1.5">✓ Pre-wash garment photo inspection</li>
+                    <li className="flex items-center gap-1.5">✓ Standard Doorstep Delivery fee below ₹100: ₹10</li>
+                  </ul>
+                  <div className="text-[11px] font-semibold text-emerald-600">Coverage: 100% NIT Durgapur Campus</div>
+                </div>
+              </div>
             </div>
           </div>
         )}

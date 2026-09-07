@@ -12,9 +12,9 @@ router.use(authGuard);
 router.post('/orders', rbacGuard(['STUDENT']), geofenceGuard, LaundryController.createOrder);
 router.get('/orders', rbacGuard(['STUDENT']), LaundryController.getStudentLaundryOrders);
 
-// Provider actions (OTP verification & status)
-router.post('/:id/verify-pickup', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.verifyPickupOtp);
-router.post('/:id/verify-pickup-otp', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.verifyPickupOtp);
+// Provider and student actions (OTP verification & status)
+router.post('/:id/verify-pickup', rbacGuard(['ADMIN', 'SERVICE_PROVIDER', 'STUDENT']), LaundryController.verifyPickupOtp);
+router.post('/:id/verify-pickup-otp', rbacGuard(['ADMIN', 'SERVICE_PROVIDER', 'STUDENT']), LaundryController.verifyPickupOtp);
 router.post('/:id/verify-delivery', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.verifyDeliveryOtp);
 router.post('/:id/verify-delivery-otp', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.verifyDeliveryOtp);
 router.post('/:id/condition', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.recordCondition);

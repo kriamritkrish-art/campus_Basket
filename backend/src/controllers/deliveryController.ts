@@ -444,8 +444,10 @@ export class DeliveryController {
         return;
       }
 
-      const expectedOtp = order.orderNumber.slice(-4);
-      if (otp.trim() !== expectedOtp && otp.trim() !== '1234') {
+      const rawTail = order.orderNumber.slice(-4);
+      const numericTail = order.orderNumber.replace(/\D/g, '').slice(-4);
+      const isMatch = otp.trim() === rawTail || (numericTail && otp.trim() === numericTail) || otp.trim() === '1234';
+      if (!isMatch) {
         res.status(400).json({
           success: false,
           message: 'Incorrect OTP. Please collect the verified 4-digit code shown on the student\'s tracking page.'

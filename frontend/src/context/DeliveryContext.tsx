@@ -28,7 +28,6 @@ export interface ActiveDeliveryOrder {
   earning: number;
   status: DeliveryStatus;
   items: string[];
-  otpRequired: string;
   isOtpVerified: boolean;
   acceptedAt: string;
   specialInstructions?: string;
