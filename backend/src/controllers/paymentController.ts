@@ -103,6 +103,35 @@ export class PaymentController {
             }
           });
         }
+
+        // Support Laundry Orders
+        if (payment.laundryOrderId) {
+          const currentLaundryOrder = await tx.laundryOrder.findUnique({
+            where: { id: payment.laundryOrderId }
+          });
+
+          if (currentLaundryOrder) {
+            const isCod = currentLaundryOrder.paymentMethod === 'COD';
+            await tx.laundryOrder.update({
+              where: { id: payment.laundryOrderId },
+              data: {
+                paymentStatus: isCod ? 'PARTIAL' : 'PAID',
+                onlinePaidAmount: Number(payment.amount),
+                status: 'REQUESTED',
+                statusHistory: {
+                  create: {
+                    previousStatus: currentLaundryOrder.status,
+                    newStatus: 'REQUESTED',
+                    changedBy: 'RAZORPAY_GATEWAY',
+                    notes: isCod
+                      ? `Advance handling/service charge of ₹${payment.amount} verified via Razorpay ID: ${razorpayPaymentId}. Remaining ₹${currentLaundryOrder.codAmount} due in cash to provider upon delivery.`
+                      : `Full online payment of ₹${payment.amount} verified via Razorpay ID: ${razorpayPaymentId}.`
+                  }
+                }
+              }
+            });
+          }
+        }
       });
 
       res.status(200).json({

@@ -9,9 +9,12 @@ import { LaundrySettlementService } from '../services/laundry/LaundrySettlementS
 import { LedgerService } from '../services/financial/LedgerService';
 import { ReceiptService } from '../services/receipt/ReceiptService';
 import { AuditService } from '../services/audit/AuditService';
+import { RazorpayService } from '../services/payment/RazorpayService';
+import { env } from '../config/environment';
 
 const laundryOtpService = new LaundryOtpService();
 const receiptService = new ReceiptService();
+const razorpayService = new RazorpayService();
 
 export class LaundryController {
   /**
@@ -214,13 +217,53 @@ export class LaundryController {
         console.warn('Failed to append laundry order to Financial Ledger:', err);
       }
 
+      // 6. Initialize Razorpay Order for online payable portion (Full amount for ONLINE, Service Charge advance for COD)
+      let razorpayData = null;
+      if (pricing.onlinePaidAmount > 0) {
+        try {
+          const rzpOrder = await razorpayService.createRazorpayOrder({
+            amountInRupees: pricing.onlinePaidAmount,
+            receiptId: orderNumber,
+            notes: {
+              orderNumber,
+              laundryOrderId: newLaundryOrder.id,
+              studentEmail: student.user.email,
+              paymentMethod: data.paymentMethod,
+              paymentPurpose: data.paymentMethod === 'COD' ? 'LAUNDRY_SERVICE_CHARGE_ADVANCE' : 'LAUNDRY_FULL_PAYMENT'
+            }
+          });
+
+          await prisma.payment.create({
+            data: {
+              laundryOrderId: newLaundryOrder.id,
+              studentId,
+              amount: pricing.onlinePaidAmount,
+              paymentMethod: 'RAZORPAY',
+              status: 'PENDING',
+              razorpayOrderId: rzpOrder.id
+            }
+          });
+
+          razorpayData = {
+            keyId: env.RAZORPAY_KEY_ID || 'rzp_test_nitdgp',
+            amount: rzpOrder.amount, // in paise
+            currency: rzpOrder.currency || 'INR',
+            razorpayOrderId: rzpOrder.id,
+            payableAmount: pricing.onlinePaidAmount,
+            paymentPurpose: data.paymentMethod === 'COD' ? 'LAUNDRY_SERVICE_CHARGE_ADVANCE' : 'LAUNDRY_FULL_PAYMENT'
+          };
+        } catch (err) {
+          console.warn('Failed to create Razorpay order for laundry booking:', err);
+        }
+      }
+
       // NOTE: NO EMAIL OTP SENT. Deferred OTP workflow active.
 
       res.status(201).json({
         success: true,
         message: data.paymentMethod === 'COD'
-          ? `Laundry order placed! ₹${pricing.serviceChargeAmount} service charge paid online. Pay ₹${pricing.codAmount} to provider on delivery.`
-          : `Laundry order placed! ₹${pricing.totalAmount} paid online.`,
+          ? `Laundry booking created! Please complete payment of ₹${pricing.serviceChargeAmount} service charge online via Razorpay.`
+          : `Laundry booking created! Please complete payment of ₹${pricing.totalAmount} via Razorpay.`,
         laundryOrder: {
           id: newLaundryOrder.id,
           orderNumber: newLaundryOrder.orderNumber,
@@ -233,7 +276,8 @@ export class LaundryController {
           codAmount: pricing.codAmount,
           paymentMethod: newLaundryOrder.paymentMethod,
           paymentStatus: newLaundryOrder.paymentStatus
-        }
+        },
+        razorpay: razorpayData
       });
     } catch (err) {
       next(err);

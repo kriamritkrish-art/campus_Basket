@@ -21,7 +21,9 @@ import {
   Banknote,
   AlertCircle,
   HelpCircle,
-  ChevronRight
+  ChevronRight,
+  Copy,
+  Check
 } from 'lucide-react';
 
 const ORDER_STEPS = [
@@ -42,6 +44,8 @@ export default function LaundryPage() {
   const [studentOrders, setStudentOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [selectedPhotoModal, setSelectedPhotoModal] = useState<any[] | null>(null);
+  const [justBooked, setJustBooked] = useState(false);
+  const [copiedOtp, setCopiedOtp] = useState<string | null>(null);
 
   // Dynamic tariff from DB
   const [tariff, setTariff] = useState<any>({
@@ -85,6 +89,25 @@ export default function LaundryPage() {
     }
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('booked') === 'true') {
+        setJustBooked(true);
+        setViewTab('ORDERS');
+        fetchStudentLaundryOrders();
+      }
+    }
+  }, []);
+
+  const copyToClipboard = (text: string, label: string) => {
+    if (navigator?.clipboard && text && text !== '------') {
+      navigator.clipboard.writeText(text);
+      setCopiedOtp(label);
+      setTimeout(() => setCopiedOtp(null), 2500);
+    }
+  };
+
   const getStepIndex = (status: string) => {
     const idx = ORDER_STEPS.findIndex((s) => s.key === status);
     return idx === -1 ? 0 : idx;
@@ -92,6 +115,33 @@ export default function LaundryPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      {/* Booking Success Notification Banner */}
+      {justBooked && (
+        <div className="bg-gradient-to-r from-[#e8f5e9] to-[#f1f8e9] border border-[#a5d6a7] p-5 rounded-3xl shadow-sm flex items-start justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-[#2e7d32] text-white flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-gray-900 flex items-center gap-2">
+                <span>Laundry Booking Confirmed &amp; Dispatched!</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#2e7d32] text-white">
+                  Verified via Razorpay
+                </span>
+              </h3>
+              <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                Your payment has been successfully recorded. Doorstep pickup is scheduled. Please share your <strong>In-App Pickup OTP</strong> with the delivery agent when they arrive at your hostel room.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setJustBooked(false)}
+            className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-white/60 transition"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       {/* Dynamic Hero Header Controlled by Admin */}
       <div className="bg-white p-6 sm:p-10 rounded-3xl border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-8 relative overflow-hidden">
         <div className="space-y-3 max-w-2xl relative z-10">
@@ -355,9 +405,27 @@ export default function LaundryPage() {
                         <KeyRound className="w-3.5 h-3.5" /> Stage 1: Pickup Verification Code
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="font-mono font-black text-2xl text-[#1b5e20] tracking-widest">
-                          {isPickupOtpVisible ? (ord.pickupOtp || '482916') : '------'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-2xl text-[#1b5e20] tracking-widest">
+                            {isPickupOtpVisible ? (ord.pickupOtp || '482916') : '------'}
+                          </span>
+                          {isPickupOtpVisible && (
+                            <button
+                              onClick={() => copyToClipboard(ord.pickupOtp || '482916', `pickup_${ord.id}`)}
+                              className="p-1.5 rounded-lg bg-white/80 hover:bg-white text-[#2e7d32] border border-[#dcedc8] transition shadow-xs flex items-center gap-1 text-[10px] font-bold"
+                              title="Copy Pickup OTP"
+                            >
+                              {copiedOtp === `pickup_${ord.id}` ? (
+                                <>
+                                  <Check className="w-3 h-3 text-[#2e7d32]" />
+                                  <span>Copied</span>
+                                </>
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          )}
+                        </div>
                         <span
                           className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${
                             ['CLOTHES_COLLECTED', 'WASHING', 'IRONING', 'READY', 'DELIVERY_SCHEDULED', 'COMPLETED'].includes(ord.status)
@@ -393,9 +461,27 @@ export default function LaundryPage() {
                         <KeyRound className="w-3.5 h-3.5" /> Stage 2: Return Delivery OTP
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="font-mono font-black text-2xl text-purple-900 tracking-widest">
-                          {isDeliveryOtpVisible ? (ord.returnOtp || '739104') : '------'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-2xl text-purple-900 tracking-widest">
+                            {isDeliveryOtpVisible ? (ord.returnOtp || '739104') : '------'}
+                          </span>
+                          {isDeliveryOtpVisible && (
+                            <button
+                              onClick={() => copyToClipboard(ord.returnOtp || '739104', `return_${ord.id}`)}
+                              className="p-1.5 rounded-lg bg-white/80 hover:bg-white text-purple-700 border border-purple-200 transition shadow-xs flex items-center gap-1 text-[10px] font-bold"
+                              title="Copy Return OTP"
+                            >
+                              {copiedOtp === `return_${ord.id}` ? (
+                                <>
+                                  <Check className="w-3 h-3 text-purple-700" />
+                                  <span>Copied</span>
+                                </>
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          )}
+                        </div>
                         <span
                           className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${
                             ord.status === 'COMPLETED'

@@ -987,10 +987,6 @@ const fallbackHandlers: Record<string, any> = {
       return args.data;
     }
   },
-  payment: {
-    count: async () => 0,
-    create: async (args: any) => ({ id: `pay_${Date.now()}`, ...args.data })
-  },
   cart: {
     findUnique: async (args: any) => ({
       id: `cart_${args?.where?.studentId}`,
@@ -1477,6 +1473,50 @@ const fallbackHandlers: Record<string, any> = {
       if (s) {
         Object.assign(s, args.data, { updatedAt: new Date() });
         return s;
+      }
+      return args.data;
+    }
+  },
+  payment: {
+    count: async () => ((global as any).__mockPayments?.length || 0),
+    findFirst: async (args: any) => {
+      if (!(global as any).__mockPayments) (global as any).__mockPayments = [];
+      const found = (global as any).__mockPayments.find((p: any) => 
+        (args?.where?.razorpayOrderId && p.razorpayOrderId === args.where.razorpayOrderId) ||
+        (args?.where?.id && p.id === args.where.id)
+      );
+      if (!found) return null;
+      // Attach related order/laundryOrder if requested
+      const order = fallbackOrders.find((o) => o.id === found.orderId) || null;
+      const laundryOrder = fallbackLaundryJobs.find((l) => l.id === found.laundryOrderId) || null;
+      return { ...found, order, laundryOrder };
+    },
+    findUnique: async (args: any) => {
+      if (!(global as any).__mockPayments) (global as any).__mockPayments = [];
+      const found = (global as any).__mockPayments.find((p: any) => p.id === args?.where?.id);
+      if (!found) return null;
+      const order = fallbackOrders.find((o) => o.id === found.orderId) || null;
+      const laundryOrder = fallbackLaundryJobs.find((l) => l.id === found.laundryOrderId) || null;
+      return { ...found, order, laundryOrder };
+    },
+    create: async (args: any) => {
+      if (!(global as any).__mockPayments) (global as any).__mockPayments = [];
+      const newPayment = {
+        id: `pay_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        status: 'PENDING',
+        ...args.data
+      };
+      (global as any).__mockPayments.push(newPayment);
+      return newPayment;
+    },
+    update: async (args: any) => {
+      if (!(global as any).__mockPayments) (global as any).__mockPayments = [];
+      const p = (global as any).__mockPayments.find((item: any) => item.id === args.where.id);
+      if (p) {
+        Object.assign(p, args.data, { updatedAt: new Date() });
+        return p;
       }
       return args.data;
     }

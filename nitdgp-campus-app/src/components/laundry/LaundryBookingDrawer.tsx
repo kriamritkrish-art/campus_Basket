@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../lib/api';
 import { Hall } from '../../types';
@@ -45,6 +46,7 @@ interface ClothPhoto {
 }
 
 export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) => void }) {
+  const router = useRouter();
   const { user, isAuthenticated } = useAuth();
   const [halls, setHalls] = useState<Hall[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({
@@ -102,6 +104,25 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
       setRoomNumber(user.student.roomNumber || 'B-304');
     }
   }, [user]);
+
+  // Restore draft if returning from checkout
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('CB_LAUNDRY_CHECKOUT_DRAFT') || sessionStorage.getItem('laundry_checkout_draft');
+      if (stored) {
+        const d = JSON.parse(stored);
+        if (d.counts && Object.keys(d.counts).length > 0) setCounts(d.counts);
+        if (d.hallName) setHallName(d.hallName);
+        if (d.roomNumber) setRoomNumber(d.roomNumber);
+        if (d.pickupDate) setPickupDate(d.pickupDate);
+        if (d.pickupTime) setPickupTime(d.pickupTime);
+        if (d.returnTime) setReturnTime(d.returnTime);
+        if (d.specialInstructions) setSpecialInstructions(d.specialInstructions);
+        if (d.clothPhotos) setClothPhotos(d.clothPhotos);
+        if (d.paymentMethod) setPaymentMethod(d.paymentMethod);
+      }
+    } catch {}
+  }, []);
 
   // Fetch dynamic tariff config from DB
   useEffect(() => {
@@ -200,7 +221,7 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
   const handleBook = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAuthenticated) {
-      window.location.href = '/login?redirect=/laundry/book';
+      window.location.href = '/login?redirect=/laundry/checkout';
       return;
     }
 
@@ -209,45 +230,31 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
       return;
     }
 
-    setIsSubmitting(true);
-    setError(null);
-
-    const items = Object.entries(counts).map(([type, quantity]) => ({
-      itemType: type,
-      quantity,
-    }));
+    // Save draft into session storage for dedicated checkout page
+    const draft = {
+      counts,
+      totalGarments,
+      hallName: hallName || user?.student?.hall?.name || 'Hall 11',
+      roomNumber: roomNumber || user?.student?.roomNumber || '101',
+      pickupDate,
+      pickupTime,
+      returnTime,
+      specialInstructions,
+      clothPhotos,
+      tariff,
+      itemRates,
+      laundryBaseAmount,
+      serviceChargeAmount,
+      totalOrderAmount,
+      paymentMethod,
+    };
 
     try {
-      const res = await apiRequest('/api/laundry/orders', {
-        method: 'POST',
-        body: JSON.stringify({
-          hallName,
-          roomNumber,
-          pickupDate,
-          preferredPickupTime: pickupTime,
-          preferredReturnTime: returnTime,
-          specialInstructions,
-          items,
-          paymentMethod,
-          clothPhotos: clothPhotos.map((p) => p.dataUrl),
-          photos: clothPhotos.map((p) => ({
-            url: p.dataUrl,
-            description: p.notes || p.name,
-          })),
-        }),
-      });
+      sessionStorage.setItem('CB_LAUNDRY_CHECKOUT_DRAFT', JSON.stringify(draft));
+      sessionStorage.setItem('laundry_checkout_draft', JSON.stringify(draft));
+    } catch {}
 
-      if (res.success) {
-        setBookingSuccess(res.laundryOrder);
-        if (onSuccess) onSuccess(res.laundryOrder);
-      } else {
-        setError(res.message || 'Failed to book laundry service.');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Error communicating with laundry dispatch.');
-    } finally {
-      setIsSubmitting(false);
-    }
+    router.push('/laundry/checkout');
   };
 
   // Modern Transparent Booking Success Screen
@@ -766,19 +773,11 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
 
           <button
             type="submit"
-            disabled={isSubmitting || totalGarments === 0}
-            className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-[#689f38] to-[#7cb342] hover:from-[#5b8c30] hover:to-[#689f38] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md hover:shadow-lg active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shrink-0"
+            disabled={totalGarments === 0}
+            className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-[#2e7d32] to-[#388e3c] hover:from-[#1b5e20] hover:to-[#2e7d32] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md hover:shadow-lg active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shrink-0"
           >
-            {isSubmitting ? (
-              <span>Scheduling Pickup...</span>
-            ) : (
-              <>
-                <span>
-                  Confirm &amp; Pay ₹{payOnlineNow} {paymentMethod === 'COD' ? '(Advance)' : ''}
-                </span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
+            <span>Proceed to Dedicated Checkout (₹{payOnlineNow})</span>
+            <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </div>
