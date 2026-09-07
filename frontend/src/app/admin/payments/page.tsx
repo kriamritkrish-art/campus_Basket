@@ -124,6 +124,14 @@ export default function AdminPaymentsPage() {
           setOverviewMetrics(res.data.metrics);
           setActionCenter(res.data.actionCenter);
         }
+        // Also prefetch runner settlement stats for the tab notification badge
+        apiRequest('/api/admin/payments/delivery-settlements?status=ALL&deliveryBoyId=ALL')
+          .then((r) => {
+            if (r?.success && r?.summary) {
+              setDeliverySettlementSummary(r.summary);
+            }
+          })
+          .catch(() => {});
       } else if (activeTab === 'TRANSACTIONS') {
         let query = `/api/admin/payments/transactions?serviceType=${serviceFilter}&paymentStatus=${paymentStatusFilter}&refundStatus=${refundStatusFilter}&settlementStatus=${settlementStatusFilter}`;
         if (searchQuery) query += `&search=${encodeURIComponent(searchQuery)}`;
@@ -145,6 +153,8 @@ export default function AdminPaymentsPage() {
           if (Array.isArray(res.deliveryBoys)) {
             setDeliveryBoysList(res.deliveryBoys);
           }
+        } else if (res.message) {
+          showToast(res.message, 'error');
         }
       } else if (activeTab === 'COD') {
         const res = await apiRequest('/api/admin/payments/cod');
@@ -155,8 +165,13 @@ export default function AdminPaymentsPage() {
         const res = await apiRequest(query);
         if (res.success) setLedgerEntries(res.data || []);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Failed to load tab data:', err);
+      if (err?.message?.includes('403') || err?.message?.includes('Forbidden')) {
+        showToast('Administrative session required. If you recently used the Runner portal in this browser, please log in with your Admin account.', 'error');
+      } else if (err?.message && !err.message.includes('abort')) {
+        showToast(err.message, 'error');
+      }
     } finally {
       setLoading(false);
     }

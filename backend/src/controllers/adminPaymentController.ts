@@ -524,23 +524,27 @@ export class AdminPaymentController {
     try {
       const { status, deliveryBoyId, search } = req.query;
 
-      let withdrawals = await (prisma as any).deliveryBoyWithdrawal.findMany({
-        orderBy: { createdAt: 'desc' }
-      });
+      let withdrawals: any[] = [];
+      try {
+        withdrawals = await (prisma as any).deliveryBoyWithdrawal.findMany({
+          orderBy: { createdAt: 'desc' }
+        });
+      } catch (e) {
+        withdrawals = [];
+      }
 
-      const deliveryBoys = await (prisma as any).deliveryBoy.findMany({
-        select: {
-          id: true,
-          fullName: true,
-          mobileNumber: true,
-          email: true,
-          walletBalance: true,
-          totalSettled: true,
-          paymentType: true,
-          perDeliveryRate: true,
-          monthlySalary: true
-        }
-      });
+      let deliveryBoys: any[] = [];
+      try {
+        deliveryBoys = await (prisma as any).deliveryBoy.findMany({
+          include: {
+            user: {
+              select: { email: true, username: true }
+            }
+          }
+        });
+      } catch (e) {
+        deliveryBoys = [];
+      }
       const boyMap = new Map(deliveryBoys.map((b: any) => [b.id, b]));
 
       // Filter by runner if specified
@@ -560,23 +564,55 @@ export class AdminPaymentController {
           const boy = boyMap.get(w.deliveryBoyId) as any;
           const boyName = (boy?.fullName || '').toLowerCase();
           const boyMobile = (boy?.mobileNumber || '').toLowerCase();
+          const boyEmail = (boy?.user?.email || boy?.email || '').toLowerCase();
           const num = (w.withdrawalNumber || '').toLowerCase();
           const utr = (w.utrReference || '').toLowerCase();
-          return boyName.includes(query) || boyMobile.includes(query) || num.includes(query) || utr.includes(query);
+          return boyName.includes(query) || boyMobile.includes(query) || boyEmail.includes(query) || num.includes(query) || utr.includes(query);
         });
       }
 
-      // Attach deliveryBoy info to each withdrawal
+      // Attach deliveryBoy info to each withdrawal (fall back to parsed account details if runner record is unlinked)
       const enrichedWithdrawals = withdrawals.map((w: any) => {
-        const boy = boyMap.get(w.deliveryBoyId);
+        const boy = boyMap.get(w.deliveryBoyId) as any;
+        let fallbackName = 'Fleet Runner';
+        try {
+          if (w.accountDetails) {
+            const parsed = typeof w.accountDetails === 'string' ? JSON.parse(w.accountDetails) : w.accountDetails;
+            if (parsed?.accountHolderName) fallbackName = parsed.accountHolderName;
+          }
+        } catch {}
+
         return {
           ...w,
-          deliveryBoy: boy || { id: w.deliveryBoyId, fullName: 'Fleet Runner', mobileNumber: '' }
+          deliveryBoy: boy
+            ? {
+                id: boy.id,
+                fullName: boy.fullName,
+                mobileNumber: boy.mobileNumber,
+                email: boy.user?.email || boy.email || '',
+                walletBalance: Number(boy.walletBalance) || 0,
+                totalSettled: Number(boy.totalSettled) || 0,
+                paymentType: boy.paymentType
+              }
+            : {
+                id: w.deliveryBoyId,
+                fullName: fallbackName,
+                mobileNumber: '',
+                email: '',
+                walletBalance: 0,
+                totalSettled: 0
+              }
         };
       });
 
       // Calculate overview metrics across all withdrawals
-      const allWithdrawals = await (prisma as any).deliveryBoyWithdrawal.findMany();
+      let allWithdrawals: any[] = [];
+      try {
+        allWithdrawals = await (prisma as any).deliveryBoyWithdrawal.findMany();
+      } catch (e) {
+        allWithdrawals = [...withdrawals];
+      }
+
       const totalPendingAmount = allWithdrawals
         .filter((w: any) => w.status === 'PENDING')
         .reduce((sum: number, w: any) => sum + (Number(w.amount) || 0), 0);
@@ -604,6 +640,7 @@ export class AdminPaymentController {
           id: b.id,
           fullName: b.fullName,
           mobileNumber: b.mobileNumber,
+          email: b.user?.email || b.email || '',
           walletBalance: Number(b.walletBalance) || 0,
           totalSettled: Number(b.totalSettled) || 0
         })),

@@ -1785,14 +1785,19 @@ export const prisma = new Proxy(rawPrisma as any, {
               try {
                 return await originalMethod.apply(modelTarget, args);
               } catch (err: any) {
-                // If query fails due to connection error, use fallback
+                // If query fails due to connection error, validation error, or missing table, use fallback
                 if (
                   !global.isDatabaseHealthy ||
                   err?.name === 'PrismaClientInitializationError' ||
+                  err?.name === 'PrismaClientValidationError' ||
+                  err?.name === 'PrismaClientKnownRequestError' ||
+                  err?.code === 'P2021' ||
+                  err?.code === 'P2022' ||
                   err?.message?.includes("Can't reach database") ||
-                  err?.message?.includes('ECONNREFUSED')
+                  err?.message?.includes('ECONNREFUSED') ||
+                  err?.message?.includes("doesn't exist") ||
+                  err?.message?.includes('does not exist')
                 ) {
-                  global.isDatabaseHealthy = false;
                   if (typeof fallbackModel[methodKey] === 'function') {
                     return await fallbackModel[methodKey](...args);
                   }
