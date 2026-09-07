@@ -20,10 +20,13 @@ import {
   Plus,
   Minus,
   Image as ImageIcon,
-  AlertCircle
+  AlertCircle,
+  CreditCard,
+  Banknote,
+  Info
 } from 'lucide-react';
 
-const LAUNDRY_RATES = [
+const DEFAULT_RATES = [
   { type: 'Shirt', price: 15, icon: '👔' },
   { type: 'T-Shirt', price: 15, icon: '👕' },
   { type: 'Pants', price: 20, icon: '👖' },
@@ -50,6 +53,32 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
     'T-Shirt': 1,
   });
 
+  // Dynamic pricing & hero config from backend DB
+  const [tariff, setTariff] = useState<any>({
+    heroTitle: 'Express Campus Laundry',
+    heroSubtitle: 'Automated wash, fabric softening & steam iron with room-to-room pickup across Halls 1–14',
+    tariffTag: 'DUAL-OTP',
+    tariffBadge: 'SUBSIDIZED TARIFF',
+    unitDisplayName: 'per garment',
+    providerPricePerUnit: 15,
+    serviceChargePerUnit: 1,
+    studentPricePerUnit: 16
+  });
+  const [itemRates, setItemRates] = useState<Record<string, number>>({
+    Shirt: 15,
+    'T-Shirt': 15,
+    Pants: 20,
+    Jeans: 25,
+    Kurta: 20,
+    Bedsheet: 35,
+    Towel: 15,
+    Blanket: 90
+  });
+  const [codEnabled, setCodEnabled] = useState(true);
+
+  // Payment Method: ONLINE vs COD
+  const [paymentMethod, setPaymentMethod] = useState<'ONLINE' | 'COD'>('ONLINE');
+
   const [clothPhotos, setClothPhotos] = useState<ClothPhoto[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -73,6 +102,23 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
       setRoomNumber(user.student.roomNumber || 'B-304');
     }
   }, [user]);
+
+  // Fetch dynamic tariff config from DB
+  useEffect(() => {
+    apiRequest('/api/laundry/pricing')
+      .then((res) => {
+        if (res.success && res.tariff) {
+          setTariff(res.tariff);
+          if (res.itemRates && Object.keys(res.itemRates).length > 0) {
+            setItemRates(res.itemRates);
+          }
+          if (res.policy) {
+            setCodEnabled(res.policy.codEnabled !== false);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Fetch halls from backend
   useEffect(() => {
@@ -134,12 +180,22 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
     );
   };
 
-  const estimatedTotal = Object.entries(counts).reduce((sum, [type, qty]) => {
-    const rate = LAUNDRY_RATES.find((r) => r.type === type)?.price || 20;
+  // Financial calculations
+  const totalGarments = Object.values(counts).reduce((a, b) => a + b, 0);
+
+  const laundryBaseAmount = Object.entries(counts).reduce((sum, [type, qty]) => {
+    const rate = itemRates[type] !== undefined ? itemRates[type] : (tariff.providerPricePerUnit || 15);
     return sum + rate * qty;
   }, 0);
 
-  const totalGarments = Object.values(counts).reduce((a, b) => a + b, 0);
+  const serviceChargeAmount = (tariff.serviceChargePerUnit || 1) * totalGarments;
+  const totalOrderAmount = laundryBaseAmount + serviceChargeAmount;
+
+  // COD Rule Breakdown:
+  // In COD mode: student pays serviceChargeAmount online in advance as booking confirmation;
+  // laundryBaseAmount is collected in cash by provider at doorstep upon delivery.
+  const payOnlineNow = paymentMethod === 'ONLINE' ? totalOrderAmount : serviceChargeAmount;
+  const payOnDelivery = paymentMethod === 'ONLINE' ? 0 : laundryBaseAmount;
 
   const handleBook = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,6 +228,7 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
           preferredReturnTime: returnTime,
           specialInstructions,
           items,
+          paymentMethod,
           clothPhotos: clothPhotos.map((p) => p.dataUrl),
           photos: clothPhotos.map((p) => ({
             url: p.dataUrl,
@@ -216,70 +273,50 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
           </p>
         </div>
 
-        {/* Dual-OTP Safety Banner */}
-        <div className="bg-white/90 backdrop-blur-md border border-gray-200/80 rounded-2xl p-5 text-left space-y-3.5 shadow-sm">
-          <div className="flex items-center gap-2 text-[#2e7d32] text-xs font-bold uppercase tracking-wider">
-            <ShieldCheck className="w-4 h-4 text-[#689f38]" /> Dual-OTP Verified Handover
+        {/* Financial Separation Summary */}
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left space-y-2 text-xs">
+          <div className="font-bold text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-200 pb-2">
+            Payment &amp; Financial Breakdown
           </div>
-
-          <div className="space-y-3">
-            <div className="bg-[#f1f8e9]/80 p-3.5 rounded-xl border border-[#dcedc8]">
-              <div className="text-[11px] font-bold text-[#33691e] uppercase tracking-wide">
-                Step 1: Your Room Pickup OTP
-              </div>
-              <div className="text-3xl font-mono font-black text-[#1b5e20] tracking-widest mt-1">
-                {bookingSuccess.pickupOtp}
-              </div>
-              <div className="text-[11px] text-gray-600 mt-1 leading-snug">
-                Share this 6-digit PIN with the laundry personnel at your hostel door upon clothes handover.
-              </div>
-            </div>
-
-            <div className="bg-gray-50/90 p-3.5 rounded-xl border border-gray-200">
-              <div className="text-[11px] font-bold text-gray-700 uppercase tracking-wide">
-                Step 2: Return Delivery OTP
-              </div>
-              <div className="text-xs font-semibold text-gray-600 mt-1">
-                Active upon clean clothes return. Share only after inspecting washed &amp; ironed garments.
-              </div>
-            </div>
+          <div className="flex justify-between text-slate-600">
+            <span>Laundry Service (Base Amount):</span>
+            <span className="font-semibold text-slate-900">₹{bookingSuccess.laundryBaseAmount || laundryBaseAmount}</span>
           </div>
+          <div className="flex justify-between text-slate-600">
+            <span>Campus Basket Service Charge (₹{tariff.serviceChargePerUnit || 1}/garment):</span>
+            <span className="font-semibold text-slate-900">₹{bookingSuccess.serviceChargeAmount || serviceChargeAmount}</span>
+          </div>
+          <div className="flex justify-between text-slate-900 font-bold pt-1 border-t border-slate-200">
+            <span>Total Order Value:</span>
+            <span>₹{bookingSuccess.totalAmount || totalOrderAmount}</span>
+          </div>
+          <div className="flex justify-between pt-1 border-t border-dashed border-slate-200">
+            <span className="text-[#2e7d32] font-bold">Paid Online (Advance):</span>
+            <span className="font-black text-[#2e7d32]">₹{bookingSuccess.onlinePaidAmount || payOnlineNow}</span>
+          </div>
+          {(bookingSuccess.codAmount > 0 || payOnDelivery > 0) && (
+            <div className="flex justify-between text-amber-800 bg-amber-50 p-2 rounded-lg font-bold border border-amber-200">
+              <span>Cash on Delivery (Pay to Provider):</span>
+              <span>₹{bookingSuccess.codAmount || payOnDelivery}</span>
+            </div>
+          )}
         </div>
 
-        {/* Uploaded Cloth Photos Confirmation Gallery */}
-        {clothPhotos.length > 0 && (
-          <div className="bg-white/70 backdrop-blur-md border border-gray-200/80 rounded-2xl p-4 text-left space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-gray-900">
-              <span className="flex items-center gap-1.5 text-[#2e7d32]">
-                <Camera className="w-4 h-4 text-[#689f38]" /> {clothPhotos.length} Cloth Photos Attached
-              </span>
-              <span className="text-[10px] text-gray-500 font-normal">Stored in Token QR</span>
-            </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pt-1">
-              {clothPhotos.map((photo) => (
-                <div key={photo.id} className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50 aspect-square">
-                  <img src={photo.dataUrl} alt={photo.name} className="w-full h-full object-cover" />
-                  {photo.notes && (
-                    <div className="absolute bottom-0 inset-x-0 bg-black/60 text-[9px] text-white p-1 truncate text-center">
-                      {photo.notes}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+        {/* Deferred Dual-OTP Notice */}
+        <div className="bg-[#f1f8e9]/90 border border-[#dcedc8] rounded-2xl p-4 text-left space-y-2 shadow-xs">
+          <div className="flex items-center gap-2 text-[#2e7d32] text-xs font-bold uppercase tracking-wider">
+            <ShieldCheck className="w-4 h-4 text-[#689f38]" /> Direct In-App Dual-OTP Protection
           </div>
-        )}
-
-        <div className="flex justify-between items-center text-xs text-gray-600 pt-1 border-t border-gray-200">
-          <span>Estimated Total ({totalGarments} items):</span>
-          <span className="text-xl font-black text-gray-900">₹{bookingSuccess.estimatedPrice}</span>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            Your <strong>Pickup OTP</strong> will be generated directly on your Student Dashboard screen the moment your laundry provider accepts your order. Zero email OTP dispatch.
+          </p>
         </div>
 
         <button
-          onClick={() => (window.location.href = '/dashboard')}
+          onClick={() => (window.location.href = '/laundry')}
           className="w-full py-3.5 bg-[#689f38] hover:bg-[#5b8c30] text-white font-bold rounded-xl text-xs uppercase tracking-wider shadow-md transition-all active:scale-95"
         >
-          Track in Student Dashboard
+          View in Laundry Dashboard
         </button>
       </div>
     );
@@ -290,12 +327,12 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
       onSubmit={handleBook}
       className="bg-white/70 backdrop-blur-2xl p-6 sm:p-10 rounded-3xl border border-white/80 shadow-[0_10px_35px_rgba(0,0,0,0.05)] space-y-8 relative overflow-hidden"
     >
-      {/* Subtle modern ambient background glow */}
+      {/* Ambient background glow */}
       <div className="absolute -top-24 -right-24 w-72 h-72 bg-[#689f38]/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-sky-400/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Modern Transparent Header */}
-      <div className="flex items-center justify-between border-b border-gray-100 pb-5">
+      {/* Dynamic Header & Hero Card */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-5">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-[#f1f8e9] text-[#689f38] border border-[#dcedc8] flex items-center justify-center shadow-sm shrink-0">
             <Shirt className="w-6 h-6 stroke-[1.8]" />
@@ -303,86 +340,101 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-lg sm:text-xl font-black text-gray-900 tracking-tight">
-                Express Campus Laundry
+                {tariff.heroTitle || 'Express Campus Laundry'}
               </h3>
               <span className="px-2 py-0.5 rounded-full bg-[#f1f8e9] text-[#2e7d32] text-[10px] font-extrabold uppercase border border-[#dcedc8]">
-                Dual-OTP
+                {tariff.tariffTag || 'DUAL-OTP'}
               </span>
             </div>
             <p className="text-xs text-gray-500 mt-0.5">
-              Automated wash, fabric softening &amp; steam iron with room-to-room pickup across Halls 1–14
+              {tariff.heroSubtitle || 'Professional wash, fabric softening & steam iron with hostel doorstep collection'}
             </p>
           </div>
         </div>
 
-        <div className="hidden sm:block text-right">
-          <div className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Subsidized Tariff</div>
-          <div className="text-lg font-black text-gray-900">₹15 <span className="text-xs font-normal text-gray-500">/ garment</span></div>
+        <div className="bg-[#f1f8e9] border border-[#dcedc8] rounded-xl px-4 py-2 text-right self-start sm:self-auto">
+          <div className="text-[10px] uppercase font-bold text-[#2e7d32] tracking-wider">
+            {tariff.tariffBadge || 'SUBSIDIZED TARIFF'}
+          </div>
+          <div className="text-lg font-black text-gray-900">
+            ₹{tariff.providerPricePerUnit || 15}{' '}
+            <span className="text-[11px] font-normal text-gray-500">
+              +{tariff.serviceChargePerUnit || 1} SC / garment
+            </span>
+          </div>
         </div>
       </div>
 
       {error && (
-        <div className="p-4 rounded-2xl bg-red-50/90 border border-red-200 text-xs text-red-700 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
           <span>{error}</span>
         </div>
       )}
 
-      {/* 1. SELECT GARMENTS & LINEN (Minimalist Modern Transparent Cards) */}
-      <div className="space-y-3">
+      {/* 1. SELECT GARMENT QUANTITIES */}
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <label className="text-xs font-black text-gray-800 uppercase tracking-wider flex items-center gap-2">
             <span className="w-5 h-5 rounded-full bg-[#f1f8e9] text-[#689f38] flex items-center justify-center text-[10px] font-black border border-[#dcedc8]">
               1
             </span>
-            <span>Select Garments &amp; Linen</span>
+            <span>Select Garments for Pickup</span>
           </label>
-          <span className="text-xs text-gray-500 font-medium">
-            {totalGarments} items selected
+          <span className="text-xs font-bold text-[#2e7d32]">
+            Total: {totalGarments} {totalGarments === 1 ? 'item' : 'items'}
           </span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {LAUNDRY_RATES.map((item) => {
-            const currentQty = counts[item.type] || 0;
-            const isSelected = currentQty > 0;
+          {DEFAULT_RATES.map((item) => {
+            const currentCount = counts[item.type] || 0;
+            const unitBasePrice = itemRates[item.type] !== undefined ? itemRates[item.type] : item.price;
+            const unitTotalStudentPrice = unitBasePrice + (tariff.serviceChargePerUnit || 1);
 
             return (
               <div
                 key={item.type}
-                className={`p-3.5 rounded-2xl border transition-all duration-200 flex flex-col justify-between ${
-                  isSelected
-                    ? 'bg-[#f1f8e9]/80 border-[#689f38] shadow-md ring-1 ring-[#689f38]/20'
-                    : 'bg-white/60 hover:bg-white/90 border-gray-200/70 hover:border-[#689f38]/50 shadow-sm'
+                className={`p-3.5 rounded-2xl border transition-all ${
+                  currentCount > 0
+                    ? 'bg-white border-[#689f38] shadow-sm ring-1 ring-[#689f38]/20'
+                    : 'bg-white/60 border-gray-200/80 hover:border-gray-300'
                 }`}
               >
-                <div className="flex justify-between items-start text-xs font-bold">
-                  <span className="text-gray-900 flex items-center gap-1.5">
-                    <span className="text-base">{item.icon}</span>
-                    <span>{item.type}</span>
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full bg-white/80 border border-gray-200/70 text-[#2e7d32] font-black text-[11px]">
-                    ₹{item.price}
-                  </span>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-2xl">{item.icon}</span>
+                  <div className="text-right">
+                    <span className="text-xs font-black text-gray-900">
+                      ₹{unitTotalStudentPrice}
+                    </span>
+                    <div className="text-[9px] text-gray-400">
+                      (₹{unitBasePrice} + ₹{tariff.serviceChargePerUnit || 1})
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between mt-3 bg-white/90 border border-gray-200/80 rounded-xl p-1 shadow-inner">
+                <div className="font-bold text-xs text-gray-800 truncate mb-2">
+                  {item.type}
+                </div>
+
+                <div className="flex items-center justify-between bg-slate-100/80 rounded-xl p-1">
                   <button
                     type="button"
                     onClick={() => updateItemCount(item.type, -1)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-red-600 hover:bg-red-50 font-bold text-sm transition-colors"
-                    aria-label={`Decrease ${item.type}`}
+                    disabled={currentCount === 0}
+                    className="w-7 h-7 rounded-lg bg-white disabled:opacity-30 text-gray-700 flex items-center justify-center shadow-xs hover:bg-gray-50 active:scale-95 transition"
                   >
                     <Minus className="w-3.5 h-3.5" />
                   </button>
-                  <span className="text-xs sm:text-sm font-black text-gray-900 font-mono">
-                    {currentQty}
+
+                  <span className="font-black text-xs text-gray-900 w-6 text-center">
+                    {currentCount}
                   </span>
+
                   <button
                     type="button"
                     onClick={() => updateItemCount(item.type, 1)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-[#689f38] hover:text-white hover:bg-[#689f38] font-bold text-sm transition-colors"
-                    aria-label={`Increase ${item.type}`}
+                    className="w-7 h-7 rounded-lg bg-[#689f38] text-white flex items-center justify-center shadow-xs hover:bg-[#5b8c30] active:scale-95 transition"
                   >
                     <Plus className="w-3.5 h-3.5" />
                   </button>
@@ -393,39 +445,78 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
         </div>
       </div>
 
-      {/* 2. CLOTH VERIFICATION PHOTOS (ANTI-LOSS PROTECTION FEATURE) */}
+      {/* 2. PAYMENT METHOD SELECTION */}
       <div className="space-y-3 pt-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <label className="text-xs font-black text-gray-800 uppercase tracking-wider flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-[#f1f8e9] text-[#689f38] flex items-center justify-center text-[10px] font-black border border-[#dcedc8]">
-                2
+        <label className="text-xs font-black text-gray-800 uppercase tracking-wider flex items-center gap-2">
+          <span className="w-5 h-5 rounded-full bg-[#f1f8e9] text-[#689f38] flex items-center justify-center text-[10px] font-black border border-[#dcedc8]">
+            2
+          </span>
+          <span>Payment Method</span>
+        </label>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Online Payment */}
+          <div
+            onClick={() => setPaymentMethod('ONLINE')}
+            className={`cursor-pointer p-4 rounded-2xl border transition-all ${
+              paymentMethod === 'ONLINE'
+                ? 'bg-[#f1f8e9]/80 border-[#689f38] ring-2 ring-[#689f38]/20 shadow-sm'
+                : 'bg-white/70 border-gray-200/80 hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-2">
+                <CreditCard className={`w-4 h-4 ${paymentMethod === 'ONLINE' ? 'text-[#2e7d32]' : 'text-gray-500'}`} />
+                <span className="font-bold text-xs text-gray-900">Pay Online (Full)</span>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                Recommended
               </span>
-              <span>Upload Cloth Photos (Anti-Loss Protection)</span>
-            </label>
-            <p className="text-[11px] text-gray-500 mt-0.5">
-              Take photos of your clothes or bag so your items are verified with zero chance of loss or mismatch.
+            </div>
+            <p className="text-[11px] text-gray-500 leading-snug">
+              Pay total order amount (₹{totalOrderAmount}) now via UPI / Net Banking. Seamless room delivery without cash hassles.
             </p>
           </div>
 
-          {clothPhotos.length > 0 && (
-            <span className="px-2.5 py-0.5 rounded-full bg-[#f1f8e9] text-[#2e7d32] text-xs font-extrabold border border-[#dcedc8]">
-              {clothPhotos.length} {clothPhotos.length === 1 ? 'Photo' : 'Photos'} Attached
-            </span>
+          {/* COD Option */}
+          {codEnabled && (
+            <div
+              onClick={() => setPaymentMethod('COD')}
+              className={`cursor-pointer p-4 rounded-2xl border transition-all ${
+                paymentMethod === 'COD'
+                  ? 'bg-amber-50/80 border-amber-500 ring-2 ring-amber-500/20 shadow-sm'
+                  : 'bg-white/70 border-gray-200/80 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <Banknote className={`w-4 h-4 ${paymentMethod === 'COD' ? 'text-amber-700' : 'text-gray-500'}`} />
+                  <span className="font-bold text-xs text-gray-900">Cash on Delivery (COD)</span>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                  Advance SC Required
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 leading-snug">
+                Pay Service Charge (<strong>₹{serviceChargeAmount}</strong>) online now to lock booking slot; pay laundry base (<strong>₹{laundryBaseAmount}</strong>) in cash to provider upon delivery.
+              </p>
+            </div>
           )}
         </div>
+      </div>
 
-        {/* Hidden File Input */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(e) => handleFiles(e.target.files)}
-          className="hidden"
-        />
+      {/* 3. CLOTH PHOTOS FOR ANTI-LOSS VERIFICATION */}
+      <div className="space-y-3 pt-2">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-black text-gray-800 uppercase tracking-wider flex items-center gap-2">
+            <span className="w-5 h-5 rounded-full bg-[#f1f8e9] text-[#689f38] flex items-center justify-center text-[10px] font-black border border-[#dcedc8]">
+              3
+            </span>
+            <span>Upload Garment Photos (Anti-Loss Protection)</span>
+          </label>
+          <span className="text-[11px] text-gray-500">Optional but recommended</span>
+        </div>
 
-        {/* Modern Transparent Drag & Drop Upload Zone */}
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -438,94 +529,63 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
             handleFiles(e.dataTransfer.files);
           }}
           onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all duration-200 flex flex-col sm:flex-row items-center justify-between gap-4 ${
+          className={`cursor-pointer border-2 border-dashed rounded-2xl p-6 text-center transition-all ${
             isDragging
-              ? 'border-[#689f38] bg-[#f1f8e9]/80 shadow-md'
-              : 'border-gray-300/80 hover:border-[#689f38] bg-white/50 hover:bg-white/80 backdrop-blur-md'
+              ? 'border-[#689f38] bg-[#f1f8e9]/50'
+              : 'border-gray-200 hover:border-gray-300 bg-white/40'
           }`}
         >
-          <div className="flex items-center gap-3.5 text-left">
-            <div className="w-11 h-11 rounded-2xl bg-[#f1f8e9] text-[#689f38] flex items-center justify-center shrink-0 border border-[#dcedc8]">
-              <Camera className="w-5 h-5 stroke-[1.8]" />
-            </div>
-            <div>
-              <div className="text-xs sm:text-sm font-bold text-gray-900">
-                Click or Drop Photos of Your Clothes Here
-              </div>
-              <div className="text-[11px] text-gray-500 mt-0.5">
-                Take pictures with your mobile camera or upload from gallery (individual garments or overall bag spread)
-              </div>
-            </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => handleFiles(e.target.files)}
+          />
+          <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+          <div className="text-xs font-bold text-gray-800">
+            Click to upload or drag &amp; drop photos of your clothes
           </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                fileInputRef.current?.click();
-              }}
-              className="px-4 py-2 rounded-xl bg-white hover:bg-gray-50 border border-gray-200 text-xs font-bold text-gray-800 flex items-center gap-1.5 shadow-sm transition-colors"
-            >
-              <UploadCloud className="w-4 h-4 text-[#689f38]" />
-              <span>Add Photos</span>
-            </button>
+          <div className="text-[11px] text-gray-500 mt-0.5">
+            Photos are saved to your order QR code so the dhobi can inspect garments at pickup and return.
           </div>
         </div>
 
-        {/* Uploaded Photos Grid Preview with Tags */}
         {clothPhotos.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pt-1">
-            {clothPhotos.map((photo, index) => (
-              <div
-                key={photo.id}
-                className="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-200/80 p-2.5 shadow-sm hover:shadow-md transition-shadow relative space-y-2 group"
-              >
-                {/* Delete Photo Button */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+            {clothPhotos.map((p) => (
+              <div key={p.id} className="relative rounded-xl border border-gray-200 bg-white p-2 space-y-1">
+                <div className="aspect-square rounded-lg overflow-hidden bg-gray-100">
+                  <img src={p.dataUrl} alt={p.name} className="w-full h-full object-cover" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Note (e.g. blue jeans)"
+                  value={p.notes}
+                  onChange={(e) => updatePhotoNote(p.id, e.target.value)}
+                  className="w-full text-[10px] px-1.5 py-0.5 border border-gray-200 rounded"
+                />
                 <button
                   type="button"
-                  onClick={() => removeClothPhoto(photo.id)}
-                  className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-90 hover:opacity-100 shadow-sm transition-opacity z-10"
-                  title="Remove cloth photo"
+                  onClick={() => removeClothPhoto(p.id)}
+                  className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-3 h-3" />
                 </button>
-
-                {/* Thumbnail */}
-                <div className="relative aspect-video sm:aspect-square rounded-xl overflow-hidden bg-gray-100 border border-gray-100">
-                  <img
-                    src={photo.dataUrl}
-                    alt={photo.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                  />
-                  <div className="absolute bottom-1 left-1 px-1.5 py-0.2 rounded bg-black/60 text-white text-[9px] font-bold">
-                    #{index + 1}
-                  </div>
-                </div>
-
-                {/* Cloth Name / Label Input */}
-                <div>
-                  <input
-                    type="text"
-                    placeholder="e.g. Blue Levi's jeans, Zara shirt..."
-                    value={photo.notes}
-                    onChange={(e) => updatePhotoNote(photo.id, e.target.value)}
-                    className="w-full bg-white/90 border border-gray-200 rounded-lg px-2 py-1 text-[11px] text-gray-800 placeholder:text-gray-400 focus:outline-none focus:border-[#689f38]"
-                  />
-                </div>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* 3. RESIDENCE HALL & ROOM DETAILS */}
+      {/* 4. RESIDENCE HALL & ROOM */}
       <div className="space-y-3 pt-2">
         <label className="text-xs font-black text-gray-800 uppercase tracking-wider flex items-center gap-2">
           <span className="w-5 h-5 rounded-full bg-[#f1f8e9] text-[#689f38] flex items-center justify-center text-[10px] font-black border border-[#dcedc8]">
-            3
+            4
           </span>
-          <span>Residence Hall &amp; Room Number</span>
+          <span>Hostel Hall &amp; Room Details</span>
         </label>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -583,11 +643,11 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
         </div>
       </div>
 
-      {/* 4. PICKUP DATE & SLOTS */}
+      {/* 5. PICKUP DATE & SLOTS */}
       <div className="space-y-3 pt-2">
         <label className="text-xs font-black text-gray-800 uppercase tracking-wider flex items-center gap-2">
           <span className="w-5 h-5 rounded-full bg-[#f1f8e9] text-[#689f38] flex items-center justify-center text-[10px] font-black border border-[#dcedc8]">
-            4
+            5
           </span>
           <span>Pickup &amp; Return Slots</span>
         </label>
@@ -639,7 +699,7 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
         </div>
       </div>
 
-      {/* 5. SPECIAL WASHING INSTRUCTIONS */}
+      {/* 6. SPECIAL INSTRUCTIONS */}
       <div className="space-y-2 pt-2">
         <label className="text-xs font-bold text-gray-700 block">
           Special Washing Instructions &amp; Fabric Notes (Optional)
@@ -648,48 +708,80 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
           rows={2}
           value={specialInstructions}
           onChange={(e) => setSpecialInstructions(e.target.value)}
-          placeholder="e.g. Mild detergent only for woolen kurta, dark shirts separately, stain on white collar..."
+          placeholder="e.g. Mild detergent only for woolen kurta, dark shirts separately..."
           className="w-full bg-white/80 backdrop-blur-md border border-gray-200/80 hover:border-gray-300 focus:border-[#689f38] rounded-xl px-4 py-2.5 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#689f38]/20 transition-all shadow-sm resize-none"
         />
       </div>
 
-      {/* MODERN TRANSPARENT SUMMARY & CONFIRMATION BAR */}
-      <div className="pt-4 border-t border-gray-200/80 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/60 backdrop-blur-md rounded-2xl p-4 sm:p-5 shadow-sm">
-        <div className="space-y-1 text-center sm:text-left">
-          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs font-semibold text-gray-600">
-            <span>
-              Selected: <strong className="text-gray-900">{totalGarments} garments</strong>
-            </span>
-            <span className="text-gray-300">|</span>
-            <span className="text-[#2e7d32] font-bold">
-              📸 {clothPhotos.length} {clothPhotos.length === 1 ? 'photo' : 'photos'} for verification
-            </span>
+      {/* TRANSPARENT CHECKOUT & FINANCIAL SEPARATION SUMMARY */}
+      <div className="pt-4 border-t border-gray-200/80 bg-white/90 backdrop-blur-md rounded-2xl p-5 shadow-sm space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+          <div className="space-y-1.5 border-b sm:border-b-0 sm:border-r border-gray-200 pb-3 sm:pb-0 sm:pr-4">
+            <div className="text-[11px] font-black uppercase text-slate-500 tracking-wider">
+              Transparent Tariff Breakdown
+            </div>
+            <div className="flex justify-between text-slate-700">
+              <span>Laundry Service Charges:</span>
+              <span className="font-semibold text-slate-900">₹{laundryBaseAmount}</span>
+            </div>
+            <div className="flex justify-between text-slate-700">
+              <span>Campus Basket Service Charge:</span>
+              <span className="font-semibold text-slate-900">
+                ₹{serviceChargeAmount}{' '}
+                <span className="text-[10px] text-slate-400 font-normal">
+                  ({totalGarments} × ₹{tariff.serviceChargePerUnit || 1})
+                </span>
+              </span>
+            </div>
+            <div className="flex justify-between font-bold text-slate-900 pt-1 border-t border-slate-200">
+              <span>Total Order Value:</span>
+              <span className="text-sm">₹{totalOrderAmount}</span>
+            </div>
           </div>
 
-          <div className="text-2xl font-black text-gray-900 tracking-tight flex items-baseline gap-1.5 justify-center sm:justify-start">
-            <span>₹{estimatedTotal}</span>
-            <span className="text-xs font-normal text-gray-500">
-              (Includes automated wash, softener &amp; steam press)
-            </span>
+          <div className="space-y-1.5">
+            <div className="text-[11px] font-black uppercase text-[#2e7d32] tracking-wider">
+              Payment Schedule ({paymentMethod})
+            </div>
+            <div className="flex justify-between font-bold text-[#2e7d32]">
+              <span>Pay Online Now:</span>
+              <span className="text-base font-black">₹{payOnlineNow}</span>
+            </div>
+            <div className="flex justify-between text-slate-600">
+              <span>Pay to Provider on Delivery:</span>
+              <span className="font-bold text-slate-900">₹{payOnDelivery}</span>
+            </div>
+            <div className="text-[10px] text-slate-500 pt-1">
+              {paymentMethod === 'ONLINE'
+                ? 'Full amount paid safely via campus escrow.'
+                : 'Campus Basket service charge paid online to confirm slot; provider base paid on delivery.'}
+            </div>
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={isSubmitting || totalGarments === 0}
-          className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-[#689f38] to-[#7cb342] hover:from-[#5b8c30] hover:to-[#689f38] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md hover:shadow-lg active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shrink-0"
-        >
-          {isSubmitting ? (
-            <span>Scheduling Pickup...</span>
-          ) : (
-            <>
-              <span>Confirm Laundry Pickup</span>
-              <ArrowRight className="w-4 h-4" />
-            </>
-          )}
-        </button>
+        <div className="pt-3 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="text-xs text-slate-500 text-center sm:text-left">
+            In-App Dual-OTP enabled &bull; No email notifications &bull; Direct room pickup
+          </div>
+
+          <button
+            type="submit"
+            disabled={isSubmitting || totalGarments === 0}
+            className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-[#689f38] to-[#7cb342] hover:from-[#5b8c30] hover:to-[#689f38] text-white font-extrabold text-xs uppercase tracking-wider rounded-xl shadow-md hover:shadow-lg active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shrink-0"
+          >
+            {isSubmitting ? (
+              <span>Scheduling Pickup...</span>
+            ) : (
+              <>
+                <span>
+                  Confirm &amp; Pay ₹{payOnlineNow} {paymentMethod === 'COD' ? '(Advance)' : ''}
+                </span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </form>
   );
 }
-

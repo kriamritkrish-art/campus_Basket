@@ -7,6 +7,7 @@ import { AdminReportController } from '../controllers/adminReportController';
 import { AdminPeopleController } from '../controllers/adminPeopleController';
 import { AdminCampusController } from '../controllers/adminCampusController';
 import { AdminPaymentController } from '../controllers/adminPaymentController';
+import { AdminLaundryController } from '../controllers/adminLaundryController';
 import { authGuard } from '../middleware/authGuard';
 import { rbacGuard } from '../middleware/rbacGuard';
 
@@ -125,5 +126,16 @@ router.get('/settings', AdminController.getSettings);
 router.post('/settings', AdminController.updateSetting);
 router.get('/settings/auth-otp', AdminController.getAuthSettings);
 router.post('/settings/auth-otp', AdminController.updateAuthSettings);
+
+// 10. Advanced Laundry Service Pricing & Operations Hub
+router.get('/laundry/pricing', AdminLaundryController.getProvidersAndServices);
+router.post('/laundry/pricing', AdminLaundryController.upsertPricingConfig);
+router.delete('/laundry/pricing/:id', AdminLaundryController.deletePricingConfig);
+router.get('/laundry/preview', AdminLaundryController.getPricingPreview);
+router.get('/laundry/settings', AdminLaundryController.getSettings);
+router.put('/laundry/settings', AdminLaundryController.updateSettings);
+router.post('/laundry/settings', AdminLaundryController.updateSettings);
+router.get('/laundry/financials', AdminLaundryController.getFinancialOverview);
+router.get('/laundry/export', AdminLaundryController.exportFinancialReport);
 
 export default router;

@@ -47,6 +47,8 @@ export const laundryOrderSchema = z.object({
     })
     .optional(),
   clothPhotos: z.array(z.string()).optional(),
+  serviceConfigId: z.string().optional(),
+  paymentMethod: z.enum(['ONLINE', 'COD']).default('COD'),
   photos: z
     .array(
       z.object({

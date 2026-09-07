@@ -9,6 +9,7 @@ import {
   Shirt,
   ShoppingBag,
   IndianRupee,
+  Banknote,
   Clock,
   CheckCircle2,
   XCircle,
@@ -276,8 +277,54 @@ export default function ProviderDashboardPage() {
     }
   };
 
+  // Collect COD cash payment from student
+  const handleCollectCod = async (jobId: string, expectedAmount: number) => {
+    if (!confirm(`Confirm cash collection of ₹${expectedAmount} from student?`)) return;
+    try {
+      const res = await apiRequest(`/api/laundry/${jobId}/collect-cod`, {
+        method: 'POST',
+        body: JSON.stringify({ collectedAmount: expectedAmount })
+      });
+      if (res.success) {
+        showToast(`COD collection of ₹${expectedAmount} recorded successfully!`);
+        loadLaundryJobs();
+      } else {
+        alert(res.message || 'Failed to record COD collection');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error recording COD collection');
+    }
+  };
+
   // Update laundry status handler (self-fulfillment control)
   const handleUpdateLaundryStatus = async (jobId: string, status: string) => {
+    const job = laundryJobs.find((j) => j.id === jobId);
+
+    // Strict status bypass prevention:
+    // Advancing to CLOTHES_COLLECTED requires verifying student's Pickup OTP
+    if (status === 'CLOTHES_COLLECTED') {
+      setOtpModal({
+        isOpen: true,
+        jobId,
+        type: 'PICKUP',
+        orderNumber: job?.orderNumber || 'Order',
+      });
+      setEnteredOtp('');
+      return;
+    }
+
+    // Advancing to COMPLETED requires verifying student's Delivery Return OTP
+    if (status === 'COMPLETED') {
+      setOtpModal({
+        isOpen: true,
+        jobId,
+        type: 'DELIVERY',
+        orderNumber: job?.orderNumber || 'Order',
+      });
+      setEnteredOtp('');
+      return;
+    }
+
     try {
       const res = await apiRequest(`/api/laundry/${jobId}/status`, {
         method: 'PATCH',
@@ -703,6 +750,23 @@ export default function ProviderDashboardPage() {
     if (laundryFilter === 'COMPLETED') return laundryCompleted;
     return laundryJobs;
   }, [laundryFilter, laundryJobs, laundryPickupPending, laundryInWash, laundryReadyDropoff, laundryCompleted]);
+
+  // Laundry financial breakdown aggregations
+  const laundryEarnings = useMemo(() => {
+    return laundryJobs.reduce((sum, j) => sum + Number(j.laundryBaseAmount || j.finalPrice || j.estimatedPrice || 0), 0);
+  }, [laundryJobs]);
+
+  const laundryCodPending = useMemo(() => {
+    return laundryJobs
+      .filter((j) => j.paymentMethod === 'COD' && j.codStatus !== 'COLLECTED')
+      .reduce((sum, j) => sum + Number(j.codAmount || 0), 0);
+  }, [laundryJobs]);
+
+  const laundryCodCollected = useMemo(() => {
+    return laundryJobs
+      .filter((j) => j.codStatus === 'COLLECTED')
+      .reduce((sum, j) => sum + Number(j.codCollectedAmount || j.codAmount || 0), 0);
+  }, [laundryJobs]);
 
   // Aggregate all photos uploaded across active laundry jobs for the Garment Inspection tab
   const allGarmentPhotos = useMemo(() => {
@@ -2995,44 +3059,54 @@ export default function ProviderDashboardPage() {
         {activeTab === 'LAUNDRY' && isLaundryVendor && (
           <div className="space-y-4">
             {/* Laundry Command Center Header & KPI Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center flex-shrink-0">
-                  <Shirt className="w-5 h-5 text-indigo-600" />
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center flex-shrink-0">
+                  <Shirt className="w-4 h-4 text-indigo-600" />
                 </div>
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Active Wash Volume</div>
-                  <div className="text-xl font-black text-slate-900">{laundryActiveJobs.length} <span className="text-xs font-normal text-slate-400">jobs</span></div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Active Volume</div>
+                  <div className="text-lg font-black text-slate-900">{laundryActiveJobs.length} <span className="text-[10px] font-normal text-slate-400">jobs</span></div>
                 </div>
               </div>
 
-              <div className="bg-white p-4 rounded-xl border border-amber-200/80 shadow-xs flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center flex-shrink-0">
-                  <Clock className="w-5 h-5 text-amber-600" />
+              <div className="bg-white p-3.5 rounded-xl border border-emerald-200/80 shadow-xs flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center flex-shrink-0">
+                  <IndianRupee className="w-4 h-4 text-emerald-600" />
                 </div>
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">Pickup Pending</div>
-                  <div className="text-xl font-black text-amber-900">{laundryPickupPending.length}</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Provider Earnings</div>
+                  <div className="text-lg font-black text-emerald-900">₹{laundryEarnings.toLocaleString('en-IN')}</div>
                 </div>
               </div>
 
-              <div className="bg-white p-4 rounded-xl border border-blue-200/80 shadow-xs flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center flex-shrink-0">
-                  <Sparkles className="w-5 h-5 text-blue-600" />
+              <div className="bg-white p-3.5 rounded-xl border border-amber-200/80 shadow-xs flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center flex-shrink-0">
+                  <Clock className="w-4 h-4 text-amber-600" />
                 </div>
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-blue-700">In Wash &amp; Press</div>
-                  <div className="text-xl font-black text-blue-900">{laundryInWash.length}</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">Pickup Pending</div>
+                  <div className="text-lg font-black text-amber-900">{laundryPickupPending.length}</div>
                 </div>
               </div>
 
-              <div className="bg-white p-4 rounded-xl border border-emerald-200/80 shadow-xs flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center flex-shrink-0">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              <div className="bg-white p-3.5 rounded-xl border border-orange-200/80 shadow-xs flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-orange-50 border border-orange-200 flex items-center justify-center flex-shrink-0">
+                  <Banknote className="w-4 h-4 text-orange-600" />
                 </div>
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">Ready for Dropoff</div>
-                  <div className="text-xl font-black text-emerald-900">{laundryReadyDropoff.length}</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-orange-700">COD to Collect</div>
+                  <div className="text-lg font-black text-orange-900">₹{laundryCodPending.toLocaleString('en-IN')}</div>
+                </div>
+              </div>
+
+              <div className="bg-white p-3.5 rounded-xl border border-blue-200/80 shadow-xs flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center flex-shrink-0">
+                  <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-blue-700">COD Collected</div>
+                  <div className="text-lg font-black text-blue-900">₹{laundryCodCollected.toLocaleString('en-IN')}</div>
                 </div>
               </div>
             </div>
@@ -3045,7 +3119,7 @@ export default function ProviderDashboardPage() {
                     Express Laundry Doorstep Verification Desk
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Student dual-OTP room pickup &amp; delivery cycle &bull; Self-fulfillment control &bull; Photo inspection
+                    Student dual-OTP room pickup &amp; delivery cycle &bull; Self-fulfillment control &bull; Photo inspection &bull; Separate base &amp; SC
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -3121,143 +3195,193 @@ export default function ProviderDashboardPage() {
                       <th className="py-3 px-4">Order #</th>
                       <th className="py-3 px-4">Student &amp; Room</th>
                       <th className="py-3 px-4">Garment Photos</th>
-                      <th className="py-3 px-4">Items Summary</th>
-                      <th className="py-3 px-4 text-right">Price</th>
-                      <th className="py-3 px-4 text-center">Pickup OTP (Give to Student)</th>
-                      <th className="py-3 px-4 text-center">Wash &amp; Return Stage</th>
-                      <th className="py-3 px-4 text-center">Return OTP Handover</th>
+                      <th className="py-3 px-4">Garments</th>
+                      <th className="py-3 px-4 text-right">Base Earnings</th>
+                      <th className="py-3 px-4 text-right">Platform SC</th>
+                      <th className="py-3 px-4 text-center">Payment &amp; COD</th>
+                      <th className="py-3 px-4 text-center">Pickup OTP Verification</th>
+                      <th className="py-3 px-4 text-center">Stage Progression</th>
+                      <th className="py-3 px-4 text-center">Return Delivery OTP</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredLaundryJobs.length > 0 ? (
-                      filteredLaundryJobs.map((job: any) => (
-                        <tr key={job.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                            #{job.orderNumber}
-                            <div className="text-[10px] text-slate-400 font-normal font-sans">
-                              {job.createdAt ? new Date(job.createdAt).toLocaleDateString('en-IN') : ''}
-                            </div>
-                          </td>
+                      filteredLaundryJobs.map((job: any) => {
+                        const isPickupDone = ['CLOTHES_COLLECTED', 'WASHING', 'IRONING', 'READY', 'DELIVERY_SCHEDULED', 'COMPLETED'].includes(job.status);
+                        const isDelivered = job.status === 'COMPLETED';
 
-                          <td className="py-3 px-4 font-medium">
-                            <div className="font-bold text-slate-800">{job.student?.fullName || 'Student'}</div>
-                            <div className="text-slate-500 text-[11px] flex items-center gap-1 mt-0.5">
-                              <MapPin className="w-3 h-3 text-slate-400" />
-                              {job.hallName} {job.roomNumber}
-                            </div>
-                            {job.student?.mobileNumber && (
-                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                                📞 {job.student.mobileNumber}
+                        return (
+                          <tr key={job.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                              #{job.orderNumber}
+                              <div className="text-[10px] text-slate-400 font-normal font-sans">
+                                {job.createdAt ? new Date(job.createdAt).toLocaleDateString('en-IN') : ''}
                               </div>
-                            )}
-                          </td>
+                            </td>
 
-                          <td className="py-3 px-4">
-                            {job.photos && job.photos.length > 0 ? (
-                              <button
-                                onClick={() =>
-                                  setSelectedGarmentPhotos({
-                                    photos: job.photos,
-                                    orderNumber: job.orderNumber,
-                                    studentName: job.student?.fullName,
-                                  })
-                                }
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] border border-indigo-200 transition"
-                              >
-                                <Camera className="w-3.5 h-3.5 text-indigo-600" />
-                                <span>View Clothes ({job.photos.length})</span>
-                              </button>
-                            ) : (
-                              <span className="text-slate-400 text-[11px] italic">No photos attached</span>
-                            )}
-                          </td>
-
-                          <td className="py-3 px-4">
-                            <div className="text-slate-700 font-medium line-clamp-2 max-w-[180px]">
-                              {job.itemsSummary || `${job.totalClothesCount || 1} clothes`}
-                            </div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">
-                              Total: {job.totalClothesCount || 1} pcs
-                            </div>
-                          </td>
-
-                          <td className="py-3 px-4 text-right font-bold text-slate-900">
-                            ₹{job.finalPrice || job.estimatedPrice}
-                          </td>
-
-                          <td className="py-3 px-4 text-center">
-                            <div className="inline-flex flex-col items-center">
-                              <div className="font-mono font-black text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md border border-indigo-200 tracking-wider">
-                                {job.pickupOtp || '123456'}
+                            <td className="py-3 px-4 font-medium">
+                              <div className="font-bold text-slate-800">{job.student?.fullName || 'Student'}</div>
+                              <div className="text-slate-500 text-[11px] flex items-center gap-1 mt-0.5">
+                                <MapPin className="w-3 h-3 text-slate-400" />
+                                {job.hallName} {job.roomNumber}
                               </div>
-                              <span className="text-[9px] text-slate-500 mt-0.5">Tell to student</span>
-                              {job.pickupOtpStatus === 'PENDING' ? (
+                              {job.student?.mobileNumber && (
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                  📞 {job.student.mobileNumber}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-4">
+                              {job.photos && job.photos.length > 0 ? (
                                 <button
-                                  onClick={() => handleUpdateLaundryStatus(job.id, 'CLOTHES_COLLECTED')}
-                                  className="mt-1 text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-2 py-0.5 rounded shadow-xs"
+                                  onClick={() =>
+                                    setSelectedGarmentPhotos({
+                                      photos: job.photos,
+                                      orderNumber: job.orderNumber,
+                                      studentName: job.student?.fullName,
+                                    })
+                                  }
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] border border-indigo-200 transition"
                                 >
-                                  Mark Collected
+                                  <Camera className="w-3.5 h-3.5 text-indigo-600" />
+                                  <span>View Clothes ({job.photos.length})</span>
                                 </button>
                               ) : (
-                                <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-0.5 mt-0.5">
-                                  <CheckCircle2 className="w-3 h-3" /> Collected
-                                </span>
+                                <span className="text-slate-400 text-[11px] italic">No photos attached</span>
                               )}
-                            </div>
-                          </td>
+                            </td>
 
-                          <td className="py-3 px-4 text-center">
-                            <div className="space-y-1 inline-block text-left">
-                              <select
-                                value={job.status}
-                                onChange={(e) => handleUpdateLaundryStatus(job.id, e.target.value)}
-                                className="bg-slate-50 border border-slate-200 text-slate-700 font-bold text-[11px] rounded-lg px-2 py-1 cursor-pointer focus:outline-none focus:border-indigo-600"
-                              >
-                                <option value="REQUESTED">Requested</option>
-                                <option value="ACCEPTED">Accepted</option>
-                                <option value="PICKUP_SCHEDULED">Pickup Scheduled</option>
-                                <option value="CLOTHES_COLLECTED">Clothes Collected</option>
-                                <option value="WASHING">Washing</option>
-                                <option value="IRONING">Ironing</option>
-                                <option value="READY">Ready for Return</option>
-                                <option value="DELIVERY_SCHEDULED">Out for Delivery</option>
-                                <option value="COMPLETED">Completed</option>
-                              </select>
-                              <div className="text-[9px] text-slate-400">
-                                {job.deliveryBoy ? `Runner: ${job.deliveryBoy.fullName}` : 'Self-Fulfillment'}
+                            <td className="py-3 px-4">
+                              <div className="text-slate-700 font-medium line-clamp-2 max-w-[150px]">
+                                {job.itemsSummary || `${job.totalClothesCount || 1} clothes`}
                               </div>
-                            </div>
-                          </td>
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                Total: {job.totalClothesCount || 1} pcs
+                              </div>
+                            </td>
 
-                          <td className="py-3 px-4 text-center">
-                            {job.deliveryOtpStatus === 'VERIFIED' || job.status === 'COMPLETED' ? (
-                              <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full text-[11px] font-bold">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                Delivered
+                            {/* Provider Base Amount */}
+                            <td className="py-3 px-4 text-right font-black text-slate-900">
+                              ₹{job.laundryBaseAmount || job.finalPrice || job.estimatedPrice}
+                            </td>
+
+                            {/* Platform Service Charge (Excluded) */}
+                            <td className="py-3 px-4 text-right">
+                              <span className="text-[11px] font-mono text-slate-400">
+                                ₹{job.serviceChargeAmount || 0}
                               </span>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  setOtpModal({
-                                    isOpen: true,
-                                    jobId: job.id,
-                                    type: 'DELIVERY',
-                                    orderNumber: job.orderNumber,
-                                  });
-                                  setEnteredOtp('');
-                                }}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold shadow-xs flex items-center gap-1 mx-auto transition"
-                              >
-                                <KeyRound className="w-3 h-3" />
-                                <span>Verify Return OTP</span>
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))
+                              <div className="text-[9px] text-slate-400">Platform SC</div>
+                            </td>
+
+                            {/* Payment & COD Details */}
+                            <td className="py-3 px-4 text-center">
+                              {job.paymentMethod === 'ONLINE' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  💳 Online (Paid)
+                                </span>
+                              ) : (
+                                <div className="space-y-1 inline-flex flex-col items-center">
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                    💵 COD: ₹{job.codAmount || 0}
+                                  </span>
+                                  {job.codStatus === 'COLLECTED' ? (
+                                    <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-0.5">
+                                      <CheckCircle2 className="w-3 h-3" /> Collected
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleCollectCod(job.id, Number(job.codAmount || 0))}
+                                      className="text-[10px] bg-amber-600 hover:bg-amber-700 text-white font-bold px-2 py-0.5 rounded shadow-xs transition cursor-pointer"
+                                    >
+                                      Mark COD Collected
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Pickup Verification (Enter Student Pickup OTP) */}
+                            <td className="py-3 px-4 text-center">
+                              {isPickupDone ? (
+                                <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full text-[10px] font-bold">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                  Collected ✓
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setOtpModal({
+                                      isOpen: true,
+                                      jobId: job.id,
+                                      type: 'PICKUP',
+                                      orderNumber: job.orderNumber,
+                                    });
+                                    setEnteredOtp('');
+                                  }}
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold shadow-xs flex items-center gap-1 mx-auto transition cursor-pointer"
+                                >
+                                  <KeyRound className="w-3 h-3" />
+                                  <span>Enter Student Pickup OTP</span>
+                                </button>
+                              )}
+                            </td>
+
+                            {/* Stage Selector */}
+                            <td className="py-3 px-4 text-center">
+                              <div className="space-y-1 inline-block text-left">
+                                <select
+                                  value={job.status}
+                                  onChange={(e) => handleUpdateLaundryStatus(job.id, e.target.value)}
+                                  className="bg-slate-50 border border-slate-200 text-slate-700 font-bold text-[11px] rounded-lg px-2 py-1 cursor-pointer focus:outline-none focus:border-indigo-600"
+                                >
+                                  <option value="REQUESTED">Requested</option>
+                                  <option value="ACCEPTED">Accepted</option>
+                                  <option value="PICKUP_SCHEDULED">Pickup Scheduled</option>
+                                  <option value="CLOTHES_COLLECTED">Clothes Collected (Requires OTP)</option>
+                                  <option value="WASHING">Washing</option>
+                                  <option value="IRONING">Ironing</option>
+                                  <option value="READY">Ready for Return</option>
+                                  <option value="DELIVERY_SCHEDULED">Out for Delivery</option>
+                                  <option value="COMPLETED">Completed (Requires OTP)</option>
+                                </select>
+                                <div className="text-[9px] text-slate-400">
+                                  {job.deliveryBoy ? `Runner: ${job.deliveryBoy.fullName}` : 'Self-Fulfillment'}
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Return Delivery OTP */}
+                            <td className="py-3 px-4 text-center">
+                              {isDelivered ? (
+                                <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full text-[10px] font-bold">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                  Delivered ✓
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setOtpModal({
+                                      isOpen: true,
+                                      jobId: job.id,
+                                      type: 'DELIVERY',
+                                      orderNumber: job.orderNumber,
+                                    });
+                                    setEnteredOtp('');
+                                  }}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold shadow-xs flex items-center gap-1 mx-auto transition cursor-pointer"
+                                >
+                                  <KeyRound className="w-3 h-3" />
+                                  <span>Enter Student Return OTP</span>
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
                     ) : (
                       <tr>
-                        <td colSpan={8} className="py-10 text-center text-slate-400">
+                        <td colSpan={10} className="py-10 text-center text-slate-400">
                           <Shirt className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                           No orders match the selected filter.
                         </td>

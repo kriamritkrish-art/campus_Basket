@@ -1933,6 +1933,8 @@ export const fallbackLaundryJobs = [
   {
     id: 'laundry_job_1',
     orderNumber: 'NIT-LND-501',
+    trackingNumber: 'TRK-NIT-LND-501',
+    qrCodeData: JSON.stringify({ trackingNumber: 'TRK-NIT-LND-501', orderNumber: 'NIT-LND-501', hall: 'Hall 11', room: 'B-304' }),
     studentId: 'stud_sourav',
     providerId: 'prov_laundry',
     hallName: 'Hall 11',
@@ -1941,6 +1943,19 @@ export const fallbackLaundryJobs = [
     totalClothesCount: 6,
     estimatedPrice: 120,
     finalPrice: 120,
+    laundryBaseAmount: 114,
+    serviceChargeAmount: 6,
+    totalAmount: 120,
+    onlinePaidAmount: 120,
+    codAmount: 0,
+    codCollectedAmount: 0,
+    codStatus: 'NOT_APPLICABLE',
+    paymentMethod: 'ONLINE',
+    paymentStatus: 'PAID',
+    settlementStatus: 'PENDING',
+    refundStatus: 'NOT_APPLICABLE',
+    serviceChargeRefundable: true,
+    priceSnapshotJson: JSON.stringify({ providerPrice: 19, serviceCharge: 1, quantity: 6, baseTotal: 114, serviceChargeTotal: 6 }),
     status: 'IN_LAUNDRY',
     pickupOtpStatus: 'VERIFIED',
     deliveryOtpStatus: 'PENDING',
@@ -1951,13 +1966,15 @@ export const fallbackLaundryJobs = [
     updatedAt: pastDays(0, 2),
     student: { fullName: 'Sourav Senapati', rollNumber: '24U10227', email: 'ss.24u10227@nitdgp.ac.in', mobileNumber: '9876501234', hallName: 'Hall 11', roomNumber: 'B-304' },
     items: [
-      { id: 'li_1', itemType: 'Shirt Wash & Steam Iron', quantity: 3, unitPrice: 20 },
-      { id: 'li_2', itemType: 'Denim Jeans Deep Wash', quantity: 2, unitPrice: 30 }
+      { id: 'li_1', itemType: 'Shirt', quantity: 3, unitPrice: 20 },
+      { id: 'li_2', itemType: 'Jeans', quantity: 3, unitPrice: 20 }
     ]
   },
   {
     id: 'laundry_job_2',
     orderNumber: 'NIT-LND-502',
+    trackingNumber: 'TRK-NIT-LND-502',
+    qrCodeData: JSON.stringify({ trackingNumber: 'TRK-NIT-LND-502', orderNumber: 'NIT-LND-502', hall: 'Hall 2', room: 'A-102' }),
     studentId: 'stud_rohit',
     providerId: 'prov_laundry',
     hallName: 'Hall 2',
@@ -1966,6 +1983,19 @@ export const fallbackLaundryJobs = [
     totalClothesCount: 4,
     estimatedPrice: 40,
     finalPrice: 40,
+    laundryBaseAmount: 36,
+    serviceChargeAmount: 4,
+    totalAmount: 40,
+    onlinePaidAmount: 4,
+    codAmount: 36,
+    codCollectedAmount: 0,
+    codStatus: 'PENDING',
+    paymentMethod: 'COD',
+    paymentStatus: 'PARTIALLY_PAID',
+    settlementStatus: 'NOT_ELIGIBLE',
+    refundStatus: 'NOT_APPLICABLE',
+    serviceChargeRefundable: true,
+    priceSnapshotJson: JSON.stringify({ providerPrice: 9, serviceCharge: 1, quantity: 4, baseTotal: 36, serviceChargeTotal: 4 }),
     status: 'REQUESTED',
     pickupOtpStatus: 'PENDING',
     deliveryOtpStatus: 'PENDING',
@@ -1976,12 +2006,14 @@ export const fallbackLaundryJobs = [
     updatedAt: pastDays(0, 1),
     student: { fullName: 'Rohit Sharma', rollNumber: '23CS8012', email: 'rohit.23cs@nitdgp.ac.in', mobileNumber: '9876505678', hallName: 'Hall 2', roomNumber: 'A-102' },
     items: [
-      { id: 'li_3', itemType: 'Express Steam Iron Only', quantity: 4, unitPrice: 10 }
+      { id: 'li_3', itemType: 'Shirt', quantity: 4, unitPrice: 10 }
     ]
   },
   {
     id: 'laundry_job_3',
     orderNumber: 'NIT-LND-503',
+    trackingNumber: 'TRK-NIT-LND-503',
+    qrCodeData: JSON.stringify({ trackingNumber: 'TRK-NIT-LND-503', orderNumber: 'NIT-LND-503', hall: 'Mother Teresa Hall', room: 'C-215' }),
     studentId: 'stud_priya',
     providerId: 'prov_laundry',
     hallName: 'Mother Teresa Hall',
@@ -1990,6 +2022,19 @@ export const fallbackLaundryJobs = [
     totalClothesCount: 2,
     estimatedPrice: 80,
     finalPrice: 80,
+    laundryBaseAmount: 76,
+    serviceChargeAmount: 4,
+    totalAmount: 80,
+    onlinePaidAmount: 4,
+    codAmount: 76,
+    codCollectedAmount: 76,
+    codStatus: 'COLLECTED',
+    paymentMethod: 'COD',
+    paymentStatus: 'PAID',
+    settlementStatus: 'ELIGIBLE',
+    refundStatus: 'NOT_APPLICABLE',
+    serviceChargeRefundable: true,
+    priceSnapshotJson: JSON.stringify({ providerPrice: 38, serviceCharge: 2, quantity: 2, baseTotal: 76, serviceChargeTotal: 4 }),
     status: 'COMPLETED',
     pickupOtpStatus: 'VERIFIED',
     deliveryOtpStatus: 'VERIFIED',
@@ -2000,12 +2045,14 @@ export const fallbackLaundryJobs = [
     updatedAt: pastDays(2, 2),
     student: { fullName: 'Priya Mukherjee', rollNumber: '24EC8045', email: 'priya.24ec@nitdgp.ac.in', mobileNumber: '9876509012', hallName: 'Mother Teresa Hall', roomNumber: 'C-215' },
     items: [
-      { id: 'li_4', itemType: 'Single Bedsheet & Pillow Covers', quantity: 2, unitPrice: 40 }
+      { id: 'li_4', itemType: 'Bedsheet', quantity: 2, unitPrice: 40 }
     ]
   },
   {
     id: 'laundry_job_4',
     orderNumber: 'NIT-LND-504',
+    trackingNumber: 'TRK-NIT-LND-504',
+    qrCodeData: JSON.stringify({ trackingNumber: 'TRK-NIT-LND-504', orderNumber: 'NIT-LND-504', hall: 'Hall 5', room: 'B-201' }),
     studentId: 'stud_arun',
     providerId: 'prov_laundry',
     hallName: 'Hall 5',
@@ -2014,6 +2061,19 @@ export const fallbackLaundryJobs = [
     totalClothesCount: 1,
     estimatedPrice: 150,
     finalPrice: 150,
+    laundryBaseAmount: 145,
+    serviceChargeAmount: 5,
+    totalAmount: 150,
+    onlinePaidAmount: 150,
+    codAmount: 0,
+    codCollectedAmount: 0,
+    codStatus: 'NOT_APPLICABLE',
+    paymentMethod: 'ONLINE',
+    paymentStatus: 'PAID',
+    settlementStatus: 'PENDING',
+    refundStatus: 'NOT_APPLICABLE',
+    serviceChargeRefundable: true,
+    priceSnapshotJson: JSON.stringify({ providerPrice: 145, serviceCharge: 5, quantity: 1, baseTotal: 145, serviceChargeTotal: 5 }),
     status: 'WASHING',
     pickupOtpStatus: 'VERIFIED',
     deliveryOtpStatus: 'PENDING',
@@ -2024,7 +2084,7 @@ export const fallbackLaundryJobs = [
     updatedAt: pastDays(1, 2),
     student: { fullName: 'Arunav Roy', rollNumber: '22ME8003', email: 'arun.22me@nitdgp.ac.in', mobileNumber: '9876503456', hallName: 'Hall 5', roomNumber: 'B-201' },
     items: [
-      { id: 'li_5', itemType: 'Winter Blanket / Comforter Dry Clean', quantity: 1, unitPrice: 150 }
+      { id: 'li_5', itemType: 'Blanket', quantity: 1, unitPrice: 150 }
     ]
   }
 ];
@@ -2141,7 +2201,12 @@ export const fallbackSettings = [
   { id: 'set_10', key: 'HOURS_FRUITS', value: JSON.stringify({ open: '07:00', close: '21:00', days: ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'], isOpen: true, notice: 'Fresh morning & evening batches' }), description: 'Fresh Fruits Operating Timings' },
   { id: 'set_11', key: 'HOURS_LAUNDRY', value: JSON.stringify({ open: '09:00', close: '19:00', days: ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'], isOpen: true, notice: 'Sunday batch maintenance' }), description: 'Express Laundry Operating Timings' },
   { id: 'set_12', key: 'HOURS_ESSENTIALS', value: JSON.stringify({ open: '09:00', close: '22:00', days: ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'], isOpen: true, notice: 'Stationery & personal care' }), description: 'Stationery & Essentials Timings' },
-  { id: 'set_13', key: 'GEOFENCE_ENFORCED', value: 'true', description: 'Master GPS Geofencing perimeter restriction toggle' }
+  { id: 'set_13', key: 'GEOFENCE_ENFORCED', value: 'true', description: 'Master GPS Geofencing perimeter restriction toggle' },
+  { id: 'set_14', key: 'LAUNDRY_DEFAULT_SERVICE_CHARGE', value: '1.00', description: 'Default laundry service charge per unit in INR' },
+  { id: 'set_15', key: 'LAUNDRY_SERVICE_CHARGE_REFUNDABLE', value: 'true', description: 'Whether Campus Basket laundry service charge is refundable upon order cancellation' },
+  { id: 'set_16', key: 'LAUNDRY_COD_ENABLED', value: 'true', description: 'Allow COD for laundry orders with advance online service charge payment' },
+  { id: 'set_17', key: 'LAUNDRY_PICKUP_OTP_EXPIRY_MINUTES', value: '60', description: 'Minutes before pickup OTP expires' },
+  { id: 'set_18', key: 'LAUNDRY_DELIVERY_OTP_EXPIRY_MINUTES', value: '120', description: 'Minutes before return delivery OTP expires' }
 ];
 
 export const fallbackReportHistory = [
@@ -2198,6 +2263,169 @@ export const fallbackLaundryProviderConfigs = [
     }),
     createdAt: new Date('2026-01-10'),
     updatedAt: new Date()
+  }
+];
+
+export const fallbackLaundryServiceConfigs = [
+  {
+    id: 'lsc_wash_iron',
+    providerId: 'prov_laundry',
+    serviceName: 'Wash & Iron',
+    pricingUnit: 'per_dress',
+    unitDisplayName: 'per garment',
+    providerPricePerUnit: 15,
+    serviceChargePerUnit: 1,
+    minQuantity: 1,
+    maxQuantity: 50,
+    turnaroundHours: 24,
+    isAvailable: true,
+    itemRatesJson: JSON.stringify({
+      Shirt: 15,
+      'T-Shirt': 15,
+      Pants: 20,
+      Jeans: 25,
+      Kurta: 20,
+      Bedsheet: 35,
+      Towel: 15,
+      Blanket: 90
+    }),
+    tariffHeroTitle: 'Express Campus Laundry',
+    tariffHeroSubtitle: 'Automated wash, fabric softening & steam iron with room-to-room pickup across Halls 1–14',
+    tariffTag: 'DUAL-OTP',
+    tariffBadge: 'SUBSIDIZED TARIFF',
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date()
+  },
+  {
+    id: 'lsc_wash_fold',
+    providerId: 'prov_laundry',
+    serviceName: 'Wash & Fold',
+    pricingUnit: 'per_kg',
+    unitDisplayName: 'per kg',
+    providerPricePerUnit: 60,
+    serviceChargePerUnit: 5,
+    minQuantity: 2,
+    maxQuantity: 20,
+    turnaroundHours: 48,
+    isAvailable: true,
+    itemRatesJson: JSON.stringify({
+      'Mixed Regular Wear (per kg)': 60
+    }),
+    tariffHeroTitle: 'Bulk Wash & Fold',
+    tariffHeroSubtitle: 'Economical bulk laundry washed, tumble-dried, and neatly folded by kilogram',
+    tariffTag: 'KG-WEIGHT',
+    tariffBadge: 'AFFORDABLE BULK',
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date()
+  },
+  {
+    id: 'lsc_dry_clean',
+    providerId: 'prov_laundry',
+    serviceName: 'Dry Cleaning',
+    pricingUnit: 'per_item',
+    unitDisplayName: 'per item',
+    providerPricePerUnit: 80,
+    serviceChargePerUnit: 5,
+    minQuantity: 1,
+    maxQuantity: 10,
+    turnaroundHours: 72,
+    isAvailable: true,
+    itemRatesJson: JSON.stringify({
+      Blazer: 150,
+      Suit: 200,
+      Jacket: 120,
+      Sweater: 80,
+      Blanket: 120
+    }),
+    tariffHeroTitle: 'Premium Dry Clean',
+    tariffHeroSubtitle: 'Gentle solvent care for blazers, winter wear, ethnic suits, and heavy blankets',
+    tariffTag: 'CARE-PLUS',
+    tariffBadge: 'PREMIUM CARE',
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date()
+  },
+  {
+    id: 'lsc_steam_iron',
+    providerId: 'prov_laundry',
+    serviceName: 'Steam Iron Only',
+    pricingUnit: 'per_piece',
+    unitDisplayName: 'per piece',
+    providerPricePerUnit: 10,
+    serviceChargePerUnit: 1,
+    minQuantity: 1,
+    maxQuantity: 30,
+    turnaroundHours: 12,
+    isAvailable: true,
+    itemRatesJson: JSON.stringify({
+      Shirt: 10,
+      Trousers: 10,
+      Kurta: 12,
+      Saree: 25
+    }),
+    tariffHeroTitle: 'Express Steam Iron',
+    tariffHeroSubtitle: 'Wrinkle-free high-pressure steam pressing returned in 12-24 hours',
+    tariffTag: 'FAST-PRESS',
+    tariffBadge: 'EXPRESS PRESS',
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date()
+  }
+];
+
+export const fallbackLaundryCodCollections: Array<{
+  id: string;
+  collectionNumber: string;
+  laundryOrderId: string;
+  providerId: string | null;
+  expectedAmount: number;
+  collectedAmount: number;
+  collectionStatus: string;
+  collectedAt: Date | null;
+  collectedBy: string | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}> = [
+  {
+    id: 'lcod_1',
+    collectionNumber: 'CB-LCOD-2026-0001',
+    laundryOrderId: 'laundry_job_3',
+    providerId: 'prov_laundry',
+    expectedAmount: 76,
+    collectedAmount: 76,
+    collectionStatus: 'COLLECTED',
+    collectedAt: pastDays(2, 2),
+    collectedBy: 'prov_laundry',
+    notes: 'Collected cash from room C-215 upon delivery',
+    createdAt: pastDays(2, 2),
+    updatedAt: pastDays(2, 2)
+  }
+];
+
+export const fallbackLaundryOtps: Array<{
+  id: string;
+  laundryOrderId: string;
+  otpType: string;
+  otpHash: string;
+  encryptedOtp: string | null;
+  isUsed: boolean;
+  attempts: number;
+  expiresAt: Date;
+  verifiedAt: Date | null;
+  verifiedBy: string | null;
+  createdAt: Date;
+}> = [
+  {
+    id: 'lotp_1',
+    laundryOrderId: 'laundry_job_1',
+    otpType: 'PICKUP',
+    otpHash: 'hash_pickup_1',
+    encryptedOtp: '123456',
+    isUsed: true,
+    attempts: 0,
+    expiresAt: new Date(Date.now() + 3600000),
+    verifiedAt: pastDays(1, 3),
+    verifiedBy: 'prov_laundry',
+    createdAt: pastDays(1, 4)
   }
 ];
 

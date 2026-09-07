@@ -65,3 +65,36 @@ export function maskEmail(email: string): string {
   const prefix = local.slice(0, 3);
   return `${prefix}****@${domain}`;
 }
+
+const OTP_SECRET = process.env.JWT_SECRET || 'campus_basket_super_secure_otp_vault_key_2026';
+const OTP_VAULT_KEY = crypto.createHash('sha256').update(OTP_SECRET).digest();
+
+/**
+ * Encrypts a 6-digit OTP using AES-256-CBC so only authenticated student can see it.
+ */
+export function encryptOtp(text: string): string {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', OTP_VAULT_KEY, iv);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return `${iv.toString('hex')}:${encrypted}`;
+}
+
+/**
+ * Decrypts an encrypted OTP payload.
+ */
+export function decryptOtp(payload: string): string {
+  try {
+    if (!payload || !payload.includes(':')) return payload;
+    const parts = payload.split(':');
+    if (parts.length !== 2) return '';
+    const iv = Buffer.from(parts[0], 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', OTP_VAULT_KEY, iv);
+    let decrypted = decipher.update(parts[1], 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch {
+    return '';
+  }
+}
+

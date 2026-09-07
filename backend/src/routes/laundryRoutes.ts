@@ -6,11 +6,16 @@ import { geofenceGuard } from '../middleware/geofenceGuard';
 
 const router = Router();
 
+// Public / pre-auth pricing endpoint
+router.get('/pricing', LaundryController.getPricing);
+
 router.use(authGuard);
 
-// Student booking & history
+// Student booking & order history
 router.post('/orders', rbacGuard(['STUDENT']), geofenceGuard, LaundryController.createOrder);
-router.get('/orders', rbacGuard(['STUDENT']), LaundryController.getStudentLaundryOrders);
+router.get('/orders', rbacGuard(['STUDENT', 'ADMIN']), LaundryController.getStudentLaundryOrders);
+router.get('/orders/:id', LaundryController.getOrderDetail);
+router.post('/orders/:id/cancel', LaundryController.cancelOrder);
 
 // Provider and student actions (OTP verification & status)
 router.post('/:id/verify-pickup', rbacGuard(['ADMIN', 'SERVICE_PROVIDER', 'STUDENT']), LaundryController.verifyPickupOtp);
@@ -19,5 +24,10 @@ router.post('/:id/verify-delivery', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), La
 router.post('/:id/verify-delivery-otp', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.verifyDeliveryOtp);
 router.post('/:id/condition', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.recordCondition);
 router.patch('/:id/status', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.updateStatus);
+
+// COD cash collection
+router.post('/:id/collect-cod', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.markCodCollected);
+router.post('/:id/cod-collect', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.markCodCollected);
+router.post('/orders/:id/collect-cod', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.markCodCollected);
 
 export default router;

@@ -256,6 +256,8 @@ model ServiceProvider {
   settlementAccount  ProviderSettlementAccount?
   settlements        Settlement[]
   laundryConfig      LaundryProviderConfig?
+  laundryServiceConfigs LaundryServiceConfig[]
+  laundryCodCollections LaundryCodCollection[]
 
   @@index([serviceCategory])
 }
@@ -595,6 +597,22 @@ model LaundryOrder {
   status              LaundryStatus          @default(REQUESTED)
   estimatedPrice      Decimal                @db.Decimal(10, 2)
   finalPrice          Decimal?               @db.Decimal(10, 2)
+  laundryBaseAmount       Decimal            @default(0.00) @db.Decimal(10, 2)
+  serviceChargeAmount     Decimal            @default(0.00) @db.Decimal(10, 2)
+  totalAmount             Decimal            @default(0.00) @db.Decimal(10, 2)
+  onlinePaidAmount        Decimal            @default(0.00) @db.Decimal(10, 2)
+  codAmount               Decimal            @default(0.00) @db.Decimal(10, 2)
+  codCollectedAmount      Decimal            @default(0.00) @db.Decimal(10, 2)
+  codStatus               String             @default("PENDING") // PENDING, COLLECTED, FAILED, NOT_APPLICABLE
+  paymentMethod           String             @default("COD") // COD, ONLINE
+  paymentStatus           String             @default("PENDING")
+  settlementStatus        String             @default("NOT_ELIGIBLE") // NOT_ELIGIBLE, ELIGIBLE, SETTLED
+  refundStatus            String             @default("NOT_APPLICABLE")
+  serviceChargeRefundable Boolean            @default(true)
+  priceSnapshotJson       String?            @db.Text
+  serviceConfigId         String?
+  pickupOtpGeneratedAt    DateTime?
+  deliveryOtpGeneratedAt  DateTime?
   hallName            String
   hallNumber          String?
   roomNumber          String
@@ -611,6 +629,7 @@ model LaundryOrder {
   statusHistory       LaundryStatusHistory[]
   payment             Payment?
   receipt             Receipt?
+  codCollection       LaundryCodCollection?
 
   @@index([orderNumber])
   @@index([trackingNumber])
@@ -618,6 +637,8 @@ model LaundryOrder {
   @@index([providerId])
   @@index([deliveryBoyId])
   @@index([status])
+  @@index([paymentStatus])
+  @@index([settlementStatus])
 }
 
 model LaundryItem {
@@ -652,9 +673,12 @@ model LaundryOtp {
   laundryOrder   LaundryOrder   @relation(fields: [laundryOrderId], references: [id], onDelete: Cascade)
   otpType        LaundryOtpType // PICKUP or DELIVERY
   otpHash        String
+  encryptedOtp   String?        @db.Text
   isUsed         Boolean        @default(false)
   attempts       Int            @default(0)
   expiresAt      DateTime
+  verifiedAt     DateTime?
+  verifiedBy     String?
   createdAt      DateTime       @default(now())
 
   @@index([laundryOrderId, otpType])
@@ -761,6 +785,52 @@ model LaundryProviderConfig {
   isActive              Boolean         @default(true)
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
+}
+
+model LaundryServiceConfig {
+  id                  String          @id @default(cuid())
+  providerId          String?
+  provider            ServiceProvider? @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  serviceName         String          // e.g. "Wash & Iron", "Wash & Fold", "Dry Cleaning", "Steam Iron"
+  pricingUnit         String          // per_dress, per_item, per_kg, per_piece, per_shirt, per_pant, per_pair
+  unitDisplayName     String          @default("per dress") // e.g. "per dress", "per kg"
+  providerPricePerUnit Decimal        @db.Decimal(10, 2) // e.g. 15.00
+  serviceChargePerUnit Decimal        @db.Decimal(10, 2) // e.g. 1.00
+  minQuantity         Int             @default(1)
+  maxQuantity         Int?
+  turnaroundHours     Int             @default(48)
+  isAvailable         Boolean         @default(true)
+  itemRatesJson       String?         @db.Text // JSON breakdown e.g. {"Shirt": 15, "Pants": 20, ...}
+  tariffHeroTitle     String?         @default("Express Campus Laundry")
+  tariffHeroSubtitle  String?         @default("Automated wash, fabric softening & steam iron with room-to-room pickup across Halls 1–14")
+  tariffTag           String?         @default("DUAL-OTP")
+  tariffBadge         String?         @default("SUBSIDIZED TARIFF")
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  @@index([providerId])
+  @@index([serviceName])
+}
+
+model LaundryCodCollection {
+  id               String          @id @default(cuid())
+  collectionNumber String          @unique // e.g. CB-LCOD-2026-0001
+  laundryOrderId   String          @unique
+  laundryOrder     LaundryOrder    @relation(fields: [laundryOrderId], references: [id], onDelete: Cascade)
+  providerId       String?
+  provider         ServiceProvider? @relation(fields: [providerId], references: [id])
+  expectedAmount   Decimal         @db.Decimal(10, 2)
+  collectedAmount  Decimal         @default(0.00) @db.Decimal(10, 2)
+  collectionStatus String          @default("PENDING") // PENDING, COLLECTED, FAILED
+  collectedAt      DateTime?
+  collectedBy      String?
+  notes            String?         @db.Text
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([laundryOrderId])
+  @@index([providerId])
+  @@index([collectionStatus])
 }
 
 model Settlement {

@@ -26,7 +26,10 @@ import {
   fallbackFoodOrderDetails,
   fallbackLaundryOrderDetails,
   fallbackProduceOrderDetails,
-  fallbackStationeryOrderDetails
+  fallbackStationeryOrderDetails,
+  fallbackLaundryServiceConfigs,
+  fallbackLaundryCodCollections,
+  fallbackLaundryOtps
 } from '../services/fallbackData';
 
 declare global {
@@ -715,23 +718,273 @@ const fallbackHandlers: Record<string, any> = {
       return args.data;
     }
   },
-  laundryOrder: {
-    count: async () => fallbackLaundryJobs.length,
-    findMany: async () => JSON.parse(JSON.stringify(fallbackLaundryJobs)),
+  laundryServiceConfig: {
+    findMany: async (args?: any) => {
+      let list = [...fallbackLaundryServiceConfigs];
+      if (args?.where?.providerId) list = list.filter(c => c.providerId === args.where.providerId);
+      if (args?.where?.serviceName) list = list.filter(c => c.serviceName.toLowerCase() === args.where.serviceName.toLowerCase());
+      if (args?.where?.isAvailable !== undefined) list = list.filter(c => c.isAvailable === args.where.isAvailable);
+      return JSON.parse(JSON.stringify(list));
+    },
+    findFirst: async (args?: any) => {
+      let list = [...fallbackLaundryServiceConfigs];
+      if (args?.where?.providerId) list = list.filter(c => c.providerId === args.where.providerId);
+      if (args?.where?.serviceName) list = list.filter(c => c.serviceName.toLowerCase() === args.where.serviceName.toLowerCase());
+      return list[0] ? JSON.parse(JSON.stringify(list[0])) : null;
+    },
     findUnique: async (args: any) => {
       const id = args?.where?.id;
-      return fallbackLaundryJobs.find((j) => j.id === id) || null;
+      const found = fallbackLaundryServiceConfigs.find(c => c.id === id);
+      return found ? JSON.parse(JSON.stringify(found)) : null;
     },
-    create: async (args: any) => ({
-      id: `lnd_${Date.now()}`,
-      orderNumber: `NIT-LND-${Math.floor(100 + Math.random() * 900)}`,
-      ...args.data,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }),
+    create: async (args: any) => {
+      const created = {
+        id: `lsc_${Date.now()}`,
+        unitDisplayName: args.data.unitDisplayName || 'per dress',
+        minQuantity: args.data.minQuantity || 1,
+        turnaroundHours: args.data.turnaroundHours || 48,
+        isAvailable: args.data.isAvailable !== undefined ? args.data.isAvailable : true,
+        tariffHeroTitle: args.data.tariffHeroTitle || 'Express Campus Laundry',
+        tariffHeroSubtitle: args.data.tariffHeroSubtitle || 'Automated wash, fabric softening & steam iron with room-to-room pickup across Halls 1–14',
+        tariffTag: args.data.tariffTag || 'DUAL-OTP',
+        tariffBadge: args.data.tariffBadge || 'SUBSIDIZED TARIFF',
+        ...args.data,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      fallbackLaundryServiceConfigs.push(created as any);
+      return JSON.parse(JSON.stringify(created));
+    },
     update: async (args: any) => {
-      const job = fallbackLaundryJobs.find((j) => j.id === args.where.id) || fallbackLaundryJobs[0];
-      return { ...job, ...args.data };
+      const found = fallbackLaundryServiceConfigs.find(c => c.id === args.where.id);
+      if (found) {
+        Object.assign(found, args.data, { updatedAt: new Date() });
+        return JSON.parse(JSON.stringify(found));
+      }
+      return args.data;
+    },
+    delete: async (args: any) => {
+      const idx = fallbackLaundryServiceConfigs.findIndex(c => c.id === args.where.id);
+      if (idx !== -1) fallbackLaundryServiceConfigs.splice(idx, 1);
+      return { success: true };
+    }
+  },
+  laundryCodCollection: {
+    findMany: async (args?: any) => {
+      let list = [...fallbackLaundryCodCollections];
+      if (args?.where?.providerId) list = list.filter(c => c.providerId === args.where.providerId);
+      if (args?.where?.collectionStatus) list = list.filter(c => c.collectionStatus === args.where.collectionStatus);
+      return JSON.parse(JSON.stringify(list));
+    },
+    findUnique: async (args: any) => {
+      const found = fallbackLaundryCodCollections.find(c => c.id === args.where.id || c.laundryOrderId === args.where.laundryOrderId || c.collectionNumber === args.where.collectionNumber);
+      return found ? JSON.parse(JSON.stringify(found)) : null;
+    },
+    findFirst: async (args: any) => {
+      const found = fallbackLaundryCodCollections.find(c => c.laundryOrderId === args.where?.laundryOrderId);
+      return found ? JSON.parse(JSON.stringify(found)) : null;
+    },
+    create: async (args: any) => {
+      const col = {
+        id: `lcod_${Date.now()}`,
+        collectionNumber: args.data.collectionNumber || `CB-LCOD-${Math.floor(1000 + Math.random() * 9000)}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...args.data
+      };
+      fallbackLaundryCodCollections.unshift(col as any);
+      return JSON.parse(JSON.stringify(col));
+    },
+    update: async (args: any) => {
+      const found = fallbackLaundryCodCollections.find(c => c.id === args.where.id || c.laundryOrderId === args.where.laundryOrderId);
+      if (found) {
+        Object.assign(found, args.data, { updatedAt: new Date() });
+        return JSON.parse(JSON.stringify(found));
+      }
+      return args.data;
+    },
+    count: async () => fallbackLaundryCodCollections.length
+  },
+  laundryOtp: {
+    findMany: async (args?: any) => {
+      let otps = [...fallbackLaundryOtps];
+      if (args?.where?.laundryOrderId) otps = otps.filter(o => o.laundryOrderId === args.where.laundryOrderId);
+      if (args?.where?.otpType) otps = otps.filter(o => o.otpType === args.where.otpType);
+      return JSON.parse(JSON.stringify(otps));
+    },
+    findFirst: async (args?: any) => {
+      let otps = [...fallbackLaundryOtps];
+      if (args?.where?.laundryOrderId) otps = otps.filter(o => o.laundryOrderId === args.where.laundryOrderId);
+      if (args?.where?.otpType) otps = otps.filter(o => o.otpType === args.where.otpType);
+      return otps[0] ? JSON.parse(JSON.stringify(otps[0])) : null;
+    },
+    create: async (args: any) => {
+      const newOtp = {
+        id: `lotp_${Date.now()}`,
+        laundryOrderId: args.data.laundryOrderId,
+        otpType: args.data.otpType,
+        otpHash: args.data.otpHash,
+        encryptedOtp: args.data.encryptedOtp || null,
+        isUsed: false,
+        attempts: 0,
+        expiresAt: args.data.expiresAt,
+        verifiedAt: null,
+        verifiedBy: null,
+        createdAt: new Date()
+      };
+      fallbackLaundryOtps.unshift(newOtp as any);
+      return JSON.parse(JSON.stringify(newOtp));
+    },
+    update: async (args: any) => {
+      const found = fallbackLaundryOtps.find(o => o.id === args.where.id);
+      if (found) {
+        Object.assign(found, args.data);
+        return JSON.parse(JSON.stringify(found));
+      }
+      return args.data;
+    },
+    deleteMany: async (args: any) => {
+      const before = fallbackLaundryOtps.length;
+      const filtered = fallbackLaundryOtps.filter((o: any) => {
+        if (args?.where?.laundryOrderId && o.laundryOrderId !== args.where.laundryOrderId) return true;
+        if (args?.where?.otpType && o.otpType !== args.where.otpType) return true;
+        return false;
+      });
+      fallbackLaundryOtps.length = 0;
+      fallbackLaundryOtps.push(...filtered);
+      return { count: before - fallbackLaundryOtps.length };
+    }
+  },
+  laundryOrder: {
+    count: async () => fallbackLaundryJobs.length,
+    findMany: async (args?: any) => {
+      let jobs = [...fallbackLaundryJobs];
+      if (args?.where?.studentId) jobs = jobs.filter(j => j.studentId === args.where.studentId);
+      if (args?.where?.providerId) jobs = jobs.filter(j => j.providerId === args.where.providerId);
+      if (args?.where?.status) {
+        if (args.where.status.in && Array.isArray(args.where.status.in)) {
+          jobs = jobs.filter(j => args.where.status.in.includes(j.status));
+        } else if (typeof args.where.status === 'string') {
+          jobs = jobs.filter(j => j.status === args.where.status);
+        }
+      }
+      if (args?.where?.paymentStatus) jobs = jobs.filter(j => j.paymentStatus === args.where.paymentStatus);
+      if (args?.where?.settlementStatus) jobs = jobs.filter(j => j.settlementStatus === args.where.settlementStatus);
+      return JSON.parse(JSON.stringify(jobs.map(j => ({
+        ...j,
+        laundryBaseAmount: j.laundryBaseAmount !== undefined ? j.laundryBaseAmount : (j.finalPrice || j.estimatedPrice || 0) * 0.95,
+        serviceChargeAmount: j.serviceChargeAmount !== undefined ? j.serviceChargeAmount : (j.finalPrice || j.estimatedPrice || 0) * 0.05,
+        totalAmount: j.totalAmount || j.finalPrice || j.estimatedPrice || 0,
+        onlinePaidAmount: j.onlinePaidAmount !== undefined ? j.onlinePaidAmount : (j.paymentMethod === 'ONLINE' ? j.totalAmount : j.serviceChargeAmount),
+        codAmount: j.codAmount !== undefined ? j.codAmount : (j.paymentMethod === 'COD' ? j.laundryBaseAmount : 0),
+        codCollectedAmount: j.codCollectedAmount || 0,
+        codStatus: j.codStatus || (j.paymentMethod === 'COD' ? (j.status === 'COMPLETED' ? 'COLLECTED' : 'PENDING') : 'NOT_APPLICABLE'),
+        paymentMethod: j.paymentMethod || 'COD',
+        paymentStatus: j.paymentStatus || 'PAID',
+        settlementStatus: j.settlementStatus || (j.status === 'COMPLETED' ? 'ELIGIBLE' : 'NOT_ELIGIBLE'),
+        refundStatus: j.refundStatus || 'NOT_APPLICABLE',
+        codCollection: fallbackLaundryCodCollections.find(c => c.laundryOrderId === j.id) || null
+      }))));
+    },
+    findUnique: async (args: any) => {
+      const id = args?.where?.id;
+      const orderNumber = args?.where?.orderNumber;
+      const j = fallbackLaundryJobs.find((item) => (id && item.id === id) || (orderNumber && item.orderNumber === orderNumber)) as any;
+      if (!j) return null;
+      return JSON.parse(JSON.stringify({
+        ...j,
+        laundryBaseAmount: j.laundryBaseAmount !== undefined ? j.laundryBaseAmount : (j.finalPrice || j.estimatedPrice || 0) * 0.95,
+        serviceChargeAmount: j.serviceChargeAmount !== undefined ? j.serviceChargeAmount : (j.finalPrice || j.estimatedPrice || 0) * 0.05,
+        totalAmount: j.totalAmount || j.finalPrice || j.estimatedPrice || 0,
+        onlinePaidAmount: j.onlinePaidAmount !== undefined ? j.onlinePaidAmount : (j.paymentMethod === 'ONLINE' ? j.totalAmount : j.serviceChargeAmount),
+        codAmount: j.codAmount !== undefined ? j.codAmount : (j.paymentMethod === 'COD' ? j.laundryBaseAmount : 0),
+        codCollectedAmount: j.codCollectedAmount || 0,
+        codStatus: j.codStatus || (j.paymentMethod === 'COD' ? (j.status === 'COMPLETED' ? 'COLLECTED' : 'PENDING') : 'NOT_APPLICABLE'),
+        paymentMethod: j.paymentMethod || 'COD',
+        paymentStatus: j.paymentStatus || 'PAID',
+        settlementStatus: j.settlementStatus || (j.status === 'COMPLETED' ? 'ELIGIBLE' : 'NOT_ELIGIBLE'),
+        refundStatus: j.refundStatus || 'NOT_APPLICABLE',
+        items: j.items || [],
+        photos: j.photos || [],
+        otps: j.otps || [],
+        statusHistory: j.statusHistory || [],
+        codCollection: fallbackLaundryCodCollections.find(c => c.laundryOrderId === j.id) || null
+      }));
+    },
+    create: async (args: any) => {
+      const itemsData = args.data.items?.create || [];
+      const otpsData = args.data.otps?.create || [];
+      const historyData = args.data.statusHistory?.create;
+      const orderId = `lnd_${Date.now()}`;
+      const totalAmount = Number(args.data.totalAmount || args.data.estimatedPrice || 100);
+      const baseAmount = args.data.laundryBaseAmount !== undefined ? Number(args.data.laundryBaseAmount) : totalAmount * 0.95;
+      const scAmount = args.data.serviceChargeAmount !== undefined ? Number(args.data.serviceChargeAmount) : totalAmount * 0.05;
+
+      const newJob = {
+        id: orderId,
+        orderNumber: args.data.orderNumber || `NIT-LND-${Math.floor(100 + Math.random() * 900)}`,
+        trackingNumber: args.data.trackingNumber || `TRK-${orderId}`,
+        qrCodeData: args.data.qrCodeData || '{}',
+        studentId: args.data.studentId,
+        providerId: args.data.providerId || 'prov_laundry',
+        deliveryBoyId: args.data.deliveryBoyId || null,
+        status: args.data.status || 'REQUESTED',
+        estimatedPrice: totalAmount,
+        finalPrice: args.data.finalPrice || totalAmount,
+        laundryBaseAmount: baseAmount,
+        serviceChargeAmount: scAmount,
+        totalAmount,
+        onlinePaidAmount: args.data.onlinePaidAmount !== undefined ? Number(args.data.onlinePaidAmount) : 0,
+        codAmount: args.data.codAmount !== undefined ? Number(args.data.codAmount) : 0,
+        codCollectedAmount: 0,
+        codStatus: args.data.codStatus || (args.data.paymentMethod === 'COD' ? 'PENDING' : 'NOT_APPLICABLE'),
+        paymentMethod: args.data.paymentMethod || 'COD',
+        paymentStatus: args.data.paymentStatus || 'PENDING',
+        settlementStatus: args.data.settlementStatus || 'NOT_ELIGIBLE',
+        refundStatus: args.data.refundStatus || 'NOT_APPLICABLE',
+        serviceChargeRefundable: args.data.serviceChargeRefundable !== undefined ? args.data.serviceChargeRefundable : true,
+        priceSnapshotJson: args.data.priceSnapshotJson || null,
+        serviceConfigId: args.data.serviceConfigId || null,
+        hallName: args.data.hallName || 'Hall 11',
+        hallNumber: args.data.hallNumber || null,
+        roomNumber: args.data.roomNumber || '101',
+        pickupDate: args.data.pickupDate || new Date(),
+        preferredPickupTime: args.data.preferredPickupTime || '08:00 AM - 10:00 AM',
+        preferredReturnTime: args.data.preferredReturnTime || '05:00 PM - 07:00 PM',
+        specialInstructions: args.data.specialInstructions || null,
+        items: itemsData.map((i: any, idx: number) => ({
+          id: `li_${Date.now()}_${idx}`,
+          itemType: i.itemType,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice
+        })),
+        otps: otpsData.map((o: any, idx: number) => ({
+          id: `otp_${Date.now()}_${idx}`,
+          laundryOrderId: orderId,
+          ...o,
+          isUsed: false,
+          attempts: 0,
+          createdAt: new Date()
+        })),
+        statusHistory: historyData ? [{ id: `lh_${Date.now()}`, ...historyData, createdAt: new Date() }] : [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      fallbackLaundryJobs.unshift(newJob as any);
+      return JSON.parse(JSON.stringify(newJob));
+    },
+    update: async (args: any) => {
+      const job = fallbackLaundryJobs.find((j) => j.id === args.where.id || j.orderNumber === args.where.orderNumber) as any;
+      if (job) {
+        Object.assign(job, args.data);
+        if (args.data.statusHistory?.create) {
+          if (!Array.isArray(job.statusHistory)) job.statusHistory = [];
+          job.statusHistory.push({ id: `lh_${Date.now()}`, ...args.data.statusHistory.create, createdAt: new Date() });
+        }
+        job.updatedAt = new Date();
+        return JSON.parse(JSON.stringify(job));
+      }
+      return args.data;
     }
   },
   payment: {

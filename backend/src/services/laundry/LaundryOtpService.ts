@@ -1,13 +1,16 @@
-import { generateSecureOtp, hashOtp, verifyOtpHash } from '../../utils/crypto';
+import { generateSecureOtp, hashOtp, verifyOtpHash, encryptOtp, decryptOtp } from '../../utils/crypto';
 
 export interface LaundryOtpRecord {
   id: string;
   laundryOrderId: string;
   otpType: 'PICKUP' | 'DELIVERY';
   otpHash: string;
+  encryptedOtp?: string | null;
   isUsed: boolean;
   attempts: number;
   expiresAt: Date;
+  verifiedAt?: Date | null;
+  verifiedBy?: string | null;
   createdAt: Date;
 }
 
@@ -20,23 +23,53 @@ export interface VerificationResult {
 export class LaundryOtpService {
   /**
    * Generates a distinct 6-digit OTP for either Pickup or Delivery.
-   * Returns plaintext OTP to be shown to the student / emailed,
-   * and the SHA-256 hash to be stored in the database.
+   * Returns:
+   * - plainOtp: to be shown ONLY to authenticated student in their dashboard.
+   * - otpHash: SHA-256 hash stored in DB for verification comparison.
+   * - encryptedOtp: AES-256 encrypted payload stored in DB, decryptable only by the platform for the student.
+   * - expiresAt: Expiration timestamp.
+   *
+   * Note: Zero email notification - OTP is strictly rendered on student dashboard screen.
    */
   public generateOtp(
     laundryOrderId: string,
     otpType: 'PICKUP' | 'DELIVERY',
-    expirationMinutes: number = 60 * 24 // Valid for the scheduled day (or 24h)
-  ): { plainOtp: string; otpHash: string; expiresAt: Date } {
+    expirationMinutes: number = 60 * 24
+  ): { plainOtp: string; otpHash: string; encryptedOtp: string; expiresAt: Date } {
     const plainOtp = generateSecureOtp();
     const otpHash = hashOtp(plainOtp);
+    const encryptedOtp = encryptOtp(plainOtp);
     const expiresAt = new Date(Date.now() + expirationMinutes * 60 * 1000);
 
     return {
       plainOtp,
       otpHash,
+      encryptedOtp,
       expiresAt
     };
+  }
+
+  /**
+   * Generates a Pickup OTP specifically.
+   */
+  public generatePickupOtp(laundryOrderId: string, expirationMinutes: number = 60 * 24) {
+    const res = this.generateOtp(laundryOrderId, 'PICKUP', expirationMinutes);
+    return { ...res, otpType: 'PICKUP' as const, id: `otp_p_${Date.now()}`, laundryOrderId, isUsed: false, attempts: 0 };
+  }
+
+  /**
+   * Generates a Delivery OTP specifically.
+   */
+  public generateDeliveryOtp(laundryOrderId: string, expirationMinutes: number = 60 * 24) {
+    const res = this.generateOtp(laundryOrderId, 'DELIVERY', expirationMinutes);
+    return { ...res, otpType: 'DELIVERY' as const, id: `otp_d_${Date.now()}`, laundryOrderId, isUsed: false, attempts: 0 };
+  }
+
+  /**
+   * Decrypts an encrypted OTP payload strictly for the authenticated student.
+   */
+  public decryptForStudent(encryptedOtp: string): string {
+    return decryptOtp(encryptedOtp);
   }
 
   /**
