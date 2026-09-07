@@ -1249,4 +1249,310 @@ export class AdminController {
       next(err);
     }
   }
+
+  /**
+   * Enterprise Financial Ledger: Provider-wise & Customer-wise Money & Settlement Summary
+   */
+  public static async getFinancialSummary(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const timeframe = (req.query.timeframe as string) || '30d';
+      const startDateQuery = req.query.startDate as string;
+      const endDateQuery = req.query.endDate as string;
+
+      const now = new Date();
+      let fromDate: Date;
+      let toDate: Date = now;
+
+      if (timeframe === 'today') {
+        fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      } else if (timeframe === '7d') {
+        fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      } else if (timeframe === '30d') {
+        fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      } else if (timeframe === '90d') {
+        fromDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      } else if (timeframe === 'this_month') {
+        fromDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+      } else if (timeframe === 'all') {
+        fromDate = new Date(0);
+      } else if (timeframe === 'custom' && startDateQuery && endDateQuery) {
+        fromDate = new Date(startDateQuery);
+        toDate = new Date(endDateQuery);
+        if (isNaN(fromDate.getTime())) fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        if (isNaN(toDate.getTime())) toDate = now;
+      } else {
+        fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      }
+
+      // Fetch orders, laundry orders, providers, and students in parallel
+      const [allOrders, allLaundryOrders, allProviders, allStudents] = await Promise.all([
+        prisma.order.findMany({
+          where: {
+            createdAt: { gte: fromDate, lte: toDate }
+          },
+          include: {
+            student: { include: { hall: true } },
+            provider: true,
+            items: true,
+            payment: true
+          },
+          orderBy: { createdAt: 'desc' }
+        }),
+        prisma.laundryOrder.findMany({
+          where: {
+            createdAt: { gte: fromDate, lte: toDate }
+          },
+          include: {
+            student: { include: { hall: true } },
+            provider: true,
+            items: true,
+            payment: true
+          },
+          orderBy: { createdAt: 'desc' }
+        }),
+        prisma.serviceProvider.findMany({
+          include: { user: true }
+        }),
+        prisma.student.findMany({
+          include: { user: true, hall: true }
+        })
+      ]);
+
+      // Top-level KPI Aggregations
+      let totalGrossVolume = 0;
+      let deliveredVolume = 0;
+      let totalDiscounts = 0;
+      let totalRefunds = 0;
+      let totalOnlineVolume = 0;
+      let totalCodVolume = 0;
+      let totalOrdersCount = allOrders.length + allLaundryOrders.length;
+      let completedOrdersCount = 0;
+
+      // Provider Map
+      const providerMap: Record<string, any> = {};
+      allProviders.forEach((p) => {
+        providerMap[p.id] = {
+          id: p.id,
+          name: p.fullName,
+          category: p.serviceCategory || 'General',
+          username: p.user?.username || p.id,
+          email: p.user?.email || p.user?.personalEmail || 'vendor@nitdgp.ac.in',
+          activeStatus: p.activeStatus,
+          totalOrders: 0,
+          deliveredOrders: 0,
+          cancelledOrders: 0,
+          grossSales: 0,
+          deliveredSales: 0,
+          totalDiscounts: 0,
+          totalRefunds: 0,
+          platformFee: 0,
+          netPayable: 0,
+          settledAmount: 0,
+          pendingSettlement: 0,
+          onlineSales: 0,
+          codSales: 0,
+          aov: 0
+        };
+      });
+
+      // Customer Map
+      const customerMap: Record<string, any> = {};
+      allStudents.forEach((s) => {
+        customerMap[s.id] = {
+          id: s.id,
+          name: s.fullName,
+          rollNumber: s.rollNumber,
+          email: s.user?.email || s.collegeEmail || s.personalEmail || 'student@nitdgp.ac.in',
+          mobileNumber: s.mobileNumber,
+          hallName: s.hall?.name || s.hallNumber || 'Hostel',
+          roomNumber: s.roomNumber,
+          totalOrders: 0,
+          deliveredOrders: 0,
+          cancelledOrders: 0,
+          totalSpent: 0,
+          deliveredSpent: 0,
+          totalDiscounts: 0,
+          totalRefunded: 0,
+          onlineOrdersCount: 0,
+          codOrdersCount: 0,
+          aov: 0,
+          lastOrderDate: null as string | null
+        };
+      });
+
+      // Process standard retail/food orders
+      allOrders.forEach((o) => {
+        const amount = Number(o.totalAmount || 0);
+        const discount = Number(o.discountAmount || 0);
+        const isDelivered = o.status === 'DELIVERED';
+        const isCancelled = o.status === 'CANCELLED';
+        const isRefunded = o.status === 'REFUNDED' || o.status === 'REFUND_REQUESTED';
+        const isCod = (o.paymentMethod as any) === 'CASH_ON_DELIVERY' || (o.paymentMethod as any) === 'COD';
+
+        totalGrossVolume += amount;
+        totalDiscounts += discount;
+        if (isCod) totalCodVolume += amount;
+        else totalOnlineVolume += amount;
+
+        if (isDelivered) {
+          deliveredVolume += amount;
+          completedOrdersCount += 1;
+        }
+        if (isRefunded) {
+          totalRefunds += amount;
+        }
+
+        // Provider aggregation
+        if (o.providerId && providerMap[o.providerId]) {
+          const prov = providerMap[o.providerId];
+          prov.totalOrders += 1;
+          prov.grossSales += amount;
+          prov.totalDiscounts += discount;
+          if (isCod) prov.codSales += amount;
+          else prov.onlineSales += amount;
+
+          if (isDelivered) {
+            prov.deliveredOrders += 1;
+            prov.deliveredSales += amount;
+          }
+          if (isCancelled) prov.cancelledOrders += 1;
+          if (isRefunded) prov.totalRefunds += amount;
+        }
+
+        // Customer aggregation
+        if (o.studentId && customerMap[o.studentId]) {
+          const cust = customerMap[o.studentId];
+          cust.totalOrders += 1;
+          cust.totalSpent += amount;
+          cust.totalDiscounts += discount;
+          if (isCod) cust.codOrdersCount += 1;
+          else cust.onlineOrdersCount += 1;
+
+          if (isDelivered) {
+            cust.deliveredOrders += 1;
+            cust.deliveredSpent += amount;
+          }
+          if (isCancelled) cust.cancelledOrders += 1;
+          if (isRefunded) cust.totalRefunded += amount;
+
+          const orderDateStr = new Date(o.createdAt).toISOString();
+          if (!cust.lastOrderDate || orderDateStr > cust.lastOrderDate) {
+            cust.lastOrderDate = orderDateStr;
+          }
+        }
+      });
+
+      // Process laundry orders
+      allLaundryOrders.forEach((lo) => {
+        const amount = Number(lo.finalPrice || lo.estimatedPrice || 0);
+        const isDelivered = lo.status === 'COMPLETED' || lo.status === 'DELIVERY_VERIFIED';
+        const isCancelled = lo.status === 'CANCELLED';
+        const isCod = (lo.payment?.paymentMethod as any) === 'CASH_ON_DELIVERY' || (lo.payment?.paymentMethod as any) === 'COD';
+
+        totalGrossVolume += amount;
+        if (isCod) totalCodVolume += amount;
+        else totalOnlineVolume += amount;
+
+        if (isDelivered) {
+          deliveredVolume += amount;
+          completedOrdersCount += 1;
+        }
+
+        // Match laundry provider
+        const laundryProvId = lo.providerId || 'prov_laundry';
+        if (providerMap[laundryProvId]) {
+          const prov = providerMap[laundryProvId];
+          prov.totalOrders += 1;
+          prov.grossSales += amount;
+          if (isCod) prov.codSales += amount;
+          else prov.onlineSales += amount;
+
+          if (isDelivered) {
+            prov.deliveredOrders += 1;
+            prov.deliveredSales += amount;
+          }
+          if (isCancelled) prov.cancelledOrders += 1;
+        }
+
+        // Match laundry student
+        if (lo.studentId && customerMap[lo.studentId]) {
+          const cust = customerMap[lo.studentId];
+          cust.totalOrders += 1;
+          cust.totalSpent += amount;
+          if (isCod) cust.codOrdersCount += 1;
+          else cust.onlineOrdersCount += 1;
+
+          if (isDelivered) {
+            cust.deliveredOrders += 1;
+            cust.deliveredSpent += amount;
+          }
+          if (isCancelled) cust.cancelledOrders += 1;
+
+          const orderDateStr = new Date(lo.createdAt).toISOString();
+          if (!cust.lastOrderDate || orderDateStr > cust.lastOrderDate) {
+            cust.lastOrderDate = orderDateStr;
+          }
+        }
+      });
+
+      // Platform commission fee rule: 5% of delivered sales
+      const platformCommissionRate = 0.05;
+      const netPlatformRevenue = Math.round(deliveredVolume * platformCommissionRate);
+      const totalProviderPayable = Math.max(0, deliveredVolume - netPlatformRevenue - totalRefunds);
+
+      // Finalize provider calculations
+      const providerList = Object.values(providerMap).map((prov: any) => {
+        const fee = Math.round(prov.deliveredSales * platformCommissionRate);
+        const net = Math.max(0, prov.deliveredSales - fee - prov.totalRefunds);
+        const settled = net;
+        const pending = Math.max(0, prov.grossSales - prov.deliveredSales);
+        const aov = prov.deliveredOrders > 0 ? Math.round(prov.deliveredSales / prov.deliveredOrders) : 0;
+        return {
+          ...prov,
+          platformFee: fee,
+          netPayable: net,
+          settledAmount: settled,
+          pendingSettlement: pending,
+          aov
+        };
+      });
+
+      // Finalize customer calculations (only customers with orders first, then others)
+      const customerList = Object.values(customerMap)
+        .map((cust: any) => {
+          const aov = cust.totalOrders > 0 ? Math.round(cust.totalSpent / cust.totalOrders) : 0;
+          return {
+            ...cust,
+            aov
+          };
+        })
+        .sort((a: any, b: any) => b.totalSpent - a.totalSpent);
+
+      res.status(200).json({
+        success: true,
+        timeframe,
+        dateRange: {
+          from: fromDate.toISOString(),
+          to: toDate.toISOString()
+        },
+        kpis: {
+          totalGrossVolume,
+          deliveredVolume,
+          netPlatformRevenue,
+          totalProviderPayable,
+          totalDiscounts,
+          totalRefunds,
+          totalOnlineVolume,
+          totalCodVolume,
+          totalOrdersCount,
+          completedOrdersCount,
+          overallAov: totalOrdersCount > 0 ? Math.round(totalGrossVolume / totalOrdersCount) : 0
+        },
+        providers: providerList,
+        customers: customerList
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
 }

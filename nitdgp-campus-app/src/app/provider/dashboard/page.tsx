@@ -113,8 +113,8 @@ export default function ProviderDashboardPage() {
   const [productChartLimit, setProductChartLimit] = useState<number>(5);
   const [productChartMetric, setProductChartMetric] = useState<'revenue' | 'unitsSold' | 'ordersCount'>('revenue');
 
-  // Demo / Sample Data Mode (enabled by default so graphs are rich)
-  const [demoMode, setDemoMode] = useState<boolean>(true);
+  // Demo / Sample Data Mode (disabled by default so live provider data is displayed)
+  const [demoMode, setDemoMode] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Detail Modals
@@ -205,9 +205,9 @@ export default function ProviderDashboardPage() {
       const res = await apiRequest(query);
       if (res.success) {
         setAnalytics(res);
-        const cat = res?.provider?.serviceCategory || '';
-        if (cat === 'LAUNDRY' || cat === 'Express Laundry' || (cat.toLowerCase().includes('laundry') && !cat.toLowerCase().includes('all'))) {
-          setActiveTab((prev) => (prev === 'OVERVIEW' ? 'LAUNDRY' : prev));
+        const cat = (res?.provider?.serviceCategory || '').toLowerCase();
+        if (cat.includes('laundry')) {
+          setActiveTab((prev) => (['PRODUCTS', 'LIVE_OPERATIONS', 'CUSTOMERS', 'DELIVERY', 'OVERVIEW'].includes(prev) ? 'LAUNDRY' : prev));
         }
       }
     } catch (err) {
@@ -537,16 +537,34 @@ export default function ProviderDashboardPage() {
   }, [processedCustomers, customerPage]);
 
   const kpis = analytics?.kpiCards;
-  const isPureLaundry =
-    analytics?.provider?.serviceCategory === 'Express Laundry' ||
-    analytics?.provider?.serviceCategory === 'LAUNDRY' ||
-    (Boolean(analytics?.provider?.serviceCategory?.toLowerCase().includes('laundry')) &&
-     !Boolean(analytics?.provider?.serviceCategory?.toLowerCase().includes('all')));
+  const rawProviderCategory = (
+    user?.provider?.serviceCategory ||
+    (user as any)?.serviceCategory ||
+    analytics?.provider?.serviceCategory ||
+    ''
+  ).toLowerCase().trim();
 
-  const isLaundryVendor =
-    isPureLaundry ||
-    analytics?.provider?.serviceCategory === 'ALL' ||
-    Boolean(analytics?.provider?.serviceCategory?.toLowerCase().includes('laundry'));
+  const rawProviderName = (
+    user?.provider?.fullName ||
+    (user as any)?.fullName ||
+    analytics?.provider?.fullName ||
+    ''
+  ).toLowerCase().trim();
+
+  const isPureLaundry =
+    rawProviderCategory.includes('laundry') ||
+    rawProviderName.includes('laundry');
+
+  const isLaundryVendor = isPureLaundry;
+
+  // Enforce tab safety: If pure laundry, never allow retail catalog tabs
+  useEffect(() => {
+    if (isPureLaundry) {
+      if (['PRODUCTS', 'LIVE_OPERATIONS', 'CUSTOMERS', 'DELIVERY', 'OVERVIEW'].includes(activeTab)) {
+        setActiveTab('LAUNDRY');
+      }
+    }
+  }, [isPureLaundry]);
 
   // Quick statistics and filtered views for Laundry
   const laundryActiveJobs = useMemo(() => {
@@ -1164,23 +1182,6 @@ export default function ProviderDashboardPage() {
                 </span>
                 {activeTab === 'FINANCE' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
               </button>
-
-              {isLaundryVendor && (
-                <button
-                  onClick={() => setActiveTab('LAUNDRY')}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
-                    activeTab === 'LAUNDRY'
-                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
-                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                  }`}
-                >
-                  <span className="flex items-center gap-2.5">
-                    <Shirt className="w-4 h-4 text-indigo-400" />
-                    Doorstep Laundry OTPs
-                  </span>
-                  {activeTab === 'LAUNDRY' && <ChevronRight className="w-3.5 h-3.5 text-emerald-200" />}
-                </button>
-              )}
             </>
           )}
 
@@ -2040,7 +2041,7 @@ export default function ProviderDashboardPage() {
         {/* =======================================================
             TAB 2: LIVE OPERATIONS & CUSTOMER ORDERS
             ======================================================= */}
-        {activeTab === 'LIVE_OPERATIONS' && (
+        {activeTab === 'LIVE_OPERATIONS' && !isPureLaundry && (
           <div className="space-y-6">
             {/* Live Operations Queue Metric Strip */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
@@ -2257,7 +2258,7 @@ export default function ProviderDashboardPage() {
         {/* =======================================================
             TAB 3: CUSTOMER ANALYTICS & "WHO IS BUYING FROM ME?"
             ======================================================= */}
-        {activeTab === 'CUSTOMERS' && (
+        {activeTab === 'CUSTOMERS' && !isPureLaundry && (
           <div className="space-y-6">
             {/* Customer KPIs */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
@@ -2429,7 +2430,7 @@ export default function ProviderDashboardPage() {
         {/* =======================================================
             TAB 4: PRODUCTS & CATALOG MANAGEMENT
             ======================================================= */}
-        {activeTab === 'PRODUCTS' && (
+        {activeTab === 'PRODUCTS' && !isPureLaundry && (
           <div className="space-y-6">
             {/* Catalog Overview Metric Strip */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
@@ -2682,7 +2683,7 @@ export default function ProviderDashboardPage() {
         {/* =======================================================
             TAB 5: DELIVERY PERFORMANCE & FLEET RUNNERS
             ======================================================= */}
-        {activeTab === 'DELIVERY' && (
+        {activeTab === 'DELIVERY' && !isPureLaundry && (
           <div className="space-y-6">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">

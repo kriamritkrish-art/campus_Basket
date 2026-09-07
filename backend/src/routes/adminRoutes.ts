@@ -44,6 +44,7 @@ router.post('/orders/:id/assign', AdminController.assignProvider);
 router.post('/orders/:id/assign-delivery', AdminPeopleController.assignDeliveryBoy);
 router.post('/orders/refund', AdminController.processRefund);
 router.get('/orders/:id/receipt', AdminReportController.downloadReceipt);
+router.get('/financial-summary', AdminController.getFinancialSummary);
 
 // 4. Primary Services Management
 router.get('/services/food', AdminServicesController.getFoodAndMeals);

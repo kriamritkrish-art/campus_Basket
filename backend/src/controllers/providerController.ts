@@ -551,13 +551,17 @@ export class ProviderController {
 
       let allOrders: any[] = allOrdersRaw as any[];
       let allProducts: any[] = allProductsRaw as any[];
-      const isDemoMode = req.query.demo === 'true' || allOrders.length === 0;
+      const isDemoMode = req.query.demo === 'true';
 
       if (isDemoMode) {
         const { fallbackOrders, fallbackProducts } = await import('../services/fallbackData');
-        allOrders = fallbackOrders.filter((o) => o.providerId === 'prov_canteen' || o.providerId === providerId);
-        if (allProducts.length === 0 || req.query.demo === 'true') {
-          allProducts = fallbackProducts.filter((p) => p.providerId === 'prov_canteen' || p.providerId === providerId);
+        const provCategory = (provider.serviceCategory || '').toLowerCase();
+        const isFoodVendor = provCategory.includes('food') || provCategory.includes('canteen') || providerId === 'prov_canteen';
+        if (isFoodVendor) {
+          allOrders = fallbackOrders.filter((o) => o.providerId === 'prov_canteen' || o.providerId === providerId);
+          if (allProducts.length === 0) {
+            allProducts = fallbackProducts.filter((p) => p.providerId === 'prov_canteen' || p.providerId === providerId);
+          }
         }
       }
 
