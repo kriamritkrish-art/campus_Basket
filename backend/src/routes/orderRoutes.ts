@@ -17,6 +17,7 @@ router.get('/', rbacGuard(['STUDENT', 'ADMIN']), OrderController.getStudentOrder
 router.get('/refund-account', rbacGuard(['STUDENT', 'ADMIN']), OrderController.getRefundAccount);
 router.post('/refund-account', rbacGuard(['STUDENT', 'ADMIN']), OrderController.saveRefundAccount);
 router.get('/:id', OrderController.getOrderById);
+router.get('/:id/receipt', rbacGuard(['STUDENT', 'ADMIN']), OrderController.downloadReceipt);
 router.put('/:id/modify', rbacGuard(['STUDENT', 'ADMIN']), OrderController.modifyOrder);
 router.patch('/:id/modify', rbacGuard(['STUDENT', 'ADMIN']), OrderController.modifyOrder);
 router.post('/:id/add-items', rbacGuard(['STUDENT', 'ADMIN']), OrderController.modifyOrder);

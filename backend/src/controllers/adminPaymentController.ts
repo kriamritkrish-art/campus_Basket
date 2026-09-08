@@ -311,6 +311,16 @@ export class AdminPaymentController {
     try {
       const { status } = req.query;
       let collections = await (prisma as any).cODCollection.findMany({
+        include: {
+          order: {
+            include: {
+              student: { select: { fullName: true, mobileNumber: true, roomNumber: true } }
+            }
+          },
+          deliveryBoy: {
+            select: { id: true, fullName: true, mobileNumber: true, vehicleType: true }
+          }
+        },
         orderBy: { createdAt: 'desc' }
       });
 

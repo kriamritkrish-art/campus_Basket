@@ -28,6 +28,8 @@ export function authGuard(req: Request, res: Response, next: NextFunction): void
       token = authHeader.split(' ')[1];
     } else if (req.cookies && req.cookies.token) {
       token = req.cookies.token;
+    } else if (req.query && typeof req.query.token === 'string') {
+      token = req.query.token;
     }
 
     if (!token) {

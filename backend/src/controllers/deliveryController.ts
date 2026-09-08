@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
 import { AuditService } from '../services/audit/AuditService';
 import { DeliverySettlementPdfService } from '../services/pdf/DeliverySettlementPdfService';
+import { LedgerService } from '../services/financial/LedgerService';
 
 async function resolveDeliveryBoyProfile(user?: any) {
   if (!user) return null;
@@ -630,6 +631,7 @@ export class DeliveryController {
 
       const result = await prisma.$transaction(async (tx) => {
         // 1. Update order
+        const isCod = order.paymentMethod === 'CASH_ON_DELIVERY';
         const updatedOrder = await tx.order.update({
           where: { id: order.id },
           data: {
@@ -637,16 +639,53 @@ export class DeliveryController {
             deliveryBoyId: deliveryBoy.id,
             deliveryOtpVerified: true,
             deliveredAt: now,
+            ...(isCod ? { paymentStatus: 'COD_COLLECTED' } : {}),
             statusHistory: {
               create: {
                 previousStatus: order.status,
                 newStatus: 'DELIVERED',
                 changedBy: deliveryBoy.fullName,
-                notes: `Delivered to customer via verified 6-digit OTP (${paymentType === 'PER_DELIVERY' ? `+₹${earningAmount} earning credited` : 'Monthly Contract Staff - ₹0 per delivery'}).`
+                notes: `Delivered to customer via verified 6-digit OTP (${paymentType === 'PER_DELIVERY' ? `+₹${earningAmount} earning credited` : 'Monthly Contract Staff - ₹0 per delivery'}).${isCod ? ` Cash of ₹${Number(order.totalAmount).toFixed(2)} collected at doorstep.` : ''}`
               }
             }
           }
         });
+
+        // 1.1 Handle COD collection recording
+        if (isCod) {
+          await (tx as any).cODCollection.upsert({
+            where: { orderId: order.id },
+            update: {
+              deliveryBoyId: deliveryBoy.id,
+              collectionStatus: 'COLLECTED',
+              amountCollected: Number(order.totalAmount),
+              collectedAt: now,
+              reconciliationStatus: 'PENDING',
+              reconciliationNotes: 'Cash collected by runner at student doorstep upon OTP verification.'
+            },
+            create: {
+              orderId: order.id,
+              deliveryBoyId: deliveryBoy.id,
+              amountExpected: Number(order.totalAmount),
+              amountCollected: Number(order.totalAmount),
+              difference: 0,
+              collectionStatus: 'COLLECTED',
+              collectedAt: now,
+              reconciliationStatus: 'PENDING',
+              reconciliationNotes: 'Cash collected by runner at student doorstep upon OTP verification.'
+            }
+          }).catch(() => {});
+
+          await LedgerService.recordEntry({
+            orderId: order.id,
+            entryType: 'COD_COLLECTION',
+            debitAccount: 'DELIVERY_RUNNER_CASH_HOLD',
+            creditAccount: 'CUSTOMER_COD_RECEIVABLE',
+            amount: Number(order.totalAmount),
+            referenceId: `COD_${order.id}`,
+            description: `COD Cash collected by runner ${deliveryBoy.fullName} for order #${order.orderNumber}. Amount: ₹${order.totalAmount}.`
+          }).catch(() => {});
+        }
 
         // 2. Prevent duplicate earnings via unique order constraint check
         const existingEarning = await tx.deliveryBoyEarning.findUnique({

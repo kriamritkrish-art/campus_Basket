@@ -7,6 +7,7 @@ import { EmailService } from '../services/email/EmailService';
 import { ReceiptService } from '../services/receipt/ReceiptService';
 import { LedgerService } from '../services/financial/LedgerService';
 import { RefundService } from '../services/financial/RefundService';
+import { ReceiptPdfService } from '../services/pdf/ReceiptPdfService';
 import { env } from '../config/environment';
 
 const razorpayService = new RazorpayService();
@@ -721,6 +722,7 @@ export class OrderController {
           statusHistory: { orderBy: { createdAt: 'asc' } },
           payment: true,
           receipt: true,
+          student: { select: { fullName: true, rollNumber: true, collegeEmail: true } },
           provider: { select: { id: true, fullName: true, mobileNumber: true, serviceCategory: true } },
           deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } },
           produceDetails: true,
@@ -981,6 +983,14 @@ export class OrderController {
         return;
       }
 
+      if (order.status !== 'DELIVERED') {
+        res.status(400).json({
+          success: false,
+          message: 'Returns can only be requested after the order has been successfully delivered to your doorstep.'
+        });
+        return;
+      }
+
       const returnCheck = RefundService.evaluateReturnEligibility(order);
       if (!returnCheck.eligible) {
         res.status(400).json({
@@ -1058,7 +1068,6 @@ export class OrderController {
         data: {
           refundStatus: 'REQUESTED',
           refundAmount: netRefundAmount,
-          cancellationReason: `Return Requested (${actualReasonType}): ${details || 'Customer requested product return'}`,
           statusHistory: {
             create: {
               previousStatus: order.status,
@@ -1107,6 +1116,76 @@ export class OrderController {
         success: true,
         returnRequest
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Download official student order & delivery receipt PDF
+   */
+  public static async downloadReceipt(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const studentId = req.user?.studentId;
+
+      const order = await prisma.order.findUnique({
+        where: { id },
+        include: {
+          student: {
+            include: { user: true }
+          },
+          items: true,
+          payment: true
+        }
+      });
+
+      if (!order) {
+        res.status(404).json({ success: false, message: 'Order not found' });
+        return;
+      }
+
+      // Privacy check: Students can only view their own receipts
+      if (req.user?.role === 'STUDENT' && order.studentId !== studentId) {
+        res.status(403).json({ success: false, message: 'Unauthorized to access this receipt' });
+        return;
+      }
+
+      const receiptData = {
+        receiptNumber: `RCP-${order.orderNumber.replace(/[^0-9]/g, '') || '2026-001'}`,
+        orderNumber: order.orderNumber,
+        orderId: order.id,
+        createdAt: order.createdAt,
+        student: {
+          fullName: order.student?.fullName || 'Campus Student',
+          email: order.student?.user?.email || req.user?.email || 'student@nitdgp.ac.in',
+          rollNumber: order.student?.rollNumber || '24U10000',
+          registrationNumber: order.student?.registrationNumber,
+          mobileNumber: order.student?.mobileNumber || '+91 98765 00000',
+          hallName: order.hallName || 'Hostel Hall',
+          roomNumber: order.roomNumber || 'Room'
+        },
+        items: order.items.map((it: any) => ({
+          productName: it.productName,
+          quantity: it.quantity,
+          unitPrice: Number(it.unitPrice),
+          totalPrice: Number(it.totalPrice)
+        })),
+        subtotal: Number(order.subtotal || order.totalAmount),
+        discountAmount: Number(order.discountAmount || 0),
+        deliveryFee: Number(order.deliveryFee || 0),
+        totalAmount: Number(order.totalAmount),
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        transactionId: order.payment?.razorpayPaymentId || `TXN_${order.id.slice(-8).toUpperCase()}`,
+        status: order.status
+      };
+
+      const pdfBuffer = await ReceiptPdfService.generateReceipt(receiptData);
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="Receipt_${order.orderNumber}.pdf"`);
+      res.send(pdfBuffer);
     } catch (err) {
       next(err);
     }

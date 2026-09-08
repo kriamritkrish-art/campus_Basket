@@ -21,9 +21,11 @@ export class ReturnController {
         include: {
           order: {
             include: {
-              student: { select: { fullName: true, mobileNumber: true, roomNumber: true, hallName: true } },
+              student: { select: { fullName: true, mobileNumber: true, roomNumber: true, hallName: true, user: { select: { email: true } } } },
               provider: { select: { fullName: true, mobileNumber: true, serviceCategory: true } },
-              items: true
+              deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } },
+              items: true,
+              payment: true
             }
           },
           deliveryBoy: {
@@ -356,11 +358,11 @@ export class ReturnController {
         }
       }
 
-      // Mark return request as completed
+      // Mark return request as PICKED_UP (Physical collection verified via student OTP)
       const updatedReturn = await (prisma as any).returnRequest.update({
         where: { id: returnRequest.id },
         data: {
-          status: 'COMPLETED',
+          status: 'PICKED_UP',
           pickupOtpVerified: true,
           pickupOtpVerifiedAt: new Date(),
           deliveryBoyPayout: runnerRate,
@@ -368,7 +370,7 @@ export class ReturnController {
         }
       });
 
-      // Credit Delivery Runner Dashboard Wallet
+      // Credit Delivery Runner Dashboard Wallet immediately for completing the pickup
       if (deliveryBoyId && runnerRate > 0) {
         await (prisma as any).deliveryBoyEarning.create({
           data: {
@@ -389,7 +391,71 @@ export class ReturnController {
         }).catch(() => {});
       }
 
-      // Update Order Refund Status & History
+      // Update Order Status History (Pickup completed, ready for Admin refund disbursement)
+      await prisma.order.update({
+        where: { id: returnRequest.orderId },
+        data: {
+          refundStatus: 'APPROVED',
+          statusHistory: {
+            create: {
+              previousStatus: returnRequest.order?.status || 'DELIVERED',
+              newStatus: returnRequest.order?.status || 'DELIVERED',
+              changedBy: req.user?.email || 'DELIVERY_RUNNER',
+              notes: `Return pickup confirmed at student hostel room with 6-digit OTP. Item collected by runner. Runner payout (+₹${runnerRate.toFixed(2)}) credited. Awaiting Admin refund disbursement.`
+            }
+          }
+        }
+      }).catch(() => {});
+
+      res.status(200).json({
+        success: true,
+        message: `Return pickup verified successfully! ₹${runnerRate.toFixed(2)} delivery fee credited to runner dashboard. Ready for Admin refund disbursement.`,
+        returnRequest: updatedReturn,
+        runnerPayoutCredited: runnerRate,
+        refundDueAmount: Number(returnRequest.refundAmount)
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Admin: Disburse Refund to Student Account
+   * Strictly gated: Can ONLY be executed AFTER the item has been picked up (status === 'PICKED_UP').
+   */
+  public static async disburseReturnRefund(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { utrReference, adminNotes } = req.body;
+
+      const returnRequest = await (prisma as any).returnRequest.findFirst({
+        where: { OR: [{ id }, { orderId: id }] },
+        include: { order: { include: { student: true } } }
+      });
+
+      if (!returnRequest) {
+        res.status(404).json({ success: false, message: 'Return request not found' });
+        return;
+      }
+
+      // STRICT GATE: Pickup MUST be completed before admin can disburse refund
+      if (returnRequest.status !== 'PICKED_UP') {
+        res.status(400).json({
+          success: false,
+          message: `Cannot disburse refund yet. Return status is currently "${returnRequest.status}". Refund can only be disbursed AFTER the delivery runner has physically picked up the item and verified the student's 6-digit OTP.`
+        });
+        return;
+      }
+
+      const updated = await (prisma as any).returnRequest.update({
+        where: { id: returnRequest.id },
+        data: {
+          status: 'REFUNDED',
+          adminNotes: adminNotes || returnRequest.adminNotes || `Refund disbursed. UTR: ${utrReference || 'N/A'}`
+        }
+      });
+
+      // Update Order to REFUNDED & COMPLETED
       await prisma.order.update({
         where: { id: returnRequest.orderId },
         data: {
@@ -400,8 +466,8 @@ export class ReturnController {
             create: {
               previousStatus: returnRequest.order?.status || 'DELIVERED',
               newStatus: returnRequest.order?.status || 'DELIVERED',
-              changedBy: req.user?.email || 'DELIVERY_RUNNER',
-              notes: `Return pickup confirmed with student's 6-digit OTP. Return completed. Runner payout (+₹${runnerRate.toFixed(2)}) credited to delivery runner dashboard.`
+              changedBy: req.user?.email || 'ADMIN',
+              notes: `Refund of ₹${Number(returnRequest.refundAmount).toFixed(2)} disbursed to student account by Admin. ${utrReference ? `UTR: ${utrReference}` : ''}`
             }
           }
         }
@@ -412,19 +478,26 @@ export class ReturnController {
         orderId: returnRequest.orderId,
         entryType: 'REFUND_ISSUED',
         debitAccount: 'STUDENT_REFUND_LIABILITY',
-        creditAccount: 'DELIVERY_RUNNER_PAYOUT',
+        creditAccount: 'PLATFORM_ESCROW_VAULT',
         amount: Number(returnRequest.refundAmount),
-        referenceId: `RET_${returnRequest.id}`,
-        description: `Return pickup verified for order #${returnRequest.order?.orderNumber || returnRequest.orderId}. Student refund: ₹${returnRequest.refundAmount}. Runner payout: ₹${runnerRate}.`,
-        metadata: { returnRequestId: returnRequest.id, runnerPayout: runnerRate }
+        referenceId: utrReference || `REF_${returnRequest.id}`,
+        description: `Refund disbursed for order #${returnRequest.order?.orderNumber || returnRequest.orderId}. Net refund: ₹${returnRequest.refundAmount}. Deducted return fee: ₹${returnRequest.deliveryFeeDeducted}.`,
+        metadata: { returnRequestId: returnRequest.id, utrReference }
       }).catch(() => {});
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'RETURN_REFUND_DISBURSED',
+        entity: 'ReturnRequest',
+        entityId: returnRequest.id,
+        newValue: { refundAmount: returnRequest.refundAmount, utrReference }
+      });
 
       res.status(200).json({
         success: true,
-        message: `Return pickup verified successfully! ₹${runnerRate.toFixed(2)} delivery fee credited to runner dashboard.`,
-        returnRequest: updatedReturn,
-        runnerPayoutCredited: runnerRate,
-        refundCompletedAmount: Number(returnRequest.refundAmount)
+        message: `Refund of ₹${Number(returnRequest.refundAmount).toFixed(2)} successfully disbursed to student account!`,
+        returnRequest: updated,
+        refundAmount: Number(returnRequest.refundAmount)
       });
     } catch (err) {
       next(err);

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { apiRequest } from '../../../../lib/api';
+import { apiRequest, getApiBase } from '../../../../lib/api';
 import { useCart } from '../../../../context/CartContext';
 import {
   ArrowLeft,
@@ -32,7 +32,11 @@ import {
   Camera,
   Package,
   RefreshCw,
-  Check
+  Check,
+  Download,
+  Printer,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 interface OrderItem {
@@ -92,6 +96,11 @@ interface OrderData {
     accountNumberMasked?: string;
     upiIdMasked?: string;
   } | null;
+  student?: {
+    fullName?: string;
+    rollNumber?: string;
+    collegeEmail?: string;
+  } | null;
 }
 
 export default function OrderTrackClient() {
@@ -122,6 +131,8 @@ export default function OrderTrackClient() {
   const [supportSuccess, setSupportSuccess] = useState<string | null>(null);
 
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+  const [downloadingReceipt, setDownloadingReceipt] = useState(false);
+  const [showDeliveryHistory, setShowDeliveryHistory] = useState(false);
 
   // Refund destination account modal (opened only when student clicks "Update Refund Account")
   const [accountModalOpen, setAccountModalOpen] = useState(false);
@@ -293,6 +304,35 @@ export default function OrderTrackClient() {
       showToast(err?.message || 'Failed to save account');
     } finally {
       setSavingAccount(false);
+    }
+  };
+
+  const handleDownloadPdfReceipt = async () => {
+    if (!order) return;
+    setDownloadingReceipt(true);
+    try {
+      const base = getApiBase();
+      const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
+      const res = await fetch(`${base}/api/orders/${order.id}/receipt`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (!res.ok) {
+        throw new Error('Failed to generate PDF receipt');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Receipt-${order.orderNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      showToast('Official PDF Receipt downloaded!');
+    } catch (err: any) {
+      showToast(err?.message || 'Error downloading receipt PDF');
+    } finally {
+      setDownloadingReceipt(false);
     }
   };
 
@@ -520,10 +560,42 @@ export default function OrderTrackClient() {
 
   // Current Status Headline & Explanation
   const getStatusBanner = () => {
+    if (returnRequest && returnRequest.status !== 'REJECTED') {
+      if (returnRequest.status === 'REFUNDED' || returnRequest.status === 'COMPLETED') {
+        return {
+          title: 'Return Completed & Refund Disbursed',
+          desc: `Full refund of ₹${Number(returnRequest.refundAmount || 0).toFixed(2)} has been credited to your destination account.`,
+          colorClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+          dotClass: 'bg-emerald-500'
+        };
+      }
+      if (returnRequest.status === 'PICKED_UP') {
+        return {
+          title: 'Item Picked Up — Refund Processing',
+          desc: 'Product physically collected and OTP verified by campus runner. Admin is releasing your refund.',
+          colorClass: 'bg-indigo-50 text-indigo-900 border-indigo-200',
+          dotClass: 'bg-indigo-500 animate-pulse'
+        };
+      }
+      if (['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(returnRequest.status)) {
+        return {
+          title: 'Return Approved — Pickup Scheduled',
+          desc: 'Campus runner assigned for hostel room pickup. Share your 6-digit Return OTP at handover.',
+          colorClass: 'bg-blue-50 text-blue-900 border-blue-200',
+          dotClass: 'bg-blue-500 animate-pulse'
+        };
+      }
+      return {
+        title: 'Return Under Review',
+        desc: 'Return request submitted. Under review by Campus Basket Admin with defect proof & delivery history.',
+        colorClass: 'bg-amber-50 text-amber-900 border-amber-200',
+        dotClass: 'bg-amber-500 animate-pulse'
+      };
+    }
     if (isCancelled) {
       return {
         title: 'Order Cancelled',
-        desc: order.cancellationReason || 'This order was cancelled.',
+        desc: order.cancellationReason || 'This order was cancelled before fulfillment.',
         colorClass: 'bg-red-50 text-red-800 border-red-200',
         dotClass: 'bg-red-500'
       };
@@ -668,17 +740,246 @@ export default function OrderTrackClient() {
         <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-xs space-y-5">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              {isCancelled ? 'Cancellation & Refund Status' : 'Track Your Order'}
+              {returnRequest && returnRequest.status !== 'REJECTED'
+                ? 'Product Return & Refund Journey'
+                : isCancelled
+                ? 'Cancellation & Refund Status'
+                : 'Track Your Order'}
             </h3>
-            {!isCancelled && (
-              <span className="text-[11px] font-semibold text-slate-400">
-                Live Campus Dispatch
-              </span>
-            )}
+            <span className="text-[11px] font-semibold text-slate-400">
+              {returnRequest && returnRequest.status !== 'REJECTED'
+                ? 'Gated Campus Pickup & Settlement'
+                : isCancelled
+                ? 'Policy Settlement'
+                : 'Live Campus Dispatch'}
+            </span>
           </div>
 
-          {/* ==================== A. CANCELLED STATE ==================== */}
-          {isCancelled ? (
+          {/* ==================== A. RETURN & REFUND ACTIVE ==================== */}
+          {returnRequest && returnRequest.status !== 'REJECTED' ? (
+            <div className="space-y-5">
+              {/* Vertical Return & Refund Progress Timeline */}
+              <div className="space-y-4 relative pl-2">
+                {[
+                  {
+                    id: 'REQUESTED',
+                    title: 'Return Requested',
+                    desc: returnRequest.reasonType === 'PRODUCT_ISSUE'
+                      ? 'Defect claimed with photo proof. Under Admin review.'
+                      : 'Mind change return requested by student.'
+                  },
+                  {
+                    id: 'APPROVED',
+                    title: 'Return Approved & Runner Assigned',
+                    desc: returnRequest.deliveryBoy
+                      ? `Runner ${returnRequest.deliveryBoy.fullName} scheduled for room pickup.`
+                      : 'Authorized by admin. Pickup runner assignment in progress.'
+                  },
+                  {
+                    id: 'PICKED_UP',
+                    title: 'Hostel Room Pickup Verified',
+                    desc: ['PICKED_UP', 'REFUNDED', 'COMPLETED'].includes(returnRequest.status)
+                      ? 'Physical item collected and 6-digit OTP verified by runner at room door.'
+                      : 'Share your 6-digit Return OTP with runner upon collection.'
+                  },
+                  {
+                    id: 'REFUNDED',
+                    title: 'Refund Disbursed to Account',
+                    desc: ['REFUNDED', 'COMPLETED'].includes(returnRequest.status)
+                      ? `Net refund of ₹${Number(returnRequest.refundAmount || 0).toFixed(2)} disbursed to your account.`
+                      : 'Admin releases payment directly to your account after physical pickup.'
+                  }
+                ].map((step, idx) => {
+                  const st = returnRequest.status;
+                  let activeIdx = 1;
+                  if (st === 'REFUNDED' || st === 'COMPLETED') activeIdx = 4;
+                  else if (st === 'PICKED_UP') activeIdx = 3;
+                  else if (['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(st)) activeIdx = 2;
+                  else activeIdx = 1;
+
+                  const isCompleted = idx < activeIdx - 1 || (st === 'REFUNDED' || st === 'COMPLETED');
+                  const isCurrent = idx === activeIdx - 1 && !(st === 'REFUNDED' || st === 'COMPLETED');
+
+                  return (
+                    <div key={step.id} className="flex items-start gap-3 relative">
+                      {idx < 3 && (
+                        <div
+                          className={`absolute left-3 top-5 bottom-0 w-0.5 -ml-px ${
+                            isCompleted ? 'bg-emerald-500' : 'bg-slate-200'
+                          }`}
+                        />
+                      )}
+
+                      <div className="relative z-10">
+                        {isCompleted ? (
+                          <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-xs">
+                            <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                          </div>
+                        ) : isCurrent ? (
+                          <div className="w-6 h-6 rounded-full bg-[#4F9D2F] text-white flex items-center justify-center ring-4 ring-emerald-100 shadow-xs scale-105">
+                            <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                          </div>
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-white border-2 border-slate-300 text-slate-400 flex items-center justify-center text-[10px]">
+                            ○
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-0.5 flex-1 pb-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className={`text-xs font-bold ${
+                            isCurrent ? 'text-slate-900 font-black' : isCompleted ? 'text-slate-800' : 'text-slate-400'
+                          }`}>
+                            {step.title}
+                          </h4>
+                          {isCurrent && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              Active Stage
+                            </span>
+                          )}
+                          {isCompleted && (
+                            <span className="text-[10px] font-bold text-emerald-700">
+                              ✓ Completed
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-[11px] leading-relaxed ${
+                          isCurrent ? 'text-slate-700 font-medium' : isCompleted ? 'text-slate-500' : 'text-slate-400'
+                        }`}>
+                          {step.desc}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 6-Digit Return Pickup OTP Card */}
+              {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(returnRequest.status) && returnRequest.pickupOtp && (
+                <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-2xl border-2 border-amber-300 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] font-black uppercase text-amber-900 tracking-wider">
+                        Your 6-Digit Return Pickup Code:
+                      </span>
+                      <div className="text-3xl font-black font-mono tracking-widest text-slate-900 mt-0.5">
+                        {returnRequest.pickupOtp}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(returnRequest.pickupOtp);
+                        showToast('Return Pickup OTP copied to clipboard');
+                      }}
+                      className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy Code</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[11px] text-amber-900 bg-white/80 p-2.5 rounded-xl border border-amber-200">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Share this 6-digit code with the delivery runner at your room door to verify handover.</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Pickup Runner Assignment Card */}
+              {returnRequest.deliveryBoy && (
+                <div className="p-3.5 bg-purple-50 rounded-2xl border border-purple-200 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-slate-900 block">{returnRequest.deliveryBoy.fullName}</span>
+                      <span className="text-[11px] text-purple-700">Assigned Return Pickup Runner</span>
+                    </div>
+                  </div>
+                  {returnRequest.deliveryBoy.mobileNumber && (
+                    <a
+                      href={`tel:${returnRequest.deliveryBoy.mobileNumber}`}
+                      className="px-3 py-1.5 bg-white border border-purple-200 rounded-xl text-purple-800 text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:bg-purple-50"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      <span>Call Runner</span>
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {/* Transparent Financial Calculation Card */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5">
+                <div className="font-bold text-slate-800 text-xs uppercase tracking-wider border-b border-slate-200/70 pb-2">
+                  Return Payment Settlement Breakdown
+                </div>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between text-slate-600">
+                    <span>Delivered Item Subtotal:</span>
+                    <span className="font-mono font-semibold">₹{Number(returnRequest.itemAmount || order.subtotal || totalAmount).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Return Delivery Charge:</span>
+                    <span className={`font-mono font-bold ${Number(returnRequest.deliveryFeeDeducted) > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                      {Number(returnRequest.deliveryFeeDeducted) > 0
+                        ? `-₹${Number(returnRequest.deliveryFeeDeducted).toFixed(2)} (Mind Change Policy)`
+                        : '₹0.00 (Waived for Defective Product)'}
+                    </span>
+                  </div>
+                  <div className="pt-2 border-t border-slate-200 flex justify-between items-center text-sm font-black text-slate-900">
+                    <span>Net Refund Amount:</span>
+                    <span className="font-mono text-emerald-700 text-base font-black">
+                      ₹{Number(returnRequest.refundAmount).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Refund Destination Account Card */}
+                <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
+                  {order.refundAccount ? (
+                    <span className="text-slate-600 text-[11px]">
+                      Payout Destination: <strong className="font-mono text-slate-900">{order.refundAccount.accountType === 'UPI' ? order.refundAccount.upiIdMasked : order.refundAccount.accountNumberMasked}</strong>
+                    </span>
+                  ) : (
+                    <span className="text-amber-700 font-medium text-[11px]">Awaiting payout account</span>
+                  )}
+                  <button
+                    onClick={() => setAccountModalOpen(true)}
+                    className="text-xs font-bold text-[#4F9D2F] hover:underline cursor-pointer"
+                  >
+                    {order.refundAccount ? 'Update Account' : 'Set Refund Account'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Collapsible Original Delivery History */}
+              <div className="pt-1">
+                <button
+                  onClick={() => setShowDeliveryHistory(!showDeliveryHistory)}
+                  className="w-full flex items-center justify-between text-xs font-semibold text-slate-500 hover:text-slate-800 p-2 rounded-xl bg-slate-50 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>View Original Delivery Journey</span>
+                  </span>
+                  {showDeliveryHistory ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+
+                {showDeliveryHistory && (
+                  <div className="mt-3 p-4 bg-white rounded-xl border border-slate-200 space-y-3 pl-4">
+                    {timelineSteps.map((s) => (
+                      <div key={s.id} className="flex items-center gap-2.5 text-xs text-slate-600">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span className="font-semibold text-slate-800">{s.title}</span>
+                        <span className="text-[11px] text-slate-400">— {s.desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : isCancelled ? (
             <div className="space-y-4">
               {/* Case A: Online Prepaid (Full refund) */}
               {isPrepaid && (
@@ -962,145 +1263,6 @@ export default function OrderTrackClient() {
           </div>
         )}
 
-        {/* ==================================================
-            5.5. PRODUCT RETURN & 6-DIGIT PICKUP OTP CARD
-           ================================================== */}
-        {returnRequest && (
-          <div className="bg-white rounded-2xl p-5 border-2 border-amber-300 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <RotateCcw className="w-4 h-4 text-amber-600" />
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
-                  Product Return Status
-                </h3>
-              </div>
-              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
-                returnRequest.status === 'COMPLETED'
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                  : returnRequest.status === 'PICKUP_ASSIGNED'
-                  ? 'bg-purple-50 text-purple-800 border-purple-300'
-                  : returnRequest.status === 'APPROVED'
-                  ? 'bg-blue-50 text-blue-800 border-blue-300'
-                  : returnRequest.status === 'REJECTED'
-                  ? 'bg-rose-50 text-rose-800 border-rose-300'
-                  : 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse'
-              }`}>
-                {returnRequest.status === 'COMPLETED'
-                  ? '✓ Return Completed & Refunded'
-                  : returnRequest.status === 'PICKUP_ASSIGNED'
-                  ? '🚚 Runner Assigned for Pickup'
-                  : returnRequest.status === 'APPROVED'
-                  ? '✓ Admin Approved'
-                  : returnRequest.status === 'REJECTED'
-                  ? '✗ Return Rejected'
-                  : '🟡 Awaiting Admin Approval'}
-              </span>
-            </div>
-
-            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/70 text-xs space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">Return Category:</span>
-                <span className={`font-bold px-2 py-0.5 rounded text-[11px] ${
-                  returnRequest.reasonType === 'PRODUCT_ISSUE'
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-indigo-100 text-indigo-800'
-                }`}>
-                  {returnRequest.reasonType === 'PRODUCT_ISSUE' ? 'Product Defect / Quality Issue' : 'Customer Mind Change'}
-                </span>
-              </div>
-
-              <div className="text-slate-700 italic">
-                "{returnRequest.reasonDetails}"
-              </div>
-
-              {returnRequest.proofImageUrl && (
-                <div className="pt-1 flex items-center gap-2 text-blue-600">
-                  <Camera className="w-3.5 h-3.5" />
-                  <a
-                    href={returnRequest.proofImageUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline text-[11px] hover:text-blue-800 flex items-center gap-1 font-semibold"
-                  >
-                    View Submitted Proof Image
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              )}
-
-              <div className="pt-2 border-t border-slate-200/60 flex justify-between items-center text-[11px]">
-                <span>Item Total: <strong className="font-mono">₹{Number(returnRequest.itemAmount).toFixed(2)}</strong></span>
-                {Number(returnRequest.deliveryFeeDeducted) > 0 && (
-                  <span className="text-rose-600">
-                    Pickup Fee Deducted: -₹{Number(returnRequest.deliveryFeeDeducted).toFixed(2)}
-                  </span>
-                )}
-                <span className="text-emerald-700 font-black text-xs">
-                  Net Refund: ₹{Number(returnRequest.refundAmount).toFixed(2)}
-                </span>
-              </div>
-            </div>
-
-            {/* Runner Assignment Details */}
-            {returnRequest.deliveryBoy && (
-              <div className="p-3 bg-purple-50/70 rounded-xl border border-purple-200 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <User className="w-4 h-4 text-purple-600" />
-                  <div>
-                    <span className="font-bold text-slate-900">{returnRequest.deliveryBoy.fullName}</span>
-                    <span className="text-[10px] text-purple-700 block">Assigned Return Runner</span>
-                  </div>
-                </div>
-                {returnRequest.deliveryBoy.mobileNumber && (
-                  <a
-                    href={`tel:${returnRequest.deliveryBoy.mobileNumber}`}
-                    className="px-2.5 py-1 bg-white border border-purple-200 rounded-lg text-purple-800 text-[11px] font-bold flex items-center gap-1"
-                  >
-                    <Phone className="w-3 h-3" />
-                    <span>Call Runner</span>
-                  </a>
-                )}
-              </div>
-            )}
-
-            {/* 6-DIGIT RETURN PICKUP OTP */}
-            {['APPROVED', 'PICKUP_ASSIGNED'].includes(returnRequest.status) && returnRequest.pickupOtp && (
-              <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-xl border-2 border-amber-300 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-[11px] font-black uppercase text-amber-900 tracking-wider">
-                      Your 6-Digit Return Pickup Code:
-                    </span>
-                    <div className="text-3xl font-black font-mono tracking-widest text-slate-900 mt-0.5">
-                      {returnRequest.pickupOtp}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(returnRequest.pickupOtp);
-                      showToast('Return Pickup OTP copied to clipboard');
-                    }}
-                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy Code</span>
-                  </button>
-                </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-amber-900 bg-white/80 p-2 rounded-lg border border-amber-200">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Share this 6-digit code with the delivery runner when they arrive at your room to complete handover.</span>
-                </div>
-              </div>
-            )}
-
-            {returnRequest.status === 'COMPLETED' && (
-              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center gap-2 text-xs font-bold text-emerald-800">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Return verified via OTP. Refund of ₹{Number(returnRequest.refundAmount).toFixed(2)} has been processed!</span>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* ==================================================
             6. ORDER SUMMARY (COMPACT & CLEAN)
@@ -1886,6 +2048,153 @@ export default function OrderTrackClient() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================
+          MODAL 8: OFFICIAL PAYMENT & ORDER RECEIPT
+         ================================================== */}
+      {receiptModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-[#4F9D2F]" />
+                <h3 className="text-base font-bold text-slate-900">Official Order Receipt</h3>
+              </div>
+              <button
+                onClick={() => setReceiptModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Receipt Content */}
+            <div id="printable-receipt" className="space-y-4 text-xs">
+              {/* Brand & Order Header */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex justify-between items-start">
+                <div>
+                  <h4 className="font-black text-sm text-slate-900 tracking-tight">CAMPUS BASKET</h4>
+                  <p className="text-[10px] text-slate-500">National Institute of Technology, Durgapur</p>
+                  <p className="text-[10px] text-slate-400">Campus Delivery Desk & Fulfillment</p>
+                </div>
+                <div className="text-right">
+                  <span className="font-mono font-bold text-xs text-slate-900">#{order.orderNumber}</span>
+                  <div className="text-[10px] text-slate-500 mt-0.5">{orderDate}</div>
+                  <span className="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    {order.paymentStatus === 'PAID' || order.paymentStatus === 'COD_COLLECTED' || order.status === 'DELIVERED'
+                      ? 'PAID / SETTLED'
+                      : 'PAYMENT DUE'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Student Details */}
+              <div className="p-3 bg-white rounded-xl border border-slate-200/80 space-y-1 text-slate-700">
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Billed To:</span>
+                  <span className="font-bold text-slate-900">{order.student?.fullName || 'Student Customer'}</span>
+                </div>
+                {order.student?.rollNumber && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">Roll Number:</span>
+                    <span className="font-mono text-slate-700">{order.student.rollNumber}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Delivery Location:</span>
+                  <span className="font-semibold text-slate-900">{order.roomNumber ? `Room ${order.roomNumber}, ` : ''}{order.hallName}</span>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 text-[11px]">
+                    <tr>
+                      <th className="p-2.5">Item</th>
+                      <th className="p-2.5 text-center">Qty</th>
+                      <th className="p-2.5 text-right">Price</th>
+                      <th className="p-2.5 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {order.items?.map((item) => (
+                      <tr key={item.id} className="text-slate-800">
+                        <td className="p-2.5 font-medium">{item.productName}</td>
+                        <td className="p-2.5 text-center font-mono">{item.quantity}</td>
+                        <td className="p-2.5 text-right font-mono text-slate-500">₹{Number(item.unitPrice).toFixed(2)}</td>
+                        <td className="p-2.5 text-right font-mono font-bold text-slate-900">₹{Number(item.totalPrice).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Financial Calculation */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-slate-600">
+                <div className="flex justify-between">
+                  <span>Subtotal</span>
+                  <span className="font-mono font-semibold">₹{Number(order.subtotal || totalAmount).toFixed(2)}</span>
+                </div>
+                {Number(order.deliveryFee) > 0 && (
+                  <div className="flex justify-between">
+                    <span>Campus Delivery Fee</span>
+                    <span className="font-mono font-semibold">₹{Number(order.deliveryFee).toFixed(2)}</span>
+                  </div>
+                )}
+                {Number(order.discountAmount) > 0 && (
+                  <div className="flex justify-between text-emerald-600 font-semibold">
+                    <span>Student Discount</span>
+                    <span className="font-mono">-₹{Number(order.discountAmount).toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="pt-2 border-t border-slate-200 flex justify-between items-center text-sm font-black text-slate-900">
+                  <span>Grand Total</span>
+                  <span className="font-mono text-base font-black">₹{totalAmount.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Payment Method Notice */}
+              <div className="flex justify-between items-center px-3 py-2 bg-emerald-50/70 border border-emerald-200 rounded-xl text-emerald-900 font-medium">
+                <span>Payment: <strong>{isCod ? 'Cash on Delivery (COD)' : 'Online Paid (Razorpay)'}</strong></span>
+                <span className="text-[11px] font-bold text-emerald-700">✓ Digitally Recorded</span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100 flex-wrap">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print</span>
+              </button>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setReceiptModalOpen(false)}
+                  className="px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadPdfReceipt}
+                  disabled={downloadingReceipt}
+                  className="px-4 py-2 bg-[#4F9D2F] hover:bg-[#3d7c24] text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{downloadingReceipt ? 'Generating PDF...' : 'Download PDF Receipt'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

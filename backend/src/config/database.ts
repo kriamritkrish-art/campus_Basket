@@ -1587,6 +1587,18 @@ const fallbackHandlers: Record<string, any> = {
       }
       return args.data;
     },
+    upsert: async (args: any) => {
+      const orderId = args.where?.orderId || args.create?.orderId;
+      const id = args.where?.id;
+      let existing = fallbackCodCollections.find(item => (orderId && item.orderId === orderId) || (id && item.id === id));
+      if (existing) {
+        Object.assign(existing, args.update, { updatedAt: new Date() });
+        return JSON.parse(JSON.stringify(existing));
+      }
+      const newCol = { id: `cod_${Date.now()}`, createdAt: new Date(), updatedAt: new Date(), ...args.create };
+      fallbackCodCollections.unshift(newCol);
+      return JSON.parse(JSON.stringify(newCol));
+    },
     count: async () => fallbackCodCollections.length
   },
   adminStatusOverride: {

@@ -18,5 +18,6 @@ router.get('/', rbacGuard(['ADMIN']), ReturnController.getAllReturns);
 router.post('/:id/approve', rbacGuard(['ADMIN']), ReturnController.approveReturn);
 router.post('/:id/reject', rbacGuard(['ADMIN']), ReturnController.rejectReturn);
 router.post('/:id/assign-delivery', rbacGuard(['ADMIN']), ReturnController.assignDeliveryBoy);
+router.post('/:id/disburse-refund', rbacGuard(['ADMIN']), ReturnController.disburseReturnRefund);
 
 export default router;

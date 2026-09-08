@@ -392,12 +392,23 @@ describe('Order Edit (Add Products) & Return Management with Runner OTP Pickup',
       await ReturnController.verifyReturnPickupOtp(validReq, validRes, (err) => { if (err) throw err; });
       expect(statusCode).toBe(200);
       expect(responseData.success).toBe(true);
-      expect(responseData.returnRequest.status).toBe('COMPLETED');
+      expect(responseData.returnRequest.status).toBe('PICKED_UP');
       expect(responseData.returnRequest.pickupOtpVerified).toBe(true);
 
       // Verify delivery runner wallet received return payout
       const updatedRunner = await prisma.deliveryBoy.findUnique({ where: { id: deliveryBoy.id } });
       expect(Number(updatedRunner.walletBalance)).toBe(initialWallet + 15);
+
+      // Admin disburse refund
+      const disburseReq: any = {
+        params: { id: retReq.id },
+        user: { userId: 'admin_1', role: 'ADMIN' },
+        body: { utrReference: 'UTR99887766', adminNotes: 'Verified and disbursed' }
+      };
+      await ReturnController.disburseReturnRefund(disburseReq, validRes, (err) => { if (err) throw err; });
+      expect(statusCode).toBe(200);
+      expect(responseData.success).toBe(true);
+      expect(responseData.returnRequest.status).toBe('REFUNDED');
     });
   });
 });

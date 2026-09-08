@@ -206,6 +206,36 @@ export default function AdminOrdersPage() {
     }
   };
 
+  const handleDisburseRefund = async () => {
+    if (!selectedReturn) return;
+    if (selectedReturn.status !== 'PICKED_UP') {
+      alert('Cannot disburse refund yet: Product pickup must be completed and verified via 6-digit OTP first.');
+      return;
+    }
+    const utr = prompt(`Confirm and disburse refund of ₹${selectedReturn.refundAmount} to student. Enter UTR / Payment Reference (optional):`, `CB-REF-${Date.now().toString().slice(-6)}`);
+    if (utr === null) return;
+
+    setProcessingReturn(true);
+    try {
+      const res = await apiRequest(`/api/returns/${selectedReturn.id}/disburse-refund`, {
+        method: 'POST',
+        body: JSON.stringify({ transactionReference: utr.trim() || undefined })
+      });
+      if (res.success) {
+        alert(`Refund of ₹${selectedReturn.refundAmount} successfully disbursed! Financial ledger recorded.`);
+        setReviewModalOpen(false);
+        fetchReturnRequests();
+        fetchOrders();
+      } else {
+        alert(res.message || 'Refund disbursement failed');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error disbursing refund');
+    } finally {
+      setProcessingReturn(false);
+    }
+  };
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     fetchOrders();
@@ -291,6 +321,7 @@ export default function AdminOrdersPage() {
       case 'PICKED_UP':
         return 'bg-indigo-100 text-indigo-800 border-indigo-300';
       case 'COMPLETED':
+      case 'REFUNDED':
         return 'bg-emerald-100 text-[#347A27] border-emerald-300';
       case 'REJECTED':
         return 'bg-rose-100 text-rose-800 border-rose-300';
@@ -1028,11 +1059,11 @@ export default function AdminOrdersPage() {
       {/* RETURN REVIEW & RUNNER ASSIGN MODAL */}
       {reviewModalOpen && selectedReturn && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-fade-in text-xs max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-fade-in text-xs max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <RotateCcw className="w-5 h-5 text-rose-600" />
-                <h3 className="text-base font-bold text-[#17202A]">Review Return Request</h3>
+                <h3 className="text-base font-bold text-[#17202A]">Review Return Request & Delivery History</h3>
               </div>
               <button
                 onClick={() => setReviewModalOpen(false)}
@@ -1045,68 +1076,118 @@ export default function AdminOrdersPage() {
             {/* Request Summary */}
             <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
               <div className="flex justify-between items-center">
-                <span className="font-bold text-slate-700">Order: #{selectedReturn.order?.orderNumber || selectedReturn.orderId}</span>
+                <span className="font-bold text-slate-800 text-sm">Order #{selectedReturn.order?.orderNumber || selectedReturn.orderId}</span>
                 <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getReturnStatusBadge(
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getReturnStatusBadge(
                     selectedReturn.status
                   )}`}
                 >
-                  {selectedReturn.status}
+                  {selectedReturn.status === 'PICKED_UP'
+                    ? '📦 PICKED UP (OTP VERIFIED)'
+                    : selectedReturn.status === 'REFUNDED'
+                    ? '✓ REFUND DISBURSED'
+                    : selectedReturn.status}
                 </span>
               </div>
-              <div>
-                Student: <strong>{selectedReturn.studentName || selectedReturn.order?.studentName}</strong> ({selectedReturn.order?.rollNumber})
-              </div>
-              <div>
-                Pickup Address: <strong>{selectedReturn.hallName || selectedReturn.order?.hallName}, Room {selectedReturn.roomNumber || selectedReturn.order?.roomNumber}</strong>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-700">
+                <div>
+                  Customer: <strong>{selectedReturn.studentName || selectedReturn.order?.student?.fullName || selectedReturn.order?.studentName}</strong> ({selectedReturn.order?.student?.rollNumber || selectedReturn.order?.rollNumber || 'Student'})
+                </div>
+                <div>
+                  Pickup Room: <strong>{selectedReturn.hallName || selectedReturn.order?.hallName}, Room {selectedReturn.roomNumber || selectedReturn.order?.roomNumber}</strong>
+                </div>
               </div>
             </div>
 
-            {/* Reason & Proof Breakdown */}
-            <div className="p-3.5 rounded-xl border space-y-2 bg-amber-50/50 border-amber-200">
-              <div className="flex items-center gap-2">
+            {/* Original Fulfillment & Delivery History */}
+            <div className="p-3.5 bg-blue-50/50 rounded-xl border border-blue-200 space-y-2">
+              <span className="font-bold text-blue-900 uppercase text-[10px] tracking-wider block">
+                Original Delivery & Fulfillment Audit
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                <div className="p-2.5 bg-white rounded-lg border border-blue-200">
+                  <span className="text-slate-400 block text-[10px] font-semibold">Delivered By Runner (Handover):</span>
+                  <strong className="text-slate-800 text-xs block mt-0.5">
+                    {selectedReturn.order?.deliveryBoy?.fullName || 'Campus Runner'}
+                  </strong>
+                  {selectedReturn.order?.deliveryBoy?.mobileNumber && (
+                    <span className="text-blue-700 font-mono text-[10px] block mt-0.5">
+                      📞 {selectedReturn.order.deliveryBoy.mobileNumber}
+                    </span>
+                  )}
+                </div>
+
+                <div className="p-2.5 bg-white rounded-lg border border-blue-200">
+                  <span className="text-slate-400 block text-[10px] font-semibold">Provider / Store Vendor:</span>
+                  <strong className="text-slate-800 text-xs block mt-0.5">
+                    {selectedReturn.order?.provider?.fullName || 'Campus Store'}
+                  </strong>
+                  {selectedReturn.order?.provider?.mobileNumber && (
+                    <span className="text-blue-700 font-mono text-[10px] block mt-0.5">
+                      📞 {selectedReturn.order.provider.mobileNumber}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Reason & Clear Proof Image Breakdown */}
+            <div className="p-3.5 rounded-xl border space-y-2 bg-amber-50/60 border-amber-200">
+              <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-800">Return Reason Category:</span>
-                <span className="font-bold text-amber-900">
+                <span className={`font-bold px-2 py-0.5 rounded text-[11px] ${
+                  selectedReturn.reasonType === 'PRODUCT_ISSUE'
+                    ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                    : 'bg-indigo-100 text-indigo-800 border border-indigo-300'
+                }`}>
                   {selectedReturn.reasonType === 'PRODUCT_ISSUE' ? '⚠️ Defective / Damaged Product' : '🔄 Student Mind Change'}
                 </span>
               </div>
               <div>
                 <span className="font-semibold text-slate-700">Student Explanation:</span>
-                <p className="mt-1 p-2 bg-white rounded-lg border border-amber-200 text-slate-700">
-                  {selectedReturn.reasonDetails || 'No details provided'}
+                <p className="mt-1 p-2 bg-white rounded-lg border border-amber-200 text-slate-700 leading-relaxed">
+                  {selectedReturn.reasonDetails || 'No explanation provided'}
                 </p>
               </div>
 
+              {/* Clear High-Res Defect Proof Photo Preview */}
               {selectedReturn.proofImageUrl && (
-                <div className="pt-2 border-t border-amber-200">
-                  <span className="font-semibold text-slate-700 block mb-1">Attached Defect Proof Photo:</span>
-                  <a
-                    href={selectedReturn.proofImageUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-blue-600 hover:underline font-bold bg-white px-3 py-1.5 rounded-lg border border-slate-200"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>View Defect Photo Evidence</span>
-                  </a>
+                <div className="pt-2 border-t border-amber-200 space-y-1.5">
+                  <span className="font-bold text-amber-900 block text-xs">Clear Defect Proof Photo Evidence:</span>
+                  <div className="relative group rounded-xl overflow-hidden border-2 border-amber-300 bg-slate-950 flex items-center justify-center max-h-56">
+                    <img
+                      src={selectedReturn.proofImageUrl}
+                      alt="Defect Evidence"
+                      className="max-h-56 w-full object-contain rounded-lg"
+                    />
+                    <a
+                      href={selectedReturn.proofImageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="absolute bottom-2 right-2 bg-slate-900/80 hover:bg-slate-900 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-md transition"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>View Full Resolution</span>
+                    </a>
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Refund & Fee Breakdown */}
+            {/* Financial Refund Settlement */}
             <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
-              <span className="font-bold text-slate-700 uppercase text-[10px] block">Financial Refund Settlement</span>
-              <div className="flex justify-between">
-                <span>Original Order/Item Value:</span>
-                <span className="font-mono">₹{selectedReturn.originalAmount || selectedReturn.order?.totalAmount}</span>
+              <span className="font-bold text-slate-700 uppercase text-[10px] block">Transparent Financial Calculation</span>
+              <div className="flex justify-between text-slate-600">
+                <span>Original Order / Item Value:</span>
+                <span className="font-mono font-semibold">₹{selectedReturn.itemAmount || selectedReturn.originalAmount || selectedReturn.order?.totalAmount}</span>
               </div>
               <div className="flex justify-between text-rose-600">
-                <span>Delivery Charge Deducted (Mind Change Policy):</span>
-                <span className="font-mono">-₹{selectedReturn.deliveryChargeDeducted || 0}</span>
+                <span>Return Fee Deducted ({selectedReturn.reasonType === 'PRODUCT_ISSUE' ? '₹0 Defect Policy' : 'Mind Change Policy'}):</span>
+                <span className="font-mono font-bold">-₹{selectedReturn.deliveryFeeDeducted || selectedReturn.deliveryChargeDeducted || 0}</span>
               </div>
               <div className="flex justify-between font-bold text-[#17202A] pt-1.5 border-t border-slate-200 text-sm">
                 <span>Student Refund Amount:</span>
-                <span className="font-mono text-emerald-700">₹{selectedReturn.refundAmount}</span>
+                <span className="font-mono text-emerald-700 text-base font-black">₹{selectedReturn.refundAmount}</span>
               </div>
             </div>
 
@@ -1115,7 +1196,7 @@ export default function AdminOrdersPage() {
               <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 flex items-center justify-between">
                 <div>
                   <span className="font-bold block">Generated 6-Digit Pickup OTP</span>
-                  <span className="text-[11px]">Share or verify during door pickup</span>
+                  <span className="text-[11px]">Runner verifies this code at the student hostel door</span>
                 </div>
                 <div className="font-mono text-xl font-black bg-white px-3 py-1 rounded-lg border border-emerald-300">
                   {selectedReturn.pickupOtp}
@@ -1123,67 +1204,145 @@ export default function AdminOrdersPage() {
               </div>
             )}
 
-            {/* Runner Assignment Selection */}
-            <div>
-              <label className="font-bold text-slate-700 block mb-1">
-                Assign Return Pickup Runner
-              </label>
-              <select
-                value={returnAssignBoyId}
-                onChange={(e) => setReturnAssignBoyId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-semibold text-slate-800 focus:outline-none focus:border-rose-500"
-              >
-                <option value="">-- Assign Delivery Runner (Optional / Now) --</option>
-                {deliveryBoys.map((boy) => (
-                  <option key={boy.id} value={boy.id}>
-                    {boy.fullName} ({boy.user?.username || boy.phone})
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Assigned Pickup Runner (Runner B) */}
+            {selectedReturn.deliveryBoy ? (
+              <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-[10px] text-purple-700 font-bold uppercase block">Assigned Return Pickup Runner:</span>
+                  <strong className="text-slate-900 text-sm">{selectedReturn.deliveryBoy.fullName}</strong>
+                  {selectedReturn.deliveryBoy.mobileNumber && (
+                    <span className="text-purple-800 font-mono text-[11px] block">📞 {selectedReturn.deliveryBoy.mobileNumber}</span>
+                  )}
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300">
+                  Pickup Runner
+                </span>
+              </div>
+            ) : selectedReturn.status === 'REQUESTED' && (
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Assign Delivery Runner for Return Pickup
+                </label>
+                <select
+                  value={returnAssignBoyId}
+                  onChange={(e) => setReturnAssignBoyId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-semibold text-slate-800 focus:outline-none focus:border-rose-500"
+                >
+                  <option value="">-- Select Runner to Visit Hostel Room --</option>
+                  {deliveryBoys.map((boy) => (
+                    <option key={boy.id} value={boy.id}>
+                      {boy.fullName} ({boy.user?.username || boy.phone})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-            {/* Rejection Input */}
-            <div className="pt-2 border-t border-slate-100">
-              <label className="font-semibold text-slate-600 block mb-1">
-                Rejection Justification (required if rejecting):
-              </label>
-              <input
-                type="text"
-                value={returnRejectionReason}
-                onChange={(e) => setReturnRejectionReason(e.target.value)}
-                placeholder="e.g., Proof invalid or unverified damage"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none"
-              />
-            </div>
+            {/* Rejection Input if in REQUESTED state */}
+            {selectedReturn.status === 'REQUESTED' && (
+              <div className="pt-2 border-t border-slate-100">
+                <label className="font-semibold text-slate-600 block mb-1">
+                  Rejection Justification (required if rejecting):
+                </label>
+                <input
+                  type="text"
+                  value={returnRejectionReason}
+                  onChange={(e) => setReturnRejectionReason(e.target.value)}
+                  placeholder="e.g., Proof photo invalid or unverified damage"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none"
+                />
+              </div>
+            )}
+
+            {/* Gated Status Guidance Banners */}
+            {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(selectedReturn.status) && (
+              <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-600 shrink-0 animate-pulse" />
+                <span>
+                  <strong>Pickup in Progress:</strong> Refund disbursement is strictly gated until the runner visits the student room and verifies the 6-digit OTP.
+                </span>
+              </div>
+            )}
+
+            {selectedReturn.status === 'PICKED_UP' && (
+              <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-900 text-xs flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>
+                  <strong>Physical Pickup Verified via OTP!</strong> The product has been collected by the runner. You can now disburse the refund.
+                </span>
+              </div>
+            )}
+
+            {selectedReturn.status === 'REFUNDED' && (
+              <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-900 text-xs flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>
+                  <strong>Refund Disbursed & Completed:</strong> ₹{selectedReturn.refundAmount} has been released and recorded in financial ledgers.
+                </span>
+              </div>
+            )}
 
             {/* Modal Actions */}
-            <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={handleRejectReturn}
-                disabled={processingReturn}
-                className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold transition disabled:opacity-50"
-              >
-                {processingReturn ? 'Processing...' : 'Reject Return'}
-              </button>
+            <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100 flex-wrap">
+              {selectedReturn.status === 'REQUESTED' ? (
+                <button
+                  type="button"
+                  onClick={handleRejectReturn}
+                  disabled={processingReturn}
+                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold transition disabled:opacity-50 cursor-pointer"
+                >
+                  {processingReturn ? 'Processing...' : 'Reject Return'}
+                </button>
+              ) : (
+                <div />
+              )}
 
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => setReviewModalOpen(false)}
-                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold"
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold cursor-pointer"
                 >
                   Close
                 </button>
-                <button
-                  type="button"
-                  onClick={handleApproveReturn}
-                  disabled={processingReturn}
-                  className="px-4 py-2 bg-[#4F9D32] hover:bg-[#347A27] text-white rounded-xl font-bold shadow-sm transition flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>{processingReturn ? 'Processing...' : 'Approve & Assign'}</span>
-                </button>
+
+                {/* Phase 1: Approve & Assign */}
+                {selectedReturn.status === 'REQUESTED' && (
+                  <button
+                    type="button"
+                    onClick={handleApproveReturn}
+                    disabled={processingReturn}
+                    className="px-4 py-2 bg-[#4F9D32] hover:bg-[#347A27] text-white rounded-xl font-bold shadow-sm transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>{processingReturn ? 'Processing...' : 'Accept Return & Assign Runner'}</span>
+                  </button>
+                )}
+
+                {/* Phase 2: Awaiting Pickup (Locked) */}
+                {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(selectedReturn.status) && (
+                  <button
+                    type="button"
+                    disabled={true}
+                    className="px-4 py-2 bg-slate-100 text-slate-400 rounded-xl font-bold border border-slate-200 cursor-not-allowed flex items-center gap-1.5"
+                  >
+                    <Clock className="w-4 h-4 text-slate-400" />
+                    <span>Disburse Refund (Locked until Pickup)</span>
+                  </button>
+                )}
+
+                {/* Phase 3: Pickup completed (Enabled) */}
+                {selectedReturn.status === 'PICKED_UP' && (
+                  <button
+                    type="button"
+                    onClick={handleDisburseRefund}
+                    disabled={processingReturn}
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black shadow-md transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>{processingReturn ? 'Disbursing...' : `Disburse Refund (₹${selectedReturn.refundAmount})`}</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
