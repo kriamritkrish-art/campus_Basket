@@ -73,7 +73,11 @@ export class PaymentController {
 
           let newStatus: any = 'CONFIRMED';
           let autoAssignedRunnerId: string | null = null;
-          let paymentNote = `Online payment verified via Razorpay ID: ${razorpayPaymentId}`;
+          const isCodWithAdvance = currentOrder?.paymentMethod === 'CASH_ON_DELIVERY';
+          const targetPaymentStatus: any = isCodWithAdvance ? 'COD_PENDING' : 'SUCCESS';
+          let paymentNote = isCodWithAdvance
+            ? `COD Partial Advance of ₹${payment.amount} verified via Razorpay ID: ${razorpayPaymentId}. Order confirmed! Remaining cash balance due at doorstep.`
+            : `Online payment verified via Razorpay ID: ${razorpayPaymentId}`;
 
           if (currentOrder?.provider?.autoAssignDelivery) {
             const runner = await tx.deliveryBoy.findFirst({
@@ -91,7 +95,7 @@ export class PaymentController {
             data: {
               status: newStatus,
               ...(autoAssignedRunnerId ? { deliveryBoyId: autoAssignedRunnerId } : {}),
-              paymentStatus: 'SUCCESS',
+              paymentStatus: targetPaymentStatus,
               statusHistory: {
                 create: {
                   previousStatus: 'PENDING_PAYMENT',

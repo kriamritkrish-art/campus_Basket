@@ -16,7 +16,20 @@ import {
   Power,
   ShieldAlert,
   Info,
-  KeyRound
+  KeyRound,
+  Store,
+  RotateCcw,
+  Lock,
+  Sliders,
+  Package,
+  Clock,
+  Sparkles,
+  Search,
+  Check,
+  ShieldCheck,
+  Utensils,
+  BookOpen,
+  Apple
 } from 'lucide-react';
 import { apiRequest } from '@/lib/api';
 
@@ -34,16 +47,35 @@ export default function AdminSettingsPage() {
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [statusFeedback, setStatusFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Entities for Granular Governance
+  const [providersList, setProvidersList] = useState<any[]>([]);
+  const [productsList, setProductsList] = useState<any[]>([]);
+  const [productSearch, setProductSearch] = useState('');
+  const [governanceTab, setGovernanceTab] = useState<'GLOBAL' | 'PROVIDERS' | 'ITEMS'>('GLOBAL');
+
   const fetchSettings = async () => {
     try {
       setLoading(true);
-      const res = await apiRequest('/api/admin/settings');
-      if (res.success && res.settings) {
+      const [settingsRes, providersRes, productsRes] = await Promise.allSettled([
+        apiRequest('/api/admin/settings'),
+        apiRequest('/api/admin/providers'),
+        apiRequest('/api/admin/products?limit=50')
+      ]);
+
+      if (settingsRes.status === 'fulfilled' && settingsRes.value?.success && settingsRes.value?.settings) {
         const map: Record<string, string> = {};
-        res.settings.forEach((s: AdminSettingItem) => {
+        settingsRes.value.settings.forEach((s: AdminSettingItem) => {
           map[s.key] = s.value;
         });
         setSettings(map);
+      }
+
+      if (providersRes.status === 'fulfilled' && providersRes.value?.success && providersRes.value?.providers) {
+        setProvidersList(providersRes.value.providers);
+      }
+
+      if (productsRes.status === 'fulfilled' && productsRes.value?.success && productsRes.value?.products) {
+        setProductsList(productsRes.value.products);
       }
     } catch (err: any) {
       setStatusFeedback({ type: 'error', text: err.message || 'Failed to load system settings' });
@@ -88,6 +120,48 @@ export default function AdminSettingsPage() {
     }
   };
 
+  const getProviderPolicy = (providerId: string) => {
+    try {
+      const raw = settings['PROVIDER_ORDER_POLICIES'] || '{}';
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return parsed[providerId] || {};
+    } catch {
+      return {};
+    }
+  };
+
+  const updateProviderPolicy = (providerId: string, patch: any) => {
+    try {
+      const raw = settings['PROVIDER_ORDER_POLICIES'] || '{}';
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      parsed[providerId] = { ...(parsed[providerId] || {}), ...patch };
+      handleChange('PROVIDER_ORDER_POLICIES', JSON.stringify(parsed));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const getProductPolicy = (productId: string) => {
+    try {
+      const raw = settings['PRODUCT_ORDER_POLICIES'] || '{}';
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return parsed[productId] || {};
+    } catch {
+      return {};
+    }
+  };
+
+  const updateProductPolicy = (productId: string, patch: any) => {
+    try {
+      const raw = settings['PRODUCT_ORDER_POLICIES'] || '{}';
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      parsed[productId] = { ...(parsed[productId] || {}), ...patch };
+      handleChange('PRODUCT_ORDER_POLICIES', JSON.stringify(parsed));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleSaveAll = async () => {
     try {
       setSavingKey('ALL');
@@ -99,6 +173,13 @@ export default function AdminSettingsPage() {
         { key: 'SUPPORT_PHONE', desc: 'Direct campus helpline' },
         { key: 'ENABLE_CASH_ON_DELIVERY', desc: 'Allow COD for hostel room drop' },
         { key: 'MAX_COD_AMOUNT', desc: 'Maximum INR ceiling for Cash on Delivery' },
+        { key: 'COD_MIN_ADVANCE_AMOUNT', desc: 'Partial online advance fee required to confirm COD orders' },
+        { key: 'CANCELLATION_CUTOFF_STAGE', desc: 'Stage beyond which order modification & cancellation are locked' },
+        { key: 'RETURN_POLICY_FOOD', desc: 'Return policy configuration for kitchen meals' },
+        { key: 'RETURN_POLICY_PRODUCE', desc: 'Return policy configuration for fresh fruits & produce' },
+        { key: 'RETURN_POLICY_STATIONERY', desc: 'Return policy configuration for bookstore & stationery' },
+        { key: 'PROVIDER_ORDER_POLICIES', desc: 'Granular per-provider order & COD policies' },
+        { key: 'PRODUCT_ORDER_POLICIES', desc: 'Granular per-product order & return policies' },
         { key: 'DELIVERY_FEE_FLAT', desc: 'Flat room delivery fee' },
         { key: 'FREE_DELIVERY_THRESHOLD', desc: 'Cart threshold for free delivery' },
         { key: 'GEOFENCE_ENFORCED', desc: 'Global GPS perimeter geofence enforcement toggle' },
@@ -385,8 +466,470 @@ export default function AdminSettingsPage() {
                     </button>
                   </div>
                 </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                      Mandatory COD Online Partial Advance (₹)
+                    </label>
+                    <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-bold border border-emerald-200">
+                      Online Advance • Rest Cash at Door
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="e.g. 10 (Set 0 for pure zero-advance COD)"
+                      value={settings['COD_MIN_ADVANCE_AMOUNT'] ?? '10'}
+                      onChange={(e) => handleChange('COD_MIN_ADVANCE_AMOUNT', e.target.value)}
+                      className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-[#17202A] font-mono focus:outline-none focus:border-[#4F9D32] transition"
+                    />
+                    <button
+                      onClick={() => handleSaveSetting('COD_MIN_ADVANCE_AMOUNT', 'Partial online advance fee required to confirm COD orders')}
+                      disabled={savingKey === 'COD_MIN_ADVANCE_AMOUNT'}
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-[#347A27] border border-slate-200 transition cursor-pointer"
+                    >
+                      {saveSuccess === 'COD_MIN_ADVANCE_AMOUNT' ? <CheckCircle2 className="w-4 h-4 text-[#4F9D32]" /> : 'Save'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Example: On a ₹100 order, student pays ₹{settings['COD_MIN_ADVANCE_AMOUNT'] || '10'} advance online via Razorpay before order confirmation; remaining ₹{Math.max(0, 100 - Number(settings['COD_MIN_ADVANCE_AMOUNT'] || 10))} is collected in cash at delivery.
+                  </p>
+                </div>
               </div>
             </div>
+          </div>
+
+          {/* Group 2.5: Order Governance, Cancellation Lock & Return Policies (Provider & Product-Wise) */}
+          <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-700">
+                  <Sliders className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-[#17202A] flex items-center gap-2">
+                    Order Governance, Cancellation Lock &amp; Return Policies
+                    <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-bold">
+                      Adaptive Core
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Control COD eligibility, partial advance fee, order immutability stage, and returns across Food, Fruits &amp; Stationery
+                  </p>
+                </div>
+              </div>
+
+              {/* Sub-Navigation Tabs */}
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-bold shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setGovernanceTab('GLOBAL')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                    governanceTab === 'GLOBAL' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Category Rules &amp; Cutoff
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGovernanceTab('PROVIDERS')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                    governanceTab === 'PROVIDERS' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>Provider Overrides</span>
+                  <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded-full font-mono">
+                    {providersList.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGovernanceTab('ITEMS')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                    governanceTab === 'ITEMS' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>Food / Item Overrides</span>
+                  <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded-full font-mono">
+                    {productsList.length}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* TAB 1: Global Category Policies & Cutoff */}
+            {governanceTab === 'GLOBAL' && (
+              <div className="space-y-5 animate-in fade-in duration-150">
+                <div className="p-4 rounded-xl bg-amber-50/60 border border-amber-200 text-xs text-amber-900 flex items-start gap-3">
+                  <Lock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold block mb-0.5">Campus Order Immutability Rule:</span>
+                    <span>
+                      In all 3 categories (Food, Fresh Fruits/Produce, Stationery), once the provider accepts the order (or the selected cutoff is reached), students can no longer modify delivery details or cancel their order. Prior to provider acceptance, orders remain modifiable and cancellable.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Cancellation Cutoff Stage */}
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Lock className="w-4 h-4 text-amber-600" />
+                        <span className="text-xs font-bold text-slate-800">Order Cancellation Lock Stage</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-500 bg-slate-200 px-2 py-0.5 rounded">
+                        Current: {settings['CANCELLATION_CUTOFF_STAGE'] || 'ACCEPTED'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Defines the order status at which students can no longer cancel or edit room details.
+                    </p>
+                    <div className="flex gap-2">
+                      <select
+                        value={settings['CANCELLATION_CUTOFF_STAGE'] || 'ACCEPTED'}
+                        onChange={(e) => handleChange('CANCELLATION_CUTOFF_STAGE', e.target.value)}
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-indigo-500"
+                      >
+                        <option value="ACCEPTED">ACCEPTED — Provider accepts order (Strict &amp; Locked early)</option>
+                        <option value="PREPARING">PREPARING — Cooking / Packing has commenced</option>
+                        <option value="READY">READY — Order is packed and waiting for runner</option>
+                        <option value="DISPATCHED">DISPATCHED — Order is out for delivery</option>
+                      </select>
+                      <button
+                        onClick={() => handleSaveSetting('CANCELLATION_CUTOFF_STAGE', 'Stage beyond which order modification & cancellation are locked')}
+                        disabled={savingKey === 'CANCELLATION_CUTOFF_STAGE'}
+                        className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-indigo-700 border border-slate-200 transition cursor-pointer"
+                      >
+                        {saveSuccess === 'CANCELLATION_CUTOFF_STAGE' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Fresh Fruits & Produce Return Policy */}
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Apple className="w-4 h-4 text-emerald-600" />
+                        <span className="text-xs font-bold text-slate-800">Fresh Produce &amp; Fruit Mandi Return Policy</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                        {settings['RETURN_POLICY_PRODUCE'] || 'FRESHNESS_VERIFIED'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Perishable quality policy for mandi produce, seasonal fruits, and whole veggies.
+                    </p>
+                    <div className="flex gap-2">
+                      <select
+                        value={settings['RETURN_POLICY_PRODUCE'] || 'FRESHNESS_VERIFIED'}
+                        onChange={(e) => handleChange('RETURN_POLICY_PRODUCE', e.target.value)}
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-emerald-500"
+                      >
+                        <option value="FRESHNESS_VERIFIED">FRESHNESS_VERIFIED — 2-Hour Window for defect/bruising</option>
+                        <option value="DISABLED">DISABLED — No returns on fresh produce</option>
+                        <option value="ALLOWED_UNCONDITIONAL">ALLOWED_UNCONDITIONAL — 24-Hour inspection window</option>
+                      </select>
+                      <button
+                        onClick={() => handleSaveSetting('RETURN_POLICY_PRODUCE', 'Return policy configuration for fresh fruits & produce')}
+                        disabled={savingKey === 'RETURN_POLICY_PRODUCE'}
+                        className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-emerald-700 border border-slate-200 transition cursor-pointer"
+                      >
+                        {saveSuccess === 'RETURN_POLICY_PRODUCE' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Stationery & Bookstore Return Policy */}
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <BookOpen className="w-4 h-4 text-blue-600" />
+                        <span className="text-xs font-bold text-slate-800">Stationery &amp; Bookstore Return Policy</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                        {settings['RETURN_POLICY_STATIONERY'] || 'ALLOWED_24HR'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Return eligibility for textbooks, notebooks, instruments, and packaged campus supplies.
+                    </p>
+                    <div className="flex gap-2">
+                      <select
+                        value={settings['RETURN_POLICY_STATIONERY'] || 'ALLOWED_24HR'}
+                        onChange={(e) => handleChange('RETURN_POLICY_STATIONERY', e.target.value)}
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-blue-500"
+                      >
+                        <option value="ALLOWED_24HR">ALLOWED_24HR — 24-Hour Window for unused/intact stationery</option>
+                        <option value="ALLOWED_48HR">ALLOWED_48HR — 48-Hour Window for academic materials</option>
+                        <option value="DISABLED">DISABLED — Stationery items are final sale</option>
+                      </select>
+                      <button
+                        onClick={() => handleSaveSetting('RETURN_POLICY_STATIONERY', 'Return policy configuration for bookstore & stationery')}
+                        disabled={savingKey === 'RETURN_POLICY_STATIONERY'}
+                        className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-blue-700 border border-slate-200 transition cursor-pointer"
+                      >
+                        {saveSuccess === 'RETURN_POLICY_STATIONERY' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Food & Kitchen Return Policy */}
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Utensils className="w-4 h-4 text-orange-600" />
+                        <span className="text-xs font-bold text-slate-800">Kitchen Prepared Meals Return Policy</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-orange-700 bg-orange-100 px-2 py-0.5 rounded">
+                        {settings['RETURN_POLICY_FOOD'] || 'RESTRICTED'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Policy for prepared foods, canteen bowls, parathas, and beverages.
+                    </p>
+                    <div className="flex gap-2">
+                      <select
+                        value={settings['RETURN_POLICY_FOOD'] || 'RESTRICTED'}
+                        onChange={(e) => handleChange('RETURN_POLICY_FOOD', e.target.value)}
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-orange-500"
+                      >
+                        <option value="RESTRICTED">RESTRICTED — 30-Min Inspection Window for damaged/incorrect prep</option>
+                        <option value="DISABLED">DISABLED — Cooked foods strictly non-returnable</option>
+                        <option value="ALLOWED_UNCONDITIONAL">ALLOWED_UNCONDITIONAL — 60-Min window for any food issue</option>
+                      </select>
+                      <button
+                        onClick={() => handleSaveSetting('RETURN_POLICY_FOOD', 'Return policy configuration for kitchen meals')}
+                        disabled={savingKey === 'RETURN_POLICY_FOOD'}
+                        className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-orange-700 border border-slate-200 transition cursor-pointer"
+                      >
+                        {saveSuccess === 'RETURN_POLICY_FOOD' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: Provider-Wise Governance Overrides */}
+            {governanceTab === 'PROVIDERS' && (
+              <div className="space-y-4 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <p className="text-xs text-slate-600">
+                    Configure individual merchant terms: permit or disable Cash on Delivery, set provider-specific online advance fees, customize cancellation cutoff, and enable returns.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleSaveSetting('PROVIDER_ORDER_POLICIES', 'Granular per-provider order & COD policies')}
+                    disabled={savingKey === 'PROVIDER_ORDER_POLICIES'}
+                    className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition flex items-center gap-1.5 shrink-0"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{saveSuccess === 'PROVIDER_ORDER_POLICIES' ? 'Policies Saved!' : 'Save All Provider Rules'}</span>
+                  </button>
+                </div>
+
+                {providersList.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-slate-200">
+                    No active service providers loaded. Check database connection.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {providersList.map((p) => {
+                      const policy = getProviderPolicy(p.id);
+                      const isProviderCodAllowed = policy.allowCod !== false;
+                      const customAdvance = policy.codAdvance ?? '';
+                      const customCutoff = policy.cancellationCutoff || 'DEFAULT';
+                      const isReturnAllowed = policy.allowReturn !== false;
+
+                      return (
+                        <div key={p.id} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
+                          <div className="flex items-start justify-between pb-2 border-b border-slate-200/60">
+                            <div>
+                              <h4 className="font-black text-slate-900">{p.businessName || p.fullName}</h4>
+                              <p className="text-[11px] text-slate-500">
+                                Category: <span className="font-semibold text-slate-700">{p.serviceCategory || 'GENERAL'}</span>
+                              </p>
+                            </div>
+                            <span className="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono">
+                              ID: {p.id.slice(0, 8)}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 pt-1">
+                            {/* COD Toggle */}
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                                Cash on Delivery
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => updateProviderPolicy(p.id, { allowCod: !isProviderCodAllowed })}
+                                className={`w-full py-1.5 px-2 rounded-lg text-xs font-bold border transition ${
+                                  isProviderCodAllowed
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                    : 'bg-rose-50 text-rose-700 border-rose-200'
+                                }`}
+                              >
+                                {isProviderCodAllowed ? 'COD ALLOWED' : 'COD BLOCKED'}
+                              </button>
+                            </div>
+
+                            {/* Custom Advance */}
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                                Custom Advance (₹)
+                              </label>
+                              <input
+                                type="number"
+                                placeholder="Global Default"
+                                value={customAdvance}
+                                onChange={(e) => updateProviderPolicy(p.id, { codAdvance: e.target.value ? Number(e.target.value) : undefined })}
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-800"
+                              />
+                            </div>
+
+                            {/* Cutoff Override */}
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                                Cancellation Lock
+                              </label>
+                              <select
+                                value={customCutoff}
+                                onChange={(e) => updateProviderPolicy(p.id, { cancellationCutoff: e.target.value })}
+                                className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-slate-800"
+                              >
+                                <option value="DEFAULT">Global Default</option>
+                                <option value="ACCEPTED">Lock on ACCEPTED</option>
+                                <option value="PREPARING">Lock on PREPARING</option>
+                                <option value="READY">Lock on READY</option>
+                              </select>
+                            </div>
+
+                            {/* Return Toggle */}
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                                Return Requests
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => updateProviderPolicy(p.id, { allowReturn: !isReturnAllowed })}
+                                className={`w-full py-1.5 px-2 rounded-lg text-xs font-bold border transition ${
+                                  isReturnAllowed
+                                    ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                    : 'bg-slate-200 text-slate-600 border-slate-300'
+                                }`}
+                              >
+                                {isReturnAllowed ? 'RETURNS ON' : 'RETURNS OFF'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 3: Food / Product-Wise Governance Overrides */}
+            {governanceTab === 'ITEMS' && (
+              <div className="space-y-4 animate-in fade-in duration-150">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search food item, fruit, or stationery..."
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-indigo-500"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleSaveSetting('PRODUCT_ORDER_POLICIES', 'Granular per-product order & return policies')}
+                    disabled={savingKey === 'PRODUCT_ORDER_POLICIES'}
+                    className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition flex items-center gap-1.5 shrink-0"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{saveSuccess === 'PRODUCT_ORDER_POLICIES' ? 'Item Rules Saved!' : 'Save Item Overrides'}</span>
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-600 border-b border-slate-200">
+                        <th className="p-2.5 font-bold">Item Name &amp; Category</th>
+                        <th className="p-2.5 font-bold">Merchant / Provider</th>
+                        <th className="p-2.5 font-bold">Price (₹)</th>
+                        <th className="p-2.5 font-bold">Cash on Delivery</th>
+                        <th className="p-2.5 font-bold">Return Eligibility</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {productsList
+                        .filter((p) =>
+                          !productSearch ||
+                          p.name?.toLowerCase().includes(productSearch.toLowerCase()) ||
+                          p.category?.name?.toLowerCase().includes(productSearch.toLowerCase())
+                        )
+                        .slice(0, 20)
+                        .map((p) => {
+                          const policy = getProductPolicy(p.id);
+                          const isItemCodAllowed = policy.allowCod !== false;
+                          const isItemReturnAllowed = policy.allowReturn !== false;
+
+                          return (
+                            <tr key={p.id} className="hover:bg-slate-50/70 transition">
+                              <td className="p-2.5 font-semibold text-slate-900">
+                                <div>{p.name}</div>
+                                <span className="text-[10px] text-slate-400">
+                                  {p.category?.name || 'Item'}
+                                </span>
+                              </td>
+                              <td className="p-2.5 text-slate-600">
+                                {p.provider?.fullName || p.provider?.businessName || 'Campus Store'}
+                              </td>
+                              <td className="p-2.5 font-mono font-bold text-slate-800">
+                                ₹{p.price}
+                              </td>
+                              <td className="p-2.5">
+                                <button
+                                  type="button"
+                                  onClick={() => updateProductPolicy(p.id, { allowCod: !isItemCodAllowed })}
+                                  className={`px-2 py-1 rounded text-[11px] font-bold border transition ${
+                                    isItemCodAllowed
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                      : 'bg-rose-50 text-rose-700 border-rose-200'
+                                  }`}
+                                >
+                                  {isItemCodAllowed ? 'COD Allowed' : 'No COD'}
+                                </button>
+                              </td>
+                              <td className="p-2.5">
+                                <button
+                                  type="button"
+                                  onClick={() => updateProductPolicy(p.id, { allowReturn: !isItemReturnAllowed })}
+                                  className={`px-2 py-1 rounded text-[11px] font-bold border transition ${
+                                    isItemReturnAllowed
+                                      ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                                  }`}
+                                >
+                                  {isItemReturnAllowed ? 'Returnable' : 'Final Sale'}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Group 3: Role Authentication & OTP Controls (Section 4) */}

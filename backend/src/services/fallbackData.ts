@@ -850,6 +850,10 @@ export const fallbackUsers = [
   {
     id: 'user_student_sourav',
     email: 'ss.24u10227@nitdgp.ac.in',
+    collegeEmail: 'ss.24u10227@nitdgp.ac.in',
+    personalEmail: 'souravsenapati055@gmail.com',
+    collegeEmailVerified: true,
+    personalEmailVerified: true,
     passwordHash: HASH_STUDENT,
     role: 'STUDENT' as const,
     isActive: true,
@@ -864,6 +868,8 @@ export const fallbackUsers = [
       rollNumber: '24U10227',
       registrationNumber: '202410227',
       mobileNumber: '9876501234',
+      collegeEmail: 'ss.24u10227@nitdgp.ac.in',
+      personalEmail: 'souravsenapati055@gmail.com',
       hallId: 'hall_11',
       hallNumber: '11',
       roomNumber: 'B-304',
@@ -2216,7 +2222,14 @@ export const fallbackSettings = [
   { id: 'set_15', key: 'LAUNDRY_SERVICE_CHARGE_REFUNDABLE', value: 'true', description: 'Whether Campus Basket laundry service charge is refundable upon order cancellation' },
   { id: 'set_16', key: 'LAUNDRY_COD_ENABLED', value: 'true', description: 'Allow COD for laundry orders with advance online service charge payment' },
   { id: 'set_17', key: 'LAUNDRY_PICKUP_OTP_EXPIRY_MINUTES', value: '60', description: 'Minutes before pickup OTP expires' },
-  { id: 'set_18', key: 'LAUNDRY_DELIVERY_OTP_EXPIRY_MINUTES', value: '120', description: 'Minutes before return delivery OTP expires' }
+  { id: 'set_18', key: 'LAUNDRY_DELIVERY_OTP_EXPIRY_MINUTES', value: '120', description: 'Minutes before return delivery OTP expires' },
+  { id: 'set_19', key: 'COD_MIN_ADVANCE_AMOUNT', value: '10', description: 'Partial advance online payment in INR required to confirm Cash on Delivery orders' },
+  { id: 'set_20', key: 'CANCELLATION_CUTOFF_STAGE', value: 'ACCEPTED', description: 'Order stage beyond which customer cannot modify or cancel order' },
+  { id: 'set_21', key: 'RETURN_POLICY_FOOD', value: 'RESTRICTED', description: 'Return eligibility for cooked food: RESTRICTED | 30_MIN_DISPATCH | ALLOWED' },
+  { id: 'set_22', key: 'RETURN_POLICY_PRODUCE', value: 'FRESHNESS_VERIFIED', description: 'Return eligibility for fruits & fresh produce: FRESHNESS_VERIFIED | 2_HOUR_WINDOW | ALLOWED' },
+  { id: 'set_23', key: 'RETURN_POLICY_STATIONERY', value: 'ALLOWED_24HR', description: 'Return eligibility for stationery: ALLOWED_24HR | 7_DAYS | DEFECTIVE_ONLY' },
+  { id: 'set_24', key: 'PROVIDER_ORDER_POLICIES', value: '{}', description: 'JSON dictionary of provider-specific COD and return rules' },
+  { id: 'set_25', key: 'PRODUCT_ORDER_POLICIES', value: '{}', description: 'JSON dictionary of product-specific return rules' }
 ];
 
 export const fallbackReportHistory = [

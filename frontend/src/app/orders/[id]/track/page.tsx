@@ -38,7 +38,9 @@ import {
   Lock,
   Copy,
   Info,
-  ExternalLink
+  ExternalLink,
+  Banknote,
+  Edit3
 } from 'lucide-react';
 
 interface OrderItem {
@@ -139,6 +141,24 @@ const FOOD_CHECKPOINTS = [
   { id: 'DELIVERED', label: 'Enjoy Meal', sub: 'Delivered at Door' }
 ];
 
+const PRODUCE_CHECKPOINTS = [
+  { id: 'RECEIVED', label: 'Order Placed', sub: 'Mandi/Farm Batch' },
+  { id: 'CONFIRMED', label: 'Produce Accepted', sub: 'Crate Assigned' },
+  { id: 'PREPARING', label: 'Quality Graded', sub: 'Freshness Inspected' },
+  { id: 'READY', label: 'Fruit Basket Packed', sub: 'Eco-Crate Tagged' },
+  { id: 'TRANSIT', label: 'Fresh Transit', sub: 'Runner In Route' },
+  { id: 'DELIVERED', label: 'Delivered Fresh', sub: 'Handed Over at Door' }
+];
+
+const STATIONERY_CHECKPOINTS = [
+  { id: 'RECEIVED', label: 'Order Placed', sub: 'Sent to Bookstore' },
+  { id: 'CONFIRMED', label: 'Store Accepted', sub: 'Stock Reserved' },
+  { id: 'PREPARING', label: 'Items Assembled', sub: 'Desk Collection' },
+  { id: 'READY', label: 'Packaged Securely', sub: 'Bag Sealed & Labeled' },
+  { id: 'TRANSIT', label: 'Campus Delivery', sub: 'Runner In Route' },
+  { id: 'DELIVERED', label: 'Doorstep Handover', sub: 'Delivered to Student' }
+];
+
 const LAUNDRY_CHECKPOINTS = [
   { id: 'REQUESTED', label: 'Booking Placed', sub: 'Slot Confirmed' },
   { id: 'PICKUP_SCHEDULED', label: 'Runner Scheduled', sub: 'Doorstep Pickup' },
@@ -168,6 +188,22 @@ export default function OrderTrackingPage() {
   const [cancelling, setCancelling] = useState(false);
   const [cancelMessage, setCancelMessage] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('Changed mind');
+
+  // Modification state (only prior to vendor acceptance)
+  const [modifyModalOpen, setModifyModalOpen] = useState(false);
+  const [modifying, setModifying] = useState(false);
+  const [modifyRoom, setModifyRoom] = useState('');
+  const [modifyInstructions, setModifyInstructions] = useState('');
+  const [modifyError, setModifyError] = useState<string | null>(null);
+  const [modifySuccess, setModifySuccess] = useState<string | null>(null);
+
+  // Return request state (for delivered orders)
+  const [returnModalOpen, setReturnModalOpen] = useState(false);
+  const [returning, setReturning] = useState(false);
+  const [returnReason, setReturnReason] = useState('Quality/Freshness issue');
+  const [returnNotes, setReturnNotes] = useState('');
+  const [returnError, setReturnError] = useState<string | null>(null);
+  const [returnSuccess, setReturnSuccess] = useState<string | null>(null);
 
   // Support ticket modal state
   const [supportModalOpen, setSupportModalOpen] = useState(false);
@@ -313,9 +349,19 @@ export default function OrderTrackingPage() {
   // Determine service checkpoints and active step
   const serviceType = (order?.serviceType || 'FOOD').toUpperCase();
   const isLaundry = serviceType === 'LAUNDRY';
-  const isFood = serviceType === 'FOOD';
+  const isProduce = serviceType === 'FRESH_PRODUCE' || (order as any)?.isProduce;
+  const isStationery = serviceType === 'STATIONERY' || (order as any)?.isStationery;
+  const isFood = serviceType === 'FOOD' && !isProduce && !isStationery;
 
-  const checkpoints = isLaundry ? LAUNDRY_CHECKPOINTS : isFood ? FOOD_CHECKPOINTS : DEFAULT_CHECKPOINTS;
+  const checkpoints = isLaundry
+    ? LAUNDRY_CHECKPOINTS
+    : isProduce
+    ? PRODUCE_CHECKPOINTS
+    : isStationery
+    ? STATIONERY_CHECKPOINTS
+    : isFood
+    ? FOOD_CHECKPOINTS
+    : DEFAULT_CHECKPOINTS;
 
   const getActiveStepIndex = (status: string, laundryStage?: string) => {
     if (status === 'CANCELLED') return -1;
@@ -342,6 +388,60 @@ export default function OrderTrackingPage() {
         case 'COMPLETED':
         case 'DELIVERED':
           return 6;
+        default:
+          return 1;
+      }
+    }
+
+    if (isProduce) {
+      switch (status) {
+        case 'PENDING_PAYMENT':
+        case 'PENDING':
+          return 0;
+        case 'CONFIRMED':
+        case 'ACCEPTED':
+          return 1;
+        case 'PREPARING':
+          return 2;
+        case 'READY':
+        case 'READY_FOR_PICKUP':
+        case 'DELIVERY_ASSIGNED':
+          return 3;
+        case 'PICKED_UP':
+        case 'OUT_FOR_DELIVERY':
+        case 'IN_TRANSIT':
+        case 'AT_HOSTEL':
+        case 'OTP_VERIFIED':
+          return 4;
+        case 'DELIVERED':
+          return 5;
+        default:
+          return 1;
+      }
+    }
+
+    if (isStationery) {
+      switch (status) {
+        case 'PENDING_PAYMENT':
+        case 'PENDING':
+          return 0;
+        case 'CONFIRMED':
+        case 'ACCEPTED':
+          return 1;
+        case 'PREPARING':
+          return 2;
+        case 'READY':
+        case 'READY_FOR_PICKUP':
+        case 'DELIVERY_ASSIGNED':
+          return 3;
+        case 'PICKED_UP':
+        case 'OUT_FOR_DELIVERY':
+        case 'IN_TRANSIT':
+        case 'AT_HOSTEL':
+        case 'OTP_VERIFIED':
+          return 4;
+        case 'DELIVERED':
+          return 5;
         default:
           return 1;
       }
@@ -374,7 +474,7 @@ export default function OrderTrackingPage() {
       }
     }
 
-    // Default Retail / Produce / Stationery
+    // Default Retail
     switch (status) {
       case 'PENDING_PAYMENT':
       case 'PENDING':
@@ -428,6 +528,50 @@ export default function OrderTrackingPage() {
       }
     }
 
+    if (isProduce) {
+      switch (status) {
+        case 'DELIVERED':
+          return 'Fresh fruits & produce delivered at your hostel door! Enjoy healthy bites 🍎🍊';
+        case 'OUT_FOR_DELIVERY':
+        case 'IN_TRANSIT':
+        case 'AT_HOSTEL':
+          return 'Campus runner is cycling your fresh fruit basket directly to your hostel 🚴💨';
+        case 'PICKED_UP':
+        case 'READY':
+        case 'READY_FOR_PICKUP':
+          return 'Fruit basket packed in eco-crate & verified fresh for delivery 🧺';
+        case 'PREPARING':
+          return 'Quality grading & crispness inspection in progress at produce desk 🍏🔍';
+        case 'CONFIRMED':
+        case 'ACCEPTED':
+          return 'Produce vendor accepted your order! Packing fresh morning batch 📋';
+        default:
+          return 'Fruit & produce order placed! Awaiting vendor harvest confirmation 🍎';
+      }
+    }
+
+    if (isStationery) {
+      switch (status) {
+        case 'DELIVERED':
+          return 'Stationery & academic essentials delivered at your door! 📚✏️';
+        case 'OUT_FOR_DELIVERY':
+        case 'IN_TRANSIT':
+        case 'AT_HOSTEL':
+          return 'Campus runner is on the way to your hostel with your bookstore bag 🛵💨';
+        case 'PICKED_UP':
+        case 'READY':
+        case 'READY_FOR_PICKUP':
+          return 'Items verified from bookstore shelf and securely sealed in bag 🎒';
+        case 'PREPARING':
+          return 'Bookstore desk assembling copies, pens, and lab essentials 📝';
+        case 'CONFIRMED':
+        case 'ACCEPTED':
+          return 'Bookstore accepted your order! Reserving verified academic stock 📋';
+        default:
+          return 'Stationery order placed! Sent to campus bookstore desk 📦';
+      }
+    }
+
     if (isFood) {
       switch (status) {
         case 'DELIVERED':
@@ -467,6 +611,61 @@ export default function OrderTrackingPage() {
         return 'Order confirmed! Items being assembled & packed 📦';
       default:
         return 'Order placed and logged at campus store hub 📦';
+    }
+  };
+
+  // Modify Order Handler (before vendor acceptance)
+  const handleModifyOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModifying(true);
+    setModifyError(null);
+    setModifySuccess(null);
+    try {
+      const res = await apiRequest(`/api/orders/${id}/modify`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          roomNumber: modifyRoom || undefined,
+          specialInstructions: modifyInstructions || undefined
+        })
+      });
+      if (res.success) {
+        setModifySuccess('Order details updated successfully!');
+        await fetchOrder(false);
+        setTimeout(() => setModifyModalOpen(false), 1200);
+      } else {
+        setModifyError(res.message || 'Failed to modify order.');
+      }
+    } catch (err: any) {
+      setModifyError(err.message || 'Unable to update order details.');
+    } finally {
+      setModifying(false);
+    }
+  };
+
+  // Request Return Handler
+  const handleRequestReturn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setReturning(true);
+    setReturnError(null);
+    setReturnSuccess(null);
+    try {
+      const res = await apiRequest(`/api/orders/${id}/return`, {
+        method: 'POST',
+        body: JSON.stringify({
+          reason: `${returnReason}${returnNotes ? `: ${returnNotes}` : ''}`
+        })
+      });
+      if (res.success) {
+        setReturnSuccess('Return request submitted successfully. Support team is reviewing.');
+        await fetchOrder(false);
+        setTimeout(() => setReturnModalOpen(false), 1500);
+      } else {
+        setReturnError(res.message || 'Failed to submit return request.');
+      }
+    } catch (err: any) {
+      setReturnError(err.message || 'Unable to submit return request.');
+    } finally {
+      setReturning(false);
     }
   };
 
@@ -865,8 +1064,126 @@ export default function OrderTrackingPage() {
           </div>
 
           {/* =======================================================
-              SERVICE-SPECIFIC DETAIL PANELS
+              SERVICE-SPECIFIC DETAIL PANELS & GOVERNANCE BANNERS
              ======================================================= */}
+
+          {/* COD PARTIAL ADVANCE PAYMENT BREAKDOWN */}
+          {order.paymentMethod === 'CASH_ON_DELIVERY' && (
+            <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Banknote className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-black text-amber-950 text-xs">Cash on Delivery Settlement Breakdown</h4>
+                  <div className="text-[11px] text-amber-800 mt-0.5 space-x-2">
+                    <span>Advance Paid Online: <strong className="text-[#2e7d32]">₹{(order as any).codPaidAdvance || (order.paymentStatus === 'COD_PENDING' ? 10 : 0)}</strong></span>
+                    <span>•</span>
+                    <span>Cash Due on Doorstep Delivery: <strong className="text-amber-950 font-bold">₹{(order as any).codRemainingCash || Math.max(0, order.totalAmount - ((order as any).codPaidAdvance || 10))}</strong></span>
+                  </div>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold px-3 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300">
+                Doorstep Cash Handover
+              </span>
+            </div>
+          )}
+
+          {/* ORDER LOCK / MODIFICATION STATUS BANNER */}
+          {(order as any).isModifiable ? (
+            <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-emerald-950">Order Placed • Vendor Acceptance Pending</h4>
+                  <p className="text-[11px] text-emerald-700">
+                    You can modify your delivery room number or special notes until the vendor accepts the order.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setModifyRoom(order.roomNumber);
+                  setModifyInstructions(order.specialInstructions || '');
+                  setModifyModalOpen(true);
+                }}
+                className="px-4 py-2 rounded-xl bg-white border border-emerald-300 text-emerald-800 text-xs font-bold hover:bg-emerald-100 transition shadow-2xs cursor-pointer shrink-0"
+              >
+                Modify Delivery Details
+              </button>
+            </div>
+          ) : order.status !== 'CANCELLED' && order.status !== 'DELIVERED' && (
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 flex items-center gap-2.5 text-xs text-slate-600">
+              <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+              <span>
+                <strong>Order Locked:</strong> Vendor has accepted your order and fulfillment has started. Items and delivery details are locked against modifications.
+              </span>
+            </div>
+          )}
+
+          {/* PRODUCE INSPECTION & GRADING PANEL */}
+          {isProduce && order.status !== 'CANCELLED' && (
+            <div className="bg-emerald-50/70 border border-emerald-200/90 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Apple className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-emerald-950">Produce Inspection &amp; Quality Grading Status</h4>
+                  <p className="text-[11px] text-emerald-700">
+                    {order.status === 'PREPARING'
+                      ? 'Quality grading in progress • Checking crispness, ripeness & weight'
+                      : order.status === 'CONFIRMED' || order.status === 'ACCEPTED'
+                      ? 'Produce vendor accepted order. Preparing fresh eco-crate harvest batch.'
+                      : 'Fresh produce inspected, packed in eco-crate & ready for runner dispatch.'}
+                  </p>
+                  {(order as any).produceDetails?.freshnessNotes && (
+                    <div className="text-[10px] text-emerald-800 italic mt-0.5">
+                      Inspector Note: "{(order as any).produceDetails.freshnessNotes}"
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-[11px] font-bold text-emerald-900 bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200">
+                  {order.status === 'PREPARING' ? '🍏 Quality Grading' : '🧺 Farm/Mandi Fresh Batch'}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* STATIONERY DESK ASSEMBLY PANEL */}
+          {isStationery && order.status !== 'CANCELLED' && (
+            <div className="bg-sky-50/70 border border-sky-200/90 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-sky-950">Stationery Desk Assembly &amp; Academic Stock Status</h4>
+                  <p className="text-[11px] text-sky-700">
+                    {order.status === 'PREPARING'
+                      ? 'Items being assembled from campus bookstore shelves & verified against syllabus specs'
+                      : order.status === 'CONFIRMED' || order.status === 'ACCEPTED'
+                      ? 'Bookstore accepted order. Reserving academic stock from shelf.'
+                      : 'Stationery items checked, packaged in sealed campus bag & ready for delivery.'}
+                  </p>
+                  {(order as any).stationeryDetails?.brandRequirements && (
+                    <div className="text-[10px] text-sky-800 italic mt-0.5">
+                      Desk Spec: "{(order as any).stationeryDetails.brandRequirements}"
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-[11px] font-bold text-sky-900 bg-sky-100 px-2.5 py-1 rounded-lg border border-sky-200">
+                  {order.status === 'PREPARING' ? '📚 Assembling Desk' : '📋 Verified Academic Stock'}
+                </span>
+              </div>
+            </div>
+          )}
           
           {/* FOOD PREP PROGRESS PANEL */}
           {isFood && order.status !== 'CANCELLED' && (
@@ -1296,6 +1613,33 @@ export default function OrderTrackingPage() {
                 <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
                 <span>Confidential Refund A/C</span>
               </button>
+
+              {(order as any).isModifiable && (
+                <button
+                  onClick={() => {
+                    setModifyRoom((order as any).deliveryRoom || (order as any).roomNumber || '');
+                    setModifyInstructions((order as any).deliveryInstructions || '');
+                    setModifyModalOpen(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition flex items-center gap-1.5"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Modify Room / Notes</span>
+                </button>
+              )}
+
+              {((order as any).canReturn || (order.status === 'DELIVERED' && order.serviceType !== 'LAUNDRY')) && (
+                <button
+                  onClick={() => {
+                    setReturnReason('');
+                    setReturnModalOpen(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition flex items-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Request Return</span>
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -1313,7 +1657,7 @@ export default function OrderTrackingPage() {
                   title={cancellationEligibility.reason}
                 >
                   <Lock className="w-3 h-3" />
-                  <span>Cancellation Closed</span>
+                  <span>Cancellation Locked</span>
                 </span>
               )}
 
@@ -1738,6 +2082,162 @@ export default function OrderTrackingPage() {
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>{supportSubmitting ? 'Submitting...' : 'Send Ticket'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modify Delivery Details Modal */}
+      {modifyModalOpen && (
+        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-amber-600" />
+                <div>
+                  <h3 className="text-sm font-black text-gray-900">Modify Delivery Information</h3>
+                  <p className="text-[11px] text-gray-500">Allowed only prior to provider acceptance</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setModifyModalOpen(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleModifyOrder} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-gray-600 font-bold mb-1">Room / Door Number</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Room 402, Hall 4"
+                  value={modifyRoom}
+                  onChange={(e) => setModifyRoom(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:outline-hidden focus:ring-2 focus:ring-amber-500 font-semibold text-gray-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-600 font-bold mb-1">Special Delivery Notes</label>
+                <textarea
+                  rows={3}
+                  placeholder="e.g. Please leave near security desk if away"
+                  value={modifyInstructions}
+                  onChange={(e) => setModifyInstructions(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:outline-hidden focus:ring-2 focus:ring-amber-500 text-xs text-gray-800"
+                />
+              </div>
+
+              {modifySuccess && (
+                <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{modifySuccess}</span>
+                </div>
+              )}
+
+              {modifyError && (
+                <div className="p-3 bg-rose-50 text-rose-800 border border-rose-200 rounded-xl font-bold">
+                  {modifyError}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModifyModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={modifying}
+                  className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-xs"
+                >
+                  {modifying ? 'Updating...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Return Request Modal */}
+      {returnModalOpen && (
+        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-emerald-600" />
+                <div>
+                  <h3 className="text-sm font-black text-gray-900">Request Item Return</h3>
+                  <p className="text-[11px] text-gray-500">
+                    {isProduce ? 'Freshness guarantee return window' : isStationery ? 'Stationery 24-Hour Return Window' : 'Quality verification return'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setReturnModalOpen(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRequestReturn} className="space-y-3 text-xs">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600">
+                <p className="font-bold text-slate-700 mb-1">Return Eligibility Guidelines:</p>
+                <ul className="list-disc list-inside space-y-0.5">
+                  {isProduce && <li>Fruits / Produce: within 2 hours of delivery for freshness defects</li>}
+                  {isStationery && <li>Stationery / Bookstore: within 24 hours in original seal/condition</li>}
+                  {isFood && <li>Kitchen food items: within 30 minutes for incorrect or damaged prep</li>}
+                </ul>
+              </div>
+
+              <div>
+                <label className="block text-gray-600 font-bold mb-1">Reason for Return</label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="Explain why you are requesting a return (e.g. damaged seal, damaged fruit, wrong notebook size)..."
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 text-xs text-gray-800"
+                />
+              </div>
+
+              {returnSuccess && (
+                <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{returnSuccess}</span>
+                </div>
+              )}
+
+              {returnError && (
+                <div className="p-3 bg-rose-50 text-rose-800 border border-rose-200 rounded-xl font-bold">
+                  {returnError}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReturnModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={returning}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-xs"
+                >
+                  {returning ? 'Submitting...' : 'Submit Return'}
                 </button>
               </div>
             </form>

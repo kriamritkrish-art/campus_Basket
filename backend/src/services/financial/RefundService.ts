@@ -58,13 +58,84 @@ export class RefundService {
       return { isEligible: true, eligible: true };
     }
 
-    // Default for Produce / Stationery / Essentials: cancellable prior to dispatch
+    // Produce / Stationery / Essentials: cancellable prior to dispatch
     if (['OUT_FOR_DELIVERY', 'PACKED', 'DISPATCHED'].includes(status)) {
       return {
         isEligible: false,
         eligible: false,
         reason: 'Items have already been packed and dispatched for hostel delivery.'
       };
+    }
+
+    return { isEligible: true, eligible: true };
+  }
+
+  /**
+   * Evaluates return eligibility for delivered orders based on category and admin policies.
+   */
+  public static evaluateReturnEligibility(order: {
+    serviceType?: string;
+    status: string;
+    deliveredAt?: Date | string | null;
+    createdAt?: Date | string;
+    items?: Array<any>;
+  }): { isEligible: boolean; eligible: boolean; reason?: string } {
+    const status = order.status.toUpperCase();
+    const service = (order.serviceType || 'FOOD').toUpperCase();
+
+    if (status !== 'DELIVERED') {
+      return {
+        isEligible: false,
+        eligible: false,
+        reason: 'Returns can only be requested after the order has been successfully delivered.'
+      };
+    }
+
+    if (service === 'LAUNDRY') {
+      return {
+        isEligible: false,
+        eligible: false,
+        reason: 'Laundry wash orders do not accept product returns.'
+      };
+    }
+
+    const deliveredTime = order.deliveredAt ? new Date(order.deliveredAt).getTime() : new Date(order.createdAt || Date.now()).getTime();
+    const elapsedMinutes = (Date.now() - deliveredTime) / (1000 * 60);
+
+    if (service === 'FOOD') {
+      // Cooked food is restricted to immediate hygiene/freshness inspection window (30 mins)
+      if (elapsedMinutes > 30) {
+        return {
+          isEligible: false,
+          eligible: false,
+          reason: 'Food & Meals return window has expired (30-minute doorstep inspection limit).'
+        };
+      }
+      return { isEligible: true, eligible: true };
+    }
+
+    if (service === 'FRESH_PRODUCE') {
+      // Fruits & produce returnable within 2 hours
+      if (elapsedMinutes > 120) {
+        return {
+          isEligible: false,
+          eligible: false,
+          reason: 'Fresh produce & fruit return window has expired (2-hour freshness guarantee limit).'
+        };
+      }
+      return { isEligible: true, eligible: true };
+    }
+
+    if (service === 'STATIONERY') {
+      // Stationery & academic essentials returnable within 24 hours
+      if (elapsedMinutes > 1440) {
+        return {
+          isEligible: false,
+          eligible: false,
+          reason: 'Stationery items return window has expired (24-hour return policy).'
+        };
+      }
+      return { isEligible: true, eligible: true };
     }
 
     return { isEligible: true, eligible: true };
@@ -157,7 +228,9 @@ export class RefundService {
       }
     }
 
-    const wasPaidOnline = order.paymentMethod !== 'CASH_ON_DELIVERY' && ['PAID', 'SUCCESS'].includes(order.paymentStatus);
+    const wasPaidOnline =
+      (order.paymentMethod !== 'CASH_ON_DELIVERY' && ['PAID', 'SUCCESS'].includes(order.paymentStatus)) ||
+      (order.paymentMethod === 'CASH_ON_DELIVERY' && ['COD_PENDING', 'SUCCESS', 'PAID'].includes(order.paymentStatus));
     const newPaymentStatus = wasPaidOnline ? 'REFUND_PENDING' : 'PAYMENT_FAILED';
     const newRefundStatus = wasPaidOnline ? 'REQUESTED' : 'NOT_APPLICABLE';
 

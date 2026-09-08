@@ -46,12 +46,36 @@ export default function CheckoutPage() {
   // Payment
   const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'CASH_ON_DELIVERY'>('RAZORPAY');
   const [isCodAllowed, setIsCodAllowed] = useState<boolean>(true);
+  const [codAdvanceAmount, setCodAdvanceAmount] = useState<number>(10);
+  const [isCodGloballyEnabled, setIsCodGloballyEnabled] = useState<boolean>(true);
 
   // States
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [orderConfirmed, setOrderConfirmed] = useState<any | null>(null);
   const [showMobileSummary, setShowMobileSummary] = useState<boolean>(false);
+
+  // Fetch admin COD and advance settings
+  useEffect(() => {
+    async function fetchPlatformSettings() {
+      try {
+        const res = await apiRequest('/api/admin/settings');
+        if (res.success && Array.isArray(res.settings)) {
+          const codSet = res.settings.find((s: any) => s.key === 'ENABLE_CASH_ON_DELIVERY');
+          if (codSet && codSet.value === 'false') {
+            setIsCodGloballyEnabled(false);
+          }
+          const advSet = res.settings.find((s: any) => s.key === 'COD_MIN_ADVANCE_AMOUNT');
+          if (advSet) {
+            setCodAdvanceAmount(Number(advSet.value) || 0);
+          }
+        }
+      } catch {
+        // Fallback default ₹10 advance
+      }
+    }
+    fetchPlatformSettings();
+  }, []);
 
   // Load and sync location
   useEffect(() => {
@@ -77,13 +101,13 @@ export default function CheckoutPage() {
 
   // Check COD eligibility
   useEffect(() => {
-    if (total > 1500) {
+    if (!isCodGloballyEnabled || total > 1500) {
       setIsCodAllowed(false);
       setPaymentMethod('RAZORPAY');
     } else {
       setIsCodAllowed(true);
     }
-  }, [total]);
+  }, [total, isCodGloballyEnabled]);
 
   // Load Razorpay Script dynamically
   const loadRazorpayScript = () => {
@@ -135,6 +159,76 @@ export default function CheckoutPage() {
 
       // CASH ON DELIVERY FLOW
       if (paymentMethod === 'CASH_ON_DELIVERY') {
+        if (res.requiresAdvance && res.razorpay) {
+          // Admin configured partial online advance required (e.g. ₹10)
+          const scriptLoaded = await loadRazorpayScript();
+          if (!scriptLoaded) {
+            throw new Error('Razorpay gateway failed to load. Please check your internet connection.');
+          }
+
+          const rzpConfig = {
+            key: res.razorpay.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '',
+            amount: res.razorpay.amount,
+            currency: res.razorpay.currency,
+            name: 'Campus Basket',
+            description: `Partial COD Advance for Order #${order.orderNumber}`,
+            order_id: res.razorpay.razorpayOrderId,
+            image: '/icons/icon-192x192.svg',
+            prefill: {
+              name: user?.student?.fullName || 'Campus Student',
+              email: user?.email || '',
+              contact: user?.student?.mobileNumber || '',
+            },
+            theme: {
+              color: '#4F9D2F',
+              backdrop_color: 'rgba(23, 32, 51, 0.8)',
+            },
+            modal: {
+              confirm_close: true,
+              animation: true,
+              ondismiss: function () {
+                setIsProcessing(false);
+                setError(`Partial COD advance deposit of ₹${res.advanceRequired} was not completed. Please pay the advance to confirm your order.`);
+              },
+            },
+            handler: async function (response: any) {
+              try {
+                const verifyRes = await apiRequest('/api/payments/verify', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    razorpayOrderId: response.razorpay_order_id,
+                    razorpayPaymentId: response.razorpay_payment_id,
+                    razorpaySignature: response.razorpay_signature,
+                  }),
+                });
+
+                if (verifyRes.success) {
+                  clearCart();
+                  setOrderConfirmed(order);
+                  setTimeout(() => {
+                    router.push(`/orders/${order.id}/track?placed=true`);
+                  }, 1200);
+                } else {
+                  setError('Advance payment verification failed. Please contact campus support.');
+                  setIsProcessing(false);
+                }
+              } catch (vErr: any) {
+                setError(vErr.message || 'Payment signature verification failed.');
+                setIsProcessing(false);
+              }
+            },
+          };
+
+          const rzp = new window.Razorpay(rzpConfig);
+          rzp.on('payment.failed', function (resp: any) {
+            setIsProcessing(false);
+            setError(`Advance payment failed: ${resp.error?.description || 'Transaction unsuccessful'}. Your cart has not been cleared. You can retry anytime.`);
+          });
+          rzp.open();
+          return;
+        }
+
+        // Direct COD (no advance required)
         clearCart();
         setOrderConfirmed(order);
         setTimeout(() => {
@@ -599,6 +693,29 @@ export default function CheckoutPage() {
                         Pay when your order reaches your hostel room.
                       </p>
 
+                      {isCodAllowed && codAdvanceAmount > 0 && (
+                        <div className="mt-2.5 p-3 rounded-xl bg-amber-50/80 border border-amber-200/90 text-xs text-amber-950 space-y-1.5">
+                          <div className="flex items-center justify-between font-bold">
+                            <span className="flex items-center gap-1.5 text-amber-900">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                              Pay Advance Now (Online):
+                            </span>
+                            <span className="font-mono text-sm font-black text-amber-800">
+                              ₹{Math.min(total, codAdvanceAmount).toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px] text-amber-800 font-medium">
+                            <span>Balance Due at Doorstep:</span>
+                            <span className="font-mono font-bold">
+                              ₹{Math.max(0, total - Math.min(total, codAdvanceAmount)).toFixed(2)} (Cash to Runner)
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-amber-700/90 leading-tight pt-1 border-t border-amber-200/60">
+                            Campus policy: ₹{Math.min(total, codAdvanceAmount)} partial advance via Razorpay confirms your order; the remaining ₹{Math.max(0, total - Math.min(total, codAdvanceAmount)).toFixed(2)} is collected at delivery.
+                          </p>
+                        </div>
+                      )}
+
                       {!isCodAllowed && (
                         <p className="text-[11px] text-rose-600 font-bold pt-1">
                           Orders above ₹1,500 must be paid online via UPI/Cards.
@@ -711,11 +828,32 @@ export default function CheckoutPage() {
 
               {/* Total Row */}
               <div className="pt-3 border-t border-[#E4E7EC] flex justify-between items-baseline">
-                <span className="text-sm font-extrabold text-[#172033]">Total Payable</span>
+                <span className="text-sm font-extrabold text-[#172033]">Total Order Value</span>
                 <span className="text-2xl font-black text-[#172033] font-mono tracking-tight">
                   ₹{total.toFixed(2)}
                 </span>
               </div>
+
+              {/* COD Partial Advance Breakdown */}
+              {paymentMethod === 'CASH_ON_DELIVERY' && codAdvanceAmount > 0 && (
+                <div className="p-3 rounded-xl bg-amber-50/90 border border-amber-200 text-xs space-y-1.5">
+                  <div className="flex justify-between font-bold text-amber-950">
+                    <span className="flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                      Pay Online Now (Advance):
+                    </span>
+                    <span className="font-mono text-sm text-[#2e7d32]">
+                      ₹{Math.min(total, codAdvanceAmount).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-amber-800 font-medium text-[11px]">
+                    <span>Cash Due at Doorstep:</span>
+                    <span className="font-mono font-bold">
+                      ₹{Math.max(0, total - Math.min(total, codAdvanceAmount)).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* 11. PRIMARY ACTION PAYMENT BUTTON */}
               <div className="pt-2">
@@ -733,11 +871,16 @@ export default function CheckoutPage() {
                   ) : paymentMethod === 'RAZORPAY' ? (
                     <>
                       <Lock className="w-4 h-4" />
-                      <span>🔒 PAY ₹{total.toFixed(2)}</span>
+                      <span>🔒 PAY ₹{total.toFixed(2)} VIA RAZORPAY</span>
+                    </>
+                  ) : codAdvanceAmount > 0 ? (
+                    <>
+                      <Lock className="w-4 h-4" />
+                      <span>PAY ₹{Math.min(total, codAdvanceAmount).toFixed(2)} ADVANCE &amp; CONFIRM COD</span>
                     </>
                   ) : (
                     <>
-                      <span>PLACE ORDER • ₹{total.toFixed(2)}</span>
+                      <span>PLACE CASH ON DELIVERY ORDER • ₹{total.toFixed(2)}</span>
                     </>
                   )}
                 </button>
@@ -763,9 +906,13 @@ export default function CheckoutPage() {
       {/* ======================================================== */}
       <div className="sm:hidden fixed bottom-0 inset-x-0 bg-white border-t border-[#E4E7EC] p-3 z-40 shadow-lg flex items-center justify-between gap-3 pb-safe">
         <div>
-          <div className="text-[10px] text-[#667085] uppercase font-bold tracking-wider">Total</div>
+          <div className="text-[10px] text-[#667085] uppercase font-bold tracking-wider">
+            {paymentMethod === 'CASH_ON_DELIVERY' && codAdvanceAmount > 0 ? 'Pay Advance' : 'Total'}
+          </div>
           <div className="text-xl font-black text-[#172033] font-mono leading-none">
-            ₹{total.toFixed(2)}
+            ₹{paymentMethod === 'CASH_ON_DELIVERY' && codAdvanceAmount > 0
+              ? Math.min(total, codAdvanceAmount).toFixed(2)
+              : total.toFixed(2)}
           </div>
         </div>
 
@@ -782,9 +929,14 @@ export default function CheckoutPage() {
               <Lock className="w-3.5 h-3.5" />
               <span>PAY ₹{total.toFixed(2)}</span>
             </>
+          ) : codAdvanceAmount > 0 ? (
+            <>
+              <Lock className="w-3.5 h-3.5" />
+              <span>PAY ₹{Math.min(total, codAdvanceAmount).toFixed(2)} ADVANCE</span>
+            </>
           ) : (
             <>
-              <span>PLACE ORDER &bull; ₹{total.toFixed(2)}</span>
+              <span>PLACE COD ORDER &bull; ₹{total.toFixed(2)}</span>
             </>
           )}
         </button>

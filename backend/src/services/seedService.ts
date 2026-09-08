@@ -283,9 +283,18 @@ export async function autoSeedDatabase(prisma: any): Promise<void> {
     console.info('[AutoSeed] Creating Verified Student...');
     const sampleStudent = await prisma.user.upsert({
       where: { email: 'ss.24u10227@nitdgp.ac.in' },
-      update: {},
+      update: {
+        collegeEmail: 'ss.24u10227@nitdgp.ac.in',
+        personalEmail: 'souravsenapati055@gmail.com',
+        collegeEmailVerified: true,
+        personalEmailVerified: true
+      },
       create: {
         email: 'ss.24u10227@nitdgp.ac.in',
+        collegeEmail: 'ss.24u10227@nitdgp.ac.in',
+        personalEmail: 'souravsenapati055@gmail.com',
+        collegeEmailVerified: true,
+        personalEmailVerified: true,
         passwordHash: studentPassHash,
         role: 'STUDENT',
         isActive: true,
@@ -295,6 +304,8 @@ export async function autoSeedDatabase(prisma: any): Promise<void> {
             rollNumber: '24U10227',
             registrationNumber: '202410227',
             mobileNumber: '9876501234',
+            collegeEmail: 'ss.24u10227@nitdgp.ac.in',
+            personalEmail: 'souravsenapati055@gmail.com',
             hallId: createdHalls[9]?.id || createdHalls[0]?.id,
             hallNumber: '11',
             roomNumber: 'B-304',

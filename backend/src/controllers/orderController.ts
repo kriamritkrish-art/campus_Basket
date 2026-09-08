@@ -69,7 +69,8 @@ export class OrderController {
       // Fetch products and verify stock and prices strictly from DB
       const productIds = data.items.map((i) => i.productId);
       const products = await prisma.product.findMany({
-        where: { id: { in: productIds } }
+        where: { id: { in: productIds } },
+        include: { category: true }
       });
 
       if (products.length !== productIds.length) {
@@ -151,13 +152,20 @@ export class OrderController {
 
       const totalAmount = Math.max(0, subtotal - discountAmount + deliveryFee);
 
-      // Verify COD settings if COD chosen
-      if (data.paymentMethod === 'CASH_ON_DELIVERY') {
-        const codSetting = await prisma.adminSetting.findUnique({
-          where: { key: 'ENABLE_CASH_ON_DELIVERY' }
-        });
-        const isCodGloballyEnabled = codSetting ? codSetting.value === 'true' : true;
+      // Verify COD settings & compute any required advance payment
+      let codAdvanceAmount = 0;
+      let advanceRequired = 0;
+      let remainingCashDue = totalAmount;
 
+      if (data.paymentMethod === 'CASH_ON_DELIVERY') {
+        const [codSetting, maxCodSetting, minAdvanceSetting, providerPoliciesSetting] = await Promise.all([
+          prisma.adminSetting.findUnique({ where: { key: 'ENABLE_CASH_ON_DELIVERY' } }),
+          prisma.adminSetting.findUnique({ where: { key: 'MAX_COD_AMOUNT' } }),
+          prisma.adminSetting.findUnique({ where: { key: 'COD_MIN_ADVANCE_AMOUNT' } }),
+          prisma.adminSetting.findUnique({ where: { key: 'PROVIDER_ORDER_POLICIES' } })
+        ]);
+
+        const isCodGloballyEnabled = codSetting ? codSetting.value === 'true' : true;
         if (!isCodGloballyEnabled) {
           res.status(400).json({
             success: false,
@@ -166,12 +174,41 @@ export class OrderController {
           return;
         }
 
-        if (totalAmount > 1500) {
+        const maxCod = maxCodSetting ? Number(maxCodSetting.value) : 1500;
+        if (totalAmount > maxCod) {
           res.status(400).json({
             success: false,
-            message: 'Cash on Delivery is only available for orders up to ₹1,500. Please choose online payment.'
+            message: `Cash on Delivery is only available for orders up to ₹${maxCod}. Please choose online payment.`
           });
           return;
+        }
+
+        // Provider specific policy check
+        let providerCodAdvance = -1;
+        const firstProdProvider = products.find((p) => p.providerId)?.providerId;
+        if (firstProdProvider && providerPoliciesSetting?.value) {
+          try {
+            const policies = JSON.parse(providerPoliciesSetting.value);
+            if (policies[firstProdProvider]?.allowCod === false) {
+              res.status(400).json({
+                success: false,
+                message: 'Cash on Delivery is currently disabled for this specific provider. Please pay online.'
+              });
+              return;
+            }
+            if (policies[firstProdProvider]?.codAdvance !== undefined) {
+              providerCodAdvance = Number(policies[firstProdProvider].codAdvance);
+            }
+          } catch {}
+        }
+
+        codAdvanceAmount = providerCodAdvance >= 0
+          ? providerCodAdvance
+          : (minAdvanceSetting ? Number(minAdvanceSetting.value) : 10);
+
+        if (codAdvanceAmount > 0) {
+          advanceRequired = Math.min(totalAmount, codAdvanceAmount);
+          remainingCashDue = Math.max(0, totalAmount - advanceRequired);
         }
       }
 
@@ -203,11 +240,16 @@ export class OrderController {
       }
 
       // Check auto-assignment policy
-      let initialStatus: any = data.paymentMethod === 'CASH_ON_DELIVERY' ? 'CONFIRMED' : 'PENDING_PAYMENT';
+      // If COD requires advance payment, order remains PENDING_PAYMENT until advance is paid!
+      let initialStatus: any = (data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired === 0)
+        ? 'CONFIRMED'
+        : 'PENDING_PAYMENT';
       let assignedDeliveryBoyId: string | null = null;
-      let initialStatusNote = 'Order initiated at checkout';
+      let initialStatusNote = advanceRequired > 0
+        ? `Order initiated: Partial COD Advance of ₹${advanceRequired} required to confirm order. Remaining ₹${remainingCashDue} payable in cash at delivery.`
+        : 'Order initiated at checkout';
 
-      if (data.paymentMethod === 'CASH_ON_DELIVERY' && targetProvider?.autoAssignDelivery) {
+      if (data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired === 0 && targetProvider?.autoAssignDelivery) {
         const activeRunner = await prisma.deliveryBoy.findFirst({
           where: { activeStatus: true }
         });
@@ -218,15 +260,40 @@ export class OrderController {
         }
       }
 
+      // Robust Category & Service Type Detection across all ordered items
       let serviceType: 'FOOD' | 'LAUNDRY' | 'FRESH_PRODUCE' | 'STATIONERY' = 'FOOD';
-      const catSlug = (products[0] as any)?.category?.slug?.toLowerCase() || '';
-      const catName = (products[0] as any)?.category?.name?.toLowerCase() || '';
-      if (catSlug.includes('fruit') || catName.includes('fruit') || catName.includes('produce')) {
+      const isFruitOrProduce = products.some((p) => {
+        const slug = (p as any)?.category?.slug?.toLowerCase() || '';
+        const name = (p as any)?.category?.name?.toLowerCase() || '';
+        const prod = p.name.toLowerCase();
+        return slug.includes('fruit') || slug.includes('produce') ||
+               name.includes('fruit') || name.includes('produce') ||
+               ['fruit', 'apple', 'banana', 'orange', 'mango', 'guava', 'grapes', 'papaya', 'pineapple', 'watermelon', 'muskmelon', 'pomegranate', 'citrus', 'berries'].some(k => prod.includes(k));
+      });
+
+      const isStationery = products.some((p) => {
+        const slug = (p as any)?.category?.slug?.toLowerCase() || '';
+        const name = (p as any)?.category?.name?.toLowerCase() || '';
+        const prod = p.name.toLowerCase();
+        return slug.includes('station') || slug.includes('essential') || slug.includes('daily') ||
+               name.includes('station') || name.includes('essential') || name.includes('daily') ||
+               ['stationery', 'notebook', 'pen', 'pencil', 'eraser', 'scale', 'stapler', 'calculator', 'graph', 'record', 'register', 'file', 'folder', 'chart'].some(k => prod.includes(k));
+      });
+
+      const isLaundry = products.some((p) => {
+        const slug = (p as any)?.category?.slug?.toLowerCase() || '';
+        const name = (p as any)?.category?.name?.toLowerCase() || '';
+        return slug.includes('laund') || name.includes('laund');
+      });
+
+      if (isFruitOrProduce) {
         serviceType = 'FRESH_PRODUCE';
-      } else if (catSlug.includes('station') || catName.includes('station') || catName.includes('essential')) {
+      } else if (isStationery) {
         serviceType = 'STATIONERY';
-      } else if (catSlug.includes('laund') || catName.includes('laund')) {
+      } else if (isLaundry) {
         serviceType = 'LAUNDRY';
+      } else {
+        serviceType = 'FOOD';
       }
 
       const commissionRate = 5.0;
@@ -260,7 +327,7 @@ export class OrderController {
             discountAmount,
             totalAmount,
             paymentMethod: data.paymentMethod,
-            paymentStatus: data.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD_PENDING' : 'PENDING',
+            paymentStatus: (data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired === 0) ? 'COD_PENDING' : 'PENDING',
             refundStatus: 'NOT_APPLICABLE',
             settlementStatus: 'PENDING',
             commissionRate,
@@ -269,7 +336,12 @@ export class OrderController {
             hallName: data.hallName,
             hallNumber: data.hallNumber || null,
             roomNumber: data.roomNumber,
-            specialInstructions: data.specialInstructions || null,
+            specialInstructions: [
+              data.specialInstructions,
+              data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired > 0
+                ? `[COD ADVANCE: ₹${advanceRequired} ONLINE | CASH DUE ON DELIVERY: ₹${remainingCashDue}]`
+                : null
+            ].filter(Boolean).join(' | '),
             items: {
               create: orderItemsData.map((i) => ({
                 productId: i.productId,
@@ -286,9 +358,40 @@ export class OrderController {
                 changedBy: 'STUDENT',
                 notes: initialStatusNote
               }
-            }
+            },
+            ...(serviceType === 'FRESH_PRODUCE'
+              ? {
+                  produceDetails: {
+                    create: {
+                      packagingType: 'eco-crate',
+                      freshnessNotes: 'Quality graded harvest inspected upon campus arrival'
+                    }
+                  }
+                }
+              : serviceType === 'STATIONERY'
+              ? {
+                  stationeryDetails: {
+                    create: {
+                      brandRequirements: 'Verified campus bookstore academic stock',
+                      labSpecification: 'Standard institute lab record standards'
+                    }
+                  }
+                }
+              : {
+                  foodDetails: {
+                    create: {
+                      dietarySummary: 'Campus Fresh Meals',
+                      preparationNotes: data.specialInstructions || 'Fresh prep upon order confirmation'
+                    }
+                  }
+                })
           },
-          include: { items: true }
+          include: {
+            items: true,
+            produceDetails: true,
+            stationeryDetails: true,
+            foodDetails: true
+          }
         });
 
         // Track coupon usage
@@ -304,17 +407,22 @@ export class OrderController {
 
         // Create COD collection entry if cash on delivery
         if (data.paymentMethod === 'CASH_ON_DELIVERY') {
+          const codColNum = `COD-${Date.now().toString().slice(-6)}`;
           await (tx as any).cODCollection.create({
             data: {
+              collectionNumber: codColNum,
               orderId: newOrder.id,
               deliveryBoyId: assignedDeliveryBoyId || null,
-              amountExpected: totalAmount,
-              amountCollected: 0,
+              expectedAmount: remainingCashDue,
+              collectedAmount: 0,
               difference: 0,
               collectionStatus: 'PENDING',
-              reconciliationStatus: 'PENDING'
+              reconciliationStatus: 'PENDING',
+              notes: advanceRequired > 0
+                ? `Partial online advance of ₹${advanceRequired} required via Razorpay. Cash due at doorstep: ₹${remainingCashDue}.`
+                : `Full COD collection of ₹${totalAmount} at doorstep.`
             }
-          }).catch(() => {});
+          }).catch((err: any) => console.warn('CODCollection create notice:', err?.message));
         }
 
         // Clear student cart
@@ -338,15 +446,25 @@ export class OrderController {
         providerPayable
       }).catch((err) => console.warn('[LedgerService] recordOrderPayment notice:', err));
 
-      // If Razorpay, generate Razorpay order
+      // Determine online gateway payment requirements:
+      // Case 1: Full online payment via RAZORPAY
+      // Case 2: Cash on Delivery WITH partial advance required (e.g. ₹10)
       let razorpayOrderData = null;
-      if (data.paymentMethod === 'RAZORPAY') {
+      const requiresOnlinePayment =
+        data.paymentMethod === 'RAZORPAY' ||
+        (data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired > 0);
+
+      const onlineChargeAmount = data.paymentMethod === 'RAZORPAY' ? totalAmount : advanceRequired;
+
+      if (requiresOnlinePayment && onlineChargeAmount > 0) {
         const rzpOrder = await razorpayService.createRazorpayOrder({
-          amountInRupees: totalAmount,
+          amountInRupees: onlineChargeAmount,
           receiptId: orderNumber,
           notes: {
             orderId: createdOrder.id,
-            studentEmail: student.user.email
+            studentEmail: student.user.email,
+            paymentType: data.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD_ADVANCE' : 'FULL_PAYMENT',
+            remainingCashDue: remainingCashDue.toString()
           }
         });
 
@@ -354,9 +472,9 @@ export class OrderController {
           data: {
             orderId: createdOrder.id,
             studentId,
-            amount: totalAmount,
+            amount: onlineChargeAmount,
             status: 'PENDING',
-            paymentMethod: 'RAZORPAY',
+            paymentMethod: data.paymentMethod,
             razorpayOrderId: rzpOrder.id
           }
         });
@@ -368,7 +486,7 @@ export class OrderController {
           keyId: env.RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID || ''
         };
       } else {
-        // Record COD payment
+        // Zero advance COD payment
         await prisma.payment.create({
           data: {
             orderId: createdOrder.id,
@@ -411,7 +529,12 @@ export class OrderController {
         total: totalAmount,
         payment: {
           method: data.paymentMethod,
-          status: data.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD Pending' : 'Payment Processing'
+          status:
+            data.paymentMethod === 'CASH_ON_DELIVERY'
+              ? advanceRequired > 0
+                ? `COD Advance ₹${advanceRequired} Pending`
+                : 'COD Pending'
+              : 'Payment Processing'
         }
       });
 
@@ -429,14 +552,22 @@ export class OrderController {
         success: true,
         message:
           data.paymentMethod === 'CASH_ON_DELIVERY'
-            ? 'Order placed successfully with Cash on Delivery!'
+            ? advanceRequired > 0
+              ? `Advance deposit of ₹${advanceRequired} required to confirm order. Remaining ₹${remainingCashDue} will be paid in cash at delivery.`
+              : 'Order placed successfully with Cash on Delivery!'
             : 'Order created. Please complete payment via Razorpay.',
+        requiresAdvance: data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired > 0,
+        advanceRequired,
+        remainingCashDue,
         order: {
           id: createdOrder.id,
           orderNumber: createdOrder.orderNumber,
           status: createdOrder.status,
+          serviceType: createdOrder.serviceType,
           totalAmount,
-          paymentMethod: data.paymentMethod
+          paymentMethod: data.paymentMethod,
+          advanceRequired,
+          remainingCashDue
         },
         razorpay: razorpayOrderData
       });
@@ -534,8 +665,12 @@ export class OrderController {
           statusHistory: { orderBy: { createdAt: 'asc' } },
           payment: true,
           receipt: true,
-          provider: { select: { fullName: true, mobileNumber: true } },
-          deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } }
+          provider: { select: { id: true, fullName: true, mobileNumber: true, serviceCategory: true } },
+          deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } },
+          produceDetails: true,
+          stationeryDetails: true,
+          foodDetails: true,
+          codCollection: true
         }
       });
 
@@ -564,6 +699,18 @@ export class OrderController {
         }
       }
 
+      const isAccepted = ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED', 'DISPATCHED'].includes(order.status);
+      const isModifiable = !isAccepted && ['CONFIRMED', 'PENDING_PAYMENT'].includes(order.status);
+      const cancelCheck = RefundService.checkCancellationEligibility(order);
+      const returnCheck = RefundService.evaluateReturnEligibility(order);
+
+      const codPaidAdvance = (order.paymentMethod === 'CASH_ON_DELIVERY' && ['COD_PENDING', 'SUCCESS', 'PAID'].includes(order.paymentStatus))
+        ? Number(order.payment?.amount || 0)
+        : 0;
+      const codRemainingCash = order.paymentMethod === 'CASH_ON_DELIVERY'
+        ? ((order as any).codCollection ? Number((order as any).codCollection.expectedAmount) : Math.max(0, Number(order.totalAmount) - codPaidAdvance))
+        : 0;
+
       res.status(200).json({
         success: true,
         order: {
@@ -574,8 +721,147 @@ export class OrderController {
           totalAmount: Number(order.totalAmount),
           subtotal: Number(order.subtotal),
           deliveryFee: Number(order.deliveryFee),
-          discountAmount: Number(order.discountAmount)
+          discountAmount: Number(order.discountAmount),
+          isAccepted,
+          isModifiable,
+          canCancel: cancelCheck.eligible,
+          cancellationMessage: cancelCheck.reason || null,
+          canReturn: returnCheck.eligible,
+          returnMessage: returnCheck.reason || null,
+          codPaidAdvance,
+          codRemainingCash,
+          isProduce: order.serviceType === 'FRESH_PRODUCE',
+          isStationery: order.serviceType === 'STATIONERY',
+          isFood: order.serviceType === 'FOOD',
+          produceDetails: (order as any).produceDetails || null,
+          stationeryDetails: (order as any).stationeryDetails || null,
+          foodDetails: (order as any).foodDetails || null,
+          codCollection: (order as any).codCollection || null
         }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Modify an order (only permitted BEFORE provider accepts)
+   */
+  public static async modifyOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { roomNumber, specialInstructions } = req.body;
+      const student = await resolveStudentProfile(req.user);
+      const studentId = student?.id;
+
+      const order = await prisma.order.findUnique({
+        where: { id },
+        include: { items: true }
+      });
+
+      if (!order) {
+        res.status(404).json({ success: false, message: 'Order not found' });
+        return;
+      }
+
+      if (req.user?.role === 'STUDENT' && order.studentId !== studentId) {
+        res.status(403).json({ success: false, message: 'Unauthorized' });
+        return;
+      }
+
+      // Immutability on vendor acceptance
+      const nonModifiable = ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'DISPATCHED'];
+      if (nonModifiable.includes(order.status)) {
+        res.status(400).json({
+          success: false,
+          message: 'Order has already been accepted by the provider and fulfillment has commenced. Order cannot be changed.'
+        });
+        return;
+      }
+
+      const updateData: any = {};
+      if (roomNumber) updateData.roomNumber = roomNumber;
+      if (specialInstructions !== undefined) updateData.specialInstructions = specialInstructions;
+
+      const updated = await prisma.order.update({
+        where: { id },
+        data: {
+          ...updateData,
+          statusHistory: {
+            create: {
+              previousStatus: order.status,
+              newStatus: order.status,
+              changedBy: 'STUDENT',
+              notes: `Order details updated by student before provider acceptance (Room: ${roomNumber || order.roomNumber})`
+            }
+          }
+        }
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Order details updated successfully before provider acceptance.',
+        order: updated
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Request a return for a delivered order
+   */
+  public static async requestReturn(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const student = await resolveStudentProfile(req.user);
+      const studentId = student?.id;
+
+      const order = await prisma.order.findUnique({
+        where: { id },
+        include: { items: true }
+      });
+
+      if (!order) {
+        res.status(404).json({ success: false, message: 'Order not found' });
+        return;
+      }
+
+      if (req.user?.role === 'STUDENT' && order.studentId !== studentId) {
+        res.status(403).json({ success: false, message: 'Unauthorized' });
+        return;
+      }
+
+      const returnCheck = RefundService.evaluateReturnEligibility(order);
+      if (!returnCheck.eligible) {
+        res.status(400).json({
+          success: false,
+          message: returnCheck.reason || 'This order is not eligible for return.'
+        });
+        return;
+      }
+
+      const updated = await prisma.order.update({
+        where: { id },
+        data: {
+          refundStatus: 'REQUESTED',
+          cancellationReason: `Return Requested: ${reason || 'Customer requested return for delivered item'}`,
+          statusHistory: {
+            create: {
+              previousStatus: order.status,
+              newStatus: order.status,
+              changedBy: 'STUDENT',
+              notes: `Customer initiated return request: ${reason || 'Return requested'}`
+            }
+          }
+        }
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Return request submitted successfully. Support team will inspect and process your return.',
+        order: updated
       });
     } catch (err) {
       next(err);

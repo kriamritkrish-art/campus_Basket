@@ -110,6 +110,19 @@ export default function RegisterPage() {
         }
       })
       .catch(() => {});
+
+    // Check if redirected with googleEmail or email query parameter
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const gEmail = params.get('googleEmail') || params.get('email');
+      if (gEmail) {
+        if (gEmail.toLowerCase().endsWith('@nitdgp.ac.in')) {
+          setCollegeEmail(gEmail.toLowerCase());
+        } else {
+          setPersonalEmail(gEmail.toLowerCase());
+        }
+      }
+    }
   }, []);
 
   // Countdown timer for College OTP resend

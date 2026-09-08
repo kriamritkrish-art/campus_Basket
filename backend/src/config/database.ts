@@ -110,6 +110,7 @@ const fallbackHandlers: Record<string, any> = {
           const perVal = (condition.personalEmail || '').toLowerCase().trim();
           const studCol = (condition.student?.collegeEmail || '').toLowerCase().trim();
           const studPer = (condition.student?.personalEmail || '').toLowerCase().trim();
+          const googleSubVal = condition.googleSub;
 
           const found = fallbackUsers.find((u: any) => {
             if (roleFilter && u.role !== roleFilter) return false;
@@ -121,6 +122,7 @@ const fallbackHandlers: Record<string, any> = {
             const uStudCol = (u.student?.collegeEmail || '').toLowerCase();
             const uStudPer = (u.student?.personalEmail || '').toLowerCase();
 
+            if (googleSubVal && u.googleSub === googleSubVal) return true;
             if (idVal && uId === idVal) return true;
             if (emailVal && (uEmail === emailVal || uPer === emailVal || uCol === emailVal || uUser === emailVal)) return true;
             if (userVal && (uUser === userVal || uEmail === userVal || uPer === userVal)) return true;
