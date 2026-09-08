@@ -96,16 +96,20 @@ export default function AdminSettingsPage() {
     }));
   };
 
-  const handleSaveSetting = async (key: string, description: string) => {
+  const handleSaveSetting = async (key: string, description: string, explicitValue?: string) => {
     try {
       setSavingKey(key);
       setStatusFeedback(null);
+
+      const val = explicitValue !== undefined
+        ? explicitValue
+        : (settings[key] !== undefined && settings[key] !== null ? String(settings[key]) : '');
 
       const res = await apiRequest('/api/admin/settings', {
         method: 'POST',
         body: JSON.stringify({
           key,
-          value: settings[key] || '',
+          value: val,
           description
         })
       });
@@ -131,12 +135,24 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const updateProviderPolicy = (providerId: string, patch: any) => {
+  const updateProviderPolicy = async (providerId: string, patch: any) => {
     try {
       const raw = settings['PROVIDER_ORDER_POLICIES'] || '{}';
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
       parsed[providerId] = { ...(parsed[providerId] || {}), ...patch };
-      handleChange('PROVIDER_ORDER_POLICIES', JSON.stringify(parsed));
+      const serialized = JSON.stringify(parsed);
+      handleChange('PROVIDER_ORDER_POLICIES', serialized);
+
+      await apiRequest('/api/admin/settings', {
+        method: 'POST',
+        body: JSON.stringify({
+          key: 'PROVIDER_ORDER_POLICIES',
+          value: serialized,
+          description: 'Granular per-provider order & COD policies'
+        })
+      });
+      setSaveSuccess('PROVIDER_ORDER_POLICIES');
+      setTimeout(() => setSaveSuccess(null), 2500);
     } catch (err) {
       console.error(err);
     }
@@ -159,7 +175,7 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const updateProductPolicy = (productId: string, patch: any) => {
+  const updateProductPolicy = async (productId: string, patch: any) => {
     try {
       const raw = settings['PRODUCT_ORDER_POLICIES'] || '{}';
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
@@ -178,7 +194,19 @@ export default function AdminSettingsPage() {
       if (prod?.slug) {
         parsed[prod.slug] = policyData;
       }
-      handleChange('PRODUCT_ORDER_POLICIES', JSON.stringify(parsed));
+      const serialized = JSON.stringify(parsed);
+      handleChange('PRODUCT_ORDER_POLICIES', serialized);
+
+      await apiRequest('/api/admin/settings', {
+        method: 'POST',
+        body: JSON.stringify({
+          key: 'PRODUCT_ORDER_POLICIES',
+          value: serialized,
+          description: 'Granular per-product order & return policies'
+        })
+      });
+      setSaveSuccess('PRODUCT_ORDER_POLICIES');
+      setTimeout(() => setSaveSuccess(null), 2500);
     } catch (err) {
       console.error(err);
     }
@@ -242,11 +270,12 @@ export default function AdminSettingsPage() {
       ];
 
       for (const entry of entries) {
+        const val = settings[entry.key] !== undefined && settings[entry.key] !== null ? String(settings[entry.key]) : '';
         await apiRequest('/api/admin/settings', {
           method: 'POST',
           body: JSON.stringify({
             key: entry.key,
-            value: settings[entry.key] || '',
+            value: val,
             description: entry.desc
           })
         });
@@ -534,8 +563,8 @@ export default function AdminSettingsPage() {
                   <div className="flex gap-2">
                     <input
                       type="number"
-                      placeholder="e.g. 10 (Set 0 for pure zero-advance COD)"
-                      value={settings['COD_MIN_ADVANCE_AMOUNT'] ?? '10'}
+                      placeholder="e.g. 0 (Set 0 for pure zero-advance COD)"
+                      value={settings['COD_MIN_ADVANCE_AMOUNT'] !== undefined ? String(settings['COD_MIN_ADVANCE_AMOUNT']) : '0'}
                       onChange={(e) => handleChange('COD_MIN_ADVANCE_AMOUNT', e.target.value)}
                       className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-[#17202A] font-mono focus:outline-none focus:border-[#4F9D32] transition"
                     />
@@ -548,7 +577,7 @@ export default function AdminSettingsPage() {
                     </button>
                   </div>
                   <p className="text-[10px] text-slate-400 mt-1">
-                    Example: On a ₹100 order, student pays ₹{settings['COD_MIN_ADVANCE_AMOUNT'] || '10'} advance online via Razorpay before order confirmation; remaining ₹{Math.max(0, 100 - Number(settings['COD_MIN_ADVANCE_AMOUNT'] || 10))} is collected in cash at delivery.
+                    Example: On a ₹100 order, student pays ₹{settings['COD_MIN_ADVANCE_AMOUNT'] ?? '0'} advance online via Razorpay before order confirmation; remaining ₹{Math.max(0, 100 - Number(settings['COD_MIN_ADVANCE_AMOUNT'] ?? 0))} is collected in cash at delivery.
                   </p>
                 </div>
               </div>

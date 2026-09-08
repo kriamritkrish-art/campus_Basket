@@ -249,9 +249,10 @@ export class OrderController {
           }
         }
 
+        const defaultMinAdv = (minAdvanceSetting && minAdvanceSetting.value !== '') ? Math.max(0, Number(minAdvanceSetting.value)) : 0;
         codAdvanceAmount = determinedAdvance !== null
           ? determinedAdvance
-          : (minAdvanceSetting ? Number(minAdvanceSetting.value) : 10);
+          : defaultMinAdv;
 
         if (codAdvanceAmount > 0) {
           advanceRequired = Math.min(totalAmount, codAdvanceAmount);
@@ -1100,11 +1101,19 @@ export class OrderController {
         }
       } catch {}
 
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+
+      const parsedAdvance = settingMap['COD_MIN_ADVANCE_AMOUNT'] !== undefined && settingMap['COD_MIN_ADVANCE_AMOUNT'] !== ''
+        ? Math.max(0, Number(settingMap['COD_MIN_ADVANCE_AMOUNT']))
+        : 0;
+
       res.status(200).json({
         success: true,
         isCodGloballyEnabled: settingMap['ENABLE_CASH_ON_DELIVERY'] !== 'false',
         maxCodAmount: Number(settingMap['MAX_COD_AMOUNT']) || 1500,
-        codMinAdvanceAmount: Number(settingMap['COD_MIN_ADVANCE_AMOUNT']) || 10,
+        codMinAdvanceAmount: parsedAdvance,
         cancellationCutoffStage: settingMap['CANCELLATION_CUTOFF_STAGE'] || 'ACCEPTED',
         returnPolicyFood: settingMap['RETURN_POLICY_FOOD'] || 'RESTRICTED',
         returnPolicyProduce: settingMap['RETURN_POLICY_PRODUCE'] || 'FRESHNESS_VERIFIED',

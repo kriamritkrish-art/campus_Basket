@@ -1237,7 +1237,9 @@ export class AdminController {
         globalSettings: {
           codGloballyEnabled: settingMap['ENABLE_CASH_ON_DELIVERY'] !== 'false',
           maxCodAmount: Number(settingMap['MAX_COD_AMOUNT']) || 1500,
-          codMinAdvanceAmount: Number(settingMap['COD_MIN_ADVANCE_AMOUNT']) || 10,
+          codMinAdvanceAmount: settingMap['COD_MIN_ADVANCE_AMOUNT'] !== undefined && settingMap['COD_MIN_ADVANCE_AMOUNT'] !== ''
+            ? Math.max(0, Number(settingMap['COD_MIN_ADVANCE_AMOUNT']))
+            : 0,
           cancellationCutoffStage: settingMap['CANCELLATION_CUTOFF_STAGE'] || 'ACCEPTED',
           returnPolicyFood: settingMap['RETURN_POLICY_FOOD'] || 'RESTRICTED',
           returnPolicyProduce: settingMap['RETURN_POLICY_PRODUCE'] || 'FRESHNESS_VERIFIED',

@@ -13,6 +13,7 @@ import {
   Lock,
   ShieldCheck,
   Check,
+  CheckCircle2,
   AlertTriangle,
   ChevronRight,
   ChevronDown,
@@ -46,7 +47,8 @@ export default function CheckoutPage() {
   // Payment
   const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'CASH_ON_DELIVERY'>('RAZORPAY');
   const [isCodAllowed, setIsCodAllowed] = useState<boolean>(true);
-  const [codAdvanceAmount, setCodAdvanceAmount] = useState<number>(10);
+  const [globalCodAdvance, setGlobalCodAdvance] = useState<number>(0);
+  const [codAdvanceAmount, setCodAdvanceAmount] = useState<number>(0);
   const [isCodGloballyEnabled, setIsCodGloballyEnabled] = useState<boolean>(true);
   const [codBlockedReason, setCodBlockedReason] = useState<string | null>(null);
   const [productPolicies, setProductPolicies] = useState<Record<string, any>>({});
@@ -63,9 +65,10 @@ export default function CheckoutPage() {
   useEffect(() => {
     async function fetchPlatformSettings() {
       try {
+        const t = Date.now();
         const [policiesRes, productsRes] = await Promise.allSettled([
-          apiRequest('/api/products/policies'),
-          apiRequest('/api/products?limit=100')
+          apiRequest(`/api/products/policies?_t=${t}`),
+          apiRequest(`/api/products?limit=100&_t=${t}`)
         ]);
 
         if (policiesRes.status === 'fulfilled' && policiesRes.value?.success) {
@@ -74,6 +77,7 @@ export default function CheckoutPage() {
             setIsCodGloballyEnabled(val.isCodGloballyEnabled);
           }
           if (typeof val.codMinAdvanceAmount === 'number') {
+            setGlobalCodAdvance(val.codMinAdvanceAmount);
             setCodAdvanceAmount(val.codMinAdvanceAmount);
           }
           if (val.productPolicies) {
@@ -85,10 +89,13 @@ export default function CheckoutPage() {
         } else {
           // Secondary fallback to /api/orders/policies
           try {
-            const fallbackRes = await apiRequest('/api/orders/policies');
+            const fallbackRes = await apiRequest(`/api/orders/policies?_t=${t}`);
             if (fallbackRes?.success) {
               if (fallbackRes.isCodGloballyEnabled !== undefined) setIsCodGloballyEnabled(fallbackRes.isCodGloballyEnabled);
-              if (typeof fallbackRes.codMinAdvanceAmount === 'number') setCodAdvanceAmount(fallbackRes.codMinAdvanceAmount);
+              if (typeof fallbackRes.codMinAdvanceAmount === 'number') {
+                setGlobalCodAdvance(fallbackRes.codMinAdvanceAmount);
+                setCodAdvanceAmount(fallbackRes.codMinAdvanceAmount);
+              }
               if (fallbackRes.productPolicies) setProductPolicies(fallbackRes.productPolicies);
               if (fallbackRes.providerPolicies) setProviderPolicies(fallbackRes.providerPolicies);
             }
@@ -175,7 +182,9 @@ export default function CheckoutPage() {
             k === item.productId ||
             v.id === item.productId ||
             (v.name && v.name.toLowerCase().trim() === normName) ||
-            (normName && normName.includes('burger special') && (k.toLowerCase().includes('burger special') || v.name?.toLowerCase().includes('burger special')))
+            (normName && normName.includes('burger special') && (k.toLowerCase().includes('burger special') || v.name?.toLowerCase().includes('burger special'))) ||
+            (normName && k.toLowerCase().includes(normName)) ||
+            (normName && v.name && v.name.toLowerCase().includes(normName))
           );
         })?.[1];
 
@@ -221,9 +230,11 @@ export default function CheckoutPage() {
       setCodBlockedReason(null);
       if (customAdv !== null) {
         setCodAdvanceAmount(customAdv);
+      } else {
+        setCodAdvanceAmount(globalCodAdvance);
       }
     }
-  }, [items, total, isCodGloballyEnabled, productPolicies, providerPolicies, productProviderMap, paymentMethod]);
+  }, [items, total, isCodGloballyEnabled, productPolicies, providerPolicies, productProviderMap, paymentMethod, globalCodAdvance]);
 
   // Load Razorpay Script dynamically
   const loadRazorpayScript = () => {
@@ -275,7 +286,7 @@ export default function CheckoutPage() {
 
       // CASH ON DELIVERY FLOW
       if (paymentMethod === 'CASH_ON_DELIVERY') {
-        if (res.requiresAdvance && res.razorpay) {
+        if (res.requiresAdvance && res.razorpay && (res.advanceRequired > 0 || (res.razorpay.amount && res.razorpay.amount > 0))) {
           // Admin configured partial online advance required (e.g. ₹10)
           const scriptLoaded = await loadRazorpayScript();
           if (!scriptLoaded) {
@@ -712,6 +723,18 @@ export default function CheckoutPage() {
               </div>
 
               <div className="p-5 space-y-3">
+                {!isCodAllowed && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 border-2 border-rose-300 text-rose-900 text-xs flex items-start gap-2.5 shadow-xs">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold block text-rose-950">Cash on Delivery Unavailable</span>
+                      <span className="text-[11px] font-semibold leading-relaxed">
+                        {codBlockedReason || 'One or more items in your cart do not accept Cash on Delivery. Please pay online via UPI or Card.'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* OPTION 1: UPI / ONLINE PAYMENT */}
                 <div
                   onClick={() => setPaymentMethod('RAZORPAY')}
@@ -767,7 +790,7 @@ export default function CheckoutPage() {
                   onClick={() => isCodAllowed && setPaymentMethod('CASH_ON_DELIVERY')}
                   className={`payment-option ${
                     !isCodAllowed
-                      ? 'opacity-60 cursor-not-allowed bg-gray-50'
+                      ? 'opacity-70 cursor-not-allowed bg-rose-50/40 border-rose-200'
                       : paymentMethod === 'CASH_ON_DELIVERY'
                       ? 'selected'
                       : ''
@@ -809,6 +832,18 @@ export default function CheckoutPage() {
                         Pay when your order reaches your hostel room.
                       </p>
 
+                      {isCodAllowed && codAdvanceAmount === 0 && (
+                        <div className="mt-2.5 p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-950 space-y-1 shadow-xs">
+                          <div className="flex items-center gap-1.5 font-bold text-emerald-900">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>Zero Advance Required • Full Cash at Delivery</span>
+                          </div>
+                          <p className="text-[11px] text-emerald-800 leading-snug">
+                            No online advance deposit needed today. Pay the full amount of <span className="font-mono font-bold">₹{total.toFixed(2)}</span> in cash directly to the delivery runner at your hostel room upon delivery.
+                          </p>
+                        </div>
+                      )}
+
                       {isCodAllowed && codAdvanceAmount > 0 && (
                         <div className="mt-2.5 p-3 rounded-xl bg-amber-50/80 border border-amber-200/90 text-xs text-amber-950 space-y-1.5">
                           <div className="flex items-center justify-between font-bold">
@@ -827,18 +862,18 @@ export default function CheckoutPage() {
                             </span>
                           </div>
                           <p className="text-[10px] text-amber-700/90 leading-tight pt-1 border-t border-amber-200/60">
-                            Campus policy: ₹{Math.min(total, codAdvanceAmount)} partial advance via Razorpay confirms your order; the remaining ₹{Math.max(0, total - Math.min(total, codAdvanceAmount)).toFixed(2)} is collected at delivery.
+                            Campus policy: ₹{Math.min(total, codAdvanceAmount).toFixed(2)} partial advance via Razorpay confirms your order; the remaining ₹{Math.max(0, total - Math.min(total, codAdvanceAmount)).toFixed(2)} is collected at delivery.
                           </p>
                         </div>
                       )}
 
                       {!isCodAllowed && (
-                        <div className="mt-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
+                        <div className="mt-2.5 p-3 rounded-xl bg-rose-50 border border-rose-300 text-xs text-rose-900 flex items-start gap-2.5 shadow-xs">
                           <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                           <div>
-                            <span className="font-bold block text-rose-900">COD Blocked:</span>
-                            <span className="text-[11px] font-medium leading-tight">
-                              {codBlockedReason || 'Orders above ₹1,500 or containing restricted products must be paid online.'}
+                            <span className="font-bold block text-rose-950">Cash on Delivery Disabled:</span>
+                            <span className="text-[11px] font-semibold leading-relaxed">
+                              {codBlockedReason || 'Orders containing restricted products or above ₹1,500 must be paid online.'}
                             </span>
                           </div>
                         </div>
@@ -873,42 +908,66 @@ export default function CheckoutPage() {
                   />
                 </button>
               </div>
-
-              {/* Items List (Collapsible on mobile) */}
               <div
                 className={`divide-y divide-gray-100 max-h-60 overflow-y-auto px-5 py-2 ${
                   showMobileSummary ? 'block' : 'hidden sm:block'
                 }`}
               >
-                {items.map((item) => (
-                  <div key={item.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-200 relative shrink-0 overflow-hidden flex items-center justify-center">
-                        {item.image ? (
-                          <Image
-                            src={item.image}
-                            alt={item.name}
-                            fill
-                            sizes="40px"
-                            className="object-contain p-0.5"
-                          />
-                        ) : (
-                          <span className="text-[10px] font-bold text-gray-400">CB</span>
-                        )}
-                      </div>
-                      <div className="truncate">
-                        <div className="font-bold text-[#172033] truncate">{item.name}</div>
-                        <div className="text-[11px] text-[#667085]">
-                          {item.quantity} &times; ₹{item.unitPrice.toFixed(2)}
+                {items.map((item) => {
+                  const normName = item.name ? item.name.toLowerCase().trim() : '';
+                  const itemPolicy =
+                    productPolicies[item.productId] ||
+                    (normName ? productPolicies[normName] : null) ||
+                    (item.slug ? productPolicies[item.slug] : null) ||
+                    Object.entries(productPolicies).find(([k, v]: any) => {
+                      return (
+                        k === item.productId ||
+                        v.id === item.productId ||
+                        (v.name && v.name.toLowerCase().trim() === normName) ||
+                        (normName && normName.includes('burger special') && (k.toLowerCase().includes('burger special') || v.name?.toLowerCase().includes('burger special'))) ||
+                        (normName && k.toLowerCase().includes(normName)) ||
+                        (normName && v.name && v.name.toLowerCase().includes(normName))
+                      );
+                    })?.[1];
+                  const itemCodBlocked = (item as any).allowCod === false || itemPolicy?.allowCod === false;
+
+                  return (
+                    <div key={item.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-200 relative shrink-0 overflow-hidden flex items-center justify-center">
+                          {item.image ? (
+                            <Image
+                              src={item.image}
+                              alt={item.name}
+                              fill
+                              sizes="40px"
+                              className="object-contain p-0.5"
+                            />
+                          ) : (
+                            <span className="text-[10px] font-bold text-gray-400">CB</span>
+                          )}
+                        </div>
+                        <div className="truncate">
+                          <div className="font-bold text-[#172033] flex items-center gap-1.5 truncate">
+                            <span className="truncate">{item.name}</span>
+                            {itemCodBlocked && (
+                              <span className="shrink-0 text-[9px] font-extrabold text-rose-700 bg-rose-100 border border-rose-300 px-1.5 py-0.5 rounded">
+                                No COD
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-[#667085]">
+                            {item.quantity} &times; ₹{item.unitPrice.toFixed(2)}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="font-bold text-[#172033] shrink-0 font-mono">
-                      ₹{item.itemTotal.toFixed(2)}
+                      <div className="font-bold text-[#172033] shrink-0 font-mono">
+                        ₹{item.itemTotal.toFixed(2)}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -928,20 +987,21 @@ export default function CheckoutPage() {
                   <span>Delivery Fee</span>
                   <span>
                     {deliveryFee === 0 ? (
-                      <span className="text-[#397A22] font-bold bg-[#EFF8EA] px-1.5 py-0.5 rounded text-[11px]">
+                      <span className="text-[#397A22] font-bold uppercase tracking-wider text-[11px]">
                         FREE
                       </span>
                     ) : (
-                      <span className="text-[#172033] font-semibold font-mono">₹{deliveryFee.toFixed(2)}</span>
+                      <span className="text-[#172033] font-mono font-medium">
+                        ₹{deliveryFee.toFixed(2)}
+                      </span>
                     )}
                   </span>
                 </div>
 
-                {discountAmount > 0 && (
+                {appliedCoupon && discountAmount > 0 && (
                   <div className="flex justify-between items-center text-[#397A22] font-semibold">
-                    <span className="flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-[#4F9D2F]" />
-                      Campus Discount {appliedCoupon && `(${appliedCoupon})`}
+                    <span>
+                      Coupon Discount ({appliedCoupon})
                     </span>
                     <span className="font-mono">-₹{discountAmount.toFixed(2)}</span>
                   </div>
@@ -957,6 +1017,23 @@ export default function CheckoutPage() {
               </div>
 
               {/* COD Partial Advance Breakdown */}
+              {paymentMethod === 'CASH_ON_DELIVERY' && codAdvanceAmount === 0 && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs space-y-1">
+                  <div className="flex justify-between font-bold text-emerald-950">
+                    <span className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      Cash Due at Doorstep:
+                    </span>
+                    <span className="font-mono text-sm text-emerald-900 font-black">
+                      ₹{total.toFixed(2)}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-emerald-800">
+                    Zero advance required. Pay full amount in cash to delivery runner.
+                  </p>
+                </div>
+              )}
+
               {paymentMethod === 'CASH_ON_DELIVERY' && codAdvanceAmount > 0 && (
                 <div className="p-3 rounded-xl bg-amber-50/90 border border-amber-200 text-xs space-y-1.5">
                   <div className="flex justify-between font-bold text-amber-950">

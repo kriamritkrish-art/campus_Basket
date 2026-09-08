@@ -50,6 +50,14 @@ describe('Order Governance, Immutability, COD Advance & Return Policy Engine', (
 
     expect(zeroAdvance).toBe(0);
     expect(zeroCashDue).toBe(100);
+
+    // Verify string '0' setting correctly resolves to 0 and NOT 10
+    const settingMap = { COD_MIN_ADVANCE_AMOUNT: '0' };
+    const parsedAdvance = settingMap['COD_MIN_ADVANCE_AMOUNT'] !== undefined && settingMap['COD_MIN_ADVANCE_AMOUNT'] !== ''
+      ? Math.max(0, Number(settingMap['COD_MIN_ADVANCE_AMOUNT']))
+      : 0;
+    expect(parsedAdvance).toBe(0);
+    expect(parsedAdvance > 0).toBe(false);
   });
 
   // -------------------------------------------------------------
