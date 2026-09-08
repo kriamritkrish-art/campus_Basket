@@ -47,8 +47,6 @@ export async function apiRequest<T = any>(
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache, no-store, must-revalidate',
-    'Pragma': 'no-cache',
-    'Expires': '0',
     ...(options.headers as Record<string, string> || {}),
   };
 
