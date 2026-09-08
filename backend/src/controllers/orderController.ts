@@ -667,6 +667,8 @@ export class OrderController {
         orders: orders.map((o) => ({
           id: o.id,
           orderNumber: o.orderNumber,
+          serviceType: o.serviceType,
+          providerAccepted: Boolean((o as any).providerAccepted),
           status: o.status,
           totalAmount: Number(o.totalAmount),
           subtotal: Number(o.subtotal),
@@ -674,6 +676,9 @@ export class OrderController {
           discountAmount: Number(o.discountAmount),
           paymentMethod: o.paymentMethod,
           paymentStatus: o.paymentStatus,
+          advancePaidAmount: Number((o as any).advancePaidAmount || 0),
+          refundAmount: Number((o as any).refundAmount || 0),
+          refundStatus: o.refundStatus,
           hallName: o.hallName,
           roomNumber: o.roomNumber,
           createdAt: o.createdAt,

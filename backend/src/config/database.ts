@@ -803,6 +803,9 @@ const fallbackHandlers: Record<string, any> = {
         return {
           ...o,
           serviceType: o.serviceType || 'FOOD',
+          providerAccepted: Boolean(o.providerAccepted),
+          advancePaidAmount: Number(o.advancePaidAmount || 0),
+          refundAmount: Number(o.refundAmount || 0),
           refundStatus: o.refundStatus || 'NOT_APPLICABLE',
           settlementStatus: o.settlementStatus || (o.status === 'DELIVERED' ? 'ELIGIBLE' : 'PENDING'),
           commissionRate: commRate,
