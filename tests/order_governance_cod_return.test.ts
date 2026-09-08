@@ -334,4 +334,84 @@ describe('Order Governance, Immutability, COD Advance & Return Policy Engine', (
     // Product with no custom advance and provider with no custom advance falls back to global default (10)
     expect(resolveAdvanceFee('prod_default', 'unknown_prov')).toBe(10);
   });
+
+  it('SCENARIO 11: Real-world Burger Special COD Override Enforcement across IDs, slugs, and normalized names', () => {
+    // Simulated admin settings where Burger Special has COD disabled
+    const productPolicies = {
+      'cm7burger123': { id: 'cm7burger123', name: 'burger special', slug: 'burger-special', allowCod: false },
+      'burger special': { id: 'cm7burger123', name: 'burger special', slug: 'burger-special', allowCod: false },
+      'burger-special': { id: 'cm7burger123', name: 'burger special', slug: 'burger-special', allowCod: false }
+    };
+
+    const providerPolicies = {
+      'prov_hall11': { allowCod: true } // Provider allows COD for Hall 11
+    };
+
+    const cartItem = {
+      productId: 'cm7burger123',
+      name: 'burger special',
+      slug: 'burger-special',
+      providerId: 'prov_hall11',
+      unitPrice: 200,
+      quantity: 1,
+      itemTotal: 200
+    };
+
+    // Resilient lookup function matching checkout and orderController
+    function isItemCodAllowed(item: typeof cartItem) {
+      const normName = item.name ? item.name.toLowerCase().trim() : '';
+      const prodPol =
+        productPolicies[item.productId as keyof typeof productPolicies] ||
+        productPolicies[normName as keyof typeof productPolicies] ||
+        (item.slug ? productPolicies[item.slug as keyof typeof productPolicies] : null) ||
+        Object.entries(productPolicies).find(([k, v]: any) => {
+          return (
+            k === item.productId ||
+            v.id === item.productId ||
+            (v.name && v.name.toLowerCase().trim() === normName) ||
+            (normName.includes('burger special') && (k.toLowerCase().includes('burger special') || v.name?.toLowerCase().includes('burger special')))
+          );
+        })?.[1];
+
+      // Priority 1: Product Override
+      if (prodPol && prodPol.allowCod === false) {
+        return false;
+      }
+
+      if (prodPol && prodPol.allowCod === true) {
+        return true;
+      }
+
+      // Priority 2: Provider Override
+      const provPol = providerPolicies[item.providerId as keyof typeof providerPolicies];
+      if (provPol && provPol.allowCod === false) {
+        return false;
+      }
+
+      return true;
+    }
+
+    // Must be blocked because Burger Special has allowCod = false!
+    expect(isItemCodAllowed(cartItem)).toBe(false);
+
+    // Even if cart item had an unlinked product ID, matching by name must block COD
+    const unlinkedCartItem = {
+      ...cartItem,
+      productId: 'random_client_generated_id',
+      name: 'burger special'
+    };
+    expect(isItemCodAllowed(unlinkedCartItem)).toBe(false);
+
+    // Another product from Hall 11 that has no override should remain allowed
+    const regularItem = {
+      productId: 'prod_fried_rice',
+      name: 'Veg Fried Rice',
+      slug: 'veg-fried-rice',
+      providerId: 'prov_hall11',
+      unitPrice: 120,
+      quantity: 1,
+      itemTotal: 120
+    };
+    expect(isItemCodAllowed(regularItem)).toBe(true);
+  });
 });

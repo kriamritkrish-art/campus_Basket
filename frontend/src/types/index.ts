@@ -123,6 +123,8 @@ export interface Product {
   images?: ProductImage[];
   rating: number;
   reviewsCount: number;
+  allowCod?: boolean;
+  allowReturn?: boolean;
 }
 
 export interface CartItem {
@@ -139,6 +141,8 @@ export interface CartItem {
   unit: string;
   image?: string | null;
   providerId?: string;
+  allowCod?: boolean;
+  allowReturn?: boolean;
 }
 
 export interface OrderItem {

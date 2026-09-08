@@ -85,6 +85,18 @@ export class ProductController {
         })
       ]);
 
+      let productPolicies: Record<string, any> = {};
+      let providerPolicies: Record<string, any> = {};
+      try {
+        const polSettings = await prisma.adminSetting.findMany({
+          where: { key: { in: ['PRODUCT_ORDER_POLICIES', 'PROVIDER_ORDER_POLICIES'] } }
+        });
+        const prodPolSetting = polSettings.find((s) => s.key === 'PRODUCT_ORDER_POLICIES');
+        const provPolSetting = polSettings.find((s) => s.key === 'PROVIDER_ORDER_POLICIES');
+        if (prodPolSetting?.value) productPolicies = JSON.parse(prodPolSetting.value);
+        if (provPolSetting?.value) providerPolicies = JSON.parse(provPolSetting.value);
+      } catch {}
+
       let formattedProducts: any[] = products.map((p) => {
         const reviews = p.reviews || [];
         const avgRating =
@@ -109,6 +121,36 @@ export class ProductController {
             ? Math.max(0, Math.round(((origPrice - sellPrice) / origPrice) * 100))
             : 0;
 
+        const normName = p.name ? p.name.toLowerCase().trim() : '';
+        const prodPol =
+          productPolicies[p.id] ||
+          productPolicies[normName] ||
+          (p.slug ? productPolicies[p.slug] : null) ||
+          Object.entries(productPolicies).find(([k, v]: any) => {
+            return (
+              k === p.id ||
+              v.id === p.id ||
+              (v.name && v.name.toLowerCase().trim() === normName)
+            );
+          })?.[1];
+
+        const provPol = p.providerId ? providerPolicies[p.providerId] : null;
+
+        // Strict priority: product override > provider override > default true
+        let allowCod = true;
+        if (prodPol && prodPol.allowCod !== undefined) {
+          allowCod = prodPol.allowCod;
+        } else if (provPol && provPol.allowCod !== undefined) {
+          allowCod = provPol.allowCod;
+        }
+
+        let allowReturn = true;
+        if (prodPol && prodPol.allowReturn !== undefined) {
+          allowReturn = prodPol.allowReturn;
+        } else if (provPol && provPol.allowReturn !== undefined) {
+          allowReturn = provPol.allowReturn;
+        }
+
         return {
           id: p.id,
           name: p.name,
@@ -132,6 +174,9 @@ export class ProductController {
           isFeatured: p.isFeatured,
           availableToday: p.availableToday !== undefined ? p.availableToday : true,
           category: p.category,
+          providerId: p.providerId || null,
+          allowCod,
+          allowReturn,
           primaryImage,
           images,
           rating: Number(avgRating.toFixed(1)),
@@ -305,6 +350,47 @@ export class ProductController {
         (product as any).primaryImage ||
         null;
 
+      let productPolicies: Record<string, any> = {};
+      let providerPolicies: Record<string, any> = {};
+      try {
+        const polSettings = await prisma.adminSetting.findMany({
+          where: { key: { in: ['PRODUCT_ORDER_POLICIES', 'PROVIDER_ORDER_POLICIES'] } }
+        });
+        const prodPolSetting = polSettings.find((s) => s.key === 'PRODUCT_ORDER_POLICIES');
+        const provPolSetting = polSettings.find((s) => s.key === 'PROVIDER_ORDER_POLICIES');
+        if (prodPolSetting?.value) productPolicies = JSON.parse(prodPolSetting.value);
+        if (provPolSetting?.value) providerPolicies = JSON.parse(provPolSetting.value);
+      } catch {}
+
+      const normName = product.name ? product.name.toLowerCase().trim() : '';
+      const prodPol =
+        productPolicies[product.id] ||
+        productPolicies[normName] ||
+        (product.slug ? productPolicies[product.slug] : null) ||
+        Object.entries(productPolicies).find(([k, v]: any) => {
+          return (
+            k === product.id ||
+            v.id === product.id ||
+            (v.name && v.name.toLowerCase().trim() === normName)
+          );
+        })?.[1];
+
+      const provPol = product.providerId ? providerPolicies[product.providerId] : null;
+
+      let allowCod = true;
+      if (prodPol && prodPol.allowCod !== undefined) {
+        allowCod = prodPol.allowCod;
+      } else if (provPol && provPol.allowCod !== undefined) {
+        allowCod = provPol.allowCod;
+      }
+
+      let allowReturn = true;
+      if (prodPol && prodPol.allowReturn !== undefined) {
+        allowReturn = prodPol.allowReturn;
+      } else if (provPol && provPol.allowReturn !== undefined) {
+        allowReturn = provPol.allowReturn;
+      }
+
       res.status(200).json({
         success: true,
         product: {
@@ -313,11 +399,73 @@ export class ProductController {
           discountPrice: product.discountPrice ? Number(product.discountPrice) : null,
           isLowStock: product.stock <= (product.lowStockThreshold || 5) && product.stock > 0,
           isOutOfStock: product.stock <= 0,
+          providerId: product.providerId || null,
+          allowCod,
+          allowReturn,
           primaryImage,
           images,
           rating: Number(avgRating.toFixed(1)),
           reviewsCount: reviews.length
         }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Public Order Policies & Platform Checkout Settings
+   * Open to students, guests, and web/mobile apps without requiring ADMIN role
+   */
+  public static async getOrderPolicies(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const settings = await prisma.adminSetting.findMany({
+        where: {
+          key: {
+            in: [
+              'ENABLE_CASH_ON_DELIVERY',
+              'MAX_COD_AMOUNT',
+              'COD_MIN_ADVANCE_AMOUNT',
+              'PRODUCT_ORDER_POLICIES',
+              'PROVIDER_ORDER_POLICIES',
+              'CANCELLATION_CUTOFF_STAGE',
+              'RETURN_POLICY_FOOD',
+              'RETURN_POLICY_PRODUCE',
+              'RETURN_POLICY_STATIONERY'
+            ]
+          }
+        }
+      });
+
+      const settingMap: Record<string, string> = {};
+      settings.forEach((s) => { settingMap[s.key] = s.value; });
+
+      let productPolicies: Record<string, any> = {};
+      let providerPolicies: Record<string, any> = {};
+
+      try {
+        if (settingMap['PRODUCT_ORDER_POLICIES']) {
+          productPolicies = JSON.parse(settingMap['PRODUCT_ORDER_POLICIES']);
+        }
+      } catch {}
+
+      try {
+        if (settingMap['PROVIDER_ORDER_POLICIES']) {
+          providerPolicies = JSON.parse(settingMap['PROVIDER_ORDER_POLICIES']);
+        }
+      } catch {}
+
+      res.status(200).json({
+        success: true,
+        isCodGloballyEnabled: settingMap['ENABLE_CASH_ON_DELIVERY'] !== 'false',
+        maxCodAmount: Number(settingMap['MAX_COD_AMOUNT']) || 1500,
+        codMinAdvanceAmount: Number(settingMap['COD_MIN_ADVANCE_AMOUNT']) || 10,
+        cancellationCutoffStage: settingMap['CANCELLATION_CUTOFF_STAGE'] || 'ACCEPTED',
+        returnPolicyFood: settingMap['RETURN_POLICY_FOOD'] || 'RESTRICTED',
+        returnPolicyProduce: settingMap['RETURN_POLICY_PRODUCE'] || 'FRESHNESS_VERIFIED',
+        returnPolicyStationery: settingMap['RETURN_POLICY_STATIONERY'] || 'ALLOWED_24HR',
+        productPolicies,
+        providerPolicies
       });
     } catch (err) {
       next(err);

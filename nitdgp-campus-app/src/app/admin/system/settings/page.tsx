@@ -146,7 +146,14 @@ export default function AdminSettingsPage() {
     try {
       const raw = settings['PRODUCT_ORDER_POLICIES'] || '{}';
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      return parsed[productId] || {};
+      const prod = productsList.find((p) => p.id === productId);
+      const normName = prod?.name ? prod.name.toLowerCase().trim() : '';
+      return (
+        parsed[productId] ||
+        (normName ? parsed[normName] : null) ||
+        (prod?.slug ? parsed[prod.slug] : null) ||
+        {}
+      );
     } catch {
       return {};
     }
@@ -156,7 +163,21 @@ export default function AdminSettingsPage() {
     try {
       const raw = settings['PRODUCT_ORDER_POLICIES'] || '{}';
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      parsed[productId] = { ...(parsed[productId] || {}), ...patch };
+      const prod = productsList.find((p) => p.id === productId);
+      const policyData = {
+        ...(parsed[productId] || {}),
+        id: productId,
+        name: prod?.name || parsed[productId]?.name,
+        slug: prod?.slug || parsed[productId]?.slug,
+        ...patch
+      };
+      parsed[productId] = policyData;
+      if (prod?.name) {
+        parsed[prod.name.toLowerCase().trim()] = policyData;
+      }
+      if (prod?.slug) {
+        parsed[prod.slug] = policyData;
+      }
       handleChange('PRODUCT_ORDER_POLICIES', JSON.stringify(parsed));
     } catch (err) {
       console.error(err);

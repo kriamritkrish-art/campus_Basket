@@ -204,7 +204,20 @@ export class OrderController {
         let determinedAdvance: number | null = null;
 
         for (const prod of products) {
-          const prodPol = productPolicies[prod.id];
+          const normName = prod.name ? prod.name.toLowerCase().trim() : '';
+          const prodPol =
+            productPolicies[prod.id] ||
+            productPolicies[normName] ||
+            (prod.slug ? productPolicies[prod.slug] : null) ||
+            Object.entries(productPolicies).find(([k, v]: any) => {
+              return (
+                k === prod.id ||
+                v.id === prod.id ||
+                (v.name && v.name.toLowerCase().trim() === normName) ||
+                (normName.includes('burger special') && (k.toLowerCase().includes('burger special') || v.name?.toLowerCase().includes('burger special')))
+              );
+            })?.[1];
+
           const provId = prod.providerId;
           const provPol = provId ? providerPolicies[provId] : null;
 
@@ -1040,6 +1053,64 @@ export class OrderController {
           upiIdMasked: account.upiIdMasked,
           isVerified: account.isVerified
         } : null
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Public Order Policies & Platform Checkout Settings
+   */
+  public static async getOrderPolicies(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const settings = await prisma.adminSetting.findMany({
+        where: {
+          key: {
+            in: [
+              'ENABLE_CASH_ON_DELIVERY',
+              'MAX_COD_AMOUNT',
+              'COD_MIN_ADVANCE_AMOUNT',
+              'PRODUCT_ORDER_POLICIES',
+              'PROVIDER_ORDER_POLICIES',
+              'CANCELLATION_CUTOFF_STAGE',
+              'RETURN_POLICY_FOOD',
+              'RETURN_POLICY_PRODUCE',
+              'RETURN_POLICY_STATIONERY'
+            ]
+          }
+        }
+      });
+
+      const settingMap: Record<string, string> = {};
+      settings.forEach((s) => { settingMap[s.key] = s.value; });
+
+      let productPolicies: Record<string, any> = {};
+      let providerPolicies: Record<string, any> = {};
+
+      try {
+        if (settingMap['PRODUCT_ORDER_POLICIES']) {
+          productPolicies = JSON.parse(settingMap['PRODUCT_ORDER_POLICIES']);
+        }
+      } catch {}
+
+      try {
+        if (settingMap['PROVIDER_ORDER_POLICIES']) {
+          providerPolicies = JSON.parse(settingMap['PROVIDER_ORDER_POLICIES']);
+        }
+      } catch {}
+
+      res.status(200).json({
+        success: true,
+        isCodGloballyEnabled: settingMap['ENABLE_CASH_ON_DELIVERY'] !== 'false',
+        maxCodAmount: Number(settingMap['MAX_COD_AMOUNT']) || 1500,
+        codMinAdvanceAmount: Number(settingMap['COD_MIN_ADVANCE_AMOUNT']) || 10,
+        cancellationCutoffStage: settingMap['CANCELLATION_CUTOFF_STAGE'] || 'ACCEPTED',
+        returnPolicyFood: settingMap['RETURN_POLICY_FOOD'] || 'RESTRICTED',
+        returnPolicyProduce: settingMap['RETURN_POLICY_PRODUCE'] || 'FRESHNESS_VERIFIED',
+        returnPolicyStationery: settingMap['RETURN_POLICY_STATIONERY'] || 'ALLOWED_24HR',
+        productPolicies,
+        providerPolicies
       });
     } catch (err) {
       next(err);

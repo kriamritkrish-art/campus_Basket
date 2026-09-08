@@ -59,43 +59,58 @@ export default function CheckoutPage() {
   const [orderConfirmed, setOrderConfirmed] = useState<any | null>(null);
   const [showMobileSummary, setShowMobileSummary] = useState<boolean>(false);
 
-  // Fetch admin COD, policies, and advance settings
+  // Fetch public COD policies, product overrides, and advance settings
   useEffect(() => {
     async function fetchPlatformSettings() {
       try {
-        const [settingsRes, productsRes] = await Promise.allSettled([
-          apiRequest('/api/admin/settings'),
-          apiRequest('/api/products')
+        const [policiesRes, productsRes] = await Promise.allSettled([
+          apiRequest('/api/products/policies'),
+          apiRequest('/api/products?limit=100')
         ]);
 
-        if (settingsRes.status === 'fulfilled' && settingsRes.value?.success && Array.isArray(settingsRes.value.settings)) {
-          const codSet = settingsRes.value.settings.find((s: any) => s.key === 'ENABLE_CASH_ON_DELIVERY');
-          if (codSet && codSet.value === 'false') {
-            setIsCodGloballyEnabled(false);
+        if (policiesRes.status === 'fulfilled' && policiesRes.value?.success) {
+          const val = policiesRes.value;
+          if (val.isCodGloballyEnabled !== undefined) {
+            setIsCodGloballyEnabled(val.isCodGloballyEnabled);
           }
-          const advSet = settingsRes.value.settings.find((s: any) => s.key === 'COD_MIN_ADVANCE_AMOUNT');
-          if (advSet) {
-            setCodAdvanceAmount(Number(advSet.value) || 0);
+          if (typeof val.codMinAdvanceAmount === 'number') {
+            setCodAdvanceAmount(val.codMinAdvanceAmount);
           }
-          const prodPolSet = settingsRes.value.settings.find((s: any) => s.key === 'PRODUCT_ORDER_POLICIES');
-          if (prodPolSet && prodPolSet.value) {
-            try { setProductPolicies(JSON.parse(prodPolSet.value)); } catch {}
+          if (val.productPolicies) {
+            setProductPolicies(val.productPolicies);
           }
-          const provPolSet = settingsRes.value.settings.find((s: any) => s.key === 'PROVIDER_ORDER_POLICIES');
-          if (provPolSet && provPolSet.value) {
-            try { setProviderPolicies(JSON.parse(provPolSet.value)); } catch {}
+          if (val.providerPolicies) {
+            setProviderPolicies(val.providerPolicies);
           }
+        } else {
+          // Secondary fallback to /api/orders/policies
+          try {
+            const fallbackRes = await apiRequest('/api/orders/policies');
+            if (fallbackRes?.success) {
+              if (fallbackRes.isCodGloballyEnabled !== undefined) setIsCodGloballyEnabled(fallbackRes.isCodGloballyEnabled);
+              if (typeof fallbackRes.codMinAdvanceAmount === 'number') setCodAdvanceAmount(fallbackRes.codMinAdvanceAmount);
+              if (fallbackRes.productPolicies) setProductPolicies(fallbackRes.productPolicies);
+              if (fallbackRes.providerPolicies) setProviderPolicies(fallbackRes.providerPolicies);
+            }
+          } catch {}
         }
 
         if (productsRes.status === 'fulfilled' && productsRes.value?.success && Array.isArray(productsRes.value.products)) {
           const map: Record<string, string> = {};
+          const polFromCatalog: Record<string, any> = {};
           productsRes.value.products.forEach((p: any) => {
             if (p.id && p.providerId) map[p.id] = p.providerId;
+            if (p.name && p.providerId) map[p.name.toLowerCase().trim()] = p.providerId;
+            if (p.id && p.allowCod !== undefined) {
+              polFromCatalog[p.id] = { allowCod: p.allowCod, allowReturn: p.allowReturn, name: p.name };
+              if (p.name) polFromCatalog[p.name.toLowerCase().trim()] = { allowCod: p.allowCod, allowReturn: p.allowReturn, name: p.name };
+            }
           });
           setProductProviderMap(map);
+          setProductPolicies((prev) => ({ ...polFromCatalog, ...prev }));
         }
-      } catch {
-        // Fallback default ₹10 advance
+      } catch (err) {
+        console.warn('Could not fetch checkout policies', err);
       }
     }
     fetchPlatformSettings();
@@ -143,11 +158,27 @@ export default function CheckoutPage() {
     let customAdv: number | null = null;
 
     for (const item of items) {
-      const prodPol = productPolicies[item.productId];
-      const provId = (item as any).providerId || productProviderMap[item.productId];
-      const provPol = provId ? providerPolicies[provId] : null;
+      // 0. Direct cart item flag
+      if ((item as any).allowCod === false) {
+        blocked = `Cash on Delivery is disabled for "${item.name}". Please pay online.`;
+        break;
+      }
 
-      // 1. PRODUCT OVERRIDE (Highest Priority)
+      // 1. PRODUCT OVERRIDE (Highest Priority: match by ID, normalized name, slug, or search)
+      const normName = item.name ? item.name.toLowerCase().trim() : '';
+      const prodPol =
+        productPolicies[item.productId] ||
+        (normName ? productPolicies[normName] : null) ||
+        (item.slug ? productPolicies[item.slug] : null) ||
+        Object.entries(productPolicies).find(([k, v]: any) => {
+          return (
+            k === item.productId ||
+            v.id === item.productId ||
+            (v.name && v.name.toLowerCase().trim() === normName) ||
+            (normName && normName.includes('burger special') && (k.toLowerCase().includes('burger special') || v.name?.toLowerCase().includes('burger special')))
+          );
+        })?.[1];
+
       if (prodPol && prodPol.allowCod === false) {
         blocked = `Cash on Delivery is disabled for "${item.name}". Please pay online.`;
         break;
@@ -162,6 +193,9 @@ export default function CheckoutPage() {
       }
 
       // 2. PROVIDER OVERRIDE (Secondary Priority)
+      const provId = (item as any).providerId || productProviderMap[item.productId] || (normName ? productProviderMap[normName] : null);
+      const provPol = provId ? providerPolicies[provId] : null;
+
       if (provPol && provPol.allowCod === false) {
         blocked = `Merchant does not accept Cash on Delivery for "${item.name}". Please pay online.`;
         break;

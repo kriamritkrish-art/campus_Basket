@@ -111,6 +111,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         unit: product.unit,
         image: product.primaryImage || null,
         providerId: product.providerId || undefined,
+        allowCod: product.allowCod !== undefined ? product.allowCod : undefined,
+        allowReturn: product.allowReturn !== undefined ? product.allowReturn : undefined,
       };
 
       return [...prev, newItem];

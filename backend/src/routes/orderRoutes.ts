@@ -6,6 +6,9 @@ import { geofenceGuard } from '../middleware/geofenceGuard';
 
 const router = Router();
 
+// Public platform order policies (Accessible by students, guests, and checkout)
+router.get('/policies', OrderController.getOrderPolicies);
+
 router.use(authGuard);
 
 // Placing an order requires geofence verification within campus
