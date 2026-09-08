@@ -422,4 +422,61 @@ describe('Order Governance, Immutability, COD Advance & Return Policy Engine', (
     };
     expect(isItemCodAllowed(regularItem)).toBe(true);
   });
+
+  // -------------------------------------------------------------
+  // 7. CRITICAL CANCELLATION TIMING RULE DEPENDING ON PROVIDER ACCEPTANCE
+  // -------------------------------------------------------------
+  it('SCENARIO 12: Evaluates provider acceptance status and applies strict Case A, B, C cancellation refund rules', async () => {
+    // Check eligibility logic directly
+    const unacceptedOrder = {
+      id: 'ord_timing_1',
+      serviceType: 'FOOD',
+      status: 'CONFIRMED',
+      providerAccepted: false
+    };
+    const acceptedOrder = {
+      id: 'ord_timing_2',
+      serviceType: 'FOOD',
+      status: 'ACCEPTED',
+      providerAccepted: true
+    };
+
+    const unacceptedCheck = RefundService.evaluateCancellationEligibility(unacceptedOrder);
+    expect(unacceptedCheck.eligible).toBe(true);
+    expect(unacceptedCheck.isProviderAccepted).toBe(false);
+
+    const acceptedCheck = RefundService.evaluateCancellationEligibility(acceptedOrder);
+    expect(acceptedCheck.eligible).toBe(false);
+    expect(acceptedCheck.isProviderAccepted).toBe(true);
+    expect(acceptedCheck.reason).toContain('accepted by the kitchen/provider');
+
+    // CASE A — ONLINE / PREPAID (Pre-acceptance)
+    // Order value: ₹180, Amount paid: ₹180, providerAccepted: false
+    const cancelCaseA = await RefundService.cancelOrder('mock_ord_prepaid_180', 'student_123', 'STUDENT', 'Changed mind');
+    expect(cancelCaseA.cancellationType).toBe('FULL_REFUND');
+    expect(cancelCaseA.refundableAmount).toBe(180);
+    expect(cancelCaseA.isPreAcceptance).toBe(true);
+    expect(cancelCaseA.explanation).toContain('Your order was cancelled before the provider accepted it. Your full payment of ₹180 has been added to the refund process.');
+
+    // CASE B — NORMAL COD (Pre-acceptance)
+    // Order value: ₹180, Amount paid online: ₹0, providerAccepted: false
+    const cancelCaseB = await RefundService.cancelOrder('mock_ord_cod_zero_advance_180', 'student_123', 'STUDENT', 'Mistake');
+    expect(cancelCaseB.cancellationType).toBe('NO_REFUND');
+    expect(cancelCaseB.refundableAmount).toBe(0);
+    expect(cancelCaseB.isPreAcceptance).toBe(true);
+    expect(cancelCaseB.explanation).toContain('Since this was a Cash on Delivery order and no payment was collected in advance, there is no refund due.');
+
+    // CASE C — COD + PARTIAL ADVANCE (Pre-acceptance)
+    // Product value: ₹180, COD amount: ₹180, Advance paid online: ₹20, providerAccepted: false
+    const cancelCaseC = await RefundService.cancelOrder('mock_ord_cod_partial_20', 'student_123', 'STUDENT', 'Change address');
+    expect(cancelCaseC.cancellationType).toBe('ADVANCE_REFUND');
+    expect(cancelCaseC.refundableAmount).toBe(20); // Only ₹20 advance, NOT ₹180!
+    expect(cancelCaseC.isPreAcceptance).toBe(true);
+    expect(cancelCaseC.explanation).toContain('You paid ₹20 as an advance for this COD order. The order was cancelled before the provider accepted it, so your ₹20 advance payment has been added to the refund process.');
+
+    // POST-ACCEPTANCE RULE: Student cancellation must be rejected once provider accepted
+    await expect(
+      RefundService.cancelOrder('mock_ord_accepted_food', 'student_123', 'STUDENT', 'Too late')
+    ).rejects.toThrow('accepted by the provider');
+  });
 });

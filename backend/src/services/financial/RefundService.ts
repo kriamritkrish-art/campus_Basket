@@ -5,35 +5,43 @@ export class RefundService {
   /**
    * Evaluates whether an order is eligible for cancellation based on service-specific rules.
    */
+  /**
+   * Evaluates whether an order is eligible for cancellation based on service-specific rules and provider acceptance.
+   */
   public static evaluateCancellationEligibility(order: {
     id?: string;
     serviceType?: string;
     status: string;
+    providerAccepted?: boolean;
     createdAt?: Date | string;
     laundryDetails?: { washCycleStage?: string };
-  }): { isEligible: boolean; eligible: boolean; reason?: string } {
+  }): { isEligible: boolean; eligible: boolean; reason?: string; isProviderAccepted: boolean } {
     const service = (order.serviceType || 'FOOD').toUpperCase();
     const status = order.status.toUpperCase();
+    const isAccepted = Boolean(
+      order.providerAccepted ||
+      ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP', 'DELIVERY_ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED', 'DISPATCHED'].includes(status)
+    );
 
     if (['DELIVERED', 'COMPLETED', 'CANCELLED'].includes(status)) {
       return {
         isEligible: false,
         eligible: false,
+        isProviderAccepted: isAccepted,
         reason: `Order is already ${status.toLowerCase()} and cannot be cancelled.`
       };
     }
 
     if (service === 'FOOD') {
-      // Allowed before kitchen begins cooking
-      const nonCancellableFoodStatuses = ['PREPARING', 'READY_FOR_PICKUP', 'OUT_FOR_DELIVERY'];
-      if (nonCancellableFoodStatuses.includes(status)) {
+      if (order.providerAccepted || ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP', 'OUT_FOR_DELIVERY'].includes(status)) {
         return {
           isEligible: false,
           eligible: false,
-          reason: 'Food preparation has already commenced in the kitchen. Cancellation is no longer permitted.'
+          isProviderAccepted: true,
+          reason: 'Food order has already been accepted by the kitchen/provider. Fulfillment has commenced and order cannot be changed or cancelled.'
         };
       }
-      return { isEligible: true, eligible: true };
+      return { isEligible: true, eligible: true, isProviderAccepted: false };
     }
 
     if (service === 'LAUNDRY') {
@@ -43,6 +51,7 @@ export class RefundService {
         return {
           isEligible: false,
           eligible: false,
+          isProviderAccepted: isAccepted,
           reason: 'Laundry items have already been collected from hostel or are in wash cycle. Cancellation is no longer permitted.'
         };
       }
@@ -52,10 +61,11 @@ export class RefundService {
         return {
           isEligible: false,
           eligible: false,
+          isProviderAccepted: isAccepted,
           reason: 'Laundry items have already been collected or are in wash cycle. Cancellation is no longer permitted.'
         };
       }
-      return { isEligible: true, eligible: true };
+      return { isEligible: true, eligible: true, isProviderAccepted: isAccepted };
     }
 
     // Produce / Stationery / Essentials: cancellable prior to dispatch
@@ -63,11 +73,19 @@ export class RefundService {
       return {
         isEligible: false,
         eligible: false,
+        isProviderAccepted: isAccepted,
         reason: 'Items have already been packed and dispatched for hostel delivery.'
       };
     }
 
-    return { isEligible: true, eligible: true };
+    return { isEligible: true, eligible: true, isProviderAccepted: isAccepted };
+  }
+
+  /**
+   * Alias for evaluateCancellationEligibility
+   */
+  public static checkCancellationEligibility(order: any): { isEligible: boolean; eligible: boolean; reason?: string; isProviderAccepted: boolean } {
+    return this.evaluateCancellationEligibility(order);
   }
 
   /**
@@ -103,7 +121,6 @@ export class RefundService {
     const elapsedMinutes = (Date.now() - deliveredTime) / (1000 * 60);
 
     if (service === 'FOOD') {
-      // Cooked food is restricted to immediate hygiene/freshness inspection window (30 mins)
       if (elapsedMinutes > 30) {
         return {
           isEligible: false,
@@ -115,7 +132,6 @@ export class RefundService {
     }
 
     if (service === 'FRESH_PRODUCE') {
-      // Fruits & produce returnable within 2 hours
       if (elapsedMinutes > 120) {
         return {
           isEligible: false,
@@ -127,7 +143,6 @@ export class RefundService {
     }
 
     if (service === 'STATIONERY') {
-      // Stationery & academic essentials returnable within 24 hours
       if (elapsedMinutes > 1440) {
         return {
           isEligible: false,
@@ -139,13 +154,6 @@ export class RefundService {
     }
 
     return { isEligible: true, eligible: true };
-  }
-
-  /**
-   * Alias for evaluateCancellationEligibility
-   */
-  public static checkCancellationEligibility(order: any): { isEligible: boolean; eligible: boolean; reason?: string } {
-    return this.evaluateCancellationEligibility(order);
   }
 
   /**
@@ -205,7 +213,16 @@ export class RefundService {
   }
 
   /**
-   * Cancels an eligible order and triggers refund sequence.
+   * Cancels an eligible order and triggers provider-acceptance-dependent refund sequence.
+   *
+   * BEFORE PROVIDER ACCEPTS:
+   *  Case A - ONLINE/PREPAID: Refund full actual paid amount (e.g. ₹180)
+   *  Case B - NORMAL COD: Refund ₹0. Do NOT create refund record.
+   *  Case C - COD + PARTIAL ADVANCE: Refund ONLY actual advance paid (e.g. ₹20). Exclude ₹180 COD due.
+   *
+   * AFTER PROVIDER ACCEPTS:
+   *  provider_accepted = true. Automatic pre-acceptance rules MUST NOT be applied.
+   *  Apply separate post-acceptance policy or Admin review.
    */
   public static async cancelOrder(
     orderId: string,
@@ -214,25 +231,96 @@ export class RefundService {
     reason: string
   ): Promise<any> {
     const order = await (prisma as any).order.findUnique({
-      where: { id: orderId }
+      where: { id: orderId },
+      include: {
+        payment: true,
+        refunds: true,
+        statusHistory: true
+      }
     });
 
     if (!order) {
       throw new Error(`Order ${orderId} not found`);
     }
 
-    if (role === 'STUDENT') {
-      const check = this.checkCancellationEligibility(order);
-      if (!check.eligible) {
-        throw new Error(check.reason || 'This order cannot be cancelled at its current stage.');
+    const status = order.status.toUpperCase();
+    if (['DELIVERED', 'COMPLETED', 'CANCELLED'].includes(status)) {
+      throw new Error(`Order is already ${status.toLowerCase()} and cannot be cancelled.`);
+    }
+
+    // Source of truth: Provider acceptance status
+    const providerAccepted = Boolean(
+      order.providerAccepted ||
+      ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP', 'DELIVERY_ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED', 'DISPATCHED'].includes(status)
+    );
+
+    if (role === 'STUDENT' && providerAccepted) {
+      throw new Error('Order has already been accepted by the provider and fulfillment has commenced. Order cannot be cancelled.');
+    }
+
+    let refundableAmount = 0;
+    let cancellationType: 'FULL_REFUND' | 'NO_REFUND' | 'ADVANCE_REFUND' = 'NO_REFUND';
+    let explanation = '';
+    const isPreAcceptance = !providerAccepted;
+
+    if (isPreAcceptance) {
+      if (order.paymentMethod !== 'CASH_ON_DELIVERY') {
+        // CASE A — ONLINE / PREPAID
+        refundableAmount = Number(order.totalAmount);
+        cancellationType = 'FULL_REFUND';
+        explanation = `Your order was cancelled before the provider accepted it. Your full payment of ₹${refundableAmount} has been added to the refund process.`;
+      } else {
+        // Payment method is COD. Calculate actual advance paid online.
+        let advancePaid = Number(order.advancePaidAmount || 0);
+
+        if (advancePaid <= 0 && order.payment) {
+          const pStatus = order.payment.status;
+          const pAmount = Number(order.payment.amount);
+          const tAmount = Number(order.totalAmount);
+          if (['SUCCESS', 'PAID', 'COD_PENDING'].includes(pStatus) && pAmount < tAmount && pAmount > 0) {
+            advancePaid = pAmount;
+          }
+        }
+
+        // Also check status history if COD partial advance note exists
+        if (advancePaid <= 0 && Array.isArray(order.statusHistory)) {
+          for (const h of order.statusHistory) {
+            const m = (h.notes || '').match(/COD (?:Partial )?Advance of ₹(\d+(?:\.\d+)?)/i);
+            if (m && m[1]) {
+              advancePaid = parseFloat(m[1]);
+              break;
+            }
+          }
+        }
+
+        if (advancePaid > 0) {
+          // CASE C — COD + PARTIAL ADVANCE
+          // The COD amount must NOT be included in the refund because the student never paid that amount.
+          refundableAmount = advancePaid;
+          cancellationType = 'ADVANCE_REFUND';
+          explanation = `You paid ₹${advancePaid} as an advance for this COD order. The order was cancelled before the provider accepted it, so your ₹${advancePaid} advance payment has been added to the refund process.`;
+        } else {
+          // CASE B — NORMAL COD
+          refundableAmount = 0;
+          cancellationType = 'NO_REFUND';
+          explanation = 'Since this was a Cash on Delivery order and no payment was collected in advance, there is no refund due.';
+        }
+      }
+    } else {
+      // AFTER PROVIDER ACCEPTS: Post-acceptance policy
+      if (role === 'ADMIN') {
+        refundableAmount = Number(order.totalAmount);
+        cancellationType = 'FULL_REFUND';
+        explanation = 'Admin approved full refund post provider acceptance.';
+      } else {
+        refundableAmount = 0;
+        cancellationType = 'NO_REFUND';
+        explanation = 'Cancelled post provider acceptance under campus cancellation policy.';
       }
     }
 
-    const wasPaidOnline =
-      (order.paymentMethod !== 'CASH_ON_DELIVERY' && ['PAID', 'SUCCESS'].includes(order.paymentStatus)) ||
-      (order.paymentMethod === 'CASH_ON_DELIVERY' && ['COD_PENDING', 'SUCCESS', 'PAID'].includes(order.paymentStatus));
-    const newPaymentStatus = wasPaidOnline ? 'REFUND_PENDING' : 'PAYMENT_FAILED';
-    const newRefundStatus = wasPaidOnline ? 'REQUESTED' : 'NOT_APPLICABLE';
+    const newPaymentStatus = refundableAmount > 0 ? 'REFUND_PENDING' : (order.paymentMethod === 'CASH_ON_DELIVERY' ? 'FAILED' : 'PAYMENT_FAILED');
+    const newRefundStatus = refundableAmount > 0 ? 'REQUESTED' : 'NOT_APPLICABLE';
 
     const updated = await (prisma as any).order.update({
       where: { id: orderId },
@@ -241,25 +329,78 @@ export class RefundService {
         paymentStatus: newPaymentStatus,
         refundStatus: newRefundStatus,
         settlementStatus: 'ADJUSTED',
-        cancellationReason: reason,
+        cancellationReason: reason || (isPreAcceptance ? 'Cancelled before provider acceptance' : 'Order cancelled'),
         cancelledBy: role,
-        cancelledAt: new Date()
+        cancelledAt: new Date(),
+        refundAmount: refundableAmount,
+        statusHistory: {
+          create: {
+            previousStatus: order.status,
+            newStatus: 'CANCELLED',
+            changedBy: role,
+            notes: `${isPreAcceptance ? 'Cancelled before provider acceptance' : 'Cancelled after provider acceptance'}. ${explanation}`
+          }
+        }
       }
     });
+
+    // REFUND RECORD SAFETY: Only create a refund record when refundable_amount > 0
+    // Never create duplicate refund records for the same cancellation.
+    if (refundableAmount > 0) {
+      const existingRefund = await (prisma as any).refund.findFirst({
+        where: { orderId }
+      });
+
+      if (!existingRefund) {
+        let paymentId = order.payment?.id;
+        if (!paymentId) {
+          const p = await (prisma as any).payment.findFirst({ where: { orderId } });
+          paymentId = p?.id;
+        }
+
+        if (paymentId) {
+          const refundSeq = Math.floor(100000 + Math.random() * 900000);
+          await (prisma as any).refund.create({
+            data: {
+              refundNumber: `CB-REF-${refundSeq}`,
+              paymentId,
+              orderId,
+              amount: refundableAmount,
+              reason: isPreAcceptance ? 'Cancelled before provider acceptance' : (reason || 'Order cancellation refund'),
+              status: 'REQUESTED'
+            }
+          });
+        }
+      }
+    }
 
     // Record cancellation request for audit trail
-    await (prisma as any).cancellationRequest.create({
-      data: {
-        orderId,
-        requestedByUserId,
-        role,
-        reason,
+    await (prisma as any).cancellationRequest.upsert({
+      where: { orderId },
+      update: {
         status: 'APPROVED',
-        adminNotes: `Order cancelled by ${role}`
+        reason: reason || (isPreAcceptance ? 'Cancelled before provider acceptance' : 'Order cancelled'),
+        cancellationStage: isPreAcceptance ? 'PRE_ACCEPTANCE' : 'POST_ACCEPTANCE',
+        adminNotes: `${role} cancelled. ${explanation}`
+      },
+      create: {
+        orderId,
+        requestedBy: role,
+        userId: requestedByUserId,
+        reason: reason || (isPreAcceptance ? 'Cancelled before provider acceptance' : 'Order cancelled'),
+        cancellationStage: isPreAcceptance ? 'PRE_ACCEPTANCE' : 'POST_ACCEPTANCE',
+        status: 'APPROVED',
+        adminNotes: `${role} cancelled. ${explanation}`
       }
     });
 
-    return updated;
+    return {
+      ...updated,
+      cancellationType,
+      refundableAmount,
+      explanation,
+      isPreAcceptance
+    };
   }
 
   /**
@@ -279,7 +420,9 @@ export class RefundService {
       throw new Error(`Order ${orderId} not found`);
     }
 
-    const refundAmount = amount ? Number(amount) : Number(order.totalAmount);
+    const refundAmount = amount
+      ? Number(amount)
+      : (Number(order.refundAmount) > 0 ? Number(order.refundAmount) : Number(order.totalAmount));
 
     const updated = await (prisma as any).order.update({
       where: { id: orderId },
@@ -287,7 +430,18 @@ export class RefundService {
         status: 'CANCELLED',
         paymentStatus: 'REFUNDED',
         refundStatus: 'COMPLETED',
-        settlementStatus: 'ADJUSTED'
+        settlementStatus: 'ADJUSTED',
+        refundAmount
+      }
+    });
+
+    // Mark Refund record as COMPLETED
+    await (prisma as any).refund.updateMany({
+      where: { orderId, status: { not: 'COMPLETED' } },
+      data: {
+        status: 'COMPLETED',
+        processedAt: new Date(),
+        processedBy: adminUserId
       }
     });
 

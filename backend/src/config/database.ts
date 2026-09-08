@@ -818,7 +818,8 @@ const fallbackHandlers: Record<string, any> = {
           stationeryOrderDetails: fallbackStationeryOrderDetails.find(s => s.orderId === o.id) || null,
           codCollection: fallbackCodCollections.find(c => c.orderId === o.id) || null,
           cancellationRequests: fallbackCancellationRequests.filter(c => c.orderId === o.id) || [],
-          adminStatusOverrides: fallbackAdminStatusOverrides.filter(a => a.orderId === o.id) || []
+          adminStatusOverrides: fallbackAdminStatusOverrides.filter(a => a.orderId === o.id) || [],
+          refunds: (global as any).__mockRefunds?.filter((r: any) => r.orderId === o.id) || (o.refunds || [])
         };
       });
       return JSON.parse(JSON.stringify(mapped));
@@ -854,7 +855,8 @@ const fallbackHandlers: Record<string, any> = {
         stationeryOrderDetails: fallbackStationeryOrderDetails.find(s => s.orderId === o.id) || null,
         codCollection: fallbackCodCollections.find(c => c.orderId === o.id) || null,
         cancellationRequests: fallbackCancellationRequests.filter(c => c.orderId === o.id) || [],
-        adminStatusOverrides: fallbackAdminStatusOverrides.filter(a => a.orderId === o.id) || []
+        adminStatusOverrides: fallbackAdminStatusOverrides.filter(a => a.orderId === o.id) || [],
+        refunds: (global as any).__mockRefunds?.filter((r: any) => r.orderId === o.id) || (o.refunds || [])
       }));
     },
     create: async (args: any) => {
@@ -1370,11 +1372,68 @@ const fallbackHandlers: Record<string, any> = {
     }
   },
   refund: {
-    count: async () => 1,
-    findMany: async () => [
-      { id: 'ref_1', paymentId: 'pay_1', amount: 75, reason: 'Out of stock cancellation', status: 'REFUNDED', processedAt: new Date() }
-    ],
-    create: async (args: any) => ({ id: `ref_${Date.now()}`, ...args.data })
+    count: async () => ((global as any).__mockRefunds?.length || 1),
+    findMany: async (args?: any) => {
+      if (!(global as any).__mockRefunds) (global as any).__mockRefunds = [];
+      let list = [...(global as any).__mockRefunds];
+      if (args?.where?.orderId) list = list.filter((r: any) => r.orderId === args.where.orderId);
+      if (args?.where?.status) list = list.filter((r: any) => r.status === args.where.status);
+      return JSON.parse(JSON.stringify(list));
+    },
+    findFirst: async (args?: any) => {
+      if (!(global as any).__mockRefunds) (global as any).__mockRefunds = [];
+      const found = (global as any).__mockRefunds.find((r: any) =>
+        (args?.where?.orderId && r.orderId === args.where.orderId) ||
+        (args?.where?.id && r.id === args.where.id)
+      );
+      return found ? JSON.parse(JSON.stringify(found)) : null;
+    },
+    findUnique: async (args?: any) => {
+      if (!(global as any).__mockRefunds) (global as any).__mockRefunds = [];
+      const found = (global as any).__mockRefunds.find((r: any) => r.id === args?.where?.id);
+      return found ? JSON.parse(JSON.stringify(found)) : null;
+    },
+    create: async (args: any) => {
+      if (!(global as any).__mockRefunds) (global as any).__mockRefunds = [];
+      const newRefund = {
+        id: `ref_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        refundNumber: args.data.refundNumber || `CB-REF-${Math.floor(100000 + Math.random() * 900000)}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        status: args.data.status || 'REQUESTED',
+        ...args.data
+      };
+      (global as any).__mockRefunds.push(newRefund);
+
+      const ord = fallbackOrders.find((o: any) => o.id === newRefund.orderId);
+      if (ord) {
+        if (!Array.isArray((ord as any).refunds)) (ord as any).refunds = [];
+        (ord as any).refunds.push(newRefund);
+        (ord as any).refundAmount = Number(newRefund.amount);
+      }
+
+      return JSON.parse(JSON.stringify(newRefund));
+    },
+    update: async (args: any) => {
+      if (!(global as any).__mockRefunds) (global as any).__mockRefunds = [];
+      const r = (global as any).__mockRefunds.find((item: any) => item.id === args.where.id);
+      if (r) {
+        Object.assign(r, args.data, { updatedAt: new Date() });
+        return JSON.parse(JSON.stringify(r));
+      }
+      return args.data;
+    },
+    updateMany: async (args: any) => {
+      if (!(global as any).__mockRefunds) (global as any).__mockRefunds = [];
+      let count = 0;
+      for (const r of (global as any).__mockRefunds) {
+        if (args.where?.orderId && r.orderId === args.where.orderId) {
+          Object.assign(r, args.data, { updatedAt: new Date() });
+          count++;
+        }
+      }
+      return { count };
+    }
   },
   financialLedger: {
     findMany: async (args?: any) => {
@@ -1517,19 +1576,33 @@ const fallbackHandlers: Record<string, any> = {
       if (args?.where?.orderId) list = list.filter(l => l.orderId === args.where.orderId);
       return JSON.parse(JSON.stringify(list));
     },
-    findUnique: async (args: any) => fallbackCancellationRequests.find(c => c.id === args.where.id) || null,
+    findFirst: async (args?: any) => {
+      const c = fallbackCancellationRequests.find(item => (args?.where?.orderId && item.orderId === args.where.orderId) || (args?.where?.id && item.id === args.where.id));
+      return c ? JSON.parse(JSON.stringify(c)) : null;
+    },
+    findUnique: async (args: any) => fallbackCancellationRequests.find(c => c.id === args.where.id || c.orderId === args.where.orderId) || null,
     create: async (args: any) => {
       const cr = { id: `cnl_${Date.now()}`, createdAt: new Date(), ...args.data };
       fallbackCancellationRequests.unshift(cr);
       return JSON.parse(JSON.stringify(cr));
     },
     update: async (args: any) => {
-      const c = fallbackCancellationRequests.find(item => item.id === args.where.id);
+      const c = fallbackCancellationRequests.find(item => item.id === args.where.id || item.orderId === args.where.orderId);
       if (c) {
         Object.assign(c, args.data);
         return JSON.parse(JSON.stringify(c));
       }
       return args.data;
+    },
+    upsert: async (args: any) => {
+      const existing = fallbackCancellationRequests.find(item => item.orderId === args.where.orderId || item.id === args.where.id);
+      if (existing) {
+        Object.assign(existing, args.update);
+        return JSON.parse(JSON.stringify(existing));
+      }
+      const cr = { id: `cnl_${Date.now()}`, createdAt: new Date(), ...args.create };
+      fallbackCancellationRequests.unshift(cr);
+      return JSON.parse(JSON.stringify(cr));
     }
   },
   refundAccount: {

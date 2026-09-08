@@ -471,6 +471,8 @@ export class ProviderController {
         data: {
           status: newStatus,
           providerId: order.providerId || providerId,
+          providerAccepted: true,
+          providerAcceptedAt: order.providerAcceptedAt || new Date(),
           ...(assignedRunnerId ? { deliveryBoyId: assignedRunnerId } : {}),
           statusHistory: {
             create: {

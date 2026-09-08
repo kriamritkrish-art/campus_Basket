@@ -892,8 +892,8 @@ export default function AdminPaymentsPage() {
                         <span className="text-amber-600 font-semibold text-[11px]">Awaiting Student Account</span>
                       )}
                     </td>
-                    <td className="py-3 px-3 font-bold text-red-600">₹{Number(r.totalAmount).toFixed(2)}</td>
-                    <td className="py-3 px-3 text-gray-600 max-w-xs truncate">{r.cancellationReason || 'Student cancellation request'}</td>
+                    <td className="py-3 px-3 font-bold text-red-600">₹{Number(r.refundAmount ?? (r.refunds?.[0]?.amount || r.totalAmount)).toFixed(2)}</td>
+                    <td className="py-3 px-3 text-gray-600 max-w-xs truncate">{r.refunds?.[0]?.reason || r.cancellationReason || 'Cancelled before provider acceptance'}</td>
                     <td className="py-3 px-3">
                       <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
                         r.refundStatus === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
@@ -1429,7 +1429,7 @@ export default function AdminPaymentsPage() {
               </div>
               <div>
                 <span className="text-gray-500">Refund Amount:</span>{' '}
-                <strong className="text-red-600 font-bold text-sm">₹{Number(selectedRefundOrder.totalAmount).toFixed(2)}</strong>
+                <strong className="text-red-600 font-bold text-sm">₹{Number(selectedRefundOrder.refundAmount ?? (selectedRefundOrder.refunds?.[0]?.amount || selectedRefundOrder.totalAmount)).toFixed(2)}</strong>
               </div>
 
               {selectedRefundOrder.refundAccount && (

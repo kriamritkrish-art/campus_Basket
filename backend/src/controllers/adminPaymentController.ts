@@ -152,10 +152,11 @@ export class AdminPaymentController {
       const { status } = req.query;
       let orders = await (prisma as any).order.findMany({
         where: {
-          OR: [
-            { refundStatus: { in: ['REQUESTED', 'PENDING_ADMIN_REVIEW', 'APPROVED', 'PROCESSING', 'COMPLETED', 'FAILED', 'REJECTED'] } },
-            { paymentStatus: { in: ['REFUND_PENDING', 'REFUNDED', 'PARTIALLY_REFUNDED'] } }
-          ]
+          refundStatus: { in: ['REQUESTED', 'PENDING_ADMIN_REVIEW', 'APPROVED', 'PROCESSING', 'COMPLETED', 'FAILED', 'REJECTED'] }
+        },
+        include: {
+          refunds: true,
+          student: true
         },
         orderBy: { updatedAt: 'desc' }
       });
@@ -173,8 +174,15 @@ export class AdminPaymentController {
               where: { studentId: o.studentId }
             });
           }
+
+          const primaryRefund = o.refunds && o.refunds.length > 0 ? o.refunds[0] : null;
+          const calculatedRefundAmount = Number(o.refundAmount || primaryRefund?.amount || o.totalAmount);
+          const refundReasonDisplay = primaryRefund?.reason || o.cancellationReason || 'Cancelled before provider acceptance';
+
           return {
             ...o,
+            refundAmount: calculatedRefundAmount,
+            cancellationReason: refundReasonDisplay,
             refundAccount: refundAccount ? {
               accountType: refundAccount.accountType,
               accountHolderName: refundAccount.accountHolderName,

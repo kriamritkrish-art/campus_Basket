@@ -64,6 +64,11 @@ interface OrderData {
   discountAmount: number;
   paymentMethod: string;
   paymentStatus: string;
+  providerAccepted?: boolean;
+  providerAcceptedAt?: string;
+  advancePaidAmount?: number;
+  cancellationType?: string;
+  cancellationReason?: string;
   refundStatus?: string;
   settlementStatus?: string;
   refundAmount?: number;
@@ -1463,7 +1468,167 @@ export default function OrderTrackClient() {
           {/* =======================================================
               4. TRANSPARENT REFUND STATUS TRACKER (IF REFUND ACTIVE)
              ======================================================= */}
-          {showRefundSection && (
+          {/* =======================================================
+              4. CRITICAL CANCELLATION & REFUND TIMING RULE DISPLAY
+             ======================================================= */}
+          {order.status === 'CANCELLED' && (
+            <div className="bg-rose-50/80 border-2 border-rose-300 rounded-3xl p-6 sm:p-7 space-y-6 shadow-xs">
+              
+              {/* Top Banner */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-rose-200 pb-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                    <XCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-black tracking-widest text-rose-600 uppercase">
+                        ORDER CANCELLED
+                      </span>
+                      {/* Case Pill */}
+                      <span className={`text-[11px] font-extrabold px-3 py-1 rounded-full border ${
+                        order.paymentMethod !== 'CASH_ON_DELIVERY'
+                          ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                          : Number(order.advancePaidAmount || order.refundAmount || 0) > 0
+                          ? 'bg-amber-100 text-amber-900 border-amber-300'
+                          : 'bg-slate-100 text-slate-800 border-slate-300'
+                      }`}>
+                        {order.paymentMethod !== 'CASH_ON_DELIVERY'
+                          ? 'Full Refund'
+                          : Number(order.advancePaidAmount || order.refundAmount || 0) > 0
+                          ? 'Advance Payment Refund'
+                          : 'No Refund Applicable'}
+                      </span>
+                    </div>
+
+                    <h3 className="text-xl font-black text-rose-950 mt-1">
+                      {order.paymentMethod !== 'CASH_ON_DELIVERY' ? (
+                        <span>₹{Number(order.refundAmount || order.totalAmount).toLocaleString('en-IN')} Refund Pending</span>
+                      ) : Number(order.advancePaidAmount || order.refundAmount || 0) > 0 ? (
+                        <span>₹{Number(order.advancePaidAmount || order.refundAmount).toLocaleString('en-IN')} Refund Pending</span>
+                      ) : (
+                        <span>No Refund Applicable</span>
+                      )}
+                    </h3>
+                  </div>
+                </div>
+
+                {/* Right Badge */}
+                <div className="sm:text-right">
+                  <span className="text-xs font-semibold text-rose-700 block">Cancellation Timing</span>
+                  <span className="text-xs font-black text-rose-950 bg-white px-3 py-1 rounded-lg border border-rose-200 inline-block mt-0.5">
+                    {order.providerAccepted ? 'Post-Provider Acceptance' : 'Before Provider Acceptance'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Exact Policy Message */}
+              <div className="bg-white p-4 sm:p-5 rounded-2xl border border-rose-200 text-xs leading-relaxed text-gray-800 shadow-2xs">
+                {order.paymentMethod !== 'CASH_ON_DELIVERY' ? (
+                  <p className="font-semibold text-gray-900">
+                    "Your order was cancelled before the provider accepted it. Your full payment of <strong className="text-emerald-700 font-bold">₹{Number(order.refundAmount || order.totalAmount).toLocaleString('en-IN')}</strong> has been added to the refund process."
+                  </p>
+                ) : Number(order.advancePaidAmount || order.refundAmount || 0) > 0 ? (
+                  <p className="font-semibold text-gray-900">
+                    "You paid <strong className="text-emerald-700 font-bold">₹{Number(order.advancePaidAmount || order.refundAmount).toLocaleString('en-IN')}</strong> as an advance for this COD order. The order was cancelled before the provider accepted it, so your <strong className="text-emerald-700 font-bold">₹{Number(order.advancePaidAmount || order.refundAmount).toLocaleString('en-IN')}</strong> advance payment has been added to the refund process."
+                    <span className="block text-[11px] text-gray-500 font-normal mt-1">
+                      (The ₹{Number(order.totalAmount - (order.advancePaidAmount || order.refundAmount || 0)).toLocaleString('en-IN')} COD amount is not included in the refund because it was never collected.)
+                    </span>
+                  </p>
+                ) : (
+                  <p className="font-semibold text-gray-900">
+                    "Since this was a Cash on Delivery order and no payment was collected in advance, there is no refund due."
+                  </p>
+                )}
+              </div>
+
+              {/* Timeline Stepper for Cases with Refund (Case A & Case C) */}
+              {(order.paymentMethod !== 'CASH_ON_DELIVERY' || Number(order.advancePaidAmount || order.refundAmount || 0) > 0) && (
+                <div className="space-y-3">
+                  <div className="text-[11px] font-extrabold uppercase tracking-wider text-rose-900">
+                    Refund Lifecycle Timeline
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                    {/* Timeline Item 1 */}
+                    <div className="bg-white p-3.5 rounded-xl border border-rose-200 shadow-2xs space-y-1">
+                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>Order cancelled</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500">Order voided before provider accepted.</p>
+                    </div>
+
+                    {/* Timeline Item 2 */}
+                    <div className="bg-white p-3.5 rounded-xl border border-rose-200 shadow-2xs space-y-1">
+                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>{order.paymentMethod !== 'CASH_ON_DELIVERY' ? 'Full refund generated' : 'Refund generated'}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500">Refund claim logged in financial escrow.</p>
+                    </div>
+
+                    {/* Timeline Item 3 */}
+                    <div className={`p-3.5 rounded-xl border shadow-2xs space-y-1 ${
+                      order.refundStatus === 'COMPLETED' ? 'bg-white border-rose-200' : 'bg-amber-50 border-amber-300'
+                    }`}>
+                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                        {order.refundStatus === 'COMPLETED' ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        ) : (
+                          <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
+                        )}
+                        <span>Refund processing</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500">Central Finance Cell auditing disbursal.</p>
+                    </div>
+
+                    {/* Timeline Item 4 */}
+                    <div className={`p-3.5 rounded-xl border shadow-2xs space-y-1 ${
+                      order.refundStatus === 'COMPLETED' ? 'bg-emerald-50 border-emerald-300 text-emerald-950' : 'bg-slate-50 border-slate-200 text-slate-400'
+                    }`}>
+                      <div className="font-bold flex items-center gap-1.5">
+                        {order.refundStatus === 'COMPLETED' ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        ) : (
+                          <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />
+                        )}
+                        <span>Refund completed</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        {order.refundStatus === 'COMPLETED' ? 'Credited to student account.' : 'Awaiting gateway transfer.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Confidential Destination Account Details */}
+                  <div className="bg-white p-4 rounded-2xl border border-rose-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mt-2">
+                    <div className="flex items-center gap-2.5">
+                      <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0" />
+                      <div>
+                        <span className="text-xs font-bold text-slate-900 block">
+                          Refund Destination: {savedRefundAccount ? `${savedRefundAccount.accountType} (${savedRefundAccount.upiIdMasked || savedRefundAccount.accountNumberMasked})` : 'Default Payment Source (UPI/Card)'}
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Encrypted institutional record. Strictly protected from delivery runners and providers.
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setRefundAccountModalOpen(true)}
+                      className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>{savedRefundAccount ? 'Change Refund Account' : 'Set Refund Account'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Active Return / Post-Delivered Refund Tracker */}
+          {order.status !== 'CANCELLED' && showRefundSection && (
             <div className="bg-rose-50/70 border-2 border-rose-200 rounded-3xl p-5 sm:p-6 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-rose-200/80 pb-3">
                 <div className="flex items-center gap-2.5">
@@ -1472,7 +1637,7 @@ export default function OrderTrackClient() {
                   </div>
                   <div>
                     <h4 className="text-sm font-black text-rose-950 flex items-center gap-2">
-                      Refund Tracking & Financial Disbursal
+                      Return Refund Tracking & Financial Disbursal
                       <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-200 text-rose-800">
                         {order.refundStatus?.replace(/_/g, ' ')}
                       </span>
@@ -1489,98 +1654,6 @@ export default function OrderTrackClient() {
                     ₹{Number(order.refundAmount || order.totalAmount).toLocaleString('en-IN')}
                   </span>
                 </div>
-              </div>
-
-              {/* Refund Stepper */}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
-                {/* Stage 1: Requested */}
-                <div className="bg-white p-3.5 rounded-xl border border-rose-200 shadow-2xs space-y-1">
-                  <span className="text-[10px] font-bold uppercase text-slate-400">Step 1</span>
-                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    Refund Requested
-                  </div>
-                  <p className="text-[11px] text-slate-500">Order cancelled and refund ticket logged.</p>
-                </div>
-
-                {/* Stage 2: Central Review */}
-                <div className={`p-3.5 rounded-xl border shadow-2xs space-y-1 ${
-                  ['APPROVED', 'PROCESSING', 'COMPLETED'].includes(order.refundStatus || '')
-                    ? 'bg-white border-rose-200'
-                    : 'bg-rose-100/50 border-rose-300'
-                }`}>
-                  <span className="text-[10px] font-bold uppercase text-slate-400">Step 2</span>
-                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                    {['APPROVED', 'PROCESSING', 'COMPLETED'].includes(order.refundStatus || '') ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    ) : (
-                      <Clock className="w-3.5 h-3.5 text-amber-600" />
-                    )}
-                    Finance Approval
-                  </div>
-                  <p className="text-[11px] text-slate-500">Central Finance Cell audits transaction.</p>
-                </div>
-
-                {/* Stage 3: Payment Gateway Disbursal */}
-                <div className={`p-3.5 rounded-xl border shadow-2xs space-y-1 ${
-                  ['PROCESSING', 'COMPLETED'].includes(order.refundStatus || '')
-                    ? 'bg-white border-rose-200'
-                    : 'bg-slate-50 border-slate-200 text-slate-400'
-                }`}>
-                  <span className="text-[10px] font-bold uppercase text-slate-400">Step 3</span>
-                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                    {order.refundStatus === 'COMPLETED' ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    ) : order.refundStatus === 'PROCESSING' ? (
-                      <Clock className="w-3.5 h-3.5 text-amber-600" />
-                    ) : (
-                      <Lock className="w-3.5 h-3.5 text-slate-400" />
-                    )}
-                    Gateway Transfer
-                  </div>
-                  <p className="text-[11px] text-slate-500">Disbursed to destination UPI / Bank account.</p>
-                </div>
-
-                {/* Stage 4: Completed */}
-                <div className={`p-3.5 rounded-xl border shadow-2xs space-y-1 ${
-                  order.refundStatus === 'COMPLETED'
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                    : 'bg-slate-50 border-slate-200 text-slate-400'
-                }`}>
-                  <span className="text-[10px] font-bold uppercase text-slate-400">Step 4</span>
-                  <div className="font-bold flex items-center gap-1.5">
-                    {order.refundStatus === 'COMPLETED' ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    ) : (
-                      <Clock className="w-3.5 h-3.5 text-slate-400" />
-                    )}
-                    Refund Credited
-                  </div>
-                  <p className="text-[11px] text-slate-500">Funds credited. UTR reference updated.</p>
-                </div>
-              </div>
-
-              {/* Confidential Account Warning & Action */}
-              <div className="bg-white p-4 rounded-2xl border border-rose-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0" />
-                  <div>
-                    <span className="text-xs font-bold text-slate-900 block">
-                      Refund Destination Account: {savedRefundAccount ? `${savedRefundAccount.accountType} (${savedRefundAccount.upiIdMasked || savedRefundAccount.accountNumberMasked})` : 'Default Payment Source'}
-                    </span>
-                    <span className="text-[11px] text-slate-500">
-                      Encrypted institutional record. Strictly protected from delivery runners and providers.
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setRefundAccountModalOpen(true)}
-                  className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0"
-                >
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>{savedRefundAccount ? 'Change Refund Account' : 'Set Refund Account'}</span>
-                </button>
               </div>
             </div>
           )}

@@ -381,6 +381,9 @@ export class OrderController {
             commissionRate,
             commissionAmount,
             providerPayable,
+            advancePaidAmount: data.paymentMethod === 'CASH_ON_DELIVERY' ? advanceRequired : 0,
+            providerAccepted: false,
+            providerAcceptedAt: null,
             hallName: data.hallName,
             hallNumber: data.hallNumber || null,
             roomNumber: data.roomNumber,
@@ -975,7 +978,9 @@ export class OrderController {
 
       res.status(200).json({
         success: true,
-        message: 'Order cancelled successfully. Refund initiated.',
+        message: updated.explanation || 'Order cancelled successfully.',
+        cancellationType: updated.cancellationType,
+        refundableAmount: updated.refundableAmount,
         order: updated
       });
     } catch (err: any) {
