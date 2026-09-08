@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../lib/api';
 import {
@@ -22,8 +22,8 @@ type UserRole = 'STUDENT' | 'ADMIN' | 'SERVICE_PROVIDER' | 'DELIVERY_BOY';
 
 function LoginForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { user, role, isAuthenticated, login, logout } = useAuth();
+  const [mounted, setMounted] = useState(false);
 
   const [activeRole, setActiveRole] = useState<UserRole>('STUDENT');
   const [identifier, setIdentifier] = useState('');
@@ -40,6 +40,9 @@ function LoginForm() {
   const [otpLoading, setOtpLoading] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+    if (typeof window === 'undefined') return;
+    const searchParams = new URLSearchParams(window.location.search);
     const roleParam = searchParams.get('role')?.toUpperCase();
     const redirectParam = searchParams.get('redirect')?.toLowerCase();
 
@@ -52,7 +55,7 @@ function LoginForm() {
     } else if (roleParam === 'STUDENT' || (!roleParam && redirectParam && !redirectParam.startsWith('/admin') && !redirectParam.startsWith('/provider') && !redirectParam.startsWith('/delivery'))) {
       setActiveRole('STUDENT');
     }
-  }, [searchParams]);
+  }, []);
 
   const handleRoleChange = (selectedRole: UserRole) => {
     setActiveRole(selectedRole);
@@ -65,7 +68,8 @@ function LoginForm() {
   };
 
   const handleRoleRedirect = (userRole: string) => {
-    const redirectUrl = searchParams.get('redirect');
+    const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const redirectUrl = searchParams?.get('redirect');
     if (redirectUrl) {
       if (userRole === 'ADMIN' && redirectUrl.startsWith('/admin')) {
         router.push(redirectUrl);
@@ -404,7 +408,7 @@ function LoginForm() {
   return (
     <div className="max-w-md mx-auto px-4 py-10 sm:py-14">
       {/* Active Session Notification if already logged in */}
-      {isAuthenticated && user && (
+      {mounted && isAuthenticated && user && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-900 shadow-xs animate-fade-in">
           <div className="flex items-center gap-2 truncate">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
@@ -835,9 +839,5 @@ function LoginForm() {
 }
 
 export default function LoginPage() {
-  return (
-    <Suspense fallback={<div className="max-w-md mx-auto py-24 text-center text-gray-400">Loading portal login...</div>}>
-      <LoginForm />
-    </Suspense>
-  );
+  return <LoginForm />;
 }
