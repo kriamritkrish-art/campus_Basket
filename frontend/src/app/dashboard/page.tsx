@@ -336,12 +336,30 @@ function DashboardContent() {
     }
     if (ordersFilter === 'DELIVERED') return o.status === 'DELIVERED';
     if (ordersFilter === 'CANCELLED') return o.status === 'CANCELLED';
-    if (ordersFilter === 'REFUNDED') return o.paymentStatus === 'REFUNDED' || o.status === 'CANCELLED';
+    if (ordersFilter === 'REFUNDED') return isEligibleRefund(o);
     return true;
   });
 
-  // Cancelled/Refunded Orders list for Refunds tab
-  const refundOrders = orders.filter((o) => o.status === 'CANCELLED' || o.paymentStatus === 'REFUNDED');
+  // Helper: determine if an order has an eligible monetary refund
+  function isEligibleRefund(o: any) {
+    if (Number(o.refundAmount || 0) > 0) return true;
+    if (o.paymentStatus === 'REFUNDED') return true;
+    if (o.refundStatus && !['NONE', 'REJECTED', 'NOT_APPLICABLE'].includes(o.refundStatus)) return true;
+
+    // For CANCELLED orders: only eligible if student actually paid money online
+    if (o.status === 'CANCELLED') {
+      const isOnlinePrepaid = ['ONLINE', 'UPI', 'CARD', 'NETBANKING'].includes(o.paymentMethod?.toUpperCase());
+      const hasAdvancePaid = Number(o.advancePaidAmount || 0) > 0;
+      if (isOnlinePrepaid) return true;
+      if (hasAdvancePaid) return true;
+      // Normal Cash on Delivery (₹0 paid online) is NOT eligible for refund
+      return false;
+    }
+    return false;
+  }
+
+  // Cancelled/Refunded Orders list for Refunds tab — ONLY eligible refunds
+  const refundOrders = orders.filter(isEligibleRefund);
 
   const hallsList = [
     'Hall 1', 'Hall 2', 'Hall 3', 'Hall 4', 'Hall 5',
@@ -492,6 +510,9 @@ function DashboardContent() {
             >
               <RotateCcw className="w-4 h-4" />
               <span>Refunds</span>
+              {refundOrders.length > 0 && (
+                <span className="ml-0.5 text-[10px] opacity-80">({refundOrders.length})</span>
+              )}
             </button>
 
             <button
@@ -938,65 +959,171 @@ function DashboardContent() {
             <div>
               <h2 className="text-lg font-black text-gray-900">Refunds &amp; Cancellations</h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Track status of cancellations and refunds processed for your campus orders.
+                Track status of eligible monetary refunds and review campus cancellation governance.
               </p>
             </div>
 
-            {refundOrders.length === 0 ? (
-              <div className="p-12 text-center space-y-3">
-                <div className="w-16 h-16 bg-gray-50 text-gray-400 rounded-full flex items-center justify-center mx-auto">
-                  <RotateCcw className="w-8 h-8" />
+            {/* Campus Basket Refund & Cancellation Rules */}
+            <div className="bg-slate-50/80 rounded-2xl p-5 border border-slate-200/80 space-y-3.5">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-[#4F9D2F]" />
+                <h3 className="text-sm font-bold text-slate-900">Campus Basket Refund &amp; Cancellation Rules</h3>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                {/* Rule 1: Online / Prepaid */}
+                <div className="bg-white p-3.5 rounded-xl border border-slate-200/60 space-y-1.5 shadow-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span>Online / Prepaid Orders</span>
+                  </div>
+                  <p className="text-slate-600 text-[11px] leading-relaxed">
+                    <strong>100% Full Refund</strong> if cancelled before provider accepts. Automatically credited back to your original payment method (UPI: 2–4 hrs, Cards/Banks: 2–5 business days).
+                  </p>
                 </div>
-                <h3 className="text-base font-black text-gray-900">No refund transactions yet.</h3>
-                <p className="text-xs text-gray-500">Any cancelled or refunded orders will appear here.</p>
-                <Link
-                  href="/food"
-                  className="inline-block mt-2 px-5 py-2.5 bg-[#689f38] text-white text-xs font-bold rounded-xl"
-                >
-                  Browse Campus Menu
+
+                {/* Rule 2: Normal COD */}
+                <div className="bg-white p-3.5 rounded-xl border border-slate-200/60 space-y-1.5 shadow-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                    <span className="w-2 h-2 rounded-full bg-slate-400" />
+                    <span>Standard Cash on Delivery</span>
+                  </div>
+                  <p className="text-slate-600 text-[11px] leading-relaxed">
+                    <strong>₹0 Paid Upfront</strong>. Since no advance payment was collected, cancelled COD orders have no refund applicable and do not generate refund records.
+                  </p>
+                </div>
+
+                {/* Rule 3: COD + Partial Advance */}
+                <div className="bg-white p-3.5 rounded-xl border border-slate-200/60 space-y-1.5 shadow-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span>COD + Partial Advance</span>
+                  </div>
+                  <p className="text-slate-600 text-[11px] leading-relaxed">
+                    <strong>Only Advance Paid</strong> (e.g. ₹20) is refunded if cancelled before provider acceptance. The remaining cash-due balance is waived.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-200/60 gap-1.5">
+                <span className="flex items-center gap-1">
+                  <span>⚠️</span>
+                  <span>Orders cancelled after kitchen cooking or produce packing begins cannot be refunded for food safety reasons.</span>
+                </span>
+                <Link href="/refund-policy" className="text-[#4F9D2F] font-bold hover:underline shrink-0 flex items-center gap-1">
+                  <span>Full Policy</span>
+                  <ExternalLink className="w-3 h-3" />
                 </Link>
+              </div>
+            </div>
+
+            {refundOrders.length === 0 ? (
+              <div className="p-10 text-center space-y-3 bg-slate-50/50 rounded-2xl border border-slate-100">
+                <div className="w-14 h-14 bg-emerald-50 text-[#4F9D2F] rounded-full flex items-center justify-center mx-auto border border-emerald-100">
+                  <RotateCcw className="w-7 h-7" />
+                </div>
+                <h3 className="text-base font-bold text-slate-800">No eligible refund transactions</h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                  Only orders where payment was collected (Prepaid or COD Advance) and subsequently cancelled or returned appear here. Standard Cash on Delivery orders without advance payment do not generate refund records.
+                </p>
+                <div className="pt-2 flex items-center justify-center gap-3">
+                  <button
+                    onClick={() => handleTabChange('orders')}
+                    className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                  >
+                    View All Orders
+                  </button>
+                  <Link
+                    href="/food"
+                    className="px-4 py-2 bg-[#4F9D2F] hover:bg-[#36751F] text-white text-xs font-bold rounded-xl transition"
+                  >
+                    Browse Menu
+                  </Link>
+                </div>
               </div>
             ) : (
               <div className="space-y-4">
-                {refundOrders.map((order, idx) => (
-                  <div
-                    key={order.id}
-                    className="p-5 rounded-2xl border border-gray-200 bg-gray-50/50 space-y-3"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-black font-mono text-gray-900">
-                            Refund #RF{10290 + idx}
-                          </span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-                            Refund Processing
-                          </span>
+                {refundOrders.map((order, idx) => {
+                  const isOnlinePrepaid = ['ONLINE', 'UPI', 'CARD', 'NETBANKING'].includes(order.paymentMethod?.toUpperCase());
+                  const advancePaid = Number(order.advancePaidAmount || 0);
+                  const recordedRefund = Number(order.refundAmount || 0);
+
+                  let refundAmt = 0;
+                  let refundType = 'Online Payment Refund';
+
+                  if (recordedRefund > 0) {
+                    refundAmt = recordedRefund;
+                    refundType = advancePaid > 0 && !isOnlinePrepaid ? 'COD Advance Refund' : 'Online Payment Refund';
+                  } else if (advancePaid > 0 && !isOnlinePrepaid) {
+                    refundAmt = advancePaid;
+                    refundType = 'COD Partial Advance Refund';
+                  } else if (isOnlinePrepaid) {
+                    refundAmt = Number(order.totalAmount || 0);
+                    refundType = 'Prepaid Full Refund';
+                  }
+
+                  const isRefundDone = order.paymentStatus === 'REFUNDED' || order.refundStatus === 'REFUNDED' || order.refundStatus === 'COMPLETED';
+
+                  return (
+                    <div
+                      key={order.id}
+                      className="p-5 rounded-2xl border border-gray-200 bg-gray-50/50 space-y-3.5"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black font-mono text-gray-900">
+                              Refund #{order.refundId || `RF${10290 + idx}`}
+                            </span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              isRefundDone
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                            }`}>
+                              {isRefundDone ? 'Refund Completed' : 'Refund Processing'}
+                            </span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                              {refundType}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            Related Order:{' '}
+                            <Link href={`/orders/${order.id}/track`} className="font-mono text-[#4F9D2F] font-bold hover:underline">
+                              #{order.orderNumber}
+                            </Link>
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          Related Order: <strong className="font-mono text-gray-700">#{order.orderNumber}</strong>
+
+                        <div className="text-left sm:text-right">
+                          <div className="text-base font-black text-[#2E7D32]">
+                            Refund Amount: ₹{refundAmt}
+                          </div>
+                          <div className="text-[11px] text-gray-500">
+                            Payment Source: {isOnlinePrepaid ? 'Online (UPI / Card)' : 'COD Advance'}
+                          </div>
                         </div>
                       </div>
 
-                      <div className="text-left sm:text-right">
-                        <div className="text-base font-black text-gray-900">
-                          Refund Amount: ₹{order.totalAmount}
+                      <div className="text-xs text-gray-600 bg-white p-3 rounded-xl border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <span className="font-bold text-gray-800">Status &amp; Reason: </span>
+                          <span>{order.cancellationReason || 'Order cancelled before provider dispatch.'}</span>
                         </div>
-                        <div className="text-[11px] text-gray-500">Original method: {order.paymentMethod}</div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[11px] text-gray-400">
+                            Date: {new Date(order.createdAt).toLocaleDateString()}
+                          </span>
+                          <Link
+                            href={`/orders/${order.id}/track`}
+                            className="text-[11px] font-bold text-[#4F9D2F] hover:underline shrink-0"
+                          >
+                            Track Order &rarr;
+                          </Link>
+                        </div>
                       </div>
                     </div>
-
-                    <div className="text-xs text-gray-600 bg-white p-3 rounded-xl border border-gray-100 flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-gray-800">Reason: </span>
-                        <span>Student cancelled order before kitchen dispatch</span>
-                      </div>
-                      <div className="text-[11px] text-gray-400">
-                        Date: {new Date(order.createdAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

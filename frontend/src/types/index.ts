@@ -157,13 +157,19 @@ export interface OrderItem {
 export interface Order {
   id: string;
   orderNumber: string;
+  serviceType?: string;
   status: OrderStatus;
   totalAmount: number;
   subtotal: number;
   deliveryFee: number;
   discountAmount: number;
-  paymentMethod: 'RAZORPAY' | 'CASH_ON_DELIVERY';
+  paymentMethod: string;
   paymentStatus: string;
+  advancePaidAmount?: number;
+  refundAmount?: number;
+  refundStatus?: string;
+  refundId?: string;
+  cancellationReason?: string;
   hallName: string;
   roomNumber: string;
   createdAt: string;
