@@ -653,7 +653,25 @@ export const fallbackUsers = [
       createdAt: new Date('2026-01-01'),
       updatedAt: new Date()
     },
-    student: null,
+    student: {
+      id: 'student_sourav',
+      userId: 'user_admin_sourav',
+      fullName: 'Sourav Senapati',
+      rollNumber: '21CS8001',
+      registrationNumber: 'REG20268001',
+      mobileNumber: '+91 9876543210',
+      collegeEmail: 'souravsenapati408@gmail.com',
+      personalEmail: 'souravsenapati408@gmail.com',
+      hallId: 'hall_11',
+      hallNumber: '11',
+      roomNumber: 'Room 304',
+      department: 'Computer Science',
+      programme: 'B.Tech',
+      year: '4th Year',
+      isVerified: true,
+      createdAt: new Date('2026-01-01'),
+      updatedAt: new Date()
+    },
     provider: null
   },
   // Secondary Admin
