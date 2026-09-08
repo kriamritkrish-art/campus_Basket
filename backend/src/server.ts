@@ -18,13 +18,20 @@ import deliveryRoutes from './routes/deliveryRoutes';
 import paymentRoutes from './routes/paymentRoutes';
 import imageRoutes from './routes/imageRoutes';
 import campusRoutes from './routes/campusRoutes';
+import returnRoutes from './routes/returnRoutes';
+import { apiGlobalLimiter } from './middleware/rateLimiter';
 
 const app = express();
+
+// Security Hardening: suppress Express fingerprinting
+app.disable('x-powered-by');
 
 // Security Middlewares
 app.use(
   helmet({
-    crossOriginResourcePolicy: { policy: 'cross-origin' }
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    xContentTypeOptions: true,
+    xFrameOptions: { action: 'sameorigin' }
   })
 );
 
@@ -32,8 +39,11 @@ const allowedOrigins = [
   env.FRONTEND_URL ? env.FRONTEND_URL.replace(/\/+$/, '') : '',
   env.FRONTEND_URL,
   'http://localhost:3000',
-  'http://127.0.0.1:3000'
+  'http://127.0.0.1:3000',
+  'capacitor://localhost',
+  'http://localhost'
 ].filter(Boolean);
+
 
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
@@ -80,6 +90,9 @@ app.get(['/health', '/api/health'], (req, res) => {
   });
 });
 
+// Global API Rate Limiting
+app.use('/api', apiGlobalLimiter);
+
 // Mount modular API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
@@ -92,6 +105,7 @@ app.use('/api/delivery', deliveryRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/images', imageRoutes);
 app.use('/api/campus', campusRoutes);
+app.use('/api/returns', returnRoutes);
 
 // 404 handler
 app.use((req, res) => {

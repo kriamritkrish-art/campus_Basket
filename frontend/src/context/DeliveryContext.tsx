@@ -33,6 +33,11 @@ export interface ActiveDeliveryOrder {
   specialInstructions?: string;
   priority?: 'HIGH' | 'NORMAL';
   dueInText?: string;
+  isReturnPickup?: boolean;
+  returnRequestId?: string;
+  reasonType?: string;
+  reasonDetails?: string;
+  proofImageUrl?: string;
 }
 
 export interface AvailableOrder {
@@ -470,6 +475,30 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const verifyOrderOtp = async (orderId: string, enteredOtp: string): Promise<boolean> => {
     const target = activeOrders.find((o) => o.id === orderId || o.orderNumber === orderId);
     if (!target) return false;
+
+    // Handle Return Pickup verification
+    if (target.isReturnPickup) {
+      try {
+        const returnId = target.returnRequestId || target.id;
+        const res = await apiRequest(`/api/delivery/returns/${returnId}/verify-otp`, {
+          method: 'POST',
+          body: JSON.stringify({ otp: enteredOtp.trim() })
+        });
+        if (res.success) {
+          setActiveOrders((prev) => prev.filter((ord) => ord.id !== target.id));
+          setOtpModalOrder(null);
+          setSuccessToast(res.message || `✓ Return pickup verified! ₹${target.earning} credited to your runner wallet.`);
+          await fetchDeliveryData();
+          return true;
+        } else {
+          setSuccessToast(res.message || 'Incorrect Return Pickup OTP.');
+          return false;
+        }
+      } catch (err: any) {
+        setSuccessToast(err.message || 'Failed to verify return pickup OTP.');
+        return false;
+      }
+    }
 
     try {
       const res = await apiRequest(`/api/delivery/orders/${target.id}/verify-otp`, {

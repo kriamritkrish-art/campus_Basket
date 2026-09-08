@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { DeliveryController } from '../controllers/deliveryController';
+import { ReturnController } from '../controllers/returnController';
 import { authGuard } from '../middleware/authGuard';
 import { rbacGuard } from '../middleware/rbacGuard';
 
@@ -20,6 +21,7 @@ router.get('/orders', DeliveryController.getAssignedOrders);
 router.get('/history', DeliveryController.getDeliveryHistory);
 router.post('/orders/:id/accept', DeliveryController.acceptOrder);
 router.post('/orders/:id/verify-otp', DeliveryController.verifyDeliveryOtp);
+router.post('/returns/:id/verify-otp', ReturnController.verifyReturnPickupOtp);
 router.patch('/orders/:id/status', DeliveryController.updateDeliveryStatus);
 router.patch('/status', DeliveryController.toggleOnlineStatus);
 

@@ -70,3 +70,33 @@ export const loginLimiter = createRateLimiter({
   message: 'Too many login attempts. Please try again in 15 minutes.',
   keyGenerator: (req) => `login_${req.body?.email || req.ip}`
 });
+
+export const passwordResetLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  message: 'Too many password reset requests. Please wait an hour before requesting again.',
+  keyGenerator: (req) => `pwd_reset_${req.body?.email || req.ip}`
+});
+
+export const passwordResetSubmitLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  message: 'Too many password reset attempts. Please try again in 15 minutes.',
+  keyGenerator: (req) => `pwd_submit_${req.body?.email || req.ip}`
+});
+
+const internalGlobalLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 300,
+  message: 'Too many requests from this IP address. Please slow down and try again later.',
+  keyGenerator: (req) => `global_${req.ip}`
+});
+
+export const apiGlobalLimiter = (req: Request, res: Response, next: NextFunction): void => {
+  if (process.env.NODE_ENV === 'test') {
+    next();
+    return;
+  }
+  internalGlobalLimiter(req, res, next);
+};
+

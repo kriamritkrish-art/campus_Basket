@@ -40,15 +40,19 @@ export default function OtpModal() {
       <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-emerald-100 animate-in zoom-in-95 space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-gray-100">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#36751F] flex items-center justify-center">
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+              otpModalOrder.isReturnPickup ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-[#36751F]'
+            }`}>
               <KeyRound className="w-4 h-4" />
             </div>
             <div>
               <h3 className="text-sm font-black uppercase tracking-wide text-gray-900">
-                VERIFY DELIVERY
+                {otpModalOrder.isReturnPickup ? 'VERIFY RETURN PICKUP' : 'VERIFY DELIVERY'}
               </h3>
-              <div className="font-mono text-xs font-bold text-emerald-700">
-                Order {otpModalOrder.orderNumber}
+              <div className={`font-mono text-xs font-bold ${
+                otpModalOrder.isReturnPickup ? 'text-rose-700' : 'text-emerald-700'
+              }`}>
+                {otpModalOrder.isReturnPickup ? 'Return Request' : 'Order'} {otpModalOrder.orderNumber}
               </div>
             </div>
           </div>
@@ -67,7 +71,11 @@ export default function OtpModal() {
 
         <div>
           <p className="text-xs text-gray-600 font-medium leading-relaxed">
-            Enter the customer&apos;s 6-digit delivery OTP at <span className="font-bold text-gray-900">{otpModalOrder.destination}</span>:
+            {otpModalOrder.isReturnPickup ? (
+              <>Enter the student&apos;s 6-digit Return Pickup OTP at <span className="font-bold text-gray-900">{otpModalOrder.pickupLocation}</span>:</>
+            ) : (
+              <>Enter the customer&apos;s 6-digit delivery OTP at <span className="font-bold text-gray-900">{otpModalOrder.destination}</span>:</>
+            )}
           </p>
 
           <form onSubmit={handleSubmit} className="mt-3 space-y-3">
@@ -112,9 +120,11 @@ export default function OtpModal() {
               <button
                 type="submit"
                 disabled={loading || otpValue.length < 4}
-                className="px-4 py-2.5 rounded-xl bg-[#36751F] hover:bg-[#2e621a] disabled:opacity-50 text-white text-xs font-black transition flex-1 shadow-sm"
+                className={`px-4 py-2.5 rounded-xl disabled:opacity-50 text-white text-xs font-black transition flex-1 shadow-sm ${
+                  otpModalOrder.isReturnPickup ? 'bg-rose-600 hover:bg-rose-700' : 'bg-[#36751F] hover:bg-[#2e621a]'
+                }`}
               >
-                {loading ? 'Verifying...' : 'Verify & Deliver'}
+                {loading ? 'Verifying...' : otpModalOrder.isReturnPickup ? 'Verify & Collect' : 'Verify & Deliver'}
               </button>
             </div>
           </form>

@@ -11,9 +11,19 @@ import { AdminLaundryController } from '../controllers/adminLaundryController';
 import { authGuard } from '../middleware/authGuard';
 import { rbacGuard } from '../middleware/rbacGuard';
 
+const imageFileFilter: multer.Options['fileFilter'] = (_req, file, cb) => {
+  const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  if (allowed.includes(file.mimetype.toLowerCase())) {
+    cb(null, true);
+  } else {
+    cb(new Error('Invalid file type. Only JPEG, PNG, WEBP, and GIF images are permitted.'));
+  }
+};
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB max
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  fileFilter: imageFileFilter
 });
 
 const router = Router();

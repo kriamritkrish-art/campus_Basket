@@ -2326,7 +2326,9 @@ export const fallbackSettings = [
   { id: 'set_22', key: 'RETURN_POLICY_PRODUCE', value: 'FRESHNESS_VERIFIED', description: 'Return eligibility for fruits & fresh produce: FRESHNESS_VERIFIED | 2_HOUR_WINDOW | ALLOWED' },
   { id: 'set_23', key: 'RETURN_POLICY_STATIONERY', value: 'ALLOWED_24HR', description: 'Return eligibility for stationery: ALLOWED_24HR | 7_DAYS | DEFECTIVE_ONLY' },
   { id: 'set_24', key: 'PROVIDER_ORDER_POLICIES', value: '{}', description: 'JSON dictionary of provider-specific COD and return rules' },
-  { id: 'set_25', key: 'PRODUCT_ORDER_POLICIES', value: '{}', description: 'JSON dictionary of product-specific return rules' }
+  { id: 'set_25', key: 'PRODUCT_ORDER_POLICIES', value: '{}', description: 'JSON dictionary of product-specific return rules' },
+  { id: 'set_26', key: 'RETURN_DELIVERY_CHARGE', value: '15', description: 'Delivery fee in INR deducted on customer mind-change product return' },
+  { id: 'set_27', key: 'RETURN_DELIVERY_PAYOUT', value: '15', description: 'Per-delivery payout in INR credited to delivery boy wallet on return pickup OTP verification' }
 ];
 
 export const fallbackReportHistory = [
@@ -3057,5 +3059,7 @@ export const fallbackDeliveryBoyWithdrawals: any[] = [
     updatedAt: new Date(Date.now() - 3600 * 1000 * 6)
   }
 ];
+
+export const fallbackReturnRequests: any[] = [];
 
 

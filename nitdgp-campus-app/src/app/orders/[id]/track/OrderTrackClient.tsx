@@ -26,7 +26,13 @@ import {
   Edit3,
   ChevronRight,
   ExternalLink,
-  Info
+  Info,
+  Plus,
+  Minus,
+  Camera,
+  Package,
+  RefreshCw,
+  Check
 } from 'lucide-react';
 
 interface OrderItem {
@@ -127,15 +133,39 @@ export default function OrderTrackClient() {
   const [upiId, setUpiId] = useState('');
   const [savingAccount, setSavingAccount] = useState(false);
 
+  // Return Request state
+  const [returnRequest, setReturnRequest] = useState<any>(null);
+  const [returnModalOpen, setReturnModalOpen] = useState(false);
+  const [returnReasonType, setReturnReasonType] = useState<'PRODUCT_ISSUE' | 'MIND_CHANGE'>('PRODUCT_ISSUE');
+  const [returnReasonDetails, setReturnReasonDetails] = useState('');
+  const [returnProofImageUrl, setReturnProofImageUrl] = useState('');
+  const [returnSubmitting, setReturnSubmitting] = useState(false);
+  const [adminReturnFee, setAdminReturnFee] = useState(15);
+
+  // Add Products / Edit Order state
+  const [addItemsModalOpen, setAddItemsModalOpen] = useState(false);
+  const [availableProducts, setAvailableProducts] = useState<any[]>([]);
+  const [selectedNewItems, setSelectedNewItems] = useState<{ [productId: string]: number }>({});
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [addingItems, setAddingItems] = useState(false);
+
   const fetchOrder = async () => {
     try {
-      const res = await apiRequest(`/api/orders/${orderId}`);
-      if (res.success && res.order) {
-        setOrder(res.order);
-        setNewRoomNumber(res.order.roomNumber || '');
-        setNewInstructions(res.order.specialInstructions || '');
+      const [orderRes, returnRes] = await Promise.all([
+        apiRequest(`/api/orders/${orderId}`),
+        apiRequest(`/api/orders/${orderId}/return`).catch(() => null)
+      ]);
+
+      if (orderRes.success && orderRes.order) {
+        setOrder(orderRes.order);
+        setNewRoomNumber(orderRes.order.roomNumber || '');
+        setNewInstructions(orderRes.order.specialInstructions || '');
       } else {
-        setError(res.message || 'Order not found');
+        setError(orderRes.message || 'Order not found');
+      }
+
+      if (returnRes?.success && returnRes.returnRequest) {
+        setReturnRequest(returnRes.returnRequest);
       }
     } catch (err: any) {
       setError(err?.message || 'Failed to load order tracking details.');
@@ -282,6 +312,102 @@ export default function OrderTrackClient() {
     }
     showToast(`${count} item(s) added to basket.`);
     router.push('/cart');
+  };
+
+  const fetchAvailableProducts = async () => {
+    try {
+      setLoadingProducts(true);
+      const res = await apiRequest('/api/products?limit=25');
+      if (res.success && res.products) {
+        setAvailableProducts(res.products.filter((p: any) => p.availability && p.stock > 0));
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingProducts(false);
+    }
+  };
+
+  const handleQuantityChange = (productId: string, delta: number) => {
+    setSelectedNewItems((prev) => {
+      const current = prev[productId] || 0;
+      const nextVal = Math.max(0, current + delta);
+      if (nextVal === 0) {
+        const copy = { ...prev };
+        delete copy[productId];
+        return copy;
+      }
+      return { ...prev, [productId]: nextVal };
+    });
+  };
+
+  const handleAddItemsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const addedItems = Object.entries(selectedNewItems)
+      .map(([productId, quantity]) => ({ productId, quantity }))
+      .filter((i) => i.quantity > 0);
+
+    if (addedItems.length === 0) {
+      showToast('Please select at least 1 item to add.');
+      return;
+    }
+
+    setAddingItems(true);
+    try {
+      const res = await apiRequest(`/api/orders/${orderId}/add-items`, {
+        method: 'POST',
+        body: JSON.stringify({ addedItems })
+      });
+      if (res.success) {
+        showToast('New products added to your order successfully!');
+        setAddItemsModalOpen(false);
+        setSelectedNewItems({});
+        fetchOrder();
+      } else {
+        showToast(res.message || 'Failed to add items to order');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Error updating order items');
+    } finally {
+      setAddingItems(false);
+    }
+  };
+
+  const handleSubmitReturn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (returnReasonType === 'PRODUCT_ISSUE') {
+      if (!returnProofImageUrl.trim() && returnReasonDetails.trim().length < 10) {
+        showToast('Please provide a photo proof URL or a clear description of the defect.');
+        return;
+      }
+    } else if (!returnReasonDetails.trim()) {
+      showToast('Please specify the reason for return.');
+      return;
+    }
+
+    setReturnSubmitting(true);
+    try {
+      const res = await apiRequest(`/api/orders/${orderId}/return`, {
+        method: 'POST',
+        body: JSON.stringify({
+          reasonType: returnReasonType,
+          reasonDetails: returnReasonDetails,
+          proofImageUrl: returnProofImageUrl.trim() || undefined
+        })
+      });
+      if (res.success) {
+        showToast('Return request submitted for Admin review!');
+        setReturnModalOpen(false);
+        setReturnRequest(res.returnRequest);
+        fetchOrder();
+      } else {
+        showToast(res.message || 'Unable to submit return request');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to submit return request');
+    } finally {
+      setReturnSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -837,6 +963,146 @@ export default function OrderTrackClient() {
         )}
 
         {/* ==================================================
+            5.5. PRODUCT RETURN & 6-DIGIT PICKUP OTP CARD
+           ================================================== */}
+        {returnRequest && (
+          <div className="bg-white rounded-2xl p-5 border-2 border-amber-300 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-amber-600" />
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                  Product Return Status
+                </h3>
+              </div>
+              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                returnRequest.status === 'COMPLETED'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                  : returnRequest.status === 'PICKUP_ASSIGNED'
+                  ? 'bg-purple-50 text-purple-800 border-purple-300'
+                  : returnRequest.status === 'APPROVED'
+                  ? 'bg-blue-50 text-blue-800 border-blue-300'
+                  : returnRequest.status === 'REJECTED'
+                  ? 'bg-rose-50 text-rose-800 border-rose-300'
+                  : 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse'
+              }`}>
+                {returnRequest.status === 'COMPLETED'
+                  ? '✓ Return Completed & Refunded'
+                  : returnRequest.status === 'PICKUP_ASSIGNED'
+                  ? '🚚 Runner Assigned for Pickup'
+                  : returnRequest.status === 'APPROVED'
+                  ? '✓ Admin Approved'
+                  : returnRequest.status === 'REJECTED'
+                  ? '✗ Return Rejected'
+                  : '🟡 Awaiting Admin Approval'}
+              </span>
+            </div>
+
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/70 text-xs space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-medium">Return Category:</span>
+                <span className={`font-bold px-2 py-0.5 rounded text-[11px] ${
+                  returnRequest.reasonType === 'PRODUCT_ISSUE'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-indigo-100 text-indigo-800'
+                }`}>
+                  {returnRequest.reasonType === 'PRODUCT_ISSUE' ? 'Product Defect / Quality Issue' : 'Customer Mind Change'}
+                </span>
+              </div>
+
+              <div className="text-slate-700 italic">
+                "{returnRequest.reasonDetails}"
+              </div>
+
+              {returnRequest.proofImageUrl && (
+                <div className="pt-1 flex items-center gap-2 text-blue-600">
+                  <Camera className="w-3.5 h-3.5" />
+                  <a
+                    href={returnRequest.proofImageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline text-[11px] hover:text-blue-800 flex items-center gap-1 font-semibold"
+                  >
+                    View Submitted Proof Image
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-slate-200/60 flex justify-between items-center text-[11px]">
+                <span>Item Total: <strong className="font-mono">₹{Number(returnRequest.itemAmount).toFixed(2)}</strong></span>
+                {Number(returnRequest.deliveryFeeDeducted) > 0 && (
+                  <span className="text-rose-600">
+                    Pickup Fee Deducted: -₹{Number(returnRequest.deliveryFeeDeducted).toFixed(2)}
+                  </span>
+                )}
+                <span className="text-emerald-700 font-black text-xs">
+                  Net Refund: ₹{Number(returnRequest.refundAmount).toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {/* Runner Assignment Details */}
+            {returnRequest.deliveryBoy && (
+              <div className="p-3 bg-purple-50/70 rounded-xl border border-purple-200 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-purple-600" />
+                  <div>
+                    <span className="font-bold text-slate-900">{returnRequest.deliveryBoy.fullName}</span>
+                    <span className="text-[10px] text-purple-700 block">Assigned Return Runner</span>
+                  </div>
+                </div>
+                {returnRequest.deliveryBoy.mobileNumber && (
+                  <a
+                    href={`tel:${returnRequest.deliveryBoy.mobileNumber}`}
+                    className="px-2.5 py-1 bg-white border border-purple-200 rounded-lg text-purple-800 text-[11px] font-bold flex items-center gap-1"
+                  >
+                    <Phone className="w-3 h-3" />
+                    <span>Call Runner</span>
+                  </a>
+                )}
+              </div>
+            )}
+
+            {/* 6-DIGIT RETURN PICKUP OTP */}
+            {['APPROVED', 'PICKUP_ASSIGNED'].includes(returnRequest.status) && returnRequest.pickupOtp && (
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-xl border-2 border-amber-300 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-black uppercase text-amber-900 tracking-wider">
+                      Your 6-Digit Return Pickup Code:
+                    </span>
+                    <div className="text-3xl font-black font-mono tracking-widest text-slate-900 mt-0.5">
+                      {returnRequest.pickupOtp}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(returnRequest.pickupOtp);
+                      showToast('Return Pickup OTP copied to clipboard');
+                    }}
+                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy Code</span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] text-amber-900 bg-white/80 p-2 rounded-lg border border-amber-200">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Share this 6-digit code with the delivery runner when they arrive at your room to complete handover.</span>
+                </div>
+              </div>
+            )}
+
+            {returnRequest.status === 'COMPLETED' && (
+              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center gap-2 text-xs font-bold text-emerald-800">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Return verified via OTP. Refund of ₹{Number(returnRequest.refundAmount).toFixed(2)} has been processed!</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ==================================================
             6. ORDER SUMMARY (COMPACT & CLEAN)
            ================================================== */}
         <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs space-y-3">
@@ -977,10 +1243,21 @@ export default function OrderTrackClient() {
             <span>Need Help?</span>
           </button>
 
-          <div className="flex items-center gap-2">
-            {/* Pre-acceptance cancellation / modification */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Pre-acceptance cancellation / modification / ADD PRODUCTS */}
             {!isCancelled && !isDelivered && !isProviderAccepted && (
               <>
+                <button
+                  onClick={() => {
+                    fetchAvailableProducts();
+                    setAddItemsModalOpen(true);
+                  }}
+                  className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-[#2E7D32] border border-emerald-300 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Add Products / Edit</span>
+                </button>
+
                 <button
                   onClick={() => setModifyModalOpen(true)}
                   className="px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer flex items-center gap-1"
@@ -1001,6 +1278,19 @@ export default function OrderTrackClient() {
             {/* Delivered Actions */}
             {isDelivered && (
               <>
+                <button
+                  onClick={() => setReturnModalOpen(true)}
+                  disabled={Boolean(returnRequest && returnRequest.status !== 'REJECTED')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    returnRequest && returnRequest.status !== 'REJECTED'
+                      ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
+                      : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 shadow-xs'
+                  }`}
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+                  <span>{returnRequest && returnRequest.status !== 'REJECTED' ? 'Return In Progress' : 'Request Return & Refund'}</span>
+                </button>
+
                 <button
                   onClick={() => setReceiptModalOpen(true)}
                   className="px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer flex items-center gap-1"
@@ -1342,52 +1632,260 @@ export default function OrderTrackClient() {
       )}
 
       {/* ==================================================
-          MODAL 5: VIEW RECEIPT
+          MODAL 6: ADD MORE PRODUCTS (BEFORE ACCEPTANCE)
          ================================================== */}
-      {receiptModalOpen && (
+      {addItemsModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl border border-slate-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
-                <FileText className="w-4 h-4 text-[#4F9D2F]" />
-                <span>Order Receipt</span>
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl border border-slate-200 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Add Products to Order #{order.orderNumber}</h3>
+                <p className="text-[11px] text-slate-500">Order is pending kitchen acceptance. You can add more products right now!</p>
               </div>
-              <button onClick={() => setReceiptModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setAddItemsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
-              <div className="flex justify-between text-slate-500">
-                <span>Order Reference:</span>
-                <strong className="font-mono text-slate-900">{order.orderNumber}</strong>
+            {loadingProducts ? (
+              <div className="py-12 flex flex-col items-center justify-center text-xs text-slate-500 gap-2">
+                <div className="w-6 h-6 border-2 border-[#4F9D2F] border-t-transparent rounded-full animate-spin" />
+                <span>Loading available products...</span>
               </div>
-              <div className="flex justify-between text-slate-500">
-                <span>Date:</span>
-                <span className="text-slate-800">{orderDate}</span>
+            ) : availableProducts.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-500">
+                No additional products available in catalog.
               </div>
-              <div className="border-t border-b border-slate-100 py-2 space-y-1">
-                {order.items?.map((item) => (
-                  <div key={item.id} className="flex justify-between text-slate-800">
-                    <span>{item.productName} × {item.quantity}</span>
-                    <span className="font-mono">₹{Number(item.totalPrice).toFixed(2)}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex justify-between font-bold text-slate-900 text-sm">
-                <span>Total Paid:</span>
-                <span className="font-mono">₹{totalAmount.toFixed(2)}</span>
-              </div>
-            </div>
+            ) : (
+              <form onSubmit={handleAddItemsSubmit} className="space-y-4 overflow-y-auto flex-1 pr-1 text-xs">
+                <div className="space-y-2.5">
+                  {availableProducts.map((p) => {
+                    const price = Number(p.discountPrice || p.price);
+                    const qty = selectedNewItems[p.id] || 0;
+                    return (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between p-3 rounded-xl border border-slate-200 hover:border-emerald-300 bg-slate-50/60 transition"
+                      >
+                        <div className="space-y-0.5 flex-1 pr-3">
+                          <div className="font-bold text-slate-900">{p.name}</div>
+                          <div className="font-mono text-slate-600 font-semibold">₹{price.toFixed(2)}</div>
+                          <div className="text-[10px] text-slate-400">{p.unit || 'unit'} • In Stock ({p.stock})</div>
+                        </div>
 
-            <div className="pt-2 border-t border-slate-100 flex justify-end">
-              <button
-                onClick={() => setReceiptModalOpen(false)}
-                className="px-4 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800"
-              >
-                Close Receipt
+                        <div className="flex items-center gap-2">
+                          {qty > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleQuantityChange(p.id, -1)}
+                              className="w-7 h-7 rounded-lg bg-white border border-slate-200 text-slate-700 flex items-center justify-center hover:bg-slate-100 cursor-pointer"
+                            >
+                              <Minus className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <span className="font-mono font-bold w-6 text-center text-slate-900">
+                            {qty}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleQuantityChange(p.id, 1)}
+                            disabled={qty >= p.stock}
+                            className="w-7 h-7 rounded-lg bg-[#4F9D2F] text-white flex items-center justify-center hover:bg-[#3d7c24] disabled:opacity-40 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Calculation Summary Preview */}
+                {Object.keys(selectedNewItems).length > 0 && (
+                  <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 space-y-1.5">
+                    <div className="flex justify-between font-bold text-emerald-900">
+                      <span>Added Products Subtotal:</span>
+                      <span className="font-mono">
+                        +₹{Object.entries(selectedNewItems).reduce((sum, [pid, q]) => {
+                          const prod = availableProducts.find((p) => p.id === pid);
+                          return sum + (prod ? Number(prod.discountPrice || prod.price) * q : 0);
+                        }, 0).toFixed(2)}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-emerald-800">
+                      Your order total will be recalculated automatically and new items will be queued with the kitchen.
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setAddItemsModalOpen(false)}
+                    className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={addingItems || Object.keys(selectedNewItems).length === 0}
+                    className="px-4 py-1.5 bg-[#4F9D2F] hover:bg-[#3d7c24] text-white text-xs font-bold rounded-xl transition disabled:opacity-50 cursor-pointer shadow-xs"
+                  >
+                    {addingItems ? 'Updating Order...' : 'Confirm & Add to Order'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================
+          MODAL 7: REQUEST PRODUCT RETURN & REFUND
+         ================================================== */}
+      {returnModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Request Product Return &amp; Refund</h3>
+                <p className="text-[11px] text-slate-500">Order #{order.orderNumber} • Requires Admin Approval</p>
+              </div>
+              <button onClick={() => setReturnModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
               </button>
             </div>
+
+            <form onSubmit={handleSubmitReturn} className="space-y-4 text-xs">
+              {/* Return Category Selector */}
+              <div>
+                <label className="font-bold text-slate-800 block mb-1.5">Choose Return Reason Category *</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setReturnReasonType('PRODUCT_ISSUE')}
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                      returnReasonType === 'PRODUCT_ISSUE'
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-950 ring-1 ring-emerald-500'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="font-bold text-xs flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                      <span>Product Related Issue</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Defective, damaged, spoiled, or incorrect item received.
+                    </p>
+                    <div className="mt-2 text-[10px] font-bold text-emerald-700 bg-white/80 px-2 py-0.5 rounded border border-emerald-200 inline-block">
+                      100% Full Refund (₹0 Fee)
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setReturnReasonType('MIND_CHANGE')}
+                    className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                      returnReasonType === 'MIND_CHANGE'
+                        ? 'bg-indigo-50 border-indigo-500 text-indigo-950 ring-1 ring-indigo-500'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="font-bold text-xs flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                      <span>Customer Mind Change</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Decided not to keep it / ordered by mistake.
+                    </p>
+                    <div className="mt-2 text-[10px] font-bold text-indigo-700 bg-white/80 px-2 py-0.5 rounded border border-indigo-200 inline-block">
+                      Delivery Charge Deducted (-₹15)
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Dynamic Live Refund Calculator */}
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <div className="font-bold text-slate-700 text-[11px] uppercase tracking-wider">
+                  Live Refund Amount Estimate:
+                </div>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between text-slate-600">
+                    <span>Eligible Product Value:</span>
+                    <span className="font-mono">₹{Number(order.subtotal || totalAmount).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Return Pickup Delivery Fee:</span>
+                    <span className={`font-mono font-bold ${returnReasonType === 'MIND_CHANGE' ? 'text-rose-600' : 'text-emerald-700'}`}>
+                      {returnReasonType === 'MIND_CHANGE' ? '-₹15.00' : '₹0.00 (Waived for Defect)'}
+                    </span>
+                  </div>
+                  <div className="pt-1.5 border-t border-slate-200 flex justify-between font-black text-slate-900 text-sm">
+                    <span>Net Estimated Refund:</span>
+                    <span className="font-mono text-emerald-700 text-base">
+                      ₹{Math.max(0, Number(order.subtotal || totalAmount) - (returnReasonType === 'MIND_CHANGE' ? 15 : 0)).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Reason Details */}
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  {returnReasonType === 'PRODUCT_ISSUE' ? 'Describe the Issue with Product *' : 'Reason for Changing Mind *'}
+                </label>
+                <textarea
+                  value={returnReasonDetails}
+                  onChange={(e) => setReturnReasonDetails(e.target.value)}
+                  placeholder={
+                    returnReasonType === 'PRODUCT_ISSUE'
+                      ? 'e.g. The item arrived expired/broken seal. Please inspect...'
+                      : 'e.g. I accidentally ordered duplicate stationery notebooks...'
+                  }
+                  rows={2}
+                  className="w-full border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#4F9D2F]"
+                  required
+                />
+              </div>
+
+              {/* Proof Photo Upload / Link (Mandatory for Product Issue) */}
+              {returnReasonType === 'PRODUCT_ISSUE' && (
+                <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 space-y-2">
+                  <label className="font-bold text-amber-900 block text-xs flex items-center gap-1.5">
+                    <Camera className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Proof Image / Photo URL *</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={returnProofImageUrl}
+                    onChange={(e) => setReturnProofImageUrl(e.target.value)}
+                    placeholder="e.g. https://drive.google.com/... or image URL showing the defect"
+                    className="w-full border border-amber-200 rounded-xl p-2 text-xs text-slate-800 bg-white"
+                  />
+                  <p className="text-[10px] text-amber-800">
+                    💡 Per platform policy, product defect claims must be verified with proof before Admin approval.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setReturnModalOpen(false)}
+                  className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={returnSubmitting}
+                  className="px-4 py-1.5 bg-[#4F9D2F] hover:bg-[#3d7c24] text-white text-xs font-bold rounded-xl transition disabled:opacity-50 cursor-pointer shadow-xs"
+                >
+                  {returnSubmitting ? 'Submitting...' : 'Submit Return Request'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

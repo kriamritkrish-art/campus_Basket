@@ -18,7 +18,10 @@ router.get('/refund-account', rbacGuard(['STUDENT', 'ADMIN']), OrderController.g
 router.post('/refund-account', rbacGuard(['STUDENT', 'ADMIN']), OrderController.saveRefundAccount);
 router.get('/:id', OrderController.getOrderById);
 router.put('/:id/modify', rbacGuard(['STUDENT', 'ADMIN']), OrderController.modifyOrder);
+router.patch('/:id/modify', rbacGuard(['STUDENT', 'ADMIN']), OrderController.modifyOrder);
+router.post('/:id/add-items', rbacGuard(['STUDENT', 'ADMIN']), OrderController.modifyOrder);
 router.post('/:id/cancel', rbacGuard(['STUDENT', 'ADMIN']), OrderController.cancelOrder);
+router.get('/:id/return', rbacGuard(['STUDENT', 'ADMIN', 'DELIVERY_BOY']), OrderController.getOrderReturn);
 router.post('/:id/return', rbacGuard(['STUDENT', 'ADMIN']), OrderController.requestReturn);
 
 export default router;

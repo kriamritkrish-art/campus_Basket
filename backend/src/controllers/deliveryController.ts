@@ -346,6 +346,24 @@ export class DeliveryController {
         orderBy: { createdAt: 'desc' }
       });
 
+      // Also fetch assigned return pickups for this runner
+      const assignedReturns = await (prisma as any).returnRequest.findMany({
+        where: {
+          deliveryBoyId: deliveryBoy.id,
+          status: { in: ['PICKUP_ASSIGNED', 'APPROVED'] }
+        },
+        include: {
+          order: {
+            include: {
+              student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
+              provider: { select: { fullName: true, mobileNumber: true } },
+              items: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      }).catch(() => []);
+
       const formatted = orders.map((o) => ({
         id: o.id,
         orderNumber: `#${o.orderNumber}`,
@@ -364,9 +382,33 @@ export class DeliveryController {
         specialInstructions: o.specialInstructions || 'Call student upon hostel entry.'
       }));
 
+      const returnTasks = (assignedReturns || []).map((r: any) => ({
+        id: r.id,
+        returnRequestId: r.id,
+        orderId: r.orderId,
+        isReturnPickup: true,
+        orderNumber: `RETURN #${r.order?.orderNumber || r.id.slice(-6)}`,
+        studentName: r.order?.student?.fullName || 'Campus Student',
+        studentPhone: r.order?.student?.mobileNumber || '+91 98765 43210',
+        pickupLocation: `${r.order?.hallName || 'Hostel'} • Room ${r.order?.roomNumber || ''}`,
+        pickupStation: 'Student Hostel Doorstep Pickup',
+        destination: r.order?.provider?.fullName || 'Campus Vendor / Return Desk',
+        distance: '0.5 km',
+        eta: '5 min',
+        earning: Number(r.deliveryBoyPayout) || 15.00,
+        status: 'PICKUP_ASSIGNED',
+        items: r.order?.items?.map((i: any) => `${i.quantity}x ${i.productName}`) || ['Return Package'],
+        isOtpVerified: Boolean(r.pickupOtpVerified),
+        reasonType: r.reasonType,
+        reasonDetails: r.reasonDetails,
+        proofImageUrl: r.proofImageUrl,
+        acceptedAt: new Date(r.updatedAt || r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        specialInstructions: `Return Reason: ${r.reasonType === 'PRODUCT_ISSUE' ? 'Product Defect/Issue' : 'Mind Change'}. Enter 6-digit OTP from student upon collection.`
+      }));
+
       res.status(200).json({
         success: true,
-        orders: formatted
+        orders: [...returnTasks, ...formatted]
       });
     } catch (err) {
       next(err);

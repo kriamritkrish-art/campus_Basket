@@ -32,7 +32,8 @@ import {
   fallbackLaundryOtps,
   fallbackDeliveryBoyEarnings,
   fallbackDeliveryBoyPayoutAccounts,
-  fallbackDeliveryBoyWithdrawals
+  fallbackDeliveryBoyWithdrawals,
+  fallbackReturnRequests
 } from '../services/fallbackData';
 
 declare global {
@@ -199,17 +200,22 @@ const fallbackHandlers: Record<string, any> = {
   },
   student: {
     findUnique: async (args: any) => {
+      const id = args?.where?.id;
       const userId = args?.where?.userId;
       const rollNumber = args?.where?.rollNumber;
       const mobileNumber = args?.where?.mobileNumber;
       const registrationNumber = args?.where?.registrationNumber;
       const user = fallbackUsers.find((u) => u.student && (
+        (id && u.student.id === id) ||
         (userId && u.student.userId === userId) ||
         (rollNumber && u.student.rollNumber === rollNumber) ||
         (mobileNumber && u.student.mobileNumber === mobileNumber) ||
         (registrationNumber && u.student.registrationNumber === registrationNumber)
       ));
       return user?.student ? JSON.parse(JSON.stringify(user.student)) : null;
+    },
+    findFirst: async (args: any) => {
+      return fallbackHandlers.student.findUnique(args);
     },
     count: async () => fallbackUsers.filter((u) => u.role === 'STUDENT').length,
     findMany: async () => {
@@ -640,6 +646,10 @@ const fallbackHandlers: Record<string, any> = {
         reviews: (p as any).reviews || []
       }));
     },
+    findFirst: async (args: any) => {
+      const prods = await fallbackHandlers.product.findMany(args);
+      return prods[0] || null;
+    },
     upsert: async (args: any) => args.create,
     create: async (args: any) => {
       const prodData = args?.data || {};
@@ -822,7 +832,8 @@ const fallbackHandlers: Record<string, any> = {
           codCollection: fallbackCodCollections.find(c => c.orderId === o.id) || null,
           cancellationRequests: fallbackCancellationRequests.filter(c => c.orderId === o.id) || [],
           adminStatusOverrides: fallbackAdminStatusOverrides.filter(a => a.orderId === o.id) || [],
-          refunds: (global as any).__mockRefunds?.filter((r: any) => r.orderId === o.id) || (o.refunds || [])
+          refunds: (global as any).__mockRefunds?.filter((r: any) => r.orderId === o.id) || (o.refunds || []),
+          returnRequest: fallbackReturnRequests.find(r => r.orderId === o.id) || null
         };
       });
       return JSON.parse(JSON.stringify(mapped));
@@ -859,7 +870,8 @@ const fallbackHandlers: Record<string, any> = {
         codCollection: fallbackCodCollections.find(c => c.orderId === o.id) || null,
         cancellationRequests: fallbackCancellationRequests.filter(c => c.orderId === o.id) || [],
         adminStatusOverrides: fallbackAdminStatusOverrides.filter(a => a.orderId === o.id) || [],
-        refunds: (global as any).__mockRefunds?.filter((r: any) => r.orderId === o.id) || (o.refunds || [])
+        refunds: (global as any).__mockRefunds?.filter((r: any) => r.orderId === o.id) || (o.refunds || []),
+        returnRequest: fallbackReturnRequests.find(r => r.orderId === o.id) || null
       }));
     },
     create: async (args: any) => {
@@ -950,6 +962,22 @@ const fallbackHandlers: Record<string, any> = {
       }
       return args.data;
     }
+  },
+  orderItem: {
+    create: async (args: any) => {
+      const newItem = {
+        id: `oi_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        ...args.data
+      };
+      const order = fallbackOrders.find((o) => o.id === args.data?.orderId);
+      if (order) {
+        if (!Array.isArray(order.items)) order.items = [];
+        order.items.push(newItem);
+      }
+      return JSON.parse(JSON.stringify(newItem));
+    },
+    update: async (args: any) => args.data,
+    findMany: async () => []
   },
   laundryServiceConfig: {
     findMany: async (args?: any) => {
@@ -1608,6 +1636,121 @@ const fallbackHandlers: Record<string, any> = {
       return JSON.parse(JSON.stringify(cr));
     }
   },
+  returnRequest: {
+    findMany: async (args?: any) => {
+      let list = [...fallbackReturnRequests];
+      if (args?.where?.orderId) list = list.filter(l => l.orderId === args.where.orderId);
+      if (args?.where?.studentId) list = list.filter(l => l.studentId === args.where.studentId);
+      if (args?.where?.deliveryBoyId) list = list.filter(l => l.deliveryBoyId === args.where.deliveryBoyId);
+      if (args?.where?.status) {
+        if (args.where.status.in && Array.isArray(args.where.status.in)) {
+          list = list.filter(l => args.where.status.in.includes(l.status));
+        } else if (typeof args.where.status === 'string') {
+          list = list.filter(l => l.status === args.where.status);
+        }
+      }
+      const mapped = list.map((r: any) => {
+        const order = fallbackOrders.find((o: any) => o.id === r.orderId);
+        const dbUser = r.deliveryBoyId ? fallbackUsers.find((u: any) => u.deliveryBoy?.id === r.deliveryBoyId) : null;
+        return {
+          ...r,
+          order: order || null,
+          deliveryBoy: dbUser?.deliveryBoy || null
+        };
+      });
+      return JSON.parse(JSON.stringify(mapped));
+    },
+    findFirst: async (args?: any) => {
+      const orList = args?.where?.OR;
+      let targetId = args?.where?.id;
+      let targetOrderId = args?.where?.orderId;
+      if (Array.isArray(orList)) {
+        for (const cond of orList) {
+          if (cond.id) targetId = cond.id;
+          if (cond.orderId) targetOrderId = cond.orderId;
+        }
+      }
+      const r = fallbackReturnRequests.find(item => (targetOrderId && item.orderId === targetOrderId) || (targetId && item.id === targetId));
+      if (!r) return null;
+      const order = fallbackOrders.find((o: any) => o.id === r.orderId);
+      const dbUser = r.deliveryBoyId ? fallbackUsers.find((u: any) => u.deliveryBoy?.id === r.deliveryBoyId) : null;
+      return JSON.parse(JSON.stringify({
+        ...r,
+        order: order || null,
+        deliveryBoy: dbUser?.deliveryBoy || null
+      }));
+    },
+    findUnique: async (args: any) => {
+      const orList = args?.where?.OR;
+      let targetId = args?.where?.id;
+      let targetOrderId = args?.where?.orderId;
+      if (Array.isArray(orList)) {
+        for (const cond of orList) {
+          if (cond.id) targetId = cond.id;
+          if (cond.orderId) targetOrderId = cond.orderId;
+        }
+      }
+      const r = fallbackReturnRequests.find(c => (targetId && c.id === targetId) || (targetOrderId && c.orderId === targetOrderId));
+      if (!r) return null;
+      const order = fallbackOrders.find((o: any) => o.id === r.orderId);
+      const dbUser = r.deliveryBoyId ? fallbackUsers.find((u: any) => u.deliveryBoy?.id === r.deliveryBoyId) : null;
+      return JSON.parse(JSON.stringify({
+        ...r,
+        order: order || null,
+        deliveryBoy: dbUser?.deliveryBoy || null
+      }));
+    },
+    create: async (args: any) => {
+      const rr = {
+        id: `ret_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        pickupOtpVerified: false,
+        deliveryBoyPayout: 15,
+        ...args.data
+      };
+      fallbackReturnRequests.unshift(rr);
+      return JSON.parse(JSON.stringify(rr));
+    },
+    update: async (args: any) => {
+      const orList = args?.where?.OR;
+      let targetId = args?.where?.id;
+      let targetOrderId = args?.where?.orderId;
+      if (Array.isArray(orList)) {
+        for (const cond of orList) {
+          if (cond.id) targetId = cond.id;
+          if (cond.orderId) targetOrderId = cond.orderId;
+        }
+      }
+      const r = fallbackReturnRequests.find(item => (targetId && item.id === targetId) || (targetOrderId && item.orderId === targetOrderId));
+      if (r) {
+        Object.assign(r, { ...args.data, updatedAt: new Date() });
+        const order = fallbackOrders.find((o: any) => o.id === r.orderId);
+        const dbUser = r.deliveryBoyId ? fallbackUsers.find((u: any) => u.deliveryBoy?.id === r.deliveryBoyId) : null;
+        return JSON.parse(JSON.stringify({
+          ...r,
+          order: order || null,
+          deliveryBoy: dbUser?.deliveryBoy || null
+        }));
+      }
+      return args.data;
+    },
+    upsert: async (args: any) => {
+      const existing = fallbackReturnRequests.find(item => (args.where.orderId && item.orderId === args.where.orderId) || (args.where.id && item.id === args.where.id));
+      if (existing) {
+        Object.assign(existing, { ...args.update, updatedAt: new Date() });
+        return JSON.parse(JSON.stringify(existing));
+      }
+      const rr = {
+        id: `ret_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...args.create
+      };
+      fallbackReturnRequests.unshift(rr);
+      return JSON.parse(JSON.stringify(rr));
+    }
+  },
   refundAccount: {
     findUnique: async (args: any) => {
       const id = args?.where?.id;
@@ -1892,3 +2035,5 @@ export const prisma = new Proxy(rawPrisma as any, {
     return originalProp;
   }
 }) as PrismaClient;
+
+export default prisma;

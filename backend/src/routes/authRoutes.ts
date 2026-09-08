@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import { AuthController } from '../controllers/authController';
 import { authGuard } from '../middleware/authGuard';
-import { otpRequestLimiter, loginLimiter } from '../middleware/rateLimiter';
+import { 
+  otpRequestLimiter, 
+  loginLimiter,
+  passwordResetLimiter,
+  passwordResetSubmitLimiter
+} from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -28,7 +33,7 @@ router.get('/me', authGuard, AuthController.getMe);
 router.put('/profile', authGuard, AuthController.updateProfile);
 
 // Password Recovery (Routes to verified personal email)
-router.post('/forgot-password', AuthController.forgotPassword);
-router.post('/reset-password', AuthController.resetPassword);
+router.post('/forgot-password', passwordResetLimiter, AuthController.forgotPassword);
+router.post('/reset-password', passwordResetSubmitLimiter, AuthController.resetPassword);
 
 export default router;

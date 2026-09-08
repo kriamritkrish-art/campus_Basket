@@ -803,10 +803,14 @@ export class OrderController {
   /**
    * Modify an order (only permitted BEFORE provider accepts)
    */
+  /**
+   * Modify an order (only permitted BEFORE provider accepts)
+   * Supports updating room number, instructions, and adding products
+   */
   public static async modifyOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const { roomNumber, specialInstructions } = req.body;
+      const { roomNumber, specialInstructions, addedItems } = req.body;
       const student = await resolveStudentProfile(req.user);
       const studentId = student?.id;
 
@@ -827,7 +831,7 @@ export class OrderController {
 
       // Immutability on vendor acceptance
       const nonModifiable = ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED', 'CANCELLED', 'DISPATCHED'];
-      if (nonModifiable.includes(order.status)) {
+      if (nonModifiable.includes(order.status) || order.providerAccepted) {
         res.status(400).json({
           success: false,
           message: 'Order has already been accepted by the provider and fulfillment has commenced. Order cannot be changed.'
@@ -839,6 +843,92 @@ export class OrderController {
       if (roomNumber) updateData.roomNumber = roomNumber;
       if (specialInstructions !== undefined) updateData.specialInstructions = specialInstructions;
 
+      let itemsNotes = '';
+
+      // Support adding products before provider accepts
+      if (Array.isArray(addedItems) && addedItems.length > 0) {
+        const addedDetails: string[] = [];
+
+        for (const item of addedItems) {
+          const qty = parseInt(item.quantity, 10) || 0;
+          if (qty <= 0) continue;
+
+          const product = await prisma.product.findUnique({
+            where: { id: item.productId }
+          });
+
+          if (!product) {
+            res.status(400).json({ success: false, message: `Product ${item.productId} not found` });
+            return;
+          }
+
+          if (!product.availability) {
+            res.status(400).json({ success: false, message: `Product "${product.name}" is currently unavailable` });
+            return;
+          }
+
+          if (product.stock < qty) {
+            res.status(400).json({
+              success: false,
+              message: `Insufficient stock for "${product.name}". Available: ${product.stock}, requested: ${qty}`
+            });
+            return;
+          }
+
+          const unitPrice = Number(product.discountPrice || product.price);
+          const itemTotalPrice = unitPrice * qty;
+
+          // Decrement product inventory
+          await prisma.product.update({
+            where: { id: product.id },
+            data: { stock: { decrement: qty } }
+          }).catch(() => {});
+
+          // Check if item already exists in this order
+          const existingItem = order.items.find((i: any) => i.productId === product.id);
+          if (existingItem) {
+            const newQty = existingItem.quantity + qty;
+            const newTotal = unitPrice * newQty;
+            await (prisma as any).orderItem.update({
+              where: { id: existingItem.id },
+              data: { quantity: newQty, totalPrice: newTotal }
+            }).catch(() => {});
+          } else {
+            await (prisma as any).orderItem.create({
+              data: {
+                orderId: order.id,
+                productId: product.id,
+                productName: product.name,
+                quantity: qty,
+                unitPrice,
+                totalPrice: itemTotalPrice
+              }
+            }).catch(() => {});
+          }
+
+          addedDetails.push(`${qty}x ${product.name}`);
+        }
+
+        // Recalculate totals
+        const allItems = await prisma.orderItem.findMany({ where: { orderId: order.id } });
+        const newSubtotal = allItems.reduce((acc, curr) => acc + Number(curr.totalPrice), 0);
+
+        // Fetch admin settings for delivery fee
+        const deliverySetting = await prisma.adminSetting.findUnique({ where: { key: 'DELIVERY_FEE_FLAT' } });
+        const thresholdSetting = await prisma.adminSetting.findUnique({ where: { key: 'FREE_DELIVERY_THRESHOLD' } });
+        const flatFee = deliverySetting?.value ? Number(deliverySetting.value) : 15;
+        const threshold = thresholdSetting?.value ? Number(thresholdSetting.value) : 250;
+        const newDeliveryFee = newSubtotal > threshold ? 0 : flatFee;
+
+        const discount = Number(order.discountAmount || 0);
+        const newTotal = Math.max(0, newSubtotal - discount + newDeliveryFee);
+
+        updateData.subtotal = newSubtotal;
+        updateData.deliveryFee = newDeliveryFee;
+        updateData.totalAmount = newTotal;
+        itemsNotes = ` Added items: ${addedDetails.join(', ')}. New total: ₹${newTotal.toFixed(2)}.`;
+      }
+
       const updated = await prisma.order.update({
         where: { id },
         data: {
@@ -848,15 +938,16 @@ export class OrderController {
               previousStatus: order.status,
               newStatus: order.status,
               changedBy: 'STUDENT',
-              notes: `Order details updated by student before provider acceptance (Room: ${roomNumber || order.roomNumber})`
+              notes: `Order updated by student before provider acceptance (Room: ${roomNumber || order.roomNumber}).${itemsNotes}`
             }
           }
-        }
+        },
+        include: { items: true }
       });
 
       res.status(200).json({
         success: true,
-        message: 'Order details updated successfully before provider acceptance.',
+        message: 'Order updated successfully before provider acceptance.',
         order: updated
       });
     } catch (err) {
@@ -866,11 +957,12 @@ export class OrderController {
 
   /**
    * Request a return for a delivered order
+   * Supports reasonType: PRODUCT_ISSUE (requires proof; 100% full refund) vs MIND_CHANGE (deducts admin delivery fee)
    */
   public static async requestReturn(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const { reason } = req.body;
+      const { reason, reasonType, reasonDetails, proofImageUrl, itemIds } = req.body;
       const student = await resolveStudentProfile(req.user);
       const studentId = student?.id;
 
@@ -898,17 +990,81 @@ export class OrderController {
         return;
       }
 
+      const isMindChange = reasonType === 'MIND_CHANGE';
+      const actualReasonType = isMindChange ? 'MIND_CHANGE' : 'PRODUCT_ISSUE';
+      const details = (reasonDetails || reason || '').trim();
+
+      // For product-related issues, user must provide proof (photo or clear description)
+      if (actualReasonType === 'PRODUCT_ISSUE') {
+        if (!proofImageUrl && details.length < 10) {
+          res.status(400).json({
+            success: false,
+            message: 'Please provide proof of the product issue (either an image URL/photo proof or a detailed description of the defect).'
+          });
+          return;
+        }
+      }
+
+      // Calculate item total for returned items
+      let itemTotal = Number(order.subtotal || order.totalAmount);
+      if (Array.isArray(itemIds) && itemIds.length > 0 && order.items) {
+        const selectedItems = order.items.filter((i: any) => itemIds.includes(i.id));
+        if (selectedItems.length > 0) {
+          itemTotal = selectedItems.reduce((sum: number, curr: any) => sum + Number(curr.totalPrice), 0);
+        }
+      }
+
+      // Fetch admin-configured return delivery charge for mind change
+      const returnChargeSetting = await prisma.adminSetting.findUnique({
+        where: { key: 'RETURN_DELIVERY_CHARGE' }
+      });
+      const returnDeliveryFee = returnChargeSetting?.value ? Number(returnChargeSetting.value) : 15.00;
+
+      let deliveryFeeDeducted = 0;
+      let netRefundAmount = itemTotal;
+
+      if (isMindChange) {
+        deliveryFeeDeducted = Math.min(itemTotal, returnDeliveryFee);
+        netRefundAmount = Math.max(0, itemTotal - deliveryFeeDeducted);
+      }
+
+      // Create / upsert ReturnRequest record
+      const returnRequest = await (prisma as any).returnRequest.upsert({
+        where: { orderId: order.id },
+        update: {
+          reasonType: actualReasonType,
+          reasonDetails: details || (isMindChange ? 'Customer mind change / not needed' : 'Product defect/issue reported'),
+          proofImageUrl: proofImageUrl || null,
+          itemAmount: itemTotal,
+          deliveryChargeDeducted: deliveryFeeDeducted,
+          refundAmount: netRefundAmount,
+          status: 'REQUESTED'
+        },
+        create: {
+          orderId: order.id,
+          studentId: order.studentId,
+          reasonType: actualReasonType,
+          reasonDetails: details || (isMindChange ? 'Customer mind change / not needed' : 'Product defect/issue reported'),
+          proofImageUrl: proofImageUrl || null,
+          itemAmount: itemTotal,
+          deliveryChargeDeducted: deliveryFeeDeducted,
+          refundAmount: netRefundAmount,
+          status: 'REQUESTED'
+        }
+      });
+
       const updated = await prisma.order.update({
         where: { id },
         data: {
           refundStatus: 'REQUESTED',
-          cancellationReason: `Return Requested: ${reason || 'Customer requested return for delivered item'}`,
+          refundAmount: netRefundAmount,
+          cancellationReason: `Return Requested (${actualReasonType}): ${details || 'Customer requested product return'}`,
           statusHistory: {
             create: {
               previousStatus: order.status,
               newStatus: order.status,
               changedBy: 'STUDENT',
-              notes: `Customer initiated return request: ${reason || 'Return requested'}`
+              notes: `Customer initiated return request [${actualReasonType}]. Refund: ₹${netRefundAmount.toFixed(2)} (Delivery Fee Deducted: ₹${deliveryFeeDeducted.toFixed(2)}). Awaiting Admin Approval.`
             }
           }
         }
@@ -916,8 +1072,40 @@ export class OrderController {
 
       res.status(200).json({
         success: true,
-        message: 'Return request submitted successfully. Support team will inspect and process your return.',
+        message: 'Return request submitted successfully. It will be processed upon Admin approval.',
+        returnRequest,
+        refundAmount: netRefundAmount,
+        deliveryFeeDeducted,
         order: updated
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get return request details for an order
+   */
+  public static async getOrderReturn(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const returnRequest = await (prisma as any).returnRequest.findUnique({
+        where: { orderId: id },
+        include: {
+          deliveryBoy: {
+            select: {
+              id: true,
+              fullName: true,
+              mobileNumber: true,
+              vehicleType: true
+            }
+          }
+        }
+      });
+
+      res.status(200).json({
+        success: true,
+        returnRequest
       });
     } catch (err) {
       next(err);

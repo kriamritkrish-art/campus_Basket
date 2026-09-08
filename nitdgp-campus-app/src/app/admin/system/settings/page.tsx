@@ -506,6 +506,63 @@ export default function AdminSettingsPage() {
                 </div>
               </div>
 
+              {/* Product Return Economics */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RotateCcw className="w-4 h-4 text-rose-600" />
+                    <span className="text-xs font-bold text-[#17202A]">Product Return Economics &amp; Runner Commission</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                    Mind-Change Policy
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                      Mind-Change Fee Deduction (₹)
+                    </label>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="number"
+                        value={settings['RETURN_DELIVERY_CHARGE'] !== undefined ? String(settings['RETURN_DELIVERY_CHARGE']) : '15'}
+                        onChange={(e) => handleChange('RETURN_DELIVERY_CHARGE', e.target.value)}
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-[#17202A] font-mono focus:outline-none focus:border-[#4F9D32] transition"
+                      />
+                      <button
+                        onClick={() => handleSaveSetting('RETURN_DELIVERY_CHARGE', 'Delivery fee deducted on customer mind-change product return')}
+                        disabled={savingKey === 'RETURN_DELIVERY_CHARGE'}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-[#347A27] border border-slate-200 transition cursor-pointer"
+                      >
+                        {saveSuccess === 'RETURN_DELIVERY_CHARGE' ? <CheckCircle2 className="w-4 h-4 text-[#4F9D32]" /> : 'Save'}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Deducted from refund when student changes mind.</p>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                      Runner Return Payout (₹)
+                    </label>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="number"
+                        value={settings['RETURN_DELIVERY_PAYOUT'] !== undefined ? String(settings['RETURN_DELIVERY_PAYOUT']) : '15'}
+                        onChange={(e) => handleChange('RETURN_DELIVERY_PAYOUT', e.target.value)}
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-[#17202A] font-mono focus:outline-none focus:border-[#4F9D32] transition"
+                      />
+                      <button
+                        onClick={() => handleSaveSetting('RETURN_DELIVERY_PAYOUT', 'Per-delivery payout credited to runner wallet on return pickup OTP verification')}
+                        disabled={savingKey === 'RETURN_DELIVERY_PAYOUT'}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-[#347A27] border border-slate-200 transition cursor-pointer"
+                      >
+                        {saveSuccess === 'RETURN_DELIVERY_PAYOUT' ? <CheckCircle2 className="w-4 h-4 text-[#4F9D32]" /> : 'Save'}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">Credited to runner wallet upon OTP pickup verification.</p>
+                  </div>
+                </div>
+              </div>
+
               {/* Cash on Delivery (COD) Configuration */}
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between">

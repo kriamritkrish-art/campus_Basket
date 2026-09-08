@@ -19,6 +19,7 @@ import {
   HelpCircle,
   Flame,
   ArrowRight,
+  RotateCcw,
 } from 'lucide-react';
 
 interface OrderCardProps {
@@ -32,6 +33,15 @@ export default function OrderCard({ order }: OrderCardProps) {
 
   // Status Badge Configuration
   const getStatusBadge = (status: DeliveryStatus) => {
+    if (order.isReturnPickup) {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300">
+          <RotateCcw className="w-3 h-3 text-rose-600" />
+          🔄 Return Pickup
+        </span>
+      );
+    }
+
     switch (status) {
       case 'ASSIGNED':
       case 'DELIVERY_ASSIGNED':
@@ -95,6 +105,14 @@ export default function OrderCard({ order }: OrderCardProps) {
 
   // Status Action Mapping (Section 2)
   const getNextActionConfig = () => {
+    if (order.isReturnPickup) {
+      return {
+        label: 'VERIFY RETURN OTP & COMPLETE PICKUP',
+        action: () => setOtpModalOrder(order),
+        bg: 'bg-rose-600 hover:bg-rose-700',
+      };
+    }
+
     switch (order.status) {
       case 'ASSIGNED':
       case 'DELIVERY_ASSIGNED':

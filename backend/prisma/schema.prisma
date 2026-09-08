@@ -157,6 +157,21 @@ enum DiscountType {
   FIXED
 }
 
+enum ReturnReasonType {
+  PRODUCT_ISSUE
+  MIND_CHANGE
+}
+
+enum ReturnStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  PICKUP_ASSIGNED
+  PICKED_UP
+  COMPLETED
+  CANCELLED
+}
+
 model User {
   id                    String           @id @default(cuid())
   email                 String           @unique
@@ -291,6 +306,7 @@ model DeliveryBoy {
   earnings              DeliveryBoyEarning[]
   payoutAccount         DeliveryBoyPayoutAccount?
   withdrawals           DeliveryBoyWithdrawal[]
+  returnRequests        ReturnRequest[]
 
   @@index([mobileNumber])
 }
@@ -508,6 +524,7 @@ model Order {
   statusOverrides     AdminStatusOverride[]
   ledgerEntries       FinancialLedger[]
   deliveryEarning     DeliveryBoyEarning?
+  returnRequest       ReturnRequest?
 
   @@index([orderNumber])
   @@index([studentId])
@@ -1242,5 +1259,34 @@ model DeliveryBoyWithdrawal {
   @@index([deliveryBoyId])
   @@index([status])
   @@index([createdAt])
+}
+
+model ReturnRequest {
+  id                    String           @id @default(cuid())
+  orderId               String           @unique
+  order                 Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  studentId             String
+  reasonType            ReturnReasonType @default(PRODUCT_ISSUE)
+  reasonDetails         String           @db.Text
+  proofImageUrl         String?          @db.Text
+  status                ReturnStatus     @default(REQUESTED)
+  adminNotes            String?          @db.Text
+  reviewedBy            String?
+  reviewedAt            DateTime?
+  deliveryBoyId         String?
+  deliveryBoy           DeliveryBoy?     @relation(fields: [deliveryBoyId], references: [id])
+  pickupOtp             String?          // 6-digit OTP
+  pickupOtpVerified     Boolean          @default(false)
+  pickupOtpVerifiedAt   DateTime?
+  itemAmount            Decimal          @db.Decimal(10, 2)
+  deliveryFeeDeducted   Decimal          @default(0.00) @db.Decimal(10, 2)
+  refundAmount          Decimal          @db.Decimal(10, 2)
+  deliveryBoyPayout     Decimal          @default(0.00) @db.Decimal(10, 2)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  @@index([orderId])
+  @@index([status])
+  @@index([deliveryBoyId])
 }
 

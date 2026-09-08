@@ -22,7 +22,13 @@ import {
   ChevronRight,
   Package,
   Calendar,
-  AlertTriangle
+  AlertTriangle,
+  Camera,
+  ExternalLink,
+  ShieldCheck,
+  RefreshCw,
+  AlertCircle,
+  Check
 } from 'lucide-react';
 
 export default function AdminOrdersPage() {
@@ -47,6 +53,16 @@ export default function AdminOrdersPage() {
   const [selectedOrderForAssign, setSelectedOrderForAssign] = useState<any>(null);
   const [selectedDeliveryBoyId, setSelectedDeliveryBoyId] = useState('');
   const [assignLoading, setAssignLoading] = useState(false);
+
+  // Return Requests Management State
+  const [activeTab, setActiveTab] = useState<'ORDERS' | 'RETURNS'>('ORDERS');
+  const [returnRequests, setReturnRequests] = useState<any[]>([]);
+  const [loadingReturns, setLoadingReturns] = useState(false);
+  const [selectedReturn, setSelectedReturn] = useState<any>(null);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [returnAssignBoyId, setReturnAssignBoyId] = useState('');
+  const [returnRejectionReason, setReturnRejectionReason] = useState('');
+  const [processingReturn, setProcessingReturn] = useState(false);
 
   const fetchDeliveryBoys = async () => {
     try {
@@ -102,7 +118,6 @@ export default function AdminOrdersPage() {
       const res = await apiRequest(q);
       if (res.success && res.orders) {
         setOrders(res.orders);
-        // If drawer is open, keep selected order updated
         if (selectedOrder) {
           const updated = res.orders.find((o: any) => o.id === selectedOrder.id);
           if (updated) setSelectedOrder(updated);
@@ -115,9 +130,81 @@ export default function AdminOrdersPage() {
     }
   };
 
+  const fetchReturnRequests = async () => {
+    try {
+      setLoadingReturns(true);
+      const res = await apiRequest('/api/returns');
+      if (res.success && res.returns) {
+        setReturnRequests(res.returns);
+      }
+    } catch (e) {
+      console.warn('Return requests fetch error:', e);
+    } finally {
+      setLoadingReturns(false);
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
+    fetchReturnRequests();
   }, [statusFilter, paymentFilter, hallFilter, dateRange]);
+
+  const openReturnReviewModal = (ret: any) => {
+    setSelectedReturn(ret);
+    setReturnAssignBoyId(ret.deliveryBoyId || '');
+    setReturnRejectionReason('');
+    setReviewModalOpen(true);
+  };
+
+  const handleApproveReturn = async () => {
+    if (!selectedReturn) return;
+    setProcessingReturn(true);
+    try {
+      const res = await apiRequest(`/api/returns/${selectedReturn.id}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ deliveryBoyId: returnAssignBoyId || undefined })
+      });
+      if (res.success) {
+        alert('Return request approved successfully! 6-digit pickup OTP generated.');
+        setReviewModalOpen(false);
+        fetchReturnRequests();
+        fetchOrders();
+      } else {
+        alert(res.message || 'Approval failed');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error approving return request');
+    } finally {
+      setProcessingReturn(false);
+    }
+  };
+
+  const handleRejectReturn = async () => {
+    if (!selectedReturn) return;
+    if (!returnRejectionReason.trim()) {
+      alert('Please enter a rejection reason.');
+      return;
+    }
+    setProcessingReturn(true);
+    try {
+      const res = await apiRequest(`/api/returns/${selectedReturn.id}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ rejectionReason: returnRejectionReason })
+      });
+      if (res.success) {
+        alert('Return request has been rejected.');
+        setReviewModalOpen(false);
+        fetchReturnRequests();
+        fetchOrders();
+      } else {
+        alert(res.message || 'Rejection failed');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error rejecting return request');
+    } finally {
+      setProcessingReturn(false);
+    }
+  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,6 +242,8 @@ export default function AdminOrdersPage() {
       if (res.success) {
         alert('Refund processed successfully via Razorpay');
         fetchOrders();
+      } else {
+        alert(res.message || 'Refund failed');
       }
     } catch (err: any) {
       alert(err.message || 'Refund failed');
@@ -162,7 +251,7 @@ export default function AdminOrdersPage() {
   };
 
   const handleExportCsv = () => {
-    const token = localStorage.getItem('nit_token');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : '';
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
     window.open(`${backendUrl}/api/admin/reports/export-csv?type=orders&token=${token}`, '_blank');
   };
@@ -172,7 +261,7 @@ export default function AdminOrdersPage() {
   const pendingCount = orders.filter((o) => o.status === 'CONFIRMED' || o.status === 'PREPARING').length;
   const deliveryCount = orders.filter((o) => o.status === 'OUT_FOR_DELIVERY').length;
   const deliveredCount = orders.filter((o) => o.status === 'DELIVERED').length;
-  const cancelledCount = orders.filter((o) => o.status === 'CANCELLED' || o.status === 'REFUNDED').length;
+  const requestedReturnsCount = returnRequests.filter((r) => r.status === 'REQUESTED').length;
 
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
@@ -191,17 +280,25 @@ export default function AdminOrdersPage() {
     }
   };
 
-  const getPaymentBadgeClass = (method: string, status: string) => {
-    if (status === 'COMPLETED' || status === 'PAID') {
-      return 'bg-emerald-50 text-[#347A27] border-emerald-200';
+  const getReturnStatusBadge = (status: string) => {
+    switch (status) {
+      case 'REQUESTED':
+        return 'bg-amber-100 text-amber-800 border-amber-300';
+      case 'APPROVED':
+        return 'bg-blue-100 text-blue-800 border-blue-300';
+      case 'PICKUP_ASSIGNED':
+        return 'bg-purple-100 text-purple-800 border-purple-300';
+      case 'PICKED_UP':
+        return 'bg-indigo-100 text-indigo-800 border-indigo-300';
+      case 'COMPLETED':
+        return 'bg-emerald-100 text-[#347A27] border-emerald-300';
+      case 'REJECTED':
+        return 'bg-rose-100 text-rose-800 border-rose-300';
+      default:
+        return 'bg-slate-100 text-slate-700 border-slate-300';
     }
-    if (method === 'COD') {
-      return 'bg-amber-50 text-amber-800 border-amber-200';
-    }
-    return 'bg-slate-100 text-slate-700 border-slate-200';
   };
 
-  // Milestones helper
   const milestones = [
     { key: 'CONFIRMED', label: 'Order Confirmed', desc: 'Received & routed to provider' },
     { key: 'PREPARING', label: 'In Kitchen / Packing', desc: 'Vendor prepping order' },
@@ -229,11 +326,21 @@ export default function AdminOrdersPage() {
             <span>Orders Management &amp; Fulfillment</span>
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Real-time fulfillment tracking, room drops, payment captures &amp; dispute resolutions
+            Real-time fulfillment tracking, returns review, runner assignments, room drops &amp; refunds
           </p>
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              fetchOrders();
+              fetchReturnRequests();
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 shadow-xs transition"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+            <span>Refresh</span>
+          </button>
           <button
             onClick={handleExportCsv}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 shadow-xs transition"
@@ -244,236 +351,408 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
-      {/* 1. ORDER SUMMARY KPIS */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <span className="text-[11px] font-bold text-slate-500 uppercase">Total Listed</span>
-          <div className="text-xl font-black text-[#17202A] mt-1">{totalCount}</div>
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700">
+            <Package className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-[11px] font-semibold text-slate-500 uppercase">Total Orders</div>
+            <div className="text-xl font-black text-[#17202A]">{totalCount}</div>
+          </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <span className="text-[11px] font-bold text-amber-700 uppercase">Pending Prep</span>
-          <div className="text-xl font-black text-amber-700 mt-1">{pendingCount}</div>
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-700">
+            <Clock className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-[11px] font-semibold text-slate-500 uppercase">Processing</div>
+            <div className="text-xl font-black text-amber-700">{pendingCount}</div>
+          </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <span className="text-[11px] font-bold text-blue-700 uppercase">Out for Delivery</span>
-          <div className="text-xl font-black text-blue-700 mt-1">{deliveryCount}</div>
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-700">
+            <Truck className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-[11px] font-semibold text-slate-500 uppercase">Out for Delivery</div>
+            <div className="text-xl font-black text-blue-700">{deliveryCount}</div>
+          </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <span className="text-[11px] font-bold text-[#347A27] uppercase">Delivered</span>
-          <div className="text-xl font-black text-[#347A27] mt-1">{deliveredCount}</div>
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-[#347A27]">
+            <CheckCircle className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-[11px] font-semibold text-slate-500 uppercase">Delivered</div>
+            <div className="text-xl font-black text-[#347A27]">{deliveredCount}</div>
+          </div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs col-span-2 sm:col-span-1">
-          <span className="text-[11px] font-bold text-red-700 uppercase">Cancelled / Refunded</span>
-          <div className="text-xl font-black text-red-700 mt-1">{cancelledCount}</div>
+        <div 
+          onClick={() => setActiveTab('RETURNS')}
+          className="bg-white p-4 rounded-2xl border border-rose-200 hover:border-rose-400 shadow-xs flex items-center gap-3 cursor-pointer transition group"
+        >
+          <div className="w-10 h-10 rounded-xl bg-rose-50 group-hover:bg-rose-100 flex items-center justify-center text-rose-700 transition">
+            <RotateCcw className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-[11px] font-semibold text-slate-500 uppercase">Pending Returns</div>
+            <div className="text-xl font-black text-rose-700 flex items-center gap-1.5">
+              {requestedReturnsCount}
+              {requestedReturnsCount > 0 && (
+                <span className="text-[10px] bg-rose-600 text-white font-bold px-1.5 py-0.5 rounded-full">
+                  Action
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* 2. SEARCH & FILTER TOOLBAR */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row gap-3 items-center justify-between">
-        <form onSubmit={handleSearchSubmit} className="relative flex-1 w-full">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search Order Number, Student Name, Roll No..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs text-[#17202A] placeholder:text-slate-400 focus:outline-none focus:border-[#4F9D32] focus:bg-white transition"
-          />
-        </form>
+      {/* Tab Switcher */}
+      <div className="flex border-b border-slate-200 bg-white rounded-xl p-1 shadow-xs">
+        <button
+          onClick={() => setActiveTab('ORDERS')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition ${
+            activeTab === 'ORDERS'
+              ? 'bg-[#4F9D32] text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <ClipboardList className="w-4 h-4" />
+          <span>All Orders ({orders.length})</span>
+        </button>
 
-        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 font-semibold focus:outline-none focus:border-[#4F9D32]"
-          >
-            <option value="ALL">All Statuses</option>
-            <option value="CONFIRMED">Confirmed</option>
-            <option value="PREPARING">Preparing</option>
-            <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
-            <option value="DELIVERED">Delivered</option>
-            <option value="CANCELLED">Cancelled</option>
-            <option value="REFUND_REQUESTED">Refund Requested</option>
-          </select>
-
-          {/* Payment Method Filter */}
-          <select
-            value={paymentFilter}
-            onChange={(e) => setPaymentFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 font-semibold focus:outline-none focus:border-[#4F9D32]"
-          >
-            <option value="ALL">All Payments</option>
-            <option value="ONLINE">Razorpay / Online</option>
-            <option value="COD">Cash on Delivery (COD)</option>
-          </select>
-
-          {/* Hall Filter */}
-          <select
-            value={hallFilter}
-            onChange={(e) => setHallFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 font-semibold focus:outline-none focus:border-[#4F9D32]"
-          >
-            <option value="ALL">All Halls</option>
-            <option value="Hall 1">Hall 1</option>
-            <option value="Hall 2">Hall 2</option>
-            <option value="Hall 3">Hall 3</option>
-            <option value="Hall 4">Hall 4</option>
-            <option value="Hall 5">Hall 5</option>
-            <option value="Hall 6">Hall 6</option>
-            <option value="Hall 7">Hall 7</option>
-            <option value="Hall 8">Hall 8</option>
-            <option value="Hall 9">Hall 9</option>
-            <option value="Hall 10">Hall 10</option>
-            <option value="Hall 11">Hall 11</option>
-            <option value="Hall 12">Hall 12</option>
-            <option value="Hall 13">Hall 13</option>
-            <option value="Hall 14">Hall 14</option>
-          </select>
-        </div>
+        <button
+          onClick={() => setActiveTab('RETURNS')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-lg transition relative ${
+            activeTab === 'RETURNS'
+              ? 'bg-rose-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-rose-700 hover:bg-slate-50'
+          }`}
+        >
+          <RotateCcw className="w-4 h-4" />
+          <span>Return &amp; Refund Requests ({returnRequests.length})</span>
+          {requestedReturnsCount > 0 && (
+            <span
+              className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${
+                activeTab === 'RETURNS' ? 'bg-white text-rose-700' : 'bg-rose-500 text-white'
+              }`}
+            >
+              {requestedReturnsCount}
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* 3. ORDERS DATA TABLE */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-        {loading ? (
-          <div className="py-20 flex flex-col items-center justify-center gap-2">
-            <div className="w-8 h-8 border-3 border-[#4F9D32]/30 border-t-[#4F9D32] rounded-full animate-spin" />
-            <span className="text-xs text-slate-500 font-medium">Fetching orders...</span>
+      {/* TAB 1: ALL ORDERS */}
+      {activeTab === 'ORDERS' && (
+        <div className="space-y-4">
+          {/* Filters Bar */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs">
+            <form onSubmit={handleSearchSubmit} className="flex items-center gap-2 flex-1 min-w-[240px]">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by order #, student name, roll no..."
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-[#4F9D32]"
+                />
+              </div>
+              <button
+                type="submit"
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
+              >
+                Search
+              </button>
+            </form>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 font-semibold text-slate-700"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="CONFIRMED">Confirmed</option>
+                <option value="PREPARING">Preparing</option>
+                <option value="OUT_FOR_DELIVERY">Out for Delivery</option>
+                <option value="DELIVERED">Delivered</option>
+                <option value="CANCELLED">Cancelled</option>
+              </select>
+
+              <select
+                value={paymentFilter}
+                onChange={(e) => setPaymentFilter(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 font-semibold text-slate-700"
+              >
+                <option value="ALL">All Payments</option>
+                <option value="ONLINE">Online (Razorpay)</option>
+                <option value="COD">Cash on Delivery</option>
+              </select>
+
+              <select
+                value={dateRange}
+                onChange={(e) => setDateRange(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 font-semibold text-slate-700"
+              >
+                <option value="7d">Last 7 Days</option>
+                <option value="30d">Last 30 Days</option>
+                <option value="90d">Last 3 Months</option>
+              </select>
+            </div>
           </div>
-        ) : orders.length === 0 ? (
-          <div className="py-16 text-center">
-            <ClipboardList className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <div className="text-sm font-bold text-[#17202A]">No orders matched your filters</div>
-            <p className="text-xs text-slate-500 mt-1">Try resetting the status or date filters</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200">
-                <tr>
-                  <th className="px-5 py-3.5">Order ID</th>
-                  <th className="px-5 py-3.5">Student &amp; Hostel</th>
-                  <th className="px-5 py-3.5">Items</th>
-                  <th className="px-5 py-3.5">Total Amount</th>
-                  <th className="px-5 py-3.5">Payment</th>
-                  <th className="px-5 py-3.5">Order Stage</th>
-                  <th className="px-5 py-3.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {orders.map((o) => (
-                  <tr
-                    key={o.id}
-                    onClick={() => setSelectedOrder(o)}
-                    className="hover:bg-slate-50/80 cursor-pointer transition-colors"
-                  >
-                    <td className="px-5 py-4 font-mono font-bold text-[#4F9D32]">
-                      {o.orderNumber}
-                      <div className="text-[10px] text-slate-400 font-normal font-sans">
-                        {new Date(o.createdAt).toLocaleDateString('en-IN', {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </div>
-                    </td>
 
-                    <td className="px-5 py-4">
-                      <div className="font-bold text-[#17202A]">{o.studentName}</div>
-                      <div className="text-[11px] text-slate-500">
-                        {o.hallName} &bull; Room {o.roomNumber}
-                      </div>
-                      <div className="text-[10px] mt-0.5 flex items-center gap-1 font-semibold">
-                        <Truck className="w-3 h-3 text-sky-600" />
-                        {o.deliveryBoy ? (
-                          <span className="text-sky-700 font-bold">{o.deliveryBoy.fullName}</span>
-                        ) : (
-                          <span className="text-slate-400 font-normal">Unassigned</span>
-                        )}
-                      </div>
-                    </td>
-
-                    <td className="px-5 py-4 text-slate-700 max-w-xs">
-                      <div className="line-clamp-1 font-medium">
-                        {o.items?.map((it: any) => `${it.quantity}x ${it.productName}`).join(', ') || '1x Order item'}
-                      </div>
-                      <div className="text-[10px] text-slate-400">
-                        {o.items?.length || 1} distinct item(s)
-                      </div>
-                    </td>
-
-                    <td className="px-5 py-4 font-mono font-bold text-sm text-[#17202A]">
-                      ₹{o.totalAmount}
-                    </td>
-
-                    <td className="px-5 py-4">
-                      <span
-                        className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getPaymentBadgeClass(
-                          o.paymentMethod,
-                          o.paymentStatus
-                        )}`}
+          {/* Orders Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            {loading ? (
+              <div className="p-12 text-center text-slate-400">Loading orders...</div>
+            ) : orders.length === 0 ? (
+              <div className="p-12 text-center text-slate-400">No orders found matching criteria.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200">
+                    <tr>
+                      <th className="px-5 py-3.5">Order</th>
+                      <th className="px-5 py-3.5">Customer &amp; Drop</th>
+                      <th className="px-5 py-3.5">Items</th>
+                      <th className="px-5 py-3.5">Amount</th>
+                      <th className="px-5 py-3.5">Fulfillment Status</th>
+                      <th className="px-5 py-3.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {orders.map((o) => (
+                      <tr
+                        key={o.id}
+                        className="hover:bg-slate-50/80 transition cursor-pointer"
+                        onClick={() => setSelectedOrder(o)}
                       >
-                        {o.paymentMethod} &bull; {o.paymentStatus}
-                      </span>
-                    </td>
+                        <td className="px-5 py-4 font-mono font-bold text-[#17202A]">
+                          #{o.orderNumber}
+                          <div className="text-[10px] text-slate-400 font-sans font-normal mt-0.5">
+                            {new Date(o.createdAt).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </div>
+                        </td>
 
-                    <td className="px-5 py-4" onClick={(e) => e.stopPropagation()}>
-                      <select
-                        value={o.status}
-                        onChange={(e) => handleUpdateStatus(o.id, e.target.value)}
-                        className={`text-[11px] font-bold rounded-lg px-2.5 py-1 border cursor-pointer focus:outline-none ${getStatusBadgeClass(
-                          o.status
-                        )}`}
-                      >
-                        <option value="CONFIRMED">CONFIRMED</option>
-                        <option value="PREPARING">PREPARING</option>
-                        <option value="READY_FOR_PICKUP">READY FOR PICKUP</option>
-                        <option value="DELIVERY_ASSIGNED">DELIVERY ASSIGNED</option>
-                        <option value="PICKED_UP">PICKED UP</option>
-                        <option value="OUT_FOR_DELIVERY">OUT FOR DELIVERY</option>
-                        <option value="DELIVERED">DELIVERED</option>
-                        <option value="CANCELLED">CANCELLED</option>
-                        <option value="REFUND_REQUESTED">REFUND REQUESTED</option>
-                      </select>
-                    </td>
+                        <td className="px-5 py-4">
+                          <div className="font-bold text-slate-800">{o.studentName}</div>
+                          <div className="text-[11px] text-slate-500">
+                            {o.hallName}, Room {o.roomNumber}
+                          </div>
+                        </td>
 
-                    <td className="px-5 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => openAssignModal(o)}
-                          title="Assign Delivery Runner"
-                          className="p-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 transition"
-                        >
-                          <Truck className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setSelectedOrder(o)}
-                          title="Open Order Drawer"
-                          className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-[#4F9D32] border border-slate-200 transition"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setSelectedReceipt(o)}
-                          title="Download Receipt PDF"
-                          className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-[#4F9D32] border border-slate-200 transition"
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        <td className="px-5 py-4">
+                          <span className="font-bold text-slate-800">{o.items?.length || 0} items</span>
+                          <div className="text-[11px] text-slate-500 truncate max-w-[180px]">
+                            {o.items?.map((it: any) => `${it.productName} (${it.quantity})`).join(', ')}
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <div className="font-bold text-[#17202A]">₹{o.totalAmount}</div>
+                          <span
+                            className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                              o.paymentMethod === 'COD'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-emerald-50 text-[#347A27] border-emerald-200'
+                            }`}
+                          >
+                            {o.paymentMethod}
+                          </span>
+                        </td>
+
+                        <td className="px-5 py-4" onClick={(e) => e.stopPropagation()}>
+                          <select
+                            value={o.status}
+                            onChange={(e) => handleUpdateStatus(o.id, e.target.value)}
+                            className={`text-[11px] font-bold rounded-lg px-2.5 py-1 border cursor-pointer focus:outline-none ${getStatusBadgeClass(
+                              o.status
+                            )}`}
+                          >
+                            <option value="CONFIRMED">CONFIRMED</option>
+                            <option value="PREPARING">PREPARING</option>
+                            <option value="READY_FOR_PICKUP">READY FOR PICKUP</option>
+                            <option value="DELIVERY_ASSIGNED">DELIVERY ASSIGNED</option>
+                            <option value="PICKED_UP">PICKED UP</option>
+                            <option value="OUT_FOR_DELIVERY">OUT FOR DELIVERY</option>
+                            <option value="DELIVERED">DELIVERED</option>
+                            <option value="CANCELLED">CANCELLED</option>
+                            <option value="REFUNDED">REFUNDED</option>
+                          </select>
+                        </td>
+
+                        <td className="px-5 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => openAssignModal(o)}
+                              title="Assign Delivery Runner"
+                              className="p-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 transition"
+                            >
+                              <Truck className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setSelectedOrder(o)}
+                              title="Open Order Drawer"
+                              className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-[#4F9D32] border border-slate-200 transition"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setSelectedReceipt(o)}
+                              title="Download Receipt PDF"
+                              className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-[#4F9D32] border border-slate-200 transition"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* TAB 2: RETURN & REFUND REQUESTS */}
+      {activeTab === 'RETURNS' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="font-bold text-sm text-[#17202A] flex items-center gap-2">
+                  <RotateCcw className="w-4 h-4 text-rose-600" />
+                  Product Returns &amp; Dispute Management
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Review student defect proofs, enforce delivery fee deductions for mind-changes, and dispatch runners with secure pickup OTPs.
+                </p>
+              </div>
+              <span className="text-xs font-semibold px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-600">
+                {returnRequests.length} Total Requests
+              </span>
+            </div>
+
+            {loadingReturns ? (
+              <div className="p-12 text-center text-slate-400">Loading return requests...</div>
+            ) : returnRequests.length === 0 ? (
+              <div className="p-12 text-center text-slate-400">No return requests recorded yet.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200">
+                    <tr>
+                      <th className="px-5 py-3.5">Return ID &amp; Order</th>
+                      <th className="px-5 py-3.5">Student / Room</th>
+                      <th className="px-5 py-3.5">Reason Type</th>
+                      <th className="px-5 py-3.5">Refund Calculation</th>
+                      <th className="px-5 py-3.5">Status &amp; OTP</th>
+                      <th className="px-5 py-3.5">Assigned Runner</th>
+                      <th className="px-5 py-3.5 text-right">Review Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {returnRequests.map((ret) => (
+                      <tr key={ret.id} className="hover:bg-slate-50/80 transition">
+                        <td className="px-5 py-4">
+                          <div className="font-mono font-bold text-slate-900">
+                            #{ret.id.substring(0, 8)}
+                          </div>
+                          <div className="text-[10px] text-slate-500">
+                            Order: #{ret.order?.orderNumber || ret.orderId?.substring(0, 8)}
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <div className="font-bold text-[#17202A]">{ret.studentName || ret.order?.studentName}</div>
+                          <div className="text-[11px] text-slate-500">
+                            {ret.hallName || ret.order?.hallName}, Room {ret.roomNumber || ret.order?.roomNumber}
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              ret.reasonType === 'PRODUCT_ISSUE'
+                                ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                : 'bg-purple-50 text-purple-800 border-purple-300'
+                            }`}
+                          >
+                            {ret.reasonType === 'PRODUCT_ISSUE' ? '⚠️ Defective / Damaged' : '🔄 Mind Change'}
+                          </span>
+                          <div className="text-[11px] text-slate-600 line-clamp-1 mt-0.5">
+                            {ret.reasonDetails || 'No details provided'}
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <div className="font-bold text-emerald-700 text-sm">
+                            ₹{ret.refundAmount}
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Original: ₹{ret.originalAmount || ret.order?.totalAmount} | Fee Ded: ₹{ret.deliveryChargeDeducted || 0}
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${getReturnStatusBadge(
+                              ret.status
+                            )}`}
+                          >
+                            {ret.status}
+                          </span>
+                          {ret.pickupOtp && (
+                            <div className="text-[11px] font-mono font-bold text-slate-700 mt-1">
+                              OTP: <span className="text-emerald-700">{ret.pickupOtp}</span>
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          {ret.deliveryBoy ? (
+                            <div>
+                              <div className="font-bold text-slate-800">{ret.deliveryBoy.fullName}</div>
+                              <div className="text-[10px] text-slate-500">{ret.deliveryBoy.phone}</div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic text-[11px]">Unassigned</span>
+                          )}
+                        </td>
+
+                        <td className="px-5 py-4 text-right">
+                          <button
+                            onClick={() => openReturnReviewModal(ret)}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-[#4F9D32] hover:text-white text-slate-700 font-bold rounded-xl text-xs transition shadow-2xs"
+                          >
+                            Review &amp; Manage
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 4. ORDER DETAIL SIDE DRAWER (Slide-over) */}
       {selectedOrder && (
@@ -604,11 +883,11 @@ export default function AdminOrdersPage() {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1 text-slate-600 text-xs">
                   <div className="flex justify-between">
                     <span>Subtotal</span>
-                    <span className="font-mono font-medium">₹{selectedOrder.totalAmount}</span>
+                    <span className="font-mono font-medium">₹{selectedOrder.subtotal || selectedOrder.totalAmount}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Delivery Fee</span>
-                    <span className="font-mono font-medium text-[#347A27]">₹0 (Campus Drop)</span>
+                    <span className="font-mono font-medium text-[#347A27]">₹{selectedOrder.deliveryFee || 0}</span>
                   </div>
                   <div className="flex justify-between font-bold text-[#17202A] pt-2 border-t border-slate-200 text-sm">
                     <span>Total Amount</span>
@@ -676,7 +955,7 @@ export default function AdminOrdersPage() {
         order={selectedReceipt}
       />
 
-      {/* ASSIGN DELIVERY RUNNER MODAL */}
+      {/* ASSIGN DELIVERY RUNNER MODAL FOR ORDERS */}
       {assignModalOpen && selectedOrderForAssign && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-fade-in text-xs">
@@ -742,6 +1021,171 @@ export default function AdminOrdersPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* RETURN REVIEW & RUNNER ASSIGN MODAL */}
+      {reviewModalOpen && selectedReturn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-fade-in text-xs max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-rose-600" />
+                <h3 className="text-base font-bold text-[#17202A]">Review Return Request</h3>
+              </div>
+              <button
+                onClick={() => setReviewModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Request Summary */}
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-slate-700">Order: #{selectedReturn.order?.orderNumber || selectedReturn.orderId}</span>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getReturnStatusBadge(
+                    selectedReturn.status
+                  )}`}
+                >
+                  {selectedReturn.status}
+                </span>
+              </div>
+              <div>
+                Student: <strong>{selectedReturn.studentName || selectedReturn.order?.studentName}</strong> ({selectedReturn.order?.rollNumber})
+              </div>
+              <div>
+                Pickup Address: <strong>{selectedReturn.hallName || selectedReturn.order?.hallName}, Room {selectedReturn.roomNumber || selectedReturn.order?.roomNumber}</strong>
+              </div>
+            </div>
+
+            {/* Reason & Proof Breakdown */}
+            <div className="p-3.5 rounded-xl border space-y-2 bg-amber-50/50 border-amber-200">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-800">Return Reason Category:</span>
+                <span className="font-bold text-amber-900">
+                  {selectedReturn.reasonType === 'PRODUCT_ISSUE' ? '⚠️ Defective / Damaged Product' : '🔄 Student Mind Change'}
+                </span>
+              </div>
+              <div>
+                <span className="font-semibold text-slate-700">Student Explanation:</span>
+                <p className="mt-1 p-2 bg-white rounded-lg border border-amber-200 text-slate-700">
+                  {selectedReturn.reasonDetails || 'No details provided'}
+                </p>
+              </div>
+
+              {selectedReturn.proofImageUrl && (
+                <div className="pt-2 border-t border-amber-200">
+                  <span className="font-semibold text-slate-700 block mb-1">Attached Defect Proof Photo:</span>
+                  <a
+                    href={selectedReturn.proofImageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-blue-600 hover:underline font-bold bg-white px-3 py-1.5 rounded-lg border border-slate-200"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>View Defect Photo Evidence</span>
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* Refund & Fee Breakdown */}
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+              <span className="font-bold text-slate-700 uppercase text-[10px] block">Financial Refund Settlement</span>
+              <div className="flex justify-between">
+                <span>Original Order/Item Value:</span>
+                <span className="font-mono">₹{selectedReturn.originalAmount || selectedReturn.order?.totalAmount}</span>
+              </div>
+              <div className="flex justify-between text-rose-600">
+                <span>Delivery Charge Deducted (Mind Change Policy):</span>
+                <span className="font-mono">-₹{selectedReturn.deliveryChargeDeducted || 0}</span>
+              </div>
+              <div className="flex justify-between font-bold text-[#17202A] pt-1.5 border-t border-slate-200 text-sm">
+                <span>Student Refund Amount:</span>
+                <span className="font-mono text-emerald-700">₹{selectedReturn.refundAmount}</span>
+              </div>
+            </div>
+
+            {/* Pickup OTP if already approved */}
+            {selectedReturn.pickupOtp && (
+              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 flex items-center justify-between">
+                <div>
+                  <span className="font-bold block">Generated 6-Digit Pickup OTP</span>
+                  <span className="text-[11px]">Share or verify during door pickup</span>
+                </div>
+                <div className="font-mono text-xl font-black bg-white px-3 py-1 rounded-lg border border-emerald-300">
+                  {selectedReturn.pickupOtp}
+                </div>
+              </div>
+            )}
+
+            {/* Runner Assignment Selection */}
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">
+                Assign Return Pickup Runner
+              </label>
+              <select
+                value={returnAssignBoyId}
+                onChange={(e) => setReturnAssignBoyId(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-semibold text-slate-800 focus:outline-none focus:border-rose-500"
+              >
+                <option value="">-- Assign Delivery Runner (Optional / Now) --</option>
+                {deliveryBoys.map((boy) => (
+                  <option key={boy.id} value={boy.id}>
+                    {boy.fullName} ({boy.user?.username || boy.phone})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Rejection Input */}
+            <div className="pt-2 border-t border-slate-100">
+              <label className="font-semibold text-slate-600 block mb-1">
+                Rejection Justification (required if rejecting):
+              </label>
+              <input
+                type="text"
+                value={returnRejectionReason}
+                onChange={(e) => setReturnRejectionReason(e.target.value)}
+                placeholder="e.g., Proof invalid or unverified damage"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none"
+              />
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={handleRejectReturn}
+                disabled={processingReturn}
+                className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold transition disabled:opacity-50"
+              >
+                {processingReturn ? 'Processing...' : 'Reject Return'}
+              </button>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setReviewModalOpen(false)}
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApproveReturn}
+                  disabled={processingReturn}
+                  className="px-4 py-2 bg-[#4F9D32] hover:bg-[#347A27] text-white rounded-xl font-bold shadow-sm transition flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>{processingReturn ? 'Processing...' : 'Approve & Assign'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
