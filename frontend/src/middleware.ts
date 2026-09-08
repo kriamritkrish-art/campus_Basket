@@ -3,13 +3,16 @@ import { NextRequest, NextResponse } from 'next/server';
 export function middleware(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
   
+  const isDev = process.env.NODE_ENV === 'development';
+  const devSources = isDev ? ' http://localhost:5000 http://127.0.0.1:5000 ws:' : '';
+
   const cspHeader = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://checkout.razorpay.com https://accounts.google.com https://apis.google.com https://cdn.jsdelivr.net`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https://images.unsplash.com https://drive.google.com https://lh3.googleusercontent.com",
     "font-src 'self' data: https://fonts.gstatic.com",
-    "connect-src 'self' https://api.razorpay.com https://campus-basket-gray.vercel.app https://nit-campus-services.onrender.com https://nitdgp-campus-backend.railway.app http://localhost:5000 wss:",
+    `connect-src 'self' https://api.razorpay.com https://campus-basket-gray.vercel.app https://nit-campus-services.onrender.com https://nitdgp-campus-backend.railway.app wss:${devSources}`,
     "frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com https://accounts.google.com",
     "frame-ancestors 'self'",
     "object-src 'none'",
