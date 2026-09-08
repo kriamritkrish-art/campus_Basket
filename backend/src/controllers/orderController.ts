@@ -707,7 +707,8 @@ export class OrderController {
   public static async getOrderById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const studentId = req.user?.studentId;
+      const student = await resolveStudentProfile(req.user);
+      const studentId = student?.id || req.user?.studentId;
 
       const order = await prisma.order.findUnique({
         where: { id },
@@ -738,7 +739,11 @@ export class OrderController {
       }
 
       // Privacy check: Students can only view their own orders
-      if (req.user?.role === 'STUDENT' && order.studentId !== studentId) {
+      if (
+        req.user?.role === 'STUDENT' &&
+        order.studentId !== studentId &&
+        (order as any).student?.userId !== req.user?.userId
+      ) {
         res.status(403).json({ success: false, message: 'Access denied to this order' });
         return;
       }
@@ -760,7 +765,7 @@ export class OrderController {
       const isAccepted = ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED', 'DISPATCHED'].includes(order.status);
       const isModifiable = !isAccepted && ['CONFIRMED', 'PENDING_PAYMENT'].includes(order.status);
       const cancelCheck = RefundService.checkCancellationEligibility(order);
-      const returnCheck = RefundService.evaluateReturnEligibility(order);
+      const returnCheck = RefundService.evaluateReturnEligibility({ ...order, reasonType: 'PRODUCT_ISSUE' });
 
       const codPaidAdvance = (order.paymentMethod === 'CASH_ON_DELIVERY' && ['COD_PENDING', 'SUCCESS', 'PAID'].includes(order.paymentStatus))
         ? Number(order.payment?.amount || 0)
@@ -768,6 +773,10 @@ export class OrderController {
       const codRemainingCash = order.paymentMethod === 'CASH_ON_DELIVERY'
         ? ((order as any).codCollection ? Number((order as any).codCollection.expectedAmount) : Math.max(0, Number(order.totalAmount) - codPaidAdvance))
         : 0;
+
+      const refundAccount = await (prisma as any).refundAccount.findFirst({
+        where: { studentId: order.studentId }
+      }).catch(() => null);
 
       res.status(200).json({
         success: true,
@@ -788,6 +797,7 @@ export class OrderController {
           returnMessage: returnCheck.reason || null,
           codPaidAdvance,
           codRemainingCash,
+          refundAccount: refundAccount || null,
           isProduce: order.serviceType === 'FRESH_PRODUCE',
           isStationery: order.serviceType === 'STATIONERY',
           isFood: order.serviceType === 'FOOD',
@@ -983,7 +993,7 @@ export class OrderController {
         return;
       }
 
-      if (order.status !== 'DELIVERED') {
+      if (order.status !== 'DELIVERED' && (order.status as string) !== 'COMPLETED') {
         res.status(400).json({
           success: false,
           message: 'Returns can only be requested after the order has been successfully delivered to your doorstep.'
@@ -991,7 +1001,14 @@ export class OrderController {
         return;
       }
 
-      const returnCheck = RefundService.evaluateReturnEligibility(order);
+      const isMindChange = reasonType === 'MIND_CHANGE';
+      const actualReasonType = isMindChange ? 'MIND_CHANGE' : 'PRODUCT_ISSUE';
+      const details = (reasonDetails || reason || '').trim();
+
+      const returnCheck = RefundService.evaluateReturnEligibility({
+        ...order,
+        reasonType: actualReasonType
+      });
       if (!returnCheck.eligible) {
         res.status(400).json({
           success: false,
@@ -999,10 +1016,6 @@ export class OrderController {
         });
         return;
       }
-
-      const isMindChange = reasonType === 'MIND_CHANGE';
-      const actualReasonType = isMindChange ? 'MIND_CHANGE' : 'PRODUCT_ISSUE';
-      const details = (reasonDetails || reason || '').trim();
 
       // For product-related issues, user must provide proof (photo or clear description)
       if (actualReasonType === 'PRODUCT_ISSUE') {
@@ -1046,6 +1059,7 @@ export class OrderController {
           reasonDetails: details || (isMindChange ? 'Customer mind change / not needed' : 'Product defect/issue reported'),
           proofImageUrl: proofImageUrl || null,
           itemAmount: itemTotal,
+          deliveryFeeDeducted: deliveryFeeDeducted,
           deliveryChargeDeducted: deliveryFeeDeducted,
           refundAmount: netRefundAmount,
           status: 'REQUESTED'
@@ -1057,6 +1071,7 @@ export class OrderController {
           reasonDetails: details || (isMindChange ? 'Customer mind change / not needed' : 'Product defect/issue reported'),
           proofImageUrl: proofImageUrl || null,
           itemAmount: itemTotal,
+          deliveryFeeDeducted: deliveryFeeDeducted,
           deliveryChargeDeducted: deliveryFeeDeducted,
           refundAmount: netRefundAmount,
           status: 'REQUESTED'
@@ -1127,7 +1142,8 @@ export class OrderController {
   public static async downloadReceipt(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const studentId = req.user?.studentId;
+      const student = await resolveStudentProfile(req.user);
+      const studentId = student?.id || req.user?.studentId;
 
       const order = await prisma.order.findUnique({
         where: { id },
@@ -1146,45 +1162,54 @@ export class OrderController {
       }
 
       // Privacy check: Students can only view their own receipts
-      if (req.user?.role === 'STUDENT' && order.studentId !== studentId) {
+      if (
+        req.user?.role === 'STUDENT' &&
+        order.studentId !== studentId &&
+        (order as any).student?.userId !== req.user?.userId &&
+        (order as any).student?.user?.id !== req.user?.userId
+      ) {
         res.status(403).json({ success: false, message: 'Unauthorized to access this receipt' });
         return;
       }
 
+      const rawItems = Array.isArray(order.items) && order.items.length > 0
+        ? order.items
+        : [{ productName: 'Campus Order Item', quantity: 1, unitPrice: Number(order.totalAmount), totalPrice: Number(order.totalAmount) }];
+
       const receiptData = {
-        receiptNumber: `RCP-${order.orderNumber.replace(/[^0-9]/g, '') || '2026-001'}`,
-        orderNumber: order.orderNumber,
+        receiptNumber: `RCP-${(order.orderNumber || order.id).replace(/[^0-9]/g, '') || '2026-001'}`,
+        orderNumber: order.orderNumber || order.id,
         orderId: order.id,
-        createdAt: order.createdAt,
+        createdAt: order.createdAt ? new Date(order.createdAt) : new Date(),
         student: {
-          fullName: order.student?.fullName || 'Campus Student',
-          email: order.student?.user?.email || req.user?.email || 'student@nitdgp.ac.in',
-          rollNumber: order.student?.rollNumber || '24U10000',
-          registrationNumber: order.student?.registrationNumber,
-          mobileNumber: order.student?.mobileNumber || '+91 98765 00000',
-          hallName: order.hallName || 'Hostel Hall',
-          roomNumber: order.roomNumber || 'Room'
+          fullName: order.student?.fullName || student?.fullName || 'Campus Student',
+          email: order.student?.user?.email || order.student?.collegeEmail || req.user?.email || 'student@nitdgp.ac.in',
+          rollNumber: order.student?.rollNumber || student?.rollNumber || '24U10000',
+          registrationNumber: order.student?.registrationNumber || student?.registrationNumber,
+          mobileNumber: order.student?.mobileNumber || student?.mobileNumber || '+91 98765 00000',
+          hallName: order.hallName || student?.hall?.name || 'Hostel Hall',
+          roomNumber: order.roomNumber || student?.roomNumber || 'Room'
         },
-        items: order.items.map((it: any) => ({
-          productName: it.productName,
-          quantity: it.quantity,
-          unitPrice: Number(it.unitPrice),
-          totalPrice: Number(it.totalPrice)
+        items: rawItems.map((it: any) => ({
+          productName: it.productName || 'Product Item',
+          quantity: Number(it.quantity || 1),
+          unitPrice: Number(it.unitPrice || it.price || 0),
+          totalPrice: Number(it.totalPrice || (Number(it.unitPrice || it.price || 0) * Number(it.quantity || 1)))
         })),
-        subtotal: Number(order.subtotal || order.totalAmount),
+        subtotal: Number(order.subtotal || order.totalAmount || 0),
         discountAmount: Number(order.discountAmount || 0),
         deliveryFee: Number(order.deliveryFee || 0),
-        totalAmount: Number(order.totalAmount),
-        paymentMethod: order.paymentMethod,
-        paymentStatus: order.paymentStatus,
+        totalAmount: Number(order.totalAmount || 0),
+        paymentMethod: order.paymentMethod || 'ONLINE',
+        paymentStatus: order.paymentStatus || 'PAID',
         transactionId: order.payment?.razorpayPaymentId || `TXN_${order.id.slice(-8).toUpperCase()}`,
-        status: order.status
+        status: order.status || 'CONFIRMED'
       };
 
       const pdfBuffer = await ReceiptPdfService.generateReceipt(receiptData);
 
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="Receipt_${order.orderNumber}.pdf"`);
+      res.setHeader('Content-Disposition', `attachment; filename="Receipt_${order.orderNumber || order.id}.pdf"`);
       res.send(pdfBuffer);
     } catch (err) {
       next(err);

@@ -1078,10 +1078,13 @@ export const fallbackOrders = [
     deliveryFee: 15,
     discountAmount: 0,
     status: 'DELIVERED',
+    serviceType: 'FOOD',
+    deliveryBoyId: 'db_subhash',
     paymentMethod: 'RAZORPAY',
     paymentStatus: 'SUCCESS',
-    createdAt: pastDays(0, 2),
-    updatedAt: pastDays(0, 1),
+    deliveredAt: new Date(Date.now() - 5 * 60 * 1000),
+    createdAt: new Date(Date.now() - 25 * 60 * 1000),
+    updatedAt: new Date(Date.now() - 5 * 60 * 1000),
     student: { fullName: 'Sourav Senapati', rollNumber: '24U10227', email: 'ss.24u10227@nitdgp.ac.in', mobileNumber: '9876501234', hallName: 'Hall 11', roomNumber: 'B-304' },
     items: [
       { id: 'it_1', productName: 'Kolkata Style Chicken Biryani', quantity: 1, unitPrice: 140, totalPrice: 140 },
@@ -3060,6 +3063,47 @@ export const fallbackDeliveryBoyWithdrawals: any[] = [
   }
 ];
 
-export const fallbackReturnRequests: any[] = [];
+export const fallbackReturnRequests: any[] = [
+  {
+    id: 'ret_seed_001',
+    orderId: 'ord_106',
+    studentId: 'stud_rohit',
+    reasonType: 'PRODUCT_ISSUE',
+    reasonDetails: 'JK Copier paper ream was damaged and torn upon delivery; pages creased.',
+    proofImageUrl: 'https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=800',
+    status: 'PICKED_UP',
+    pickupOtp: '748291',
+    pickupOtpVerified: true,
+    pickupOtpVerifiedAt: new Date(Date.now() - 1000 * 60 * 30),
+    deliveryBoyId: 'db_bikash',
+    itemAmount: 320,
+    deliveryFeeDeducted: 0,
+    deliveryChargeDeducted: 0,
+    refundAmount: 320,
+    deliveryBoyPayout: 15,
+    adminNotes: 'Customer reported damaged packaging. Pickup completed by Bikash.',
+    createdAt: new Date(Date.now() - 1000 * 60 * 120),
+    updatedAt: new Date(Date.now() - 1000 * 60 * 30)
+  },
+  {
+    id: 'ret_seed_002',
+    orderId: 'ord_105',
+    studentId: 'stud_sourav',
+    reasonType: 'PRODUCT_ISSUE',
+    reasonDetails: 'Food item was stale and packaging spilled inside delivery bag.',
+    proofImageUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800',
+    status: 'REQUESTED',
+    pickupOtp: '419208',
+    pickupOtpVerified: false,
+    itemAmount: 70,
+    deliveryFeeDeducted: 0,
+    deliveryChargeDeducted: 0,
+    refundAmount: 70,
+    deliveryBoyPayout: 15,
+    adminNotes: 'Awaiting admin approval and runner assignment.',
+    createdAt: new Date(Date.now() - 1000 * 60 * 15),
+    updatedAt: new Date(Date.now() - 1000 * 60 * 15)
+  }
+];
 
 

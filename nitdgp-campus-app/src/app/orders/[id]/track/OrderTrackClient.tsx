@@ -314,10 +314,18 @@ export default function OrderTrackClient() {
       const base = getApiBase();
       const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
       const res = await fetch(`${base}/api/orders/${order.id}/receipt`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include'
       });
       if (!res.ok) {
-        throw new Error('Failed to generate PDF receipt');
+        let errMsg = 'Failed to generate PDF receipt';
+        try {
+          const errData = await res.json();
+          if (errData?.message) errMsg = errData.message;
+        } catch {
+          // fallback
+        }
+        throw new Error(errMsg);
       }
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -326,8 +334,10 @@ export default function OrderTrackClient() {
       a.download = `Receipt-${order.orderNumber}.pdf`;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        if (document.body.contains(a)) document.body.removeChild(a);
+      }, 500);
       showToast('Official PDF Receipt downloaded!');
     } catch (err: any) {
       showToast(err?.message || 'Error downloading receipt PDF');

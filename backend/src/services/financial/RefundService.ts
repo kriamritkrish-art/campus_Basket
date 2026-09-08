@@ -96,12 +96,13 @@ export class RefundService {
     status: string;
     deliveredAt?: Date | string | null;
     createdAt?: Date | string;
+    reasonType?: string;
     items?: Array<any>;
   }): { isEligible: boolean; eligible: boolean; reason?: string } {
-    const status = order.status.toUpperCase();
+    const status = (order.status || '').toUpperCase();
     const service = (order.serviceType || 'FOOD').toUpperCase();
 
-    if (status !== 'DELIVERED') {
+    if (!['DELIVERED', 'COMPLETED'].includes(status)) {
       return {
         isEligible: false,
         eligible: false,
@@ -119,8 +120,20 @@ export class RefundService {
 
     const deliveredTime = order.deliveredAt ? new Date(order.deliveredAt).getTime() : new Date(order.createdAt || Date.now()).getTime();
     const elapsedMinutes = (Date.now() - deliveredTime) / (1000 * 60);
+    const isProductIssue = order.reasonType === 'PRODUCT_ISSUE';
 
     if (service === 'FOOD') {
+      if (isProductIssue) {
+        if (elapsedMinutes > 1440) {
+          return {
+            isEligible: false,
+            eligible: false,
+            reason: 'Food quality defect reporting window has expired (24-hour limit).'
+          };
+        }
+        return { isEligible: true, eligible: true };
+      }
+
       if (elapsedMinutes > 30) {
         return {
           isEligible: false,
@@ -132,7 +145,8 @@ export class RefundService {
     }
 
     if (service === 'FRESH_PRODUCE') {
-      if (elapsedMinutes > 120) {
+      const produceLimit = isProductIssue ? 1440 : 120;
+      if (elapsedMinutes > produceLimit) {
         return {
           isEligible: false,
           eligible: false,
@@ -142,8 +156,9 @@ export class RefundService {
       return { isEligible: true, eligible: true };
     }
 
-    if (service === 'STATIONERY') {
-      if (elapsedMinutes > 1440) {
+    if (service === 'STATIONERY' || service === 'ESSENTIALS') {
+      const statLimit = isProductIssue ? 10080 : 1440;
+      if (elapsedMinutes > statLimit) {
         return {
           isEligible: false,
           eligible: false,
