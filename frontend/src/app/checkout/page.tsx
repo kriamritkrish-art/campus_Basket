@@ -48,6 +48,10 @@ export default function CheckoutPage() {
   const [isCodAllowed, setIsCodAllowed] = useState<boolean>(true);
   const [codAdvanceAmount, setCodAdvanceAmount] = useState<number>(10);
   const [isCodGloballyEnabled, setIsCodGloballyEnabled] = useState<boolean>(true);
+  const [codBlockedReason, setCodBlockedReason] = useState<string | null>(null);
+  const [productPolicies, setProductPolicies] = useState<Record<string, any>>({});
+  const [providerPolicies, setProviderPolicies] = useState<Record<string, any>>({});
+  const [productProviderMap, setProductProviderMap] = useState<Record<string, string>>({});
 
   // States
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -55,20 +59,40 @@ export default function CheckoutPage() {
   const [orderConfirmed, setOrderConfirmed] = useState<any | null>(null);
   const [showMobileSummary, setShowMobileSummary] = useState<boolean>(false);
 
-  // Fetch admin COD and advance settings
+  // Fetch admin COD, policies, and advance settings
   useEffect(() => {
     async function fetchPlatformSettings() {
       try {
-        const res = await apiRequest('/api/admin/settings');
-        if (res.success && Array.isArray(res.settings)) {
-          const codSet = res.settings.find((s: any) => s.key === 'ENABLE_CASH_ON_DELIVERY');
+        const [settingsRes, productsRes] = await Promise.allSettled([
+          apiRequest('/api/admin/settings'),
+          apiRequest('/api/products')
+        ]);
+
+        if (settingsRes.status === 'fulfilled' && settingsRes.value?.success && Array.isArray(settingsRes.value.settings)) {
+          const codSet = settingsRes.value.settings.find((s: any) => s.key === 'ENABLE_CASH_ON_DELIVERY');
           if (codSet && codSet.value === 'false') {
             setIsCodGloballyEnabled(false);
           }
-          const advSet = res.settings.find((s: any) => s.key === 'COD_MIN_ADVANCE_AMOUNT');
+          const advSet = settingsRes.value.settings.find((s: any) => s.key === 'COD_MIN_ADVANCE_AMOUNT');
           if (advSet) {
             setCodAdvanceAmount(Number(advSet.value) || 0);
           }
+          const prodPolSet = settingsRes.value.settings.find((s: any) => s.key === 'PRODUCT_ORDER_POLICIES');
+          if (prodPolSet && prodPolSet.value) {
+            try { setProductPolicies(JSON.parse(prodPolSet.value)); } catch {}
+          }
+          const provPolSet = settingsRes.value.settings.find((s: any) => s.key === 'PROVIDER_ORDER_POLICIES');
+          if (provPolSet && provPolSet.value) {
+            try { setProviderPolicies(JSON.parse(provPolSet.value)); } catch {}
+          }
+        }
+
+        if (productsRes.status === 'fulfilled' && productsRes.value?.success && Array.isArray(productsRes.value.products)) {
+          const map: Record<string, string> = {};
+          productsRes.value.products.forEach((p: any) => {
+            if (p.id && p.providerId) map[p.id] = p.providerId;
+          });
+          setProductProviderMap(map);
         }
       } catch {
         // Fallback default ₹10 advance
@@ -99,15 +123,73 @@ export default function CheckoutPage() {
     }
   }, [isAuthenticated, user, router]);
 
-  // Check COD eligibility
+  // Check COD eligibility with strict Priority: Product Override > Provider Override > Global
   useEffect(() => {
-    if (!isCodGloballyEnabled || total > 1500) {
+    if (!isCodGloballyEnabled) {
       setIsCodAllowed(false);
-      setPaymentMethod('RAZORPAY');
+      setCodBlockedReason('Cash on Delivery is temporarily disabled by campus administration.');
+      if (paymentMethod === 'CASH_ON_DELIVERY') setPaymentMethod('RAZORPAY');
+      return;
+    }
+
+    if (total > 1500) {
+      setIsCodAllowed(false);
+      setCodBlockedReason('Orders above ₹1,500 must be paid online via UPI or Card.');
+      if (paymentMethod === 'CASH_ON_DELIVERY') setPaymentMethod('RAZORPAY');
+      return;
+    }
+
+    let blocked: string | null = null;
+    let customAdv: number | null = null;
+
+    for (const item of items) {
+      const prodPol = productPolicies[item.productId];
+      const provId = (item as any).providerId || productProviderMap[item.productId];
+      const provPol = provId ? providerPolicies[provId] : null;
+
+      // 1. PRODUCT OVERRIDE (Highest Priority)
+      if (prodPol && prodPol.allowCod === false) {
+        blocked = `Cash on Delivery is disabled for "${item.name}". Please pay online.`;
+        break;
+      }
+
+      // If product explicitly enables COD, it overrides provider disallowing it
+      if (prodPol && prodPol.allowCod === true) {
+        if (customAdv === null && typeof prodPol.codAdvance === 'number' && prodPol.codAdvance >= 0) {
+          customAdv = prodPol.codAdvance;
+        }
+        continue;
+      }
+
+      // 2. PROVIDER OVERRIDE (Secondary Priority)
+      if (provPol && provPol.allowCod === false) {
+        blocked = `Merchant does not accept Cash on Delivery for "${item.name}". Please pay online.`;
+        break;
+      }
+
+      if (customAdv === null) {
+        if (prodPol && typeof prodPol.codAdvance === 'number' && prodPol.codAdvance >= 0) {
+          customAdv = prodPol.codAdvance;
+        } else if (provPol && typeof provPol.codAdvance === 'number' && provPol.codAdvance >= 0) {
+          customAdv = provPol.codAdvance;
+        }
+      }
+    }
+
+    if (blocked) {
+      setIsCodAllowed(false);
+      setCodBlockedReason(blocked);
+      if (paymentMethod === 'CASH_ON_DELIVERY') {
+        setPaymentMethod('RAZORPAY');
+      }
     } else {
       setIsCodAllowed(true);
+      setCodBlockedReason(null);
+      if (customAdv !== null) {
+        setCodAdvanceAmount(customAdv);
+      }
     }
-  }, [total, isCodGloballyEnabled]);
+  }, [items, total, isCodGloballyEnabled, productPolicies, providerPolicies, productProviderMap, paymentMethod]);
 
   // Load Razorpay Script dynamically
   const loadRazorpayScript = () => {
@@ -683,8 +765,8 @@ export default function CheckoutPage() {
                             Available up to ₹1,500
                           </span>
                         ) : (
-                          <span className="text-[10px] text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                            Unavailable &gt; ₹1,500
+                          <span className="text-[10px] text-rose-700 font-extrabold bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                            COD Unavailable
                           </span>
                         )}
                       </div>
@@ -717,9 +799,15 @@ export default function CheckoutPage() {
                       )}
 
                       {!isCodAllowed && (
-                        <p className="text-[11px] text-rose-600 font-bold pt-1">
-                          Orders above ₹1,500 must be paid online via UPI/Cards.
-                        </p>
+                        <div className="mt-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold block text-rose-900">COD Blocked:</span>
+                            <span className="text-[11px] font-medium leading-tight">
+                              {codBlockedReason || 'Orders above ₹1,500 or containing restricted products must be paid online.'}
+                            </span>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>

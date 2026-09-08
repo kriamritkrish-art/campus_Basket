@@ -138,6 +138,7 @@ export interface CartItem {
   isOutOfStock: boolean;
   unit: string;
   image?: string | null;
+  providerId?: string;
 }
 
 export interface OrderItem {

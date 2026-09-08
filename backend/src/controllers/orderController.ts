@@ -158,11 +158,18 @@ export class OrderController {
       let remainingCashDue = totalAmount;
 
       if (data.paymentMethod === 'CASH_ON_DELIVERY') {
-        const [codSetting, maxCodSetting, minAdvanceSetting, providerPoliciesSetting] = await Promise.all([
+        const [
+          codSetting,
+          maxCodSetting,
+          minAdvanceSetting,
+          providerPoliciesSetting,
+          productPoliciesSetting
+        ] = await Promise.all([
           prisma.adminSetting.findUnique({ where: { key: 'ENABLE_CASH_ON_DELIVERY' } }),
           prisma.adminSetting.findUnique({ where: { key: 'MAX_COD_AMOUNT' } }),
           prisma.adminSetting.findUnique({ where: { key: 'COD_MIN_ADVANCE_AMOUNT' } }),
-          prisma.adminSetting.findUnique({ where: { key: 'PROVIDER_ORDER_POLICIES' } })
+          prisma.adminSetting.findUnique({ where: { key: 'PROVIDER_ORDER_POLICIES' } }),
+          prisma.adminSetting.findUnique({ where: { key: 'PRODUCT_ORDER_POLICIES' } })
         ]);
 
         const isCodGloballyEnabled = codSetting ? codSetting.value === 'true' : true;
@@ -183,27 +190,54 @@ export class OrderController {
           return;
         }
 
-        // Provider specific policy check
-        let providerCodAdvance = -1;
-        const firstProdProvider = products.find((p) => p.providerId)?.providerId;
-        if (firstProdProvider && providerPoliciesSetting?.value) {
-          try {
-            const policies = JSON.parse(providerPoliciesSetting.value);
-            if (policies[firstProdProvider]?.allowCod === false) {
-              res.status(400).json({
-                success: false,
-                message: 'Cash on Delivery is currently disabled for this specific provider. Please pay online.'
-              });
-              return;
+        // Parse policy maps
+        let providerPolicies: Record<string, any> = {};
+        let productPolicies: Record<string, any> = {};
+        try {
+          if (providerPoliciesSetting?.value) providerPolicies = JSON.parse(providerPoliciesSetting.value);
+        } catch {}
+        try {
+          if (productPoliciesSetting?.value) productPolicies = JSON.parse(productPoliciesSetting.value);
+        } catch {}
+
+        // Strict Priority Evaluation: Product/Food Override > Provider Override > Global
+        let determinedAdvance: number | null = null;
+
+        for (const prod of products) {
+          const prodPol = productPolicies[prod.id];
+          const provId = prod.providerId;
+          const provPol = provId ? providerPolicies[provId] : null;
+
+          // PRIORITY 1: Product Override (Highest Priority)
+          if (prodPol && prodPol.allowCod === false) {
+            res.status(400).json({
+              success: false,
+              message: `Cash on Delivery is unavailable because "${prod.name}" does not support COD. Please choose online payment.`
+            });
+            return;
+          }
+
+          // PRIORITY 2: Provider Override (Only if product has not explicitly allowed COD)
+          if ((!prodPol || prodPol.allowCod === undefined) && provPol && provPol.allowCod === false) {
+            res.status(400).json({
+              success: false,
+              message: `Cash on Delivery is not offered by merchant for "${prod.name}". Please choose online payment.`
+            });
+            return;
+          }
+
+          // Compute custom advance fee priority
+          if (determinedAdvance === null) {
+            if (prodPol && typeof prodPol.codAdvance === 'number' && prodPol.codAdvance >= 0) {
+              determinedAdvance = prodPol.codAdvance;
+            } else if (provPol && typeof provPol.codAdvance === 'number' && provPol.codAdvance >= 0) {
+              determinedAdvance = provPol.codAdvance;
             }
-            if (policies[firstProdProvider]?.codAdvance !== undefined) {
-              providerCodAdvance = Number(policies[firstProdProvider].codAdvance);
-            }
-          } catch {}
+          }
         }
 
-        codAdvanceAmount = providerCodAdvance >= 0
-          ? providerCodAdvance
+        codAdvanceAmount = determinedAdvance !== null
+          ? determinedAdvance
           : (minAdvanceSetting ? Number(minAdvanceSetting.value) : 10);
 
         if (codAdvanceAmount > 0) {

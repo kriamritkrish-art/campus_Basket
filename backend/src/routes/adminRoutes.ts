@@ -132,6 +132,7 @@ router.get('/audit-logs', AdminPeopleController.getAuditLogs);
 
 router.get('/settings', AdminController.getSettings);
 router.post('/settings', AdminController.updateSetting);
+router.get('/settings/governance-pdf', AdminController.downloadGovernancePdf);
 router.get('/settings/auth-otp', AdminController.getAuthSettings);
 router.post('/settings/auth-otp', AdminController.updateAuthSettings);
 

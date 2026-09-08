@@ -110,6 +110,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         isOutOfStock: product.stock <= 0,
         unit: product.unit,
         image: product.primaryImage || null,
+        providerId: product.providerId || undefined,
       };
 
       return [...prev, newItem];

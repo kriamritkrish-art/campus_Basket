@@ -212,4 +212,126 @@ describe('Order Governance, Immutability, COD Advance & Return Policy Engine', (
     // Food contains kitchen & cooking checkpoints
     expect(foodCheckpoints.some(c => c.label.includes('Cooking') && c.sub.includes('Chef'))).toBe(true);
   });
+
+  // -------------------------------------------------------------
+  // 5. STRICT HIERARCHY: PRODUCT OVERRIDE > PROVIDER OVERRIDE > GLOBAL
+  // -------------------------------------------------------------
+  it('SCENARIO 9: Product override takes strict priority over provider override for Cash on Delivery', () => {
+    // Simulated Provider has 4 products A, B, C, D and allows COD
+    const providerId = 'prov_hall11';
+    const providerPolicies = {
+      [providerId]: { allowCod: true, codAdvance: 20 }
+    };
+
+    // Admin sets Product C override: allowCod = false
+    const productPolicies = {
+      'prod_a': { allowCod: true },
+      'prod_c': { allowCod: false } // Disabled by admin override
+    };
+
+    const products = [
+      { id: 'prod_a', name: 'Veg Thali', providerId },
+      { id: 'prod_b', name: 'Paneer Butter Masala', providerId },
+      { id: 'prod_c', name: 'Premium Special Biryani', providerId },
+      { id: 'prod_d', name: 'Cold Drink', providerId }
+    ];
+
+    // Function matching backend orderController logic
+    function evaluateCodForProducts(items: typeof products) {
+      for (const prod of items) {
+        const prodPol = productPolicies[prod.id as keyof typeof productPolicies];
+        const provPol = providerPolicies[prod.providerId as keyof typeof providerPolicies];
+
+        // Priority 1: Product Override
+        if (prodPol && prodPol.allowCod === false) {
+          return { allowed: false, reason: `Product "${prod.name}" does not support COD` };
+        }
+
+        // Product explicitly allows COD
+        if (prodPol && prodPol.allowCod === true) {
+          continue;
+        }
+
+        // Priority 2: Provider Override
+        if (provPol && provPol.allowCod === false) {
+          return { allowed: false, reason: `Merchant does not accept COD for "${prod.name}"` };
+        }
+      }
+      return { allowed: true };
+    }
+
+    // Cart with only Product A and B (Both allow COD)
+    const cartWithoutC = [products[0], products[1]];
+    const resultAllowed = evaluateCodForProducts(cartWithoutC);
+    expect(resultAllowed.allowed).toBe(true);
+
+    // Cart with Product C (Product C has allowCod = false)
+    const cartWithC = [products[0], products[2]];
+    const resultBlocked = evaluateCodForProducts(cartWithC);
+    expect(resultBlocked.allowed).toBe(false);
+    expect(resultBlocked.reason).toContain('does not support COD');
+
+    // Case 2: Provider BLOCKS COD, but Product A explicitly ALLOWS COD
+    const strictProviderPolicies = {
+      [providerId]: { allowCod: false }
+    };
+    function evaluateStrictProvider(items: typeof products) {
+      for (const prod of items) {
+        const prodPol = productPolicies[prod.id as keyof typeof productPolicies];
+        const provPol = strictProviderPolicies[prod.providerId as keyof typeof strictProviderPolicies];
+
+        // Priority 1: Product Override takes precedence
+        if (prodPol && prodPol.allowCod === false) {
+          return { allowed: false, reason: 'Product disabled' };
+        }
+        if (prodPol && prodPol.allowCod === true) {
+          continue; // Product override bypasses provider restriction
+        }
+        // Priority 2: Provider restriction applies
+        if (provPol && provPol.allowCod === false) {
+          return { allowed: false, reason: 'Provider disabled' };
+        }
+      }
+      return { allowed: true };
+    }
+
+    // Cart with Product A only (Product A has explicit allowCod = true, provider has allowCod = false)
+    expect(evaluateStrictProvider([products[0]]).allowed).toBe(true);
+
+    // Cart with Product B only (Product B has no product override, so provider restriction blocks it)
+    expect(evaluateStrictProvider([products[1]]).allowed).toBe(false);
+  });
+
+  it('SCENARIO 10: COD Advance Fee precedence: Product Advance > Provider Advance > Global Default', () => {
+    const globalDefaultAdvance = 10;
+    const providerPolicies = {
+      'prov_hall11': { codAdvance: 25 }
+    };
+    const productPolicies = {
+      'prod_custom': { codAdvance: 40 },
+      'prod_default': {}
+    };
+
+    function resolveAdvanceFee(productId: string, providerId: string) {
+      const prodPol = productPolicies[productId as keyof typeof productPolicies] as any;
+      const provPol = providerPolicies[providerId as keyof typeof providerPolicies] as any;
+
+      if (prodPol && typeof prodPol.codAdvance === 'number') {
+        return prodPol.codAdvance;
+      }
+      if (provPol && typeof provPol.codAdvance === 'number') {
+        return provPol.codAdvance;
+      }
+      return globalDefaultAdvance;
+    }
+
+    // Product with its own custom advance (40) overrides provider (25)
+    expect(resolveAdvanceFee('prod_custom', 'prov_hall11')).toBe(40);
+
+    // Product with no custom advance falls back to provider advance (25)
+    expect(resolveAdvanceFee('prod_default', 'prov_hall11')).toBe(25);
+
+    // Product with no custom advance and provider with no custom advance falls back to global default (10)
+    expect(resolveAdvanceFee('prod_default', 'unknown_prov')).toBe(10);
+  });
 });

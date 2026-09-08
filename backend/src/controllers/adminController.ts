@@ -4,6 +4,7 @@ import { StorageFactory } from '../services/storage/StorageFactory';
 import { AuditService } from '../services/audit/AuditService';
 import { RazorpayService } from '../services/payment/RazorpayService';
 import { ImageProcessingService } from '../services/image/ImageProcessingService';
+import { GovernancePdfService } from '../services/pdf/GovernancePdfService';
 
 const storageService = StorageFactory.getStorageService();
 const razorpayService = new RazorpayService();
@@ -1167,6 +1168,88 @@ export class AdminController {
       });
 
       res.status(200).json({ success: true, message: 'Setting updated', setting });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Section: Download Official Order Governance & Multi-Category Policy Matrix PDF
+   */
+  public static async downloadGovernancePdf(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const [settings, providers, products] = await Promise.all([
+        prisma.adminSetting.findMany(),
+        prisma.serviceProvider.findMany({ select: { id: true, fullName: true, serviceCategory: true } }),
+        prisma.product.findMany({
+          take: 40,
+          include: {
+            category: { select: { name: true } },
+            provider: { select: { fullName: true } }
+          }
+        })
+      ]);
+
+      const settingMap: Record<string, string> = {};
+      settings.forEach((s) => { settingMap[s.key] = s.value; });
+
+      let providerPolicies: Record<string, any> = {};
+      let productPolicies: Record<string, any> = {};
+      try {
+        if (settingMap['PROVIDER_ORDER_POLICIES']) providerPolicies = JSON.parse(settingMap['PROVIDER_ORDER_POLICIES']);
+      } catch {}
+      try {
+        if (settingMap['PRODUCT_ORDER_POLICIES']) productPolicies = JSON.parse(settingMap['PRODUCT_ORDER_POLICIES']);
+      } catch {}
+
+      const providerData = providers.map((p) => {
+        const pol = providerPolicies[p.id] || {};
+        return {
+          id: p.id,
+          name: p.fullName || 'Campus Provider',
+          category: p.serviceCategory || 'GENERAL',
+          allowCod: pol.allowCod !== false,
+          codAdvance: pol.codAdvance,
+          cancellationCutoff: pol.cancellationCutoff || 'ACCEPTED',
+          allowReturn: pol.allowReturn !== false
+        };
+      });
+
+      const productData = products.map((prod) => {
+        const pol = productPolicies[prod.id] || {};
+        const isOverridden = pol.allowCod !== undefined;
+        return {
+          id: prod.id,
+          name: prod.name,
+          category: prod.category?.name || 'General',
+          providerName: prod.provider?.fullName || 'Campus Store',
+          price: Number(prod.price),
+          allowCod: pol.allowCod !== false,
+          isCodOverridden: isOverridden,
+          allowReturn: pol.allowReturn !== false,
+          isReturnOverridden: pol.allowReturn !== undefined
+        };
+      });
+
+      const pdfBuffer = await GovernancePdfService.generatePdf({
+        generatedBy: (req.user as any)?.name || req.user?.email || (req.user as any)?.username || 'Administrator',
+        generatedAt: new Date(),
+        globalSettings: {
+          codGloballyEnabled: settingMap['ENABLE_CASH_ON_DELIVERY'] !== 'false',
+          maxCodAmount: Number(settingMap['MAX_COD_AMOUNT']) || 1500,
+          codMinAdvanceAmount: Number(settingMap['COD_MIN_ADVANCE_AMOUNT']) || 10,
+          cancellationCutoffStage: settingMap['CANCELLATION_CUTOFF_STAGE'] || 'ACCEPTED',
+          returnPolicyFood: settingMap['RETURN_POLICY_FOOD'] || 'RESTRICTED',
+          returnPolicyProduce: settingMap['RETURN_POLICY_PRODUCE'] || 'FRESHNESS_VERIFIED',
+          returnPolicyStationery: settingMap['RETURN_POLICY_STATIONERY'] || 'ALLOWED_24HR'
+        },
+        providers: providerData,
+        products: productData
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename="CampusBasket-Governance-Matrix.pdf"');
+      res.send(pdfBuffer);
     } catch (err) {
       next(err);
     }
