@@ -144,8 +144,16 @@ export default function OrderTrackPage() {
   const [upiId, setUpiId] = useState('');
   const [savingAccount, setSavingAccount] = useState(false);
 
-  // Return Request state
-  const [returnRequest, setReturnRequest] = useState<any>(null);
+  // Return Request state - hydrate immediately from localStorage
+  const [returnRequest, setReturnRequest] = useState<any>(() => {
+    if (typeof window !== 'undefined' && orderId) {
+      try {
+        const saved = localStorage.getItem(`cb_return_${orderId}`);
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return null;
+  });
   const [returnModalOpen, setReturnModalOpen] = useState(false);
   const [returnReasonType, setReturnReasonType] = useState<'PRODUCT_ISSUE' | 'MIND_CHANGE'>('PRODUCT_ISSUE');
   const [returnReasonDetails, setReturnReasonDetails] = useState('');
@@ -171,12 +179,31 @@ export default function OrderTrackPage() {
         setOrder(orderRes.order);
         setNewRoomNumber(orderRes.order.roomNumber || '');
         setNewInstructions(orderRes.order.specialInstructions || '');
+
+        if (orderRes.order.returnRequest) {
+          setReturnRequest(orderRes.order.returnRequest);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem(`cb_return_${orderId}`, JSON.stringify(orderRes.order.returnRequest));
+              if (orderRes.order.id) localStorage.setItem(`cb_return_${orderRes.order.id}`, JSON.stringify(orderRes.order.returnRequest));
+              if (orderRes.order.orderNumber) localStorage.setItem(`cb_return_${orderRes.order.orderNumber}`, JSON.stringify(orderRes.order.returnRequest));
+            } catch {}
+          }
+        }
       } else {
         setError(orderRes.message || 'Order not found');
       }
 
-      if (returnRes?.success && returnRes.returnRequest) {
-        setReturnRequest(returnRes.returnRequest);
+      const resolvedReturn = returnRes?.returnRequest || orderRes?.order?.returnRequest;
+      if (resolvedReturn) {
+        setReturnRequest(resolvedReturn);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(`cb_return_${orderId}`, JSON.stringify(resolvedReturn));
+            if (orderRes?.order?.id) localStorage.setItem(`cb_return_${orderRes.order.id}`, JSON.stringify(resolvedReturn));
+            if (orderRes?.order?.orderNumber) localStorage.setItem(`cb_return_${orderRes.order.orderNumber}`, JSON.stringify(resolvedReturn));
+          } catch {}
+        }
       }
     } catch (err: any) {
       setError(err?.message || 'Failed to load order tracking details.');
@@ -449,6 +476,13 @@ export default function OrderTrackPage() {
         showToast('Return request submitted for Admin review!');
         setReturnModalOpen(false);
         setReturnRequest(res.returnRequest);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(`cb_return_${orderId}`, JSON.stringify(res.returnRequest));
+            if (order?.id) localStorage.setItem(`cb_return_${order.id}`, JSON.stringify(res.returnRequest));
+            if (order?.orderNumber) localStorage.setItem(`cb_return_${order.orderNumber}`, JSON.stringify(res.returnRequest));
+          } catch {}
+        }
         fetchOrder();
       } else {
         showToast(res.message || 'Unable to submit return request');
@@ -479,9 +513,9 @@ export default function OrderTrackPage() {
         <p className="text-xs text-slate-500 max-w-sm">{error || 'Could not find this order.'}</p>
         <Link
           href="/orders"
-          className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-[#4F9D2F] text-white text-xs font-bold rounded-xl shadow-xs"
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
+          <ArrowLeft className="w-4 h-4" />
           <span>Back to My Orders</span>
         </Link>
       </div>
@@ -496,6 +530,19 @@ export default function OrderTrackPage() {
   const isProviderAccepted = Boolean(
     order.providerAccepted ||
     ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP', 'DELIVERY_ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED', 'DISPATCHED'].includes(order.status)
+  );
+
+  // Fallback return request derived from order status if refund is requested (ensures return state is never lost on refresh)
+  const currentReturn = returnRequest || (
+    order && (order.refundStatus === 'REQUESTED' || (order as any).refundStatus === 'REFUNDED' || (order as any).refundStatus === 'COMPLETED')
+      ? {
+          status: order.refundStatus === 'COMPLETED' || order.refundStatus === 'REFUNDED' ? 'REFUNDED' : 'REQUESTED',
+          reasonType: (order as any).returnReasonType || 'PRODUCT_ISSUE',
+          refundAmount: Number(order.refundAmount || order.totalAmount || 0),
+          deliveryFeeDeducted: 0,
+          itemAmount: Number(order.subtotal || order.totalAmount || 0)
+        }
+      : null
   );
 
   // Handover state: Only show OTP when order is at handover stage
@@ -570,16 +617,16 @@ export default function OrderTrackPage() {
 
   // Current Status Headline & Explanation
   const getStatusBanner = () => {
-    if (returnRequest && returnRequest.status !== 'REJECTED') {
-      if (returnRequest.status === 'REFUNDED' || returnRequest.status === 'COMPLETED') {
+    if (currentReturn && currentReturn.status !== 'REJECTED') {
+      if (currentReturn.status === 'REFUNDED' || currentReturn.status === 'COMPLETED') {
         return {
           title: 'Return Completed & Refund Disbursed',
-          desc: `Full refund of ₹${Number(returnRequest.refundAmount || 0).toFixed(2)} has been credited to your destination account.`,
+          desc: `Full refund of ₹${Number(currentReturn.refundAmount || 0).toFixed(2)} has been credited to your destination account.`,
           colorClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
           dotClass: 'bg-emerald-500'
         };
       }
-      if (returnRequest.status === 'PICKED_UP') {
+      if (currentReturn.status === 'PICKED_UP') {
         return {
           title: 'Item Picked Up — Refund Processing',
           desc: 'Product physically collected and OTP verified by campus runner. Admin is releasing your refund.',
@@ -587,7 +634,7 @@ export default function OrderTrackPage() {
           dotClass: 'bg-indigo-500 animate-pulse'
         };
       }
-      if (['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(returnRequest.status)) {
+      if (['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(currentReturn.status)) {
         return {
           title: 'Return Approved — Pickup Scheduled',
           desc: 'Campus runner assigned for hostel room pickup. Share your 6-digit Return OTP at handover.',
@@ -750,14 +797,14 @@ export default function OrderTrackPage() {
         <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-xs space-y-5">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              {returnRequest && returnRequest.status !== 'REJECTED'
+              {currentReturn && currentReturn.status !== 'REJECTED'
                 ? 'Product Return & Refund Journey'
                 : isCancelled
                 ? 'Cancellation & Refund Status'
                 : 'Track Your Order'}
             </h3>
             <span className="text-[11px] font-semibold text-slate-400">
-              {returnRequest && returnRequest.status !== 'REJECTED'
+              {currentReturn && currentReturn.status !== 'REJECTED'
                 ? 'Gated Campus Pickup & Settlement'
                 : isCancelled
                 ? 'Policy Settlement'
@@ -766,7 +813,7 @@ export default function OrderTrackPage() {
           </div>
 
           {/* ==================== A. RETURN & REFUND ACTIVE ==================== */}
-          {returnRequest && returnRequest.status !== 'REJECTED' ? (
+          {currentReturn && currentReturn.status !== 'REJECTED' ? (
             <div className="space-y-5">
               {/* Vertical Return & Refund Progress Timeline */}
               <div className="space-y-4 relative pl-2">
@@ -774,33 +821,33 @@ export default function OrderTrackPage() {
                   {
                     id: 'REQUESTED',
                     title: 'Return Requested',
-                    desc: returnRequest.reasonType === 'PRODUCT_ISSUE'
+                    desc: currentReturn.reasonType === 'PRODUCT_ISSUE'
                       ? 'Defect claimed with photo proof. Under Admin review.'
                       : 'Mind change return requested by student.'
                   },
                   {
                     id: 'APPROVED',
                     title: 'Return Approved & Runner Assigned',
-                    desc: returnRequest.deliveryBoy
-                      ? `Runner ${returnRequest.deliveryBoy.fullName} scheduled for room pickup.`
+                    desc: currentReturn.deliveryBoy
+                      ? `Runner ${currentReturn.deliveryBoy.fullName} scheduled for room pickup.`
                       : 'Authorized by admin. Pickup runner assignment in progress.'
                   },
                   {
                     id: 'PICKED_UP',
                     title: 'Hostel Room Pickup Verified',
-                    desc: ['PICKED_UP', 'REFUNDED', 'COMPLETED'].includes(returnRequest.status)
+                    desc: ['PICKED_UP', 'REFUNDED', 'COMPLETED'].includes(currentReturn.status)
                       ? 'Physical item collected and 6-digit OTP verified by runner at room door.'
                       : 'Share your 6-digit Return OTP with runner upon collection.'
                   },
                   {
                     id: 'REFUNDED',
                     title: 'Refund Disbursed to Account',
-                    desc: ['REFUNDED', 'COMPLETED'].includes(returnRequest.status)
-                      ? `Net refund of ₹${Number(returnRequest.refundAmount || 0).toFixed(2)} disbursed to your account.`
+                    desc: ['REFUNDED', 'COMPLETED'].includes(currentReturn.status)
+                      ? `Net refund of ₹${Number(currentReturn.refundAmount || 0).toFixed(2)} disbursed to your account.`
                       : 'Admin releases payment directly to your account after physical pickup.'
                   }
                 ].map((step, idx) => {
-                  const st = returnRequest.status;
+                  const st = currentReturn.status;
                   let activeIdx = 1;
                   if (st === 'REFUNDED' || st === 'COMPLETED') activeIdx = 4;
                   else if (st === 'PICKED_UP') activeIdx = 3;
@@ -866,7 +913,7 @@ export default function OrderTrackPage() {
               </div>
 
               {/* 6-Digit Return Pickup OTP Card */}
-              {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(returnRequest.status) && returnRequest.pickupOtp && (
+              {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(currentReturn.status) && currentReturn.pickupOtp && (
                 <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-2xl border-2 border-amber-300 space-y-2">
                   <div className="flex items-center justify-between">
                     <div>
@@ -874,12 +921,12 @@ export default function OrderTrackPage() {
                         Your 6-Digit Return Pickup Code:
                       </span>
                       <div className="text-3xl font-black font-mono tracking-widest text-slate-900 mt-0.5">
-                        {returnRequest.pickupOtp}
+                        {currentReturn.pickupOtp}
                       </div>
                     </div>
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(returnRequest.pickupOtp);
+                        navigator.clipboard.writeText(currentReturn.pickupOtp);
                         showToast('Return Pickup OTP copied to clipboard');
                       }}
                       className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
@@ -896,20 +943,20 @@ export default function OrderTrackPage() {
               )}
 
               {/* Pickup Runner Assignment Card */}
-              {returnRequest.deliveryBoy && (
+              {currentReturn.deliveryBoy && (
                 <div className="p-3.5 bg-purple-50 rounded-2xl border border-purple-200 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
                       <User className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="font-bold text-slate-900 block">{returnRequest.deliveryBoy.fullName}</span>
+                      <span className="font-bold text-slate-900 block">{currentReturn.deliveryBoy.fullName}</span>
                       <span className="text-[11px] text-purple-700">Assigned Return Pickup Runner</span>
                     </div>
                   </div>
-                  {returnRequest.deliveryBoy.mobileNumber && (
+                  {currentReturn.deliveryBoy.mobileNumber && (
                     <a
-                      href={`tel:${returnRequest.deliveryBoy.mobileNumber}`}
+                      href={`tel:${currentReturn.deliveryBoy.mobileNumber}`}
                       className="px-3 py-1.5 bg-white border border-purple-200 rounded-xl text-purple-800 text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:bg-purple-50"
                     >
                       <Phone className="w-3.5 h-3.5" />
@@ -927,20 +974,20 @@ export default function OrderTrackPage() {
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between text-slate-600">
                     <span>Delivered Item Subtotal:</span>
-                    <span className="font-mono font-semibold">₹{Number(returnRequest.itemAmount || order.subtotal || totalAmount).toFixed(2)}</span>
+                    <span className="font-mono font-semibold">₹{Number(currentReturn.itemAmount || order.subtotal || totalAmount).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Return Delivery Charge:</span>
-                    <span className={`font-mono font-bold ${Number(returnRequest.deliveryFeeDeducted) > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                      {Number(returnRequest.deliveryFeeDeducted) > 0
-                        ? `-₹${Number(returnRequest.deliveryFeeDeducted).toFixed(2)} (Mind Change Policy)`
+                    <span className={`font-mono font-bold ${Number(currentReturn.deliveryFeeDeducted) > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                      {Number(currentReturn.deliveryFeeDeducted) > 0
+                        ? `-₹${Number(currentReturn.deliveryFeeDeducted).toFixed(2)} (Mind Change Policy)`
                         : '₹0.00 (Waived for Defective Product)'}
                     </span>
                   </div>
                   <div className="pt-2 border-t border-slate-200 flex justify-between items-center text-sm font-black text-slate-900">
                     <span>Net Refund Amount:</span>
                     <span className="font-mono text-emerald-700 text-base font-black">
-                      ₹{Number(returnRequest.refundAmount).toFixed(2)}
+                      ₹{Number(currentReturn.refundAmount).toFixed(2)}
                     </span>
                   </div>
                 </div>
@@ -1452,15 +1499,15 @@ export default function OrderTrackPage() {
               <>
                 <button
                   onClick={() => setReturnModalOpen(true)}
-                  disabled={Boolean(returnRequest && returnRequest.status !== 'REJECTED')}
+                  disabled={Boolean(currentReturn && currentReturn.status !== 'REJECTED')}
                   className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                    returnRequest && returnRequest.status !== 'REJECTED'
+                    currentReturn && currentReturn.status !== 'REJECTED'
                       ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
                       : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 shadow-xs'
                   }`}
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
-                  <span>{returnRequest && returnRequest.status !== 'REJECTED' ? 'Return In Progress' : 'Request Return & Refund'}</span>
+                  <span>{currentReturn && currentReturn.status !== 'REJECTED' ? 'Return In Progress' : 'Request Return & Refund'}</span>
                 </button>
 
                 <button

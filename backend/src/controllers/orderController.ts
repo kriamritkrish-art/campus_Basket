@@ -710,8 +710,10 @@ export class OrderController {
       const student = await resolveStudentProfile(req.user);
       const studentId = student?.id || req.user?.studentId;
 
-      const order = await prisma.order.findUnique({
-        where: { id },
+      const order = await prisma.order.findFirst({
+        where: {
+          OR: [{ id }, { orderNumber: id }]
+        },
         include: {
           items: {
             include: {
@@ -778,6 +780,27 @@ export class OrderController {
         where: { studentId: order.studentId }
       }).catch(() => null);
 
+      // Include returnRequest if exists
+      const returnReq = await (prisma as any).returnRequest.findFirst({
+        where: {
+          OR: [
+            { orderId: order.id },
+            { orderId: order.orderNumber },
+            { orderId: id }
+          ]
+        },
+        include: {
+          deliveryBoy: {
+            select: {
+              id: true,
+              fullName: true,
+              mobileNumber: true,
+              vehicleType: true
+            }
+          }
+        }
+      }).catch(() => null);
+
       res.status(200).json({
         success: true,
         order: {
@@ -795,6 +818,7 @@ export class OrderController {
           cancellationMessage: cancelCheck.reason || null,
           canReturn: returnCheck.eligible,
           returnMessage: returnCheck.reason || null,
+          returnRequest: returnReq || (order as any).returnRequest || null,
           codPaidAdvance,
           codRemainingCash,
           refundAccount: refundAccount || null,
@@ -978,8 +1002,10 @@ export class OrderController {
       const student = await resolveStudentProfile(req.user);
       const studentId = student?.id;
 
-      const order = await prisma.order.findUnique({
-        where: { id },
+      const order = await prisma.order.findFirst({
+        where: {
+          OR: [{ id }, { orderNumber: id }]
+        },
         include: { items: true }
       });
 
@@ -1079,7 +1105,7 @@ export class OrderController {
       });
 
       const updated = await prisma.order.update({
-        where: { id },
+        where: { id: order.id },
         data: {
           refundStatus: 'REQUESTED',
           refundAmount: netRefundAmount,
@@ -1113,8 +1139,22 @@ export class OrderController {
   public static async getOrderReturn(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const returnRequest = await (prisma as any).returnRequest.findUnique({
-        where: { orderId: id },
+      const order = await prisma.order.findFirst({
+        where: {
+          OR: [{ id }, { orderNumber: id }]
+        },
+        select: { id: true, orderNumber: true }
+      });
+
+      const targetOrderId = order?.id || id;
+      const returnRequest = await (prisma as any).returnRequest.findFirst({
+        where: {
+          OR: [
+            { orderId: targetOrderId },
+            { orderId: id },
+            ...(order?.orderNumber ? [{ orderId: order.orderNumber }] : [])
+          ]
+        },
         include: {
           deliveryBoy: {
             select: {

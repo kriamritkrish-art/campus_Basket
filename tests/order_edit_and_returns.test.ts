@@ -241,6 +241,81 @@ describe('Order Edit (Add Products) & Return Management with Runner OTP Pickup',
       expect(responseData.returnRequest.deliveryChargeDeducted).toBe(15); // Admin configured fee
       expect(responseData.returnRequest.refundAmount).toBe(85); // 100 - 15 = 85
     });
+
+    it('persists return request and resolves seamlessly by orderId or orderNumber on page reload', async () => {
+      const orderNumber = `NIT-TEST-PERSIST-${Date.now()}`;
+      const deliveredOrder = await prisma.order.create({
+        data: {
+          orderNumber,
+          studentId: 'stud_sourav',
+          providerId: 'prov_canteen',
+          serviceType: 'STATIONERY',
+          hallName: 'Hall 11',
+          roomNumber: 'B-304',
+          totalAmount: 120,
+          subtotal: 120,
+          status: 'DELIVERED',
+          deliveredAt: new Date(),
+          providerAccepted: true,
+          paymentMethod: 'ONLINE',
+          paymentStatus: 'PAID'
+        }
+      });
+
+      // 1. Submit return request using orderNumber (as happens when student is at /orders/NIT-ORD-.../track)
+      let returnResponse: any = null;
+      const submitReq: any = {
+        params: { id: orderNumber },
+        user: { userId: 'user_sourav', studentId: 'stud_sourav', role: 'STUDENT' },
+        body: {
+          reasonType: 'PRODUCT_ISSUE',
+          reasonDetails: 'Received broken pen set with cracked plastic case and leaked ink'
+        }
+      };
+      const submitRes: any = {
+        status: () => submitRes,
+        json: (data: any) => { returnResponse = data; }
+      };
+
+      await OrderController.requestReturn(submitReq, submitRes, (err) => { if (err) throw err; });
+      expect(returnResponse.success).toBe(true);
+      expect(returnResponse.returnRequest).toBeDefined();
+      expect(returnResponse.returnRequest.status).toBe('REQUESTED');
+
+      // 2. Simulate page reload where frontend calls getOrderById with orderNumber
+      let orderByIdResponse: any = null;
+      const getOrderReq: any = {
+        params: { id: orderNumber },
+        user: { userId: 'user_sourav', studentId: 'stud_sourav', role: 'STUDENT' }
+      };
+      const getOrderRes: any = {
+        status: () => getOrderRes,
+        json: (data: any) => { orderByIdResponse = data; }
+      };
+
+      await OrderController.getOrderById(getOrderReq, getOrderRes, (err) => { if (err) throw err; });
+      expect(orderByIdResponse.success).toBe(true);
+      expect(orderByIdResponse.order.returnRequest).toBeDefined();
+      expect(orderByIdResponse.order.returnRequest.status).toBe('REQUESTED');
+      expect(orderByIdResponse.order.refundStatus).toBe('REQUESTED');
+
+      // 3. Simulate frontend polling getOrderReturn with orderNumber
+      let getReturnResponse: any = null;
+      const getReturnReq: any = {
+        params: { id: orderNumber },
+        user: { userId: 'user_sourav', studentId: 'stud_sourav', role: 'STUDENT' }
+      };
+      const getReturnRes: any = {
+        status: () => getReturnRes,
+        json: (data: any) => { getReturnResponse = data; }
+      };
+
+      await OrderController.getOrderReturn(getReturnReq, getReturnRes, (err) => { if (err) throw err; });
+      expect(getReturnResponse.success).toBe(true);
+      expect(getReturnResponse.returnRequest).toBeDefined();
+      expect(getReturnResponse.returnRequest.status).toBe('REQUESTED');
+      expect(getReturnResponse.returnRequest.refundAmount).toBe(120);
+    });
   });
 
   // -------------------------------------------------------------
