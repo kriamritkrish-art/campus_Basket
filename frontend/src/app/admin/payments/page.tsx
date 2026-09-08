@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiRequest } from '../../../lib/api';
 import { AdminKpiCard } from '../../../components/admin/AdminKpiCard';
 import {
@@ -34,6 +35,7 @@ import {
 type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'REFUNDS' | 'SETTLEMENTS' | 'RUNNER_SETTLEMENTS' | 'COD' | 'LEDGER';
 
 export default function AdminPaymentsPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<AdminTab>('OVERVIEW');
   const [loading, setLoading] = useState(true);
 
@@ -611,9 +613,10 @@ export default function AdminPaymentsPage() {
             <AdminKpiCard
               title="Total Gross Platform Volume"
               value={`₹${(overviewMetrics?.totalGrossVolume || 0).toLocaleString('en-IN')}`}
-              subtitle={`${overviewMetrics?.totalOrdersCount || 0} total platform orders`}
+              subtitle={`${overviewMetrics?.totalOrdersCount || 0} total platform orders • Click for full breakdown & exports →`}
               icon={IndianRupee}
               color="green"
+              onClick={() => router.push('/admin/payments/gross-volume')}
             />
             <AdminKpiCard
               title="Online Payments Collected"

@@ -824,7 +824,23 @@ const fallbackHandlers: Record<string, any> = {
           commissionRate: commRate,
           commissionAmount: commAmt,
           providerPayable: payable,
-          student: studentUser?.student ? { fullName: studentUser.student.fullName, mobileNumber: studentUser.student.mobileNumber, roomNumber: studentUser.student.roomNumber } : (o.student || { fullName: 'Student', mobileNumber: '', roomNumber: o.roomNumber }),
+          student: studentUser?.student
+            ? {
+                id: studentUser.student.id || studentUser.id || o.studentId,
+                fullName: studentUser.student.fullName,
+                rollNumber: studentUser.student.rollNumber || 'NIT-2024-STU',
+                collegeEmail: studentUser.student.collegeEmail || studentUser.email || '',
+                mobileNumber: studentUser.student.mobileNumber,
+                roomNumber: studentUser.student.roomNumber || o.roomNumber
+              }
+            : {
+                id: o.studentId || 'stud_demo',
+                fullName: o.student?.fullName || 'Student',
+                rollNumber: o.student?.rollNumber || 'NIT-2024-STU',
+                collegeEmail: o.student?.collegeEmail || '',
+                mobileNumber: o.student?.mobileNumber || '',
+                roomNumber: o.roomNumber
+              },
           provider: provUser?.provider ? { fullName: provUser.provider.fullName, mobileNumber: provUser.provider.mobileNumber, serviceCategory: provUser.provider.serviceCategory } : (o.provider || null),
           deliveryBoy: dbUser?.deliveryBoy ? { id: dbUser.deliveryBoy.id, fullName: dbUser.deliveryBoy.fullName, mobileNumber: dbUser.deliveryBoy.mobileNumber, vehicleType: dbUser.deliveryBoy.vehicleType } : (o.deliveryBoy || null),
           items: o.items || [],
@@ -873,7 +889,23 @@ const fallbackHandlers: Record<string, any> = {
         commissionRate: commRate,
         commissionAmount: commAmt,
         providerPayable: payable,
-        student: studentUser?.student ? { fullName: studentUser.student.fullName, mobileNumber: studentUser.student.mobileNumber, roomNumber: studentUser.student.roomNumber } : (o.student || { fullName: 'Student', mobileNumber: '', roomNumber: o.roomNumber }),
+        student: studentUser?.student
+          ? {
+              id: studentUser.student.id || studentUser.id || o.studentId,
+              fullName: studentUser.student.fullName,
+              rollNumber: studentUser.student.rollNumber || 'NIT-2024-STU',
+              collegeEmail: studentUser.student.collegeEmail || studentUser.email || '',
+              mobileNumber: studentUser.student.mobileNumber,
+              roomNumber: studentUser.student.roomNumber || o.roomNumber
+            }
+          : {
+              id: o.studentId || 'stud_demo',
+              fullName: o.student?.fullName || 'Student',
+              rollNumber: o.student?.rollNumber || 'NIT-2024-STU',
+              collegeEmail: o.student?.collegeEmail || '',
+              mobileNumber: o.student?.mobileNumber || '',
+              roomNumber: o.roomNumber
+            },
         provider: provUser?.provider ? { fullName: provUser.provider.fullName, mobileNumber: provUser.provider.mobileNumber, serviceCategory: provUser.provider.serviceCategory } : (o.provider || null),
         deliveryBoy: dbUser?.deliveryBoy ? { id: dbUser.deliveryBoy.id, fullName: dbUser.deliveryBoy.fullName, mobileNumber: dbUser.deliveryBoy.mobileNumber, vehicleType: dbUser.deliveryBoy.vehicleType } : (o.deliveryBoy || null),
         items: o.items || [],

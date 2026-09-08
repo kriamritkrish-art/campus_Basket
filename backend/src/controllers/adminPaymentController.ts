@@ -5,6 +5,7 @@ import { SettlementService } from '../services/financial/SettlementService';
 import { RefundService } from '../services/financial/RefundService';
 import { AuditService } from '../services/audit/AuditService';
 import { DeliverySettlementPdfService } from '../services/pdf/DeliverySettlementPdfService';
+import { GrossVolumePdfService, GrossVolumePdfRow } from '../services/pdf/GrossVolumePdfService';
 
 export class AdminPaymentController {
   /**
@@ -939,6 +940,358 @@ export class AdminPaymentController {
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="CampusBasket-Settlements-${safeName}-${Date.now()}.pdf"`);
       res.send(pdfBuffer);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Internal Calculation Engine for Total Gross Platform Volume & Comprehensive Revenue Breakdown
+   */
+  public static async computeGrossVolumeData(query: any) {
+    const { startDate, endDate, serviceType, paymentMethod, status, search, sortBy } = query;
+
+    const rawOrders: any[] = await (prisma as any).order.findMany();
+
+    let filtered = rawOrders.map((o: any) => {
+      const grossAmount = Number(o.totalAmount || 0);
+      const subtotal = Number(o.subtotal || grossAmount);
+      const deliveryFee = Number(o.deliveryFee || 0);
+      const discountAmount = Number(o.discountAmount || 0);
+      const isCod = o.paymentMethod === 'CASH_ON_DELIVERY';
+      const advancePaid = Number(o.advancePaidAmount || 0);
+
+      const onlineAmount = !isCod ? grossAmount : advancePaid;
+      const codAmount = isCod ? Math.max(0, grossAmount - advancePaid) : 0;
+
+      const commissionRate = o.commissionRate !== undefined ? Number(o.commissionRate) : 5.0;
+      const commissionAmount = o.commissionAmount !== undefined
+        ? Number(o.commissionAmount)
+        : Math.round(grossAmount * (commissionRate / 100) * 100) / 100;
+
+      // Return & refund deductions
+      const retReq = o.returnRequest || null;
+      const hasReturn = Boolean(retReq && retReq.status !== 'REJECTED');
+      const returnReasonType = retReq?.reasonType || null;
+      let retainedReturnFee = 0;
+      let refundDisbursed = 0;
+
+      if (hasReturn) {
+        if (returnReasonType === 'MIND_CHANGE') {
+          retainedReturnFee = Number(retReq.deliveryFeeDeducted || retReq.deliveryChargeDeducted || 15);
+        } else {
+          // PRODUCT_ISSUE: 100% refunded to student, 0 retained
+          retainedReturnFee = 0;
+        }
+        refundDisbursed = Number(retReq.refundAmount || o.refundAmount || 0);
+      } else if (o.refundStatus === 'COMPLETED' || o.refundStatus === 'REFUNDED') {
+        refundDisbursed = Number(o.refundAmount || 0);
+      }
+
+      // Cancellation deductions
+      const isCancelled = o.status === 'CANCELLED';
+      let retainedCancellationFee = 0;
+      if (isCancelled) {
+        retainedCancellationFee = o.providerAccepted ? deliveryFee : 0;
+      }
+
+      // Net platform revenue calculation
+      const isDelivered = o.status === 'DELIVERED' || o.status === 'COMPLETED';
+      const netPlatformRevenue = Math.round(
+        (commissionAmount + retainedReturnFee + retainedCancellationFee + (isDelivered ? deliveryFee : 0)) * 100
+      ) / 100;
+
+      const student = o.student || {};
+      const itemsList = Array.isArray(o.items)
+        ? o.items.map((i: any) => `${i.quantity || 1}x ${i.productName || 'Item'}`).join(', ')
+        : 'General Order Items';
+
+      const createdAtDate = new Date(o.createdAt || Date.now());
+      const dateStr = !isNaN(createdAtDate.getTime()) ? createdAtDate.toISOString().split('T')[0] : '2026-09-01';
+
+      return {
+        id: o.id,
+        orderNumber: o.orderNumber || o.id,
+        createdAt: o.createdAt,
+        date: dateStr,
+        studentId: student.id || o.studentId || 'N/A',
+        studentName: student.fullName || 'Student',
+        studentRoll: student.rollNumber || 'N/A',
+        studentEmail: student.collegeEmail || 'N/A',
+        studentRoom: student.roomNumber || o.roomNumber || 'N/A',
+        studentHall: o.hallName || 'Hostel',
+        serviceType: o.serviceType || 'FOOD',
+        status: o.status,
+        providerAccepted: Boolean(o.providerAccepted),
+        itemsSummary: itemsList,
+        itemsCount: Array.isArray(o.items) ? o.items.length : 1,
+        subtotal,
+        deliveryFee,
+        discountAmount,
+        grossAmount,
+        paymentMethod: o.paymentMethod || 'ONLINE',
+        paymentStatus: o.paymentStatus || 'PENDING',
+        onlineAmount,
+        codAmount,
+        commissionRate,
+        commissionAmount,
+        refundDetails: {
+          hasReturn,
+          refundStatus: o.refundStatus || (hasReturn ? retReq.status : 'NOT_APPLICABLE'),
+          refundAmount: refundDisbursed,
+          retainedReturnFee,
+          reasonType: returnReasonType,
+          reasonDetails: retReq?.reasonDetails || null
+        },
+        cancellationDetails: {
+          isCancelled,
+          cancellationReason: o.cancellationReason || null,
+          retainedCancellationFee
+        },
+        retainedReturnFee,
+        retainedCancellationFee,
+        netPlatformRevenue
+      };
+    });
+
+    // Apply Filteration
+    if (startDate) {
+      filtered = filtered.filter(o => o.date >= startDate);
+    }
+    if (endDate) {
+      filtered = filtered.filter(o => o.date <= endDate);
+    }
+    if (serviceType && serviceType !== 'ALL') {
+      filtered = filtered.filter(o => o.serviceType === serviceType);
+    }
+    if (paymentMethod && paymentMethod !== 'ALL') {
+      if (paymentMethod === 'ONLINE') {
+        filtered = filtered.filter(o => o.paymentMethod !== 'CASH_ON_DELIVERY');
+      } else if (paymentMethod === 'CASH_ON_DELIVERY') {
+        filtered = filtered.filter(o => o.paymentMethod === 'CASH_ON_DELIVERY');
+      } else if (paymentMethod === 'COD_WITH_ADVANCE') {
+        filtered = filtered.filter(o => o.paymentMethod === 'CASH_ON_DELIVERY' && o.onlineAmount > 0);
+      }
+    }
+    if (status && status !== 'ALL') {
+      if (status === 'DELIVERED') {
+        filtered = filtered.filter(o => o.status === 'DELIVERED' || o.status === 'COMPLETED');
+      } else if (status === 'CANCELLED') {
+        filtered = filtered.filter(o => o.status === 'CANCELLED');
+      } else if (status === 'RETURNED' || status === 'REFUNDED') {
+        filtered = filtered.filter(o => o.refundDetails.hasReturn || o.refundDetails.refundStatus === 'COMPLETED' || o.refundDetails.refundStatus === 'REQUESTED');
+      } else if (status === 'IN_PROGRESS') {
+        filtered = filtered.filter(o => !['DELIVERED', 'COMPLETED', 'CANCELLED'].includes(o.status));
+      }
+    }
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      filtered = filtered.filter(o =>
+        o.orderNumber.toLowerCase().includes(q) ||
+        o.studentId.toLowerCase().includes(q) ||
+        o.studentName.toLowerCase().includes(q) ||
+        o.studentRoll.toLowerCase().includes(q) ||
+        o.studentRoom.toLowerCase().includes(q) ||
+        o.itemsSummary.toLowerCase().includes(q)
+      );
+    }
+
+    // Sort
+    if (sortBy === 'date_asc') {
+      filtered.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    } else if (sortBy === 'amount_desc') {
+      filtered.sort((a, b) => b.grossAmount - a.grossAmount);
+    } else if (sortBy === 'amount_asc') {
+      filtered.sort((a, b) => a.grossAmount - b.grossAmount);
+    } else {
+      // Default: date_desc
+      filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+
+    // Aggregate Metrics
+    let totalGrossVolume = 0;
+    let totalOnlinePayments = 0;
+    let totalCodCollected = 0;
+    let totalCommissionEarned = 0;
+    let totalRetainedReturnFees = 0;
+    let totalRetainedCancellationFees = 0;
+    let totalRefundsDisbursed = 0;
+    let totalNetPlatformRevenue = 0;
+
+    const dateMap: Record<string, any> = {};
+
+    for (const item of filtered) {
+      totalGrossVolume += item.grossAmount;
+      totalOnlinePayments += item.onlineAmount;
+      totalCodCollected += item.codAmount;
+      totalCommissionEarned += item.commissionAmount;
+      totalRetainedReturnFees += item.retainedReturnFee;
+      totalRetainedCancellationFees += item.retainedCancellationFee;
+      totalRefundsDisbursed += item.refundDetails.refundAmount;
+      totalNetPlatformRevenue += item.netPlatformRevenue;
+
+      const d = item.date;
+      if (!dateMap[d]) {
+        dateMap[d] = {
+          date: d,
+          orderCount: 0,
+          grossVolume: 0,
+          onlineAmount: 0,
+          codAmount: 0,
+          commissionAmount: 0,
+          retainedReturnFees: 0,
+          retainedCancellationFees: 0,
+          netPlatformRevenue: 0
+        };
+      }
+      dateMap[d].orderCount += 1;
+      dateMap[d].grossVolume += item.grossAmount;
+      dateMap[d].onlineAmount += item.onlineAmount;
+      dateMap[d].codAmount += item.codAmount;
+      dateMap[d].commissionAmount += item.commissionAmount;
+      dateMap[d].retainedReturnFees += item.retainedReturnFee;
+      dateMap[d].retainedCancellationFees += item.retainedCancellationFee;
+      dateMap[d].netPlatformRevenue += item.netPlatformRevenue;
+    }
+
+    const dateWiseBreakdown = Object.values(dateMap).sort((a: any, b: any) => b.date.localeCompare(a.date));
+
+    return {
+      metrics: {
+        totalGrossVolume: Math.round(totalGrossVolume * 100) / 100,
+        totalOnlinePayments: Math.round(totalOnlinePayments * 100) / 100,
+        totalCodCollected: Math.round(totalCodCollected * 100) / 100,
+        totalCommissionEarned: Math.round(totalCommissionEarned * 100) / 100,
+        totalRetainedReturnFees: Math.round(totalRetainedReturnFees * 100) / 100,
+        totalRetainedCancellationFees: Math.round(totalRetainedCancellationFees * 100) / 100,
+        totalRefundsDisbursed: Math.round(totalRefundsDisbursed * 100) / 100,
+        totalNetPlatformRevenue: Math.round(totalNetPlatformRevenue * 100) / 100,
+        totalOrdersCount: filtered.length
+      },
+      orders: filtered,
+      dateWiseBreakdown
+    };
+  }
+
+  /**
+   * Section 7: Gross Platform Volume & Comprehensive Revenue Breakdown API
+   */
+  public static async getGrossVolumeBreakdown(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await AdminPaymentController.computeGrossVolumeData(req.query);
+      res.status(200).json({
+        success: true,
+        data
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Download Publication-grade Landscape Gross Volume & Revenue Statement PDF
+   */
+  public static async downloadGrossVolumePdf(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await AdminPaymentController.computeGrossVolumeData(req.query);
+      const rows: GrossVolumePdfRow[] = data.orders.map((o: any) => ({
+        date: o.date,
+        orderNumber: o.orderNumber,
+        studentId: o.studentId,
+        studentName: o.studentName,
+        serviceType: o.serviceType,
+        paymentMethod: o.paymentMethod,
+        grossAmount: o.grossAmount,
+        onlineAmount: o.onlineAmount,
+        codAmount: o.codAmount,
+        retainedReturnFee: o.retainedReturnFee,
+        retainedCancellationFee: o.retainedCancellationFee,
+        commission: o.commissionAmount,
+        netPlatformRevenue: o.netPlatformRevenue,
+        status: o.status
+      }));
+
+      const periodText = req.query.startDate && req.query.endDate
+        ? `${req.query.startDate} to ${req.query.endDate}`
+        : 'All-Time Institutional Volume';
+
+      const pdfBuffer = await GrossVolumePdfService.generatePdf({
+        reportTitle: 'Total Gross Platform Volume & Revenue Audit Report',
+        periodText,
+        generatedBy: (req as any).user?.fullName || 'Institutional Administrator',
+        generatedAt: new Date(),
+        metrics: data.metrics,
+        rows
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="CampusBasket-GrossVolume-${Date.now()}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Export Filtered Gross Platform Volume & Revenue Calculation CSV
+   */
+  public static async downloadGrossVolumeCsv(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await AdminPaymentController.computeGrossVolumeData(req.query);
+      const headers = [
+        'Order Number',
+        'Order Date',
+        'Student ID',
+        'Student Name',
+        'Student Roll',
+        'Student Room/Hall',
+        'Service Type',
+        'Order Status',
+        'Gross Order Amount (INR)',
+        'Payment Method',
+        'Online Amount (INR)',
+        'COD Cash Amount (INR)',
+        'Platform Retained Return Fee (INR)',
+        'Platform Retained Cancellation Fee (INR)',
+        'Refund Disbursed (INR)',
+        'Platform Commission (5%) (INR)',
+        'Net Platform Earnings (INR)',
+        'Items Summary'
+      ];
+
+      const escapeCsv = (val: any) => {
+        const s = String(val ?? '').replace(/"/g, '""');
+        return `"${s}"`;
+      };
+
+      const csvRows = [headers.join(',')];
+      for (const o of data.orders) {
+        csvRows.push([
+          escapeCsv(o.orderNumber),
+          escapeCsv(o.date),
+          escapeCsv(o.studentId),
+          escapeCsv(o.studentName),
+          escapeCsv(o.studentRoll),
+          escapeCsv(`${o.studentRoom}, ${o.studentHall}`),
+          escapeCsv(o.serviceType),
+          escapeCsv(o.status),
+          o.grossAmount.toFixed(2),
+          escapeCsv(o.paymentMethod),
+          o.onlineAmount.toFixed(2),
+          o.codAmount.toFixed(2),
+          o.retainedReturnFee.toFixed(2),
+          o.retainedCancellationFee.toFixed(2),
+          o.refundDetails.refundAmount.toFixed(2),
+          o.commissionAmount.toFixed(2),
+          o.netPlatformRevenue.toFixed(2),
+          escapeCsv(o.itemsSummary)
+        ].join(','));
+      }
+
+      const csvContent = csvRows.join('\r\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="CampusBasket-Gross-Volume-${Date.now()}.csv"`);
+      res.status(200).send(csvContent);
     } catch (err) {
       next(err);
     }

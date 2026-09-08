@@ -52,6 +52,11 @@ router.get('/payments/delivery-settlements', AdminPaymentController.getDeliveryS
 router.post('/payments/delivery-settlements/disburse', AdminPaymentController.disburseDeliverySettlement);
 router.get('/payments/delivery-settlements/pdf', AdminPaymentController.downloadDeliverySettlementsPdf);
 
+// Gross Volume & Comprehensive Institutional Calculation Routes
+router.get('/payments/gross-volume', AdminPaymentController.getGrossVolumeBreakdown);
+router.get('/payments/gross-volume/pdf', AdminPaymentController.downloadGrossVolumePdf);
+router.get('/payments/gross-volume/csv', AdminPaymentController.downloadGrossVolumeCsv);
+
 // 2. Commerce: Products & Inventory
 router.get('/products', AdminController.getAllProducts);
 router.get('/products/pending', AdminController.getPendingProducts);
