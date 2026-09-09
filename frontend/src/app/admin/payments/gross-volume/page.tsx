@@ -776,13 +776,17 @@ export default function OrderPaymentSettlementLedgerPage() {
             </div>
           </div>
 
-          {/* 7. FINAL CAMPUS BASKET EARNING */}
+          {/* 7. NET CAMPUS BASKET RECEIVED */}
           <div className="bg-white p-3.5 rounded-xl border-2 border-emerald-500 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800">CAMPUS BASKET EARNING</span>
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
             </div>
-            <div className="mt-2">
+            <div className="mt-1">
               <span className="text-xl sm:text-2xl font-black text-emerald-700">₹{metrics.finalCampusBasketEarning.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div className="mt-1 text-[9px] font-semibold text-emerald-600/80 leading-tight">
+              Student Paid − Refunds Distributed
             </div>
           </div>
         </section>
@@ -1071,7 +1075,7 @@ export default function OrderPaymentSettlementLedgerPage() {
                   <th className="py-3 px-3.5 text-center whitespace-nowrap">CANCEL REFUND</th>
                   <th className="py-3 px-3.5 text-center whitespace-nowrap">RETURN REFUND</th>
                   <th className="py-3 px-3.5 text-right whitespace-nowrap">REFUND TOTAL</th>
-                  <th className="py-3 px-3.5 text-right whitespace-nowrap">FINAL CAMPUS BASKET EARNING</th>
+                  <th className="py-3 px-3.5 text-right whitespace-nowrap">NET CB RECEIVED</th>
                   <th className="py-3 px-3.5 text-center whitespace-nowrap">ACTIONS</th>
                 </tr>
               </thead>
@@ -1245,9 +1249,16 @@ export default function OrderPaymentSettlementLedgerPage() {
                           )}
                         </td>
 
-                        {/* 15. Final Campus Basket Earning */}
-                        <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono font-black text-emerald-700 text-sm">
-                          ₹{ord.finalCampusBasketEarning.toFixed(2)}
+                        {/* 15. Net Campus Basket Received */}
+                        <td className="py-3 px-3.5 text-right whitespace-nowrap">
+                          <div className="flex flex-col items-end">
+                            <span className="font-mono font-black text-emerald-700 text-sm">₹{ord.finalCampusBasketEarning.toFixed(2)}</span>
+                            {ord.refundTotal > 0 && (
+                              <span className="text-[9px] text-slate-400 font-medium">
+                                ₹{ord.totalAmount.toFixed(2)} − ₹{ord.refundTotal.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* 16. Actions */}
@@ -1593,20 +1604,20 @@ export default function OrderPaymentSettlementLedgerPage() {
                     <span>FINAL FINANCIAL RESULT</span>
                   </h3>
                   <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-200 space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-slate-600">Gross Order Value:</span>
-                      <span className="font-mono font-bold text-slate-900">₹{selectedOrder.totalAmount.toFixed(2)}</span>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-600">Student Paid (Total Order):</span>
+                      <span className="font-mono font-black text-sm text-slate-900">₹{selectedOrder.totalAmount.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-amber-800">
-                      <span className="font-semibold">Total Refund Distributed:</span>
-                      <span className="font-mono font-bold">-₹{selectedOrder.refundTotal.toFixed(2)}</span>
+                    <div className="flex justify-between items-center text-amber-800">
+                      <span className="font-semibold">Less: Refund Distributed to Student:</span>
+                      <span className="font-mono font-bold">−₹{selectedOrder.refundTotal.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between border-t border-emerald-300 pt-2 text-sm font-black text-emerald-800">
-                      <span>FINAL CAMPUS BASKET EARNING:</span>
-                      <span className="font-mono">₹{selectedOrder.finalCampusBasketEarning.toFixed(2)}</span>
+                    <div className="flex justify-between items-center border-t-2 border-emerald-400 pt-2 mt-1">
+                      <span className="text-sm font-black text-emerald-900">NET CAMPUS BASKET RECEIVED:</span>
+                      <span className="font-mono font-black text-lg text-emerald-700">₹{selectedOrder.finalCampusBasketEarning.toFixed(2)}</span>
                     </div>
-                    <p className="text-[10px] text-emerald-700/80 leading-tight">
-                      Calculated from platform commission + platform delivery fee + retained policy deductions. (Institution fee is strictly excluded).
+                    <p className="text-[10px] text-emerald-700/80 leading-tight pt-1 border-t border-emerald-200">
+                      This is the exact amount Campus Basket retains after paying back the student's refund. Formula: Total Paid − Refund Distributed.
                     </p>
                   </div>
                 </div>

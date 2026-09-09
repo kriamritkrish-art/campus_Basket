@@ -1094,19 +1094,11 @@ export class AdminPaymentController {
       // 3. Refund Total Distributed: actual sum distributed back to student
       const refundTotal = Math.round((cancelDistributedAmount + returnDistributedAmount) * 100) / 100;
 
-      // 4. Final Campus Basket Earning (NO Institution Fee):
-      // How much money Campus Basket finally retains from that order after adjustments.
-      let finalCampusBasketEarning = 0;
-      const isDelivered = o.status === 'DELIVERED' || o.status === 'COMPLETED';
-
-      if (isCancelled) {
-        finalCampusBasketEarning = cancelDeduction;
-      } else if (isDelivered) {
-        finalCampusBasketEarning = commissionAmount + deliveryFee + (returnRefundStatus === 'DISTRIBUTED' ? returnDeduction : 0);
-      } else {
-        finalCampusBasketEarning = commissionAmount;
-      }
-      finalCampusBasketEarning = Math.round(finalCampusBasketEarning * 100) / 100;
+      // 4. Final Campus Basket Earning:
+      // Actual net money Campus Basket received from this order =
+      //   Total amount student paid  −  Refund actually distributed back to student
+      // This is the real cash-in-hand figure, not a % commission estimate.
+      const finalCampusBasketEarning = Math.round((grossAmount - refundTotal) * 100) / 100;
 
       // Student details
       const student = o.student || {};
