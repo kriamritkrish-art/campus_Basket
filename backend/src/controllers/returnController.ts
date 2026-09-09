@@ -14,7 +14,7 @@ async function resolveReturnRequest(idParam: string, includeOrder: boolean = tru
     ? {
         order: {
           include: {
-            student: { select: { fullName: true, mobileNumber: true, roomNumber: true, hallName: true, user: { select: { email: true } } } },
+            student: { select: { fullName: true, mobileNumber: true, roomNumber: true, user: { select: { email: true } } } },
             provider: { select: { fullName: true, mobileNumber: true, serviceCategory: true } },
             deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } },
             items: true,
@@ -27,30 +27,60 @@ async function resolveReturnRequest(idParam: string, includeOrder: boolean = tru
       }
     : undefined;
 
-  // 1. Try finding by ID or orderId with all normalized forms
-  let record = await (prisma as any).returnRequest.findFirst({
-    where: {
-      OR: [
-        { id: rawId },
-        { id: cleanId },
-        { id: strippedId },
-        { id: baseOrderNum },
-        { orderId: rawId },
-        { orderId: cleanId },
-        { orderId: strippedId },
-        { orderId: baseOrderNum },
-        { orderId: `#${baseOrderNum}` }
-      ]
-    },
-    include: includeObj
-  });
+  // Resolve linked order to bridge between internal order.id (cuid) and readable orderNumber
+  let matchedOrderId: string | null = null;
+  let matchedOrderNumber: string | null = null;
+  try {
+    const matchedOrder = await prisma.order.findFirst({
+      where: {
+        OR: [
+          { id: rawId },
+          { id: cleanId },
+          { id: strippedId },
+          { id: baseOrderNum },
+          { orderNumber: rawId },
+          { orderNumber: cleanId },
+          { orderNumber: strippedId },
+          { orderNumber: baseOrderNum },
+          { orderNumber: `#${baseOrderNum}` }
+        ]
+      },
+      select: { id: true, orderNumber: true }
+    });
+    if (matchedOrder) {
+      matchedOrderId = matchedOrder.id;
+      matchedOrderNumber = matchedOrder.orderNumber;
+    }
+  } catch (e) {}
 
-  if (record) return record;
+  const candidateIds = Array.from(new Set([
+    rawId,
+    cleanId,
+    strippedId,
+    baseOrderNum,
+    `#${baseOrderNum}`,
+    matchedOrderId,
+    matchedOrderNumber,
+    matchedOrderNumber ? `#${matchedOrderNumber.replace(/^#+/, '')}` : null
+  ].filter(Boolean) as string[]));
 
-  // 2. Try findUnique by cleanId / strippedId / baseOrderNum
-  for (const tid of [cleanId, strippedId, baseOrderNum].filter(Boolean)) {
+  // 1. Try finding by ID or orderId with all candidate forms
+  try {
+    const orConditions = candidateIds.flatMap(cid => [
+      { id: cid },
+      { orderId: cid }
+    ]);
+    const record = await (prisma as any).returnRequest.findFirst({
+      where: { OR: orConditions },
+      include: includeObj
+    });
+    if (record) return record;
+  } catch (e) {}
+
+  // 2. Try findUnique by candidateIds
+  for (const tid of candidateIds) {
     try {
-      record = await (prisma as any).returnRequest.findUnique({
+      const record = await (prisma as any).returnRequest.findUnique({
         where: { id: tid },
         include: includeObj
       });
@@ -58,59 +88,23 @@ async function resolveReturnRequest(idParam: string, includeOrder: boolean = tru
     } catch (e) {}
   }
 
-  // 3. Try finding by orderNumber if rawId was an orderNumber
-  try {
-    const order = await prisma.order.findFirst({
-      where: {
-        OR: [
-          { orderNumber: rawId },
-          { orderNumber: cleanId },
-          { orderNumber: strippedId },
-          { orderNumber: baseOrderNum },
-          { orderNumber: `#${baseOrderNum}` },
-          { id: rawId },
-          { id: cleanId },
-          { id: strippedId },
-          { id: baseOrderNum }
-        ]
-      }
-    });
-    if (order) {
-      record = await (prisma as any).returnRequest.findFirst({
-        where: {
-          OR: [
-            { orderId: order.id },
-            { orderId: order.orderNumber },
-            { orderId: `#${order.orderNumber}` }
-          ]
-        },
-        include: includeObj
-      });
-      if (record) return record;
-    }
-  } catch (e) {}
-
-  // 4. Scan all return requests for matching orderNumber or orderId in persistent store
+  // 3. Scan all return requests for matching candidateIds
   try {
     const allReturns = await (prisma as any).returnRequest.findMany({
       include: includeObj
     });
-    const candidateMatches = [rawId, cleanId, strippedId, baseOrderNum]
-      .filter(Boolean)
-      .map(s => s.toLowerCase());
+    const candidateLower = candidateIds.map(s => s.toLowerCase());
 
     const matched = allReturns.find((ret: any) => {
       const retId = String(ret.id || '').toLowerCase();
       const ordId = String(ret.orderId || '').toLowerCase();
       const ordNum = String(ret.order?.orderNumber || '').toLowerCase().replace(/^#+/, '');
-      const cleanTarget = baseOrderNum.toLowerCase();
-
       return (
-        candidateMatches.includes(retId) ||
-        candidateMatches.includes(ordId) ||
-        candidateMatches.includes(ordNum) ||
-        (cleanTarget && (ordNum === cleanTarget || ordId === cleanTarget || ordNum.includes(cleanTarget) || ordId.includes(cleanTarget))) ||
-        (cleanTarget.length >= 6 && (retId.includes(cleanTarget) || ordNum.includes(cleanTarget) || ordId.includes(cleanTarget)))
+        candidateLower.includes(retId) ||
+        candidateLower.includes(ordId) ||
+        candidateLower.includes(ordNum) ||
+        (matchedOrderNumber && (ordNum === matchedOrderNumber.toLowerCase() || ordId === matchedOrderNumber.toLowerCase())) ||
+        (matchedOrderId && ordId === matchedOrderId.toLowerCase())
       );
     });
     if (matched) return matched;
@@ -138,7 +132,8 @@ export class ReturnController {
         include: {
           order: {
             include: {
-              student: { select: { fullName: true, mobileNumber: true, roomNumber: true, hallName: true, user: { select: { email: true } } } },
+              // NOTE: Student model has hallNumber/hallId, NOT hallName. hallName is on Order.
+              student: { select: { fullName: true, mobileNumber: true, roomNumber: true, user: { select: { email: true } } } },
               provider: { select: { fullName: true, mobileNumber: true, serviceCategory: true } },
               deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } },
               items: true,
@@ -155,11 +150,14 @@ export class ReturnController {
       const enrichedReturns = (returns || []).map((ret: any) => {
         const student = ret.order?.student;
         const studentName = ret.studentName || student?.fullName || ret.order?.studentName || 'Campus Student';
-        const hallName = ret.hallName || ret.order?.hallName || student?.hallName || 'Campus Hostel';
+        // hallName is on Order model, not Student model — use order.hallName
+        const hallName = ret.hallName || ret.order?.hallName || 'Campus Hostel';
         const roomNumber = ret.roomNumber || ret.order?.roomNumber || student?.roomNumber || '';
         const originalAmount = Number(ret.itemAmount || ret.originalAmount || ret.order?.subtotal || ret.order?.totalAmount || 0);
         const refundAmount = Number(ret.refundAmount || 0);
         const deliveryChargeDeducted = Number(ret.deliveryFeeDeducted !== undefined ? ret.deliveryFeeDeducted : (ret.deliveryChargeDeducted || 0));
+        // Ensure human-readable orderNumber is always present on the return object
+        const orderNumber = ret.order?.orderNumber || ret.orderNumber || null;
 
         return {
           ...ret,
@@ -169,7 +167,8 @@ export class ReturnController {
           originalAmount,
           refundAmount,
           deliveryChargeDeducted,
-          deliveryFeeDeducted: deliveryChargeDeducted
+          deliveryFeeDeducted: deliveryChargeDeducted,
+          orderNumber
         };
       });
 
