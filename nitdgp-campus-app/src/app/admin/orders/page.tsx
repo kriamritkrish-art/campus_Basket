@@ -1227,15 +1227,17 @@ export default function AdminOrdersPage() {
               </div>
             </div>
 
-            {/* Pickup OTP if already approved */}
-            {selectedReturn.pickupOtp && (
-              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900 flex items-center justify-between">
-                <div>
-                  <span className="font-bold block">Generated 6-Digit Pickup OTP</span>
-                  <span className="text-[11px]">Runner verifies this code at the student hostel door</span>
+            {/* Confidential Pickup OTP Notice (Strictly visible only to student dashboard) */}
+            {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(selectedReturn.status) && (
+              <div className="p-3 bg-blue-50/90 rounded-xl border border-blue-200 text-blue-900 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700 shrink-0">
+                  <ShieldCheck className="w-4 h-4" />
                 </div>
-                <div className="font-mono text-xl font-black bg-white px-3 py-1 rounded-lg border border-emerald-300">
-                  {selectedReturn.pickupOtp}
+                <div className="text-xs">
+                  <span className="font-bold block text-blue-950">Student Handover OTP Active</span>
+                  <span className="text-[11px] text-blue-800">
+                    6-digit verification code is private to the student's dashboard. The delivery runner must collect and verify this OTP directly from the student at the hostel door.
+                  </span>
                 </div>
               </div>
             )}

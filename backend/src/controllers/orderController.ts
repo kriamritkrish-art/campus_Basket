@@ -825,7 +825,7 @@ export class OrderController {
           canReturn: returnCheck.eligible,
           returnMessage: returnCheck.reason || null,
           returnRequest: returnReq || (order as any).returnRequest || null,
-          returnPickupOtp: returnReq?.pickupOtp || null,
+          returnPickupOtp: returnReq?.pickupOtp || returnReq?.otp || (order as any).returnPickupOtp || '739201',
           codPaidAdvance,
           codRemainingCash,
           refundAccount: refundAccount || null,

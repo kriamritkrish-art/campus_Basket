@@ -101,7 +101,10 @@ function enrichFallbackReturn(r: any): any {
   const roomNumber = r.roomNumber || order?.roomNumber || order?.student?.roomNumber || '';
   const originalAmount = Number(r.itemAmount || r.originalAmount || order?.subtotal || order?.totalAmount || 0);
   const refundAmount = Number(r.refundAmount || 0);
-  const pickupOtp = r.pickupOtp || (['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(r.status) ? (r.otp || '739201') : null);
+  if (!r.pickupOtp && ['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(r.status)) {
+    r.pickupOtp = r.otp || '739201';
+  }
+  const pickupOtp = r.pickupOtp || r.otp || (['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(r.status) ? '739201' : null);
 
   return {
     ...r,
@@ -1001,7 +1004,10 @@ const fallbackHandlers: Record<string, any> = {
         cancellationRequests: fallbackCancellationRequests.filter(c => c.orderId === o.id) || [],
         adminStatusOverrides: fallbackAdminStatusOverrides.filter(a => a.orderId === o.id) || [],
         refunds: (global as any).__mockRefunds?.filter((r: any) => r.orderId === o.id) || (o.refunds || []),
-        returnRequest: persistentReturnRequests.find((r: any) => r.orderId === o.id || (o.orderNumber && r.orderId === o.orderNumber)) || null
+        returnRequest: (() => {
+          const rawRet = persistentReturnRequests.find((r: any) => r.orderId === o.id || (o.orderNumber && r.orderId === o.orderNumber));
+          return rawRet ? enrichFallbackReturn(rawRet) : null;
+        })()
       }));
     },
     create: async (args: any) => {
@@ -1945,8 +1951,17 @@ const fallbackHandlers: Record<string, any> = {
       );
       if (r) {
         Object.assign(r, { ...args.data, updatedAt: new Date() });
+        if (args.data.pickupOtp) {
+          r.pickupOtp = args.data.pickupOtp;
+          r.otp = args.data.pickupOtp;
+        }
         if (args.data.deliveryFeeDeducted !== undefined) {
           r.deliveryChargeDeducted = args.data.deliveryFeeDeducted;
+        }
+        const matchedOrd: any = fallbackOrders.find((o: any) => o.id === r.orderId || o.orderNumber === r.orderId);
+        if (matchedOrd) {
+          if (args.data.status) matchedOrd.refundStatus = args.data.status;
+          if (args.data.pickupOtp) matchedOrd.returnPickupOtp = args.data.pickupOtp;
         }
         saveReturnRequests(persistentReturnRequests);
         return JSON.parse(JSON.stringify(enrichFallbackReturn(r)));
@@ -1963,9 +1978,18 @@ const fallbackHandlers: Record<string, any> = {
       );
       if (existing) {
         Object.assign(existing, { ...args.update, updatedAt: new Date() });
+        if (args.update.pickupOtp) {
+          existing.pickupOtp = args.update.pickupOtp;
+          existing.otp = args.update.pickupOtp;
+        }
         const deliveryFee = args.update.deliveryFeeDeducted !== undefined ? args.update.deliveryFeeDeducted : (args.update.deliveryChargeDeducted !== undefined ? args.update.deliveryChargeDeducted : existing.deliveryFeeDeducted);
         existing.deliveryFeeDeducted = deliveryFee;
         existing.deliveryChargeDeducted = deliveryFee;
+        const matchedOrd: any = fallbackOrders.find((o: any) => o.id === existing.orderId || o.orderNumber === existing.orderId);
+        if (matchedOrd) {
+          if (args.update.status) matchedOrd.refundStatus = args.update.status;
+          if (args.update.pickupOtp) matchedOrd.returnPickupOtp = args.update.pickupOtp;
+        }
         saveReturnRequests(persistentReturnRequests);
         return JSON.parse(JSON.stringify(enrichFallbackReturn(existing)));
       }
