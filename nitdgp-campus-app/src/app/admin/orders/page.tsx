@@ -28,7 +28,8 @@ import {
   ShieldCheck,
   RefreshCw,
   AlertCircle,
-  Check
+  Check,
+  Banknote
 } from 'lucide-react';
 
 export default function AdminOrdersPage() {
@@ -1212,6 +1213,98 @@ export default function AdminOrdersPage() {
                 </div>
               </div>
             </div>
+
+            {/* ── Return Workflow Progress Stepper ── */}
+            {(() => {
+              const s = selectedReturn.status;
+              const otpDone = Boolean(selectedReturn.pickupOtpVerified) || s === 'COMPLETED' || s === 'PICKED_UP' || s === 'PROCESSING' || selectedReturn.order?.refundStatus === 'PICKED_UP' || selectedReturn.order?.refundStatus === 'PROCESSING';
+              const approved = ['APPROVED','ACCEPTED','PICKUP_ASSIGNED','COMPLETED','PICKED_UP','PROCESSING','REFUNDED'].includes(s) || otpDone;
+              const refunded = s === 'REFUNDED';
+
+              const stages = [
+                {
+                  icon: <RotateCcw className="w-4 h-4" />,
+                  label: 'Return Requested',
+                  sub: 'Student submitted return',
+                  done: true,
+                  active: s === 'REQUESTED'
+                },
+                {
+                  icon: <Check className="w-4 h-4" />,
+                  label: 'Admin Approved',
+                  sub: approved ? (selectedReturn.deliveryBoy ? `Runner: ${selectedReturn.deliveryBoy.fullName}` : 'Broadcast to runners') : 'Awaiting your approval',
+                  done: approved,
+                  active: approved && !otpDone
+                },
+                {
+                  icon: <ShieldCheck className="w-4 h-4" />,
+                  label: 'Pickup OTP Verified',
+                  sub: otpDone ? 'Item collected by runner ✓' : approved ? 'Waiting for runner to collect' : 'Locked until approved',
+                  done: otpDone,
+                  active: otpDone && !refunded
+                },
+                {
+                  icon: <Banknote className="w-4 h-4" />,
+                  label: `Refund Disbursed`,
+                  sub: refunded ? `₹${selectedReturn.refundAmount} released ✓` : otpDone ? `Ready — ₹${selectedReturn.refundAmount} to disburse` : 'Locked until pickup verified',
+                  done: refunded,
+                  active: otpDone && !refunded
+                }
+              ];
+
+              return (
+                <div className="p-4 bg-gradient-to-br from-slate-50 to-white rounded-2xl border border-slate-200 shadow-sm">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-3">Return Pickup Workflow</span>
+                  <div className="flex items-start gap-0">
+                    {stages.map((stage, idx) => (
+                      <React.Fragment key={idx}>
+                        <div className="flex flex-col items-center gap-1.5 flex-1 min-w-0">
+                          {/* Circle */}
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 shrink-0 transition-all ${
+                            stage.done
+                              ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-200'
+                              : stage.active
+                              ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-200 animate-pulse'
+                              : 'bg-white border-slate-200 text-slate-300'
+                          }`}>
+                            {stage.icon}
+                          </div>
+                          {/* Label */}
+                          <div className="text-center px-0.5">
+                            <div className={`text-[10px] font-bold leading-tight ${
+                              stage.done ? 'text-emerald-700' : stage.active ? 'text-blue-700' : 'text-slate-400'
+                            }`}>{stage.label}</div>
+                            <div className="text-[9px] text-slate-400 leading-tight mt-0.5 truncate">{stage.sub}</div>
+                          </div>
+                        </div>
+                        {/* Connector line */}
+                        {idx < stages.length - 1 && (
+                          <div className={`h-0.5 mt-4 flex-1 mx-1 rounded-full transition-all ${
+                            stages[idx + 1].done || stages[idx + 1].active
+                              ? 'bg-emerald-400'
+                              : 'bg-slate-200'
+                          }`} />
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  {/* Active step hint */}
+                  {!refunded && (
+                    <div className={`mt-3 text-[11px] font-semibold px-3 py-2 rounded-xl ${
+                      !approved
+                        ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                        : !otpDone
+                        ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                        : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    }`}>
+                      {!approved && '⏳ Action required: Review and approve this return request below.'}
+                      {approved && !otpDone && '⏳ Waiting for runner to visit student\'s room and verify the 6-digit OTP.'}
+                      {otpDone && !refunded && '✅ Pickup verified! You can now disburse the refund to the student.'}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Original Fulfillment & Delivery History */}
             <div className="p-3.5 bg-blue-50/50 rounded-xl border border-blue-200 space-y-2">
