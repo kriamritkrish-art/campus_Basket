@@ -160,7 +160,8 @@ export default function AdminOrdersPage() {
     if (!selectedReturn) return;
     setProcessingReturn(true);
     try {
-      const res = await apiRequest(`/api/returns/${selectedReturn.id}/approve`, {
+      const returnId = encodeURIComponent(String(selectedReturn.id || selectedReturn.orderId || '').replace(/^#+/, '').trim());
+      const res = await apiRequest(`/api/returns/${returnId}/approve`, {
         method: 'POST',
         body: JSON.stringify({ deliveryBoyId: returnAssignBoyId || undefined })
       });
@@ -187,7 +188,8 @@ export default function AdminOrdersPage() {
     }
     setProcessingReturn(true);
     try {
-      const res = await apiRequest(`/api/returns/${selectedReturn.id}/reject`, {
+      const returnId = encodeURIComponent(String(selectedReturn.id || selectedReturn.orderId || '').replace(/^#+/, '').trim());
+      const res = await apiRequest(`/api/returns/${returnId}/reject`, {
         method: 'POST',
         body: JSON.stringify({ rejectionReason: returnRejectionReason })
       });
@@ -217,7 +219,8 @@ export default function AdminOrdersPage() {
 
     setProcessingReturn(true);
     try {
-      const res = await apiRequest(`/api/returns/${selectedReturn.id}/disburse-refund`, {
+      const returnId = encodeURIComponent(String(selectedReturn.id || selectedReturn.orderId || '').replace(/^#+/, '').trim());
+      const res = await apiRequest(`/api/returns/${returnId}/disburse-refund`, {
         method: 'POST',
         body: JSON.stringify({ transactionReference: utr.trim() || undefined })
       });

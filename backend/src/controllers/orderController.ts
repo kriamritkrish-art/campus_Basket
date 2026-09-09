@@ -1086,7 +1086,6 @@ export class OrderController {
           proofImageUrl: proofImageUrl || null,
           itemAmount: itemTotal,
           deliveryFeeDeducted: deliveryFeeDeducted,
-          deliveryChargeDeducted: deliveryFeeDeducted,
           refundAmount: netRefundAmount,
           status: 'REQUESTED'
         },
@@ -1098,7 +1097,6 @@ export class OrderController {
           proofImageUrl: proofImageUrl || null,
           itemAmount: itemTotal,
           deliveryFeeDeducted: deliveryFeeDeducted,
-          deliveryChargeDeducted: deliveryFeeDeducted,
           refundAmount: netRefundAmount,
           status: 'REQUESTED'
         }

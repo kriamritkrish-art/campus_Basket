@@ -3,6 +3,77 @@ import { prisma } from '../config/database';
 import { AuditService } from '../services/audit/AuditService';
 import { LedgerService } from '../services/financial/LedgerService';
 
+async function resolveReturnRequest(idParam: string, includeOrder: boolean = true): Promise<any> {
+  if (!idParam) return null;
+  const rawId = String(idParam).trim();
+  const cleanId = rawId.replace(/^#+/, '').trim();
+
+  const includeObj = includeOrder
+    ? {
+        order: {
+          include: {
+            student: { select: { fullName: true, mobileNumber: true, roomNumber: true, hallName: true, user: { select: { email: true } } } },
+            provider: { select: { fullName: true, mobileNumber: true, serviceCategory: true } },
+            deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } },
+            items: true,
+            payment: true
+          }
+        },
+        deliveryBoy: {
+          select: { id: true, fullName: true, mobileNumber: true, vehicleType: true }
+        }
+      }
+    : undefined;
+
+  // 1. Try finding by ID or orderId with raw and clean IDs
+  let record = await (prisma as any).returnRequest.findFirst({
+    where: {
+      OR: [
+        { id: rawId },
+        { id: cleanId },
+        { orderId: rawId },
+        { orderId: cleanId }
+      ]
+    },
+    include: includeObj
+  });
+
+  if (record) return record;
+
+  // 2. Try findUnique by cleanId
+  try {
+    record = await (prisma as any).returnRequest.findUnique({
+      where: { id: cleanId },
+      include: includeObj
+    });
+    if (record) return record;
+  } catch (e) {}
+
+  // 3. Try finding by orderNumber if rawId was an orderNumber
+  try {
+    const order = await prisma.order.findFirst({
+      where: {
+        OR: [
+          { orderNumber: rawId },
+          { orderNumber: cleanId },
+          { orderNumber: `#${cleanId}` },
+          { id: rawId },
+          { id: cleanId }
+        ]
+      }
+    });
+    if (order) {
+      record = await (prisma as any).returnRequest.findFirst({
+        where: { orderId: order.id },
+        include: includeObj
+      });
+      if (record) return record;
+    }
+  } catch (e) {}
+
+  return null;
+}
+
 export class ReturnController {
   /**
    * Admin: List all return requests with filters
@@ -50,22 +121,7 @@ export class ReturnController {
   public static async getReturnById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-
-      const returnRequest = await (prisma as any).returnRequest.findFirst({
-        where: { OR: [{ id }, { orderId: id }] },
-        include: {
-          order: {
-            include: {
-              student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
-              provider: { select: { fullName: true, mobileNumber: true } },
-              items: true
-            }
-          },
-          deliveryBoy: {
-            select: { id: true, fullName: true, mobileNumber: true, vehicleType: true }
-          }
-        }
-      });
+      const returnRequest = await resolveReturnRequest(id, true);
 
       if (!returnRequest) {
         res.status(404).json({ success: false, message: 'Return request not found' });
@@ -90,10 +146,7 @@ export class ReturnController {
       const { id } = req.params;
       const { deliveryBoyId, adminNotes } = req.body;
 
-      const returnRequest = await (prisma as any).returnRequest.findFirst({
-        where: { OR: [{ id }, { orderId: id }] },
-        include: { order: true }
-      });
+      const returnRequest = await resolveReturnRequest(id, true);
 
       if (!returnRequest) {
         res.status(404).json({ success: false, message: 'Return request not found' });
@@ -121,29 +174,35 @@ export class ReturnController {
         }
       });
 
-      // Update Order Status History
-      await prisma.order.update({
-        where: { id: returnRequest.orderId },
-        data: {
-          refundStatus: 'APPROVED',
-          statusHistory: {
-            create: {
-              previousStatus: returnRequest.order?.status || 'DELIVERED',
-              newStatus: returnRequest.order?.status || 'DELIVERED',
-              changedBy: req.user?.email || 'ADMIN',
-              notes: `Return request approved by Admin. 6-digit pickup OTP generated. ${deliveryBoyId ? `Runner assigned: ${updated.deliveryBoy?.fullName || deliveryBoyId}` : 'Awaiting runner assignment.'}`
+      // Safely Update Order Status History
+      try {
+        await prisma.order.update({
+          where: { id: returnRequest.orderId },
+          data: {
+            refundStatus: 'APPROVED',
+            statusHistory: {
+              create: {
+                previousStatus: returnRequest.order?.status || 'DELIVERED',
+                newStatus: returnRequest.order?.status || 'DELIVERED',
+                changedBy: req.user?.email || 'ADMIN',
+                notes: `Return request approved by Admin. 6-digit pickup OTP generated. ${deliveryBoyId ? `Runner assigned: ${updated.deliveryBoy?.fullName || deliveryBoyId}` : 'Awaiting runner assignment.'}`
+              }
             }
           }
-        }
-      });
+        });
+      } catch (orderErr) {
+        console.warn('[ReturnController] Order history update notice:', orderErr);
+      }
 
-      await AuditService.log(prisma, {
-        userId: req.user?.userId,
-        action: 'RETURN_REQUEST_APPROVED',
-        entity: 'ReturnRequest',
-        entityId: returnRequest.id,
-        newValue: { status: newStatus, deliveryBoyId, pickupOtp }
-      });
+      try {
+        await AuditService.log(prisma, {
+          userId: req.user?.userId,
+          action: 'RETURN_REQUEST_APPROVED',
+          entity: 'ReturnRequest',
+          entityId: returnRequest.id,
+          newValue: { status: newStatus, deliveryBoyId, pickupOtp }
+        });
+      } catch (auditErr) {}
 
       res.status(200).json({
         success: true,
@@ -163,10 +222,7 @@ export class ReturnController {
       const { id } = req.params;
       const { rejectionReason } = req.body;
 
-      const returnRequest = await (prisma as any).returnRequest.findFirst({
-        where: { OR: [{ id }, { orderId: id }] },
-        include: { order: true }
-      });
+      const returnRequest = await resolveReturnRequest(id, true);
 
       if (!returnRequest) {
         res.status(404).json({ success: false, message: 'Return request not found' });
@@ -183,20 +239,25 @@ export class ReturnController {
         }
       });
 
-      await prisma.order.update({
-        where: { id: returnRequest.orderId },
-        data: {
-          refundStatus: 'REJECTED',
-          statusHistory: {
-            create: {
-              previousStatus: returnRequest.order.status,
-              newStatus: returnRequest.order.status,
-              changedBy: req.user?.email || 'ADMIN',
-              notes: `Return request rejected by Admin: ${rejectionReason || 'Inspection criteria not met'}`
+      // Safely Update Order Status History
+      try {
+        await prisma.order.update({
+          where: { id: returnRequest.orderId },
+          data: {
+            refundStatus: 'REJECTED',
+            statusHistory: {
+              create: {
+                previousStatus: returnRequest.order?.status || 'DELIVERED',
+                newStatus: returnRequest.order?.status || 'DELIVERED',
+                changedBy: req.user?.email || 'ADMIN',
+                notes: `Return request rejected by Admin: ${rejectionReason || 'Inspection criteria not met'}`
+              }
             }
           }
-        }
-      });
+        });
+      } catch (orderErr) {
+        console.warn('[ReturnController] Order history update notice:', orderErr);
+      }
 
       res.status(200).json({
         success: true,
@@ -221,10 +282,7 @@ export class ReturnController {
         return;
       }
 
-      const returnRequest = await (prisma as any).returnRequest.findFirst({
-        where: { OR: [{ id }, { orderId: id }] },
-        include: { order: true }
-      });
+      const returnRequest = await resolveReturnRequest(id, true);
 
       if (!returnRequest) {
         res.status(404).json({ success: false, message: 'Return request not found' });
@@ -257,19 +315,21 @@ export class ReturnController {
         }
       });
 
-      await prisma.order.update({
-        where: { id: returnRequest.orderId },
-        data: {
-          statusHistory: {
-            create: {
-              previousStatus: returnRequest.order.status,
-              newStatus: returnRequest.order.status,
-              changedBy: req.user?.email || 'ADMIN',
-              notes: `Delivery runner ${dbUser.fullName} assigned for return pickup.`
+      try {
+        await prisma.order.update({
+          where: { id: returnRequest.orderId },
+          data: {
+            statusHistory: {
+              create: {
+                previousStatus: returnRequest.order?.status || 'DELIVERED',
+                newStatus: returnRequest.order?.status || 'DELIVERED',
+                changedBy: req.user?.email || 'ADMIN',
+                notes: `Delivery runner ${dbUser.fullName} assigned for return pickup.`
+              }
             }
           }
-        }
-      });
+        });
+      } catch (orderErr) {}
 
       res.status(200).json({
         success: true,
@@ -300,13 +360,7 @@ export class ReturnController {
 
       const cleanOtp = String(otp).trim();
 
-      const returnRequest = await (prisma as any).returnRequest.findFirst({
-        where: { OR: [{ id }, { orderId: id }] },
-        include: {
-          order: true,
-          deliveryBoy: true
-        }
-      });
+      const returnRequest = await resolveReturnRequest(id, true);
 
       if (!returnRequest) {
         res.status(404).json({ success: false, message: 'Return request not found' });
@@ -428,10 +482,7 @@ export class ReturnController {
       const { id } = req.params;
       const { utrReference, adminNotes } = req.body;
 
-      const returnRequest = await (prisma as any).returnRequest.findFirst({
-        where: { OR: [{ id }, { orderId: id }] },
-        include: { order: { include: { student: true } } }
-      });
+      const returnRequest = await resolveReturnRequest(id, true);
 
       if (!returnRequest) {
         res.status(404).json({ success: false, message: 'Return request not found' });

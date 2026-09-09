@@ -1761,20 +1761,38 @@ const fallbackHandlers: Record<string, any> = {
     },
     findFirst: async (args?: any) => {
       const orList = args?.where?.OR;
-      let targetId = args?.where?.id;
-      let targetOrderId = args?.where?.orderId;
+      const allIds = new Set<string>();
+      if (args?.where?.id) {
+        allIds.add(String(args.where.id));
+        allIds.add(String(args.where.id).replace(/^#+/, ''));
+      }
+      if (args?.where?.orderId) {
+        allIds.add(String(args.where.orderId));
+        allIds.add(String(args.where.orderId).replace(/^#+/, ''));
+      }
       if (Array.isArray(orList)) {
         for (const cond of orList) {
-          if (cond.id) targetId = cond.id;
-          if (cond.orderId) targetOrderId = cond.orderId;
+          if (cond.id) {
+            allIds.add(String(cond.id));
+            allIds.add(String(cond.id).replace(/^#+/, ''));
+          }
+          if (cond.orderId) {
+            allIds.add(String(cond.orderId));
+            allIds.add(String(cond.orderId).replace(/^#+/, ''));
+          }
         }
       }
-      const matchedOrder = fallbackOrders.find((o: any) => o.id === targetOrderId || o.orderNumber === targetOrderId);
-      const possibleOrderIds = [targetOrderId, matchedOrder?.id, matchedOrder?.orderNumber].filter(Boolean);
+
+      const idArray = Array.from(allIds).filter(Boolean);
+      const matchedOrder = fallbackOrders.find((o: any) => idArray.includes(o.id) || idArray.includes(o.orderNumber));
+      if (matchedOrder?.id) idArray.push(matchedOrder.id);
+      if (matchedOrder?.orderNumber) idArray.push(matchedOrder.orderNumber);
 
       const r = persistentReturnRequests.find(item => 
-        (targetId && item.id === targetId) || 
-        (possibleOrderIds.length > 0 && possibleOrderIds.includes(item.orderId))
+        idArray.includes(item.id) || 
+        idArray.includes(item.id.replace(/^#+/, '')) ||
+        idArray.includes(item.orderId) ||
+        (item.orderId && idArray.includes(item.orderId.replace(/^#+/, '')))
       );
       if (!r) return null;
       const rawOrder: any = fallbackOrders.find((o: any) => o.id === r.orderId || o.orderNumber === r.orderId);
@@ -1824,20 +1842,38 @@ const fallbackHandlers: Record<string, any> = {
     },
     findUnique: async (args: any) => {
       const orList = args?.where?.OR;
-      let targetId = args?.where?.id;
-      let targetOrderId = args?.where?.orderId;
+      const allIds = new Set<string>();
+      if (args?.where?.id) {
+        allIds.add(String(args.where.id));
+        allIds.add(String(args.where.id).replace(/^#+/, ''));
+      }
+      if (args?.where?.orderId) {
+        allIds.add(String(args.where.orderId));
+        allIds.add(String(args.where.orderId).replace(/^#+/, ''));
+      }
       if (Array.isArray(orList)) {
         for (const cond of orList) {
-          if (cond.id) targetId = cond.id;
-          if (cond.orderId) targetOrderId = cond.orderId;
+          if (cond.id) {
+            allIds.add(String(cond.id));
+            allIds.add(String(cond.id).replace(/^#+/, ''));
+          }
+          if (cond.orderId) {
+            allIds.add(String(cond.orderId));
+            allIds.add(String(cond.orderId).replace(/^#+/, ''));
+          }
         }
       }
-      const matchedOrder = fallbackOrders.find((o: any) => o.id === targetOrderId || o.orderNumber === targetOrderId);
-      const possibleOrderIds = [targetOrderId, matchedOrder?.id, matchedOrder?.orderNumber].filter(Boolean);
+
+      const idArray = Array.from(allIds).filter(Boolean);
+      const matchedOrder = fallbackOrders.find((o: any) => idArray.includes(o.id) || idArray.includes(o.orderNumber));
+      if (matchedOrder?.id) idArray.push(matchedOrder.id);
+      if (matchedOrder?.orderNumber) idArray.push(matchedOrder.orderNumber);
 
       const r = persistentReturnRequests.find(c => 
-        (targetId && c.id === targetId) || 
-        (possibleOrderIds.length > 0 && possibleOrderIds.includes(c.orderId))
+        idArray.includes(c.id) || 
+        idArray.includes(c.id.replace(/^#+/, '')) ||
+        idArray.includes(c.orderId) ||
+        (c.orderId && idArray.includes(c.orderId.replace(/^#+/, '')))
       );
       if (!r) return null;
       const rawOrder: any = fallbackOrders.find((o: any) => o.id === r.orderId || o.orderNumber === r.orderId);
@@ -1905,20 +1941,38 @@ const fallbackHandlers: Record<string, any> = {
     },
     update: async (args: any) => {
       const orList = args?.where?.OR;
-      let targetId = args?.where?.id;
-      let targetOrderId = args?.where?.orderId;
+      const allIds = new Set<string>();
+      if (args?.where?.id) {
+        allIds.add(String(args.where.id));
+        allIds.add(String(args.where.id).replace(/^#+/, ''));
+      }
+      if (args?.where?.orderId) {
+        allIds.add(String(args.where.orderId));
+        allIds.add(String(args.where.orderId).replace(/^#+/, ''));
+      }
       if (Array.isArray(orList)) {
         for (const cond of orList) {
-          if (cond.id) targetId = cond.id;
-          if (cond.orderId) targetOrderId = cond.orderId;
+          if (cond.id) {
+            allIds.add(String(cond.id));
+            allIds.add(String(cond.id).replace(/^#+/, ''));
+          }
+          if (cond.orderId) {
+            allIds.add(String(cond.orderId));
+            allIds.add(String(cond.orderId).replace(/^#+/, ''));
+          }
         }
       }
-      const matchedOrder = fallbackOrders.find((o: any) => o.id === targetOrderId || o.orderNumber === targetOrderId);
-      const possibleOrderIds = [targetOrderId, matchedOrder?.id, matchedOrder?.orderNumber].filter(Boolean);
+
+      const idArray = Array.from(allIds).filter(Boolean);
+      const matchedOrder = fallbackOrders.find((o: any) => idArray.includes(o.id) || idArray.includes(o.orderNumber));
+      if (matchedOrder?.id) idArray.push(matchedOrder.id);
+      if (matchedOrder?.orderNumber) idArray.push(matchedOrder.orderNumber);
 
       const r = persistentReturnRequests.find(item => 
-        (targetId && item.id === targetId) || 
-        (possibleOrderIds.length > 0 && possibleOrderIds.includes(item.orderId))
+        idArray.includes(item.id) || 
+        idArray.includes(item.id.replace(/^#+/, '')) ||
+        idArray.includes(item.orderId) ||
+        (item.orderId && idArray.includes(item.orderId.replace(/^#+/, '')))
       );
       if (r) {
         Object.assign(r, { ...args.data, updatedAt: new Date() });
@@ -2250,6 +2304,10 @@ export const prisma = new Proxy(rawPrisma as any, {
     }
 
     const originalProp = target[propKey];
+    if (!originalProp && fallbackModel) {
+      return fallbackModel;
+    }
+
     if (typeof originalProp === 'object' && originalProp !== null && fallbackModel) {
       return new Proxy(originalProp, {
         get(modelTarget, methodKey) {
@@ -2257,9 +2315,22 @@ export const prisma = new Proxy(rawPrisma as any, {
           if (typeof originalMethod === 'function') {
             return async (...args: any[]) => {
               try {
-                return await originalMethod.apply(modelTarget, args);
+                const result = await originalMethod.apply(modelTarget, args);
+                // If single-record query (findFirst, findUnique) returned null in MySQL,
+                // check if the record exists in fallback/mock storage!
+                if (
+                  result === null &&
+                  (methodKey === 'findFirst' || methodKey === 'findUnique') &&
+                  typeof fallbackModel[methodKey] === 'function'
+                ) {
+                  try {
+                    const fallbackResult = await fallbackModel[methodKey](...args);
+                    if (fallbackResult) return fallbackResult;
+                  } catch (e) {}
+                }
+                return result;
               } catch (err: any) {
-                // If query fails due to connection error, validation error, or missing table, use fallback
+                // If query fails due to connection error, validation error, missing table, or missing record, use fallback
                 if (
                   !global.isDatabaseHealthy ||
                   err?.name === 'PrismaClientInitializationError' ||
@@ -2267,6 +2338,7 @@ export const prisma = new Proxy(rawPrisma as any, {
                   err?.name === 'PrismaClientKnownRequestError' ||
                   err?.code === 'P2021' ||
                   err?.code === 'P2022' ||
+                  err?.code === 'P2025' ||
                   err?.message?.includes("Can't reach database") ||
                   err?.message?.includes('ECONNREFUSED') ||
                   err?.message?.includes("doesn't exist") ||
