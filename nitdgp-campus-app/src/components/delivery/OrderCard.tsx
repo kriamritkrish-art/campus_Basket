@@ -27,9 +27,21 @@ interface OrderCardProps {
 }
 
 export default function OrderCard({ order }: OrderCardProps) {
-  const { advanceOrderStatus, setOtpModalOrder } = useDelivery();
+  const { advanceOrderStatus, setOtpModalOrder, rejectActiveOrder } = useDelivery();
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+
+  const handleConfirmReject = async () => {
+    setRejecting(true);
+    try {
+      await rejectActiveOrder(order.id, 'Runner declined active delivery');
+      setShowRejectModal(false);
+    } finally {
+      setRejecting(false);
+    }
+  };
 
   // Status Badge Configuration
   const getStatusBadge = (status: DeliveryStatus) => {
@@ -368,6 +380,17 @@ export default function OrderCard({ order }: OrderCardProps) {
                   <span>Delivery Instructions</span>
                 </button>
 
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setShowRejectModal(true);
+                  }}
+                  className="w-full text-left px-3.5 py-2 hover:bg-rose-50 text-rose-700 flex items-center gap-2 cursor-pointer font-bold"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Decline Assignment</span>
+                </button>
+
                 <div className="border-t border-gray-100 my-1" />
 
                 <a
@@ -383,6 +406,49 @@ export default function OrderCard({ order }: OrderCardProps) {
           )}
         </div>
       </div>
+
+      {/* DECLINE DELIVERY CONFIRMATION MODAL */}
+      {showRejectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+              <RotateCcw className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-base font-bold text-slate-900">Decline Delivery Assignment?</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                This order will be unassigned and returned to the campus delivery pool for other runners to accept.
+              </p>
+              <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-[11px] text-emerald-900 font-semibold text-left flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <span>
+                  The student&apos;s order will <strong>remain active</strong> and valid in the kitchen/store queue. It will <strong>NOT</strong> be cancelled or rejected.
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                disabled={rejecting}
+                onClick={() => setShowRejectModal(false)}
+                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                Keep Order
+              </button>
+              <button
+                type="button"
+                disabled={rejecting}
+                onClick={handleConfirmReject}
+                className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs shadow-md transition cursor-pointer disabled:opacity-50"
+              >
+                {rejecting ? 'Releasing...' : 'Decline & Release'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

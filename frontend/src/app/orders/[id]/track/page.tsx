@@ -637,7 +637,7 @@ export default function OrderTrackPage() {
           dotClass: 'bg-emerald-500'
         };
       }
-      if (currentReturn.status === 'PICKED_UP') {
+      if (currentReturn.status === 'PICKED_UP' || currentReturn.status === 'PROCESSING' || currentReturn.pickupOtpVerified || (order as any)?.refundStatus === 'PICKED_UP') {
         return {
           title: 'Item Picked Up — Refund Processing',
           desc: 'Product physically collected and OTP verified by campus runner. Admin is releasing your refund.',
@@ -861,9 +861,10 @@ export default function OrderTrackPage() {
                   }
                 ].map((step, idx) => {
                   const st = currentReturn.status;
+                  const isPickedUpState = st === 'PICKED_UP' || st === 'PROCESSING' || Boolean(currentReturn.pickupOtpVerified) || (order as any)?.refundStatus === 'PICKED_UP';
                   let activeIdx = 1;
                   if (st === 'REFUNDED' || st === 'COMPLETED') activeIdx = 4;
-                  else if (st === 'PICKED_UP') activeIdx = 3;
+                  else if (isPickedUpState) activeIdx = 3;
                   else if (['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(st)) activeIdx = 2;
                   else activeIdx = 1;
 
@@ -926,7 +927,7 @@ export default function OrderTrackPage() {
               </div>
 
               {/* 6-Digit Return Pickup OTP Card */}
-              {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(currentReturn.status) && (
+              {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(currentReturn.status) && !currentReturn.pickupOtpVerified && currentReturn.status !== 'PICKED_UP' && (order as any)?.refundStatus !== 'PICKED_UP' && (
                 <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-2xl border-2 border-amber-300 space-y-2 shadow-xs">
                   <div className="flex items-center justify-between">
                     <div>

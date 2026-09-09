@@ -1104,6 +1104,17 @@ const fallbackHandlers: Record<string, any> = {
             createdAt: new Date()
           });
         }
+        // Sync refundStatus & deliveryBoyId to persistent return request if present
+        if (args.data.refundStatus || args.data.deliveryBoyId !== undefined) {
+          const retReq = persistentReturnRequests.find((r: any) => r.orderId === order.id || (order.orderNumber && r.orderId === order.orderNumber));
+          if (retReq) {
+            if (args.data.refundStatus) retReq.status = args.data.refundStatus;
+            if (args.data.refundStatus === 'PICKED_UP') retReq.pickupOtpVerified = true;
+            if (args.data.deliveryBoyId !== undefined) retReq.deliveryBoyId = args.data.deliveryBoyId;
+            retReq.updatedAt = new Date();
+            saveReturnRequests(persistentReturnRequests);
+          }
+        }
         order.updatedAt = new Date();
         return JSON.parse(JSON.stringify(order));
       }
@@ -1958,10 +1969,15 @@ const fallbackHandlers: Record<string, any> = {
         if (args.data.deliveryFeeDeducted !== undefined) {
           r.deliveryChargeDeducted = args.data.deliveryFeeDeducted;
         }
+        if (args.data.status === 'PICKED_UP' || args.data.pickupOtpVerified) {
+          r.pickupOtpVerified = true;
+          r.status = 'PICKED_UP';
+        }
         const matchedOrd: any = fallbackOrders.find((o: any) => o.id === r.orderId || o.orderNumber === r.orderId);
         if (matchedOrd) {
           if (args.data.status) matchedOrd.refundStatus = args.data.status;
           if (args.data.pickupOtp) matchedOrd.returnPickupOtp = args.data.pickupOtp;
+          if (args.data.status === 'PICKED_UP' || args.data.pickupOtpVerified) matchedOrd.refundStatus = 'PICKED_UP';
         }
         saveReturnRequests(persistentReturnRequests);
         return JSON.parse(JSON.stringify(enrichFallbackReturn(r)));

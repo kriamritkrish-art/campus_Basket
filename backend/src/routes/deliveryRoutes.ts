@@ -20,6 +20,7 @@ router.get('/available', DeliveryController.getAvailableOrders);
 router.get('/orders', DeliveryController.getAssignedOrders);
 router.get('/history', DeliveryController.getDeliveryHistory);
 router.post('/orders/:id/accept', DeliveryController.acceptOrder);
+router.post('/orders/:id/reject', DeliveryController.rejectOrder);
 router.post('/orders/:id/verify-otp', DeliveryController.verifyDeliveryOtp);
 router.post('/returns/:id/verify-otp', ReturnController.verifyReturnPickupOtp);
 router.patch('/orders/:id/status', DeliveryController.updateDeliveryStatus);

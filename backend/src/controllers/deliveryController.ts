@@ -429,6 +429,115 @@ export class DeliveryController {
   }
 
   /**
+   * Reject / Decline an Active Delivery Order or Return Pickup
+   * Runner unassigns themselves; the order is NOT cancelled or rejected for student!
+   * The order is returned to the available dispatch pool for other runners.
+   */
+  public static async rejectOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body || {};
+      const deliveryBoy = await resolveDeliveryBoyProfile(req.user);
+      if (!deliveryBoy) {
+        res.status(403).json({ success: false, message: 'Delivery partner profile required' });
+        return;
+      }
+
+      const rawId = String(id).trim();
+      const cleanId = rawId.replace(/^#+/, '').trim();
+      const strippedId = rawId.replace(/^(RETURN\s*#*|#+)/i, '').trim();
+
+      // 1. Check if this is a return request
+      const returnReq = await (prisma as any).returnRequest.findFirst({
+        where: {
+          OR: [
+            { id: rawId },
+            { id: cleanId },
+            { id: strippedId },
+            { orderId: rawId },
+            { orderId: cleanId },
+            { orderId: strippedId }
+          ]
+        }
+      }).catch(() => null);
+
+      if (returnReq && (returnReq.deliveryBoyId === deliveryBoy.id || !returnReq.deliveryBoyId)) {
+        const updatedReturn = await (prisma as any).returnRequest.update({
+          where: { id: returnReq.id },
+          data: {
+            deliveryBoyId: null,
+            status: 'APPROVED'
+          }
+        });
+        res.status(200).json({
+          success: true,
+          message: 'Return pickup released back to available runner pool.',
+          returnRequest: updatedReturn
+        });
+        return;
+      }
+
+      // 2. Regular Order
+      let order = await prisma.order.findFirst({
+        where: {
+          OR: [
+            { id: rawId },
+            { id: cleanId },
+            { id: strippedId },
+            { orderNumber: rawId },
+            { orderNumber: cleanId },
+            { orderNumber: strippedId },
+            { orderNumber: `#${cleanId}` }
+          ]
+        }
+      });
+
+      if (!order) {
+        res.status(404).json({ success: false, message: 'Order not found' });
+        return;
+      }
+
+      // Revert status to READY_FOR_PICKUP so any other runner can accept it from available deliveries
+      // Student status remains valid and progressing (NOT REJECTED)
+      const revertStatus = ['READY_FOR_PICKUP', 'PACKED', 'PREPARING', 'ACCEPTED'].includes(order.status)
+        ? order.status
+        : 'READY_FOR_PICKUP';
+
+      const updated = await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          deliveryBoyId: null,
+          status: revertStatus,
+          statusHistory: {
+            create: {
+              previousStatus: order.status,
+              newStatus: revertStatus,
+              changedBy: deliveryBoy.fullName,
+              notes: `Runner ${deliveryBoy.fullName} declined assignment (${reason || 'Runner unavailable'}). Order returned to campus delivery pool.`
+            }
+          }
+        }
+      });
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'ORDER_DECLINED_BY_DELIVERY_PARTNER',
+        entity: 'Order',
+        entityId: order.id,
+        newValue: { deliveryBoyId: null, status: revertStatus, reason }
+      }).catch(() => {});
+
+      res.status(200).json({
+        success: true,
+        message: 'Order unassigned and returned to available delivery pool.',
+        order: updated
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
    * Active Assigned Orders
    * Excludes DELIVERED so once completed, it will NOT show in active delivery.
    */
@@ -453,7 +562,7 @@ export class DeliveryController {
         orderBy: { createdAt: 'desc' }
       });
 
-      // Also fetch assigned return pickups for this runner
+      // Also fetch assigned return pickups for this runner (strictly pending pickups only)
       const assignedReturns = await (prisma as any).returnRequest.findMany({
         where: {
           deliveryBoyId: deliveryBoy.id,
@@ -470,6 +579,10 @@ export class DeliveryController {
         },
         orderBy: { createdAt: 'desc' }
       }).catch(() => []);
+
+      const activeReturnsOnly = (assignedReturns || []).filter(
+        (r: any) => !r.pickupOtpVerified && !['PICKED_UP', 'REFUNDED', 'COMPLETED', 'REJECTED'].includes(r.status)
+      );
 
       const formatted = orders.map((o) => {
         const studentAddress = `${o.hallName} • Room ${o.roomNumber}`;
@@ -499,7 +612,7 @@ export class DeliveryController {
         };
       });
 
-      const returnTasks = (assignedReturns || []).map((r: any) => {
+      const returnTasks = (activeReturnsOnly || []).map((r: any) => {
         const studentName = r.studentName || r.order?.student?.fullName || 'Campus Student';
         const studentPhone = r.studentPhone || r.order?.student?.mobileNumber || '+91 98765 43210';
         const studentHall = r.hallName || r.order?.hallName || 'Campus Hostel';

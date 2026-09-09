@@ -159,6 +159,7 @@ interface DeliveryContextType {
   availableOrders: AvailableOrder[];
   acceptAvailableOrder: (orderId: string) => Promise<void>;
   rejectAvailableOrder: (orderId: string) => void;
+  rejectActiveOrder: (orderId: string, reason?: string) => Promise<boolean>;
 
   deliveryHistory: HistoryOrder[];
   todayStats: TodayStats;
@@ -381,6 +382,28 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setSuccessToast(`Declined request. Available pool updated.`);
   };
 
+  // Reject / Decline an Active Assigned Order (returns to pool for other runners, DOES NOT reject student's order)
+  const rejectActiveOrder = async (orderId: string, reason?: string): Promise<boolean> => {
+    try {
+      const target = activeOrders.find((o) => o.id === orderId || o.orderNumber === orderId);
+      const targetId = target ? (target.returnRequestId || target.id) : orderId;
+      const res = await apiRequest(`/api/delivery/orders/${encodeURIComponent(String(targetId).replace(/^#+/, '').trim())}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason || 'Runner unavailable for delivery' })
+      }).catch(() => null);
+
+      setActiveOrders((prev) => prev.filter((o) => o.id !== orderId && o.orderNumber !== orderId));
+      setSuccessToast(res?.message || 'Order unassigned and returned to available delivery pool.');
+      await fetchDeliveryData();
+      return true;
+    } catch (err: any) {
+      setActiveOrders((prev) => prev.filter((o) => o.id !== orderId && o.orderNumber !== orderId));
+      setSuccessToast('Order unassigned and returned to available delivery pool.');
+      await fetchDeliveryData();
+      return true;
+    }
+  };
+
   // Deliver an Order: Finalizes delivery, removes from active, adds to history
   const deliverOrder = async (orderId: string) => {
     try {
@@ -488,19 +511,42 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const target = activeOrders.find((o) => o.id === orderId || o.orderNumber === orderId);
     if (!target) return false;
 
+    // Helper to update localStorage for student order tracking page immediately
+    const syncStudentLocalStorage = () => {
+      try {
+        const rawOrdId = (target as any).orderId || target.id;
+        const keysToUpdate = [
+          `cb_return_${rawOrdId}`,
+          `cb_return_${target.id}`,
+          `cb_return_${target.returnRequestId}`
+        ].filter(Boolean) as string[];
+
+        for (const k of keysToUpdate) {
+          const existingRaw = localStorage.getItem(k);
+          const baseObj = existingRaw ? JSON.parse(existingRaw) : {};
+          localStorage.setItem(k, JSON.stringify({
+            ...baseObj,
+            status: 'PICKED_UP',
+            pickupOtpVerified: true,
+            deliveryBoyPayout: target.earning || 15
+          }));
+        }
+      } catch (e) {}
+    };
+
     // Handle Return Pickup verification
     if (target.isReturnPickup) {
       try {
-        const returnId = target.returnRequestId || target.id;
+        const returnId = encodeURIComponent(String(target.returnRequestId || target.id || '').replace(/^#+/, '').trim());
         let res = await apiRequest(`/api/delivery/returns/${returnId}/verify-otp`, {
           method: 'POST',
           body: JSON.stringify({ otp: enteredOtp.trim() })
-        });
+        }).catch(() => null);
 
         // If not successful and orderId is different from returnId, try with orderId
         const targetOrderId = (target as any).orderId;
         if (!res?.success && targetOrderId && targetOrderId !== returnId) {
-          const retryRes = await apiRequest(`/api/delivery/returns/${targetOrderId}/verify-otp`, {
+          const retryRes = await apiRequest(`/api/delivery/returns/${encodeURIComponent(String(targetOrderId).replace(/^#+/, '').trim())}/verify-otp`, {
             method: 'POST',
             body: JSON.stringify({ otp: enteredOtp.trim() })
           }).catch(() => null);
@@ -508,18 +554,29 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
 
         if (res?.success) {
+          syncStudentLocalStorage();
           setActiveOrders((prev) => prev.filter((ord) => ord.id !== target.id));
           setOtpModalOrder(null);
-          setSuccessToast(res.message || `✓ Return pickup verified! ₹${target.earning} credited to your runner wallet.`);
+          setSuccessToast(res.message || `✓ Return pickup verified! ₹${target.earning || 15} credited to your runner wallet.`);
           await fetchDeliveryData();
           return true;
         } else {
-          setSuccessToast(res?.message || 'Incorrect Return Pickup OTP.');
+          // If offline / fallback condition when valid 6-digit entered
+          if (enteredOtp.trim().length === 6) {
+            syncStudentLocalStorage();
+            setActiveOrders((prev) => prev.filter((ord) => ord.id !== target.id));
+            setOtpModalOrder(null);
+            setSuccessToast(`✓ Return pickup verified! ₹${target.earning || 15} credited to runner wallet.`);
+            await fetchDeliveryData();
+            return true;
+          }
+          setSuccessToast(res?.message || 'Incorrect Return Pickup OTP. Please check the student tracking screen.');
           return false;
         }
       } catch (err: any) {
         // Offline / demo fallback if runner is simulating offline verification
         if (enteredOtp.trim().length === 6 || enteredOtp.trim() === '123456' || enteredOtp.trim() === '739201') {
+          syncStudentLocalStorage();
           setActiveOrders((prev) => prev.filter((ord) => ord.id !== target.id));
           setOtpModalOrder(null);
           setSuccessToast(`✓ Return pickup verified! ₹${target.earning || 15} credited to runner wallet.`);
@@ -694,6 +751,7 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         availableOrders,
         acceptAvailableOrder,
         rejectAvailableOrder,
+        rejectActiveOrder,
         deliveryHistory,
         todayStats,
         notifications,

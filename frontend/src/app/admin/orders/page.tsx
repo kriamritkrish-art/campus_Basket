@@ -248,7 +248,8 @@ export default function AdminOrdersPage() {
 
   const handleDisburseRefund = async () => {
     if (!selectedReturn) return;
-    if (selectedReturn.status !== 'PICKED_UP') {
+    const isPickedUp = selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP';
+    if (!isPickedUp) {
       alert('Cannot disburse refund yet: Product pickup must be completed and verified via 6-digit OTP first.');
       return;
     }
@@ -1304,7 +1305,7 @@ export default function AdminOrdersPage() {
             )}
 
             {/* Gated Status Guidance Banners */}
-            {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(selectedReturn.status) && (
+            {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(selectedReturn.status) && !selectedReturn.pickupOtpVerified && selectedReturn.status !== 'PICKED_UP' && selectedReturn.order?.refundStatus !== 'PICKED_UP' && (
               <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-600 shrink-0 animate-pulse" />
                 <span>
@@ -1313,7 +1314,7 @@ export default function AdminOrdersPage() {
               </div>
             )}
 
-            {selectedReturn.status === 'PICKED_UP' && (
+            {(selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP') && (
               <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-900 text-xs flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>
@@ -1369,7 +1370,7 @@ export default function AdminOrdersPage() {
                 )}
 
                 {/* Phase 2: Awaiting Pickup (Locked) */}
-                {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(selectedReturn.status) && (
+                {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(selectedReturn.status) && !selectedReturn.pickupOtpVerified && selectedReturn.status !== 'PICKED_UP' && selectedReturn.order?.refundStatus !== 'PICKED_UP' && (
                   <button
                     type="button"
                     disabled={true}
@@ -1381,7 +1382,7 @@ export default function AdminOrdersPage() {
                 )}
 
                 {/* Phase 3: Pickup completed (Enabled) */}
-                {selectedReturn.status === 'PICKED_UP' && (
+                {(selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP') && (
                   <button
                     type="button"
                     onClick={handleDisburseRefund}
