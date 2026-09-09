@@ -533,25 +533,35 @@ export default function OrderTrackClient() {
   );
 
   // Fallback return request derived from order status if refund is requested (ensures return state is never lost on refresh)
-  const resolvedReturnStatus =
-    order?.refundStatus && order.refundStatus !== 'NONE' && order.refundStatus !== 'REQUESTED'
-      ? order.refundStatus
-      : (returnRequest?.status || order?.refundStatus || null);
+  const isRefundDisbursed = returnRequest?.status === 'REFUNDED' || order?.refundStatus === 'REFUNDED';
+  const isPickupCompleted =
+    returnRequest?.status === 'COMPLETED' ||
+    returnRequest?.status === 'PICKED_UP' ||
+    Boolean(returnRequest?.pickupOtpVerified) ||
+    Boolean((order as any)?.returnPickupOtpVerified);
+
+  const resolvedReturnStatus = isRefundDisbursed
+    ? 'REFUNDED'
+    : isPickupCompleted
+      ? 'COMPLETED'
+      : (returnRequest?.status || (order?.refundStatus && order.refundStatus !== 'NONE' ? order.refundStatus : null));
 
   const currentReturn = returnRequest
     ? {
         ...returnRequest,
         status: resolvedReturnStatus || returnRequest.status,
-        pickupOtp: returnRequest.pickupOtp || returnRequest.otp || (order as any)?.returnPickupOtp || (order as any)?.pickupOtp || '739201'
+        pickupOtp: returnRequest.pickupOtp || returnRequest.otp || (order as any)?.returnPickupOtp || (order as any)?.pickupOtp || '739201',
+        pickupOtpVerified: returnRequest.pickupOtpVerified || isPickupCompleted
       }
-    : (order && (['REQUESTED', 'APPROVED', 'PICKUP_ASSIGNED', 'PICKED_UP', 'REFUNDED', 'COMPLETED'].includes(order.refundStatus || '') || ['REFUNDED', 'COMPLETED'].includes((order as any).refundStatus || ''))
+    : (order && (['REQUESTED', 'APPROVED', 'PICKUP_ASSIGNED', 'PICKED_UP', 'REFUNDED', 'COMPLETED'].includes(order.refundStatus || '') || (order as any).returnPickupOtpVerified)
       ? {
           status: resolvedReturnStatus || 'REQUESTED',
           reasonType: (order as any).returnReasonType || 'PRODUCT_ISSUE',
           refundAmount: Number(order.refundAmount || order.totalAmount || 0),
           deliveryFeeDeducted: 0,
           itemAmount: Number(order.subtotal || order.totalAmount || 0),
-          pickupOtp: (order as any).returnPickupOtp || (order as any).pickupOtp || '739201'
+          pickupOtp: (order as any).returnPickupOtp || (order as any).pickupOtp || '739201',
+          pickupOtpVerified: isPickupCompleted
         }
       : null
     );
@@ -637,12 +647,12 @@ export default function OrderTrackClient() {
           dotClass: 'bg-emerald-500'
         };
       }
-      if (currentReturn.status === 'COMPLETED' || currentReturn.status === 'PICKED_UP' || currentReturn.status === 'PROCESSING' || currentReturn.pickupOtpVerified || (order as any)?.refundStatus === 'PICKED_UP' || (order as any)?.refundStatus === 'PROCESSING') {
+      if (isPickupCompleted || currentReturn.status === 'COMPLETED' || currentReturn.status === 'PICKED_UP' || currentReturn.status === 'PROCESSING' || currentReturn.pickupOtpVerified || (order as any)?.refundStatus === 'PICKED_UP' || (order as any)?.refundStatus === 'PROCESSING') {
         return {
-          title: 'Item Picked Up — Refund Processing',
-          desc: 'Product physically collected and OTP verified by campus runner. Admin is releasing your refund.',
-          colorClass: 'bg-indigo-50 text-indigo-900 border-indigo-200',
-          dotClass: 'bg-indigo-500 animate-pulse'
+          title: 'Hostel Room Pickup Verified — Awaiting Admin Refund',
+          desc: 'Product physically collected and 6-digit OTP verified by campus runner. Refund disbursement will be released by Campus Basket Admin.',
+          colorClass: 'bg-emerald-50 text-emerald-900 border-emerald-200',
+          dotClass: 'bg-emerald-500'
         };
       }
       if (['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(currentReturn.status)) {
@@ -848,35 +858,54 @@ export default function OrderTrackClient() {
                   {
                     id: 'PICKED_UP',
                     title: 'Hostel Room Pickup Verified',
-                    desc: ['PICKED_UP', 'REFUNDED', 'COMPLETED'].includes(currentReturn.status)
+                    desc: isPickupCompleted || ['PICKED_UP', 'REFUNDED', 'COMPLETED'].includes(currentReturn.status)
                       ? 'Physical item collected and 6-digit OTP verified by runner at room door.'
                       : 'Share your 6-digit Return OTP with runner upon collection.'
                   },
                   {
                     id: 'REFUNDED',
                     title: 'Refund Disbursed to Account',
-                    desc: ['REFUNDED', 'COMPLETED'].includes(currentReturn.status)
+                    desc: isRefundDisbursed
                       ? `Net refund of ₹${Number(currentReturn.refundAmount || 0).toFixed(2)} disbursed to your account.`
                       : 'Admin releases payment directly to your account after physical pickup.'
                   }
                 ].map((step, idx) => {
                   const st = currentReturn.status;
-                  const isPickedUpState = st === 'COMPLETED' || st === 'PICKED_UP' || st === 'PROCESSING' || Boolean(currentReturn.pickupOtpVerified) || (order as any)?.refundStatus === 'PICKED_UP' || (order as any)?.refundStatus === 'PROCESSING';
-                  let activeIdx = 1;
-                  if (st === 'REFUNDED') activeIdx = 4;
-                  else if (isPickedUpState) activeIdx = 3;
-                  else if (['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(st)) activeIdx = 2;
-                  else activeIdx = 1;
+                  const isPickedUpState = isPickupCompleted || st === 'COMPLETED' || st === 'PICKED_UP' || st === 'PROCESSING' || Boolean(currentReturn.pickupOtpVerified);
 
-                  const isCompleted = idx < activeIdx - 1 || st === 'REFUNDED';
-                  const isCurrent = idx === activeIdx - 1 && st !== 'REFUNDED';
+                  // 4-Stage Return Journey:
+                  // Stage 0 (idx 0): Return Requested
+                  // Stage 1 (idx 1): Return Approved & Runner Assigned
+                  // Stage 2 (idx 2): Hostel Room Pickup Verified
+                  // Stage 3 (idx 3): Refund Disbursed to Account
+                  let isCompleted = false;
+                  let isCurrent = false;
+
+                  if (isRefundDisbursed) {
+                    isCompleted = true;
+                    isCurrent = false;
+                  } else if (isPickedUpState) {
+                    // Stages 0, 1, 2 are COMPLETED! Stage 3 is awaiting admin disbursement
+                    if (idx <= 2) {
+                      isCompleted = true;
+                      isCurrent = false;
+                    } else {
+                      isCompleted = false;
+                      isCurrent = false;
+                    }
+                  } else if (['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(st)) {
+                    if (idx === 0) isCompleted = true;
+                    else if (idx === 1) isCurrent = true;
+                  } else {
+                    if (idx === 0) isCurrent = true;
+                  }
 
                   return (
                     <div key={step.id} className="flex items-start gap-3 relative">
                       {idx < 3 && (
                         <div
                           className={`absolute left-3 top-5 bottom-0 w-0.5 -ml-px ${
-                            isCompleted ? 'bg-emerald-500' : 'bg-slate-200'
+                            (isPickedUpState && idx <= 1) || isRefundDisbursed ? 'bg-emerald-500' : isCompleted ? 'bg-emerald-500' : 'bg-slate-200'
                           }`}
                         />
                       )}
@@ -914,6 +943,11 @@ export default function OrderTrackClient() {
                               ✓ Completed
                             </span>
                           )}
+                          {!isCompleted && !isCurrent && idx === 3 && isPickedUpState && (
+                            <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                              Awaiting Admin Disbursement
+                            </span>
+                          )}
                         </div>
                         <p className={`text-[11px] leading-relaxed ${
                           isCurrent ? 'text-slate-700 font-medium' : isCompleted ? 'text-slate-500' : 'text-slate-400'
@@ -927,7 +961,7 @@ export default function OrderTrackClient() {
               </div>
 
               {/* 6-Digit Return Pickup OTP Card */}
-              {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(currentReturn.status) && !currentReturn.pickupOtpVerified && currentReturn.status !== 'COMPLETED' && currentReturn.status !== 'PICKED_UP' && (order as any)?.refundStatus !== 'PICKED_UP' && (order as any)?.refundStatus !== 'PROCESSING' && (
+              {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(currentReturn.status) && !isPickupCompleted && !currentReturn.pickupOtpVerified && currentReturn.status !== 'COMPLETED' && currentReturn.status !== 'PICKED_UP' && (order as any)?.refundStatus !== 'PICKED_UP' && (order as any)?.refundStatus !== 'PROCESSING' && (
                 <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-2xl border-2 border-amber-300 space-y-2 shadow-xs">
                   <div className="flex items-center justify-between">
                     <div>

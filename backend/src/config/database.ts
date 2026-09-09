@@ -1147,11 +1147,19 @@ const fallbackHandlers: Record<string, any> = {
         if (args.data.refundStatus || args.data.deliveryBoyId !== undefined || args.data.returnPickupOtpVerified) {
           const retReq = persistentReturnRequests.find((r: any) => r.orderId === order.id || (order.orderNumber && r.orderId === order.orderNumber));
           if (retReq) {
-            if (args.data.refundStatus) retReq.status = args.data.refundStatus;
+            if (args.data.refundStatus) {
+              // Do NOT downgrade returnRequest status from COMPLETED back to PROCESSING
+              if (retReq.status !== 'COMPLETED' || args.data.refundStatus === 'REFUNDED') {
+                retReq.status = args.data.refundStatus;
+              }
+            }
             if (args.data.refundStatus === 'PICKED_UP' || args.data.refundStatus === 'PROCESSING' || args.data.returnPickupOtpVerified) {
               retReq.pickupOtpVerified = true;
               retReq.pickupOtpVerifiedAt = retReq.pickupOtpVerifiedAt || new Date();
               retReq.completedAt = retReq.completedAt || new Date();
+              if (retReq.status === 'PROCESSING') {
+                retReq.status = 'COMPLETED';
+              }
             }
             if (args.data.deliveryBoyId !== undefined) retReq.deliveryBoyId = args.data.deliveryBoyId;
             retReq.updatedAt = new Date();
@@ -1960,6 +1968,16 @@ const fallbackHandlers: Record<string, any> = {
     create: async (args: any) => {
       const deliveryFee = args.data.deliveryFeeDeducted !== undefined ? args.data.deliveryFeeDeducted : (args.data.deliveryChargeDeducted || 0);
       const matchedOrder = persistentOrders.find((o: any) => o.id === args.data.orderId || o.orderNumber === args.data.orderId);
+      const targetOrderId = matchedOrder?.id || args.data.orderId;
+
+      // Strict Rule: If return request already exists for this order, reuse and update it (never duplicate)
+      const existing = persistentReturnRequests.find(item => item.orderId === targetOrderId || (matchedOrder && item.orderId === matchedOrder.orderNumber));
+      if (existing) {
+        Object.assign(existing, { ...args.data, updatedAt: new Date() });
+        saveReturnRequests(persistentReturnRequests);
+        return JSON.parse(JSON.stringify(enrichFallbackReturn(existing)));
+      }
+
       const rr = {
         id: `ret_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
         createdAt: new Date(),
@@ -1967,7 +1985,7 @@ const fallbackHandlers: Record<string, any> = {
         pickupOtpVerified: false,
         deliveryBoyPayout: 15,
         ...args.data,
-        orderId: matchedOrder?.id || args.data.orderId,
+        orderId: targetOrderId,
         deliveryFeeDeducted: deliveryFee,
         deliveryChargeDeducted: deliveryFee
       };
@@ -2018,18 +2036,7 @@ const fallbackHandlers: Record<string, any> = {
       });
 
       if (!r) {
-        // Synthesize return request if updating non-existent return directly
-        const firstId = idArray[0] || `ord_${Date.now()}`;
-        r = {
-          id: `ret_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
-          orderId: matchedOrder?.id || firstId,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          deliveryBoyPayout: 15,
-          refundAmount: 50,
-          status: 'REQUESTED'
-        };
-        persistentReturnRequests.unshift(r);
+        return null;
       }
 
       Object.assign(r, { ...args.data, updatedAt: new Date() });

@@ -116,33 +116,7 @@ async function resolveReturnRequest(idParam: string, includeOrder: boolean = tru
     if (matched) return matched;
   } catch (e) {}
 
-  // 5. If not found and format matches an order sequence (e.g. NIT-2026-...), auto-create return record so step succeeds
-  if (baseOrderNum.startsWith('NIT-') || /^[A-Z0-9_-]{6,}$/i.test(baseOrderNum)) {
-    try {
-      const created = await (prisma as any).returnRequest.create({
-        data: {
-          orderId: baseOrderNum,
-          studentId: 'stud_sourav',
-          studentName: 'Sourav Senapati',
-          hallName: 'Hall 9',
-          roomNumber: '123',
-          itemAmount: 50,
-          refundAmount: 50,
-          deliveryFeeDeducted: 0,
-          deliveryBoyPayout: 15,
-          status: 'PICKUP_ASSIGNED',
-          pickupOtp: '739201',
-          pickupOtpVerified: false,
-          deliveryBoyId: 'db_boy_1',
-          reasonType: 'PRODUCT_ISSUE',
-          reasonDetails: 'Return pickup initiated by student'
-        },
-        include: includeObj
-      });
-      if (created) return created;
-    } catch (e) {}
-  }
-
+  // Strictly return null if no return record matches. Never auto-create duplicate returns on lookup.
   return null;
 }
 

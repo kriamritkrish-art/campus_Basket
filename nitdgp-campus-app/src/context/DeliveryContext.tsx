@@ -622,28 +622,11 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           await fetchDeliveryData();
           return true;
         } else {
-          // If 6-digit entered, persist locally and remove from active list
-          if (enteredOtp.trim().length === 6) {
-            syncStudentLocalStorage();
-            setActiveOrders((prev) => prev.filter((ord) => ord.id !== target.id));
-            setOtpModalOrder(null);
-            setSuccessToast(`✓ Return pickup verified! ₹${target.earning || 15} credited to runner wallet.`);
-            await fetchDeliveryData();
-            return true;
-          }
-          setSuccessToast(res?.message || 'Incorrect Return Pickup OTP. Please check the student tracking screen.');
+          setSuccessToast(res?.message || 'Incorrect 6-digit Return OTP. Please check the student tracking screen.');
           return false;
         }
       } catch (err: any) {
-        if (enteredOtp.trim().length === 6 || enteredOtp.trim() === '123456' || enteredOtp.trim() === '739201') {
-          syncStudentLocalStorage();
-          setActiveOrders((prev) => prev.filter((ord) => ord.id !== target.id));
-          setOtpModalOrder(null);
-          setSuccessToast(`✓ Return pickup verified! ₹${target.earning || 15} credited to runner wallet.`);
-          await fetchDeliveryData();
-          return true;
-        }
-        setSuccessToast(err.message || 'Failed to verify return pickup OTP.');
+        setSuccessToast(err?.message || 'Failed to verify return pickup OTP.');
         return false;
       }
     }

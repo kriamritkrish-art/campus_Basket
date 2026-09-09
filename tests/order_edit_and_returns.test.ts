@@ -502,5 +502,161 @@ describe('Order Edit (Add Products) & Return Management with Runner OTP Pickup',
       expect(responseData.success).toBe(true);
       expect(responseData.returnRequest.status).toBe('REFUNDED');
     });
+
+    it('strictly forbids refund disbursement if return pickup has not been verified via OTP', async () => {
+      const order = await prisma.order.create({
+        data: {
+          orderNumber: 'TEST-GATE-001',
+          studentId: 'stud_sourav',
+          providerId: 'prov_canteen',
+          serviceType: 'FOOD',
+          hallName: 'Hall 11',
+          roomNumber: 'B-304',
+          totalAmount: 100,
+          status: 'DELIVERED',
+          deliveredAt: new Date(),
+          providerAccepted: true,
+          paymentMethod: 'ONLINE',
+          paymentStatus: 'PAID'
+        }
+      });
+
+      const retReq = await (prisma as any).returnRequest.create({
+        data: {
+          orderId: order.id,
+          studentId: 'stud_sourav',
+          reasonType: 'PRODUCT_ISSUE',
+          refundAmount: 100,
+          deliveryBoyPayout: 15,
+          pickupOtp: '112233',
+          pickupOtpVerified: false,
+          status: 'APPROVED'
+        }
+      });
+
+      let statusCode = 200;
+      let responseData: any = null;
+      const disburseReq: any = {
+        params: { id: retReq.id },
+        user: { userId: 'admin_1', role: 'ADMIN' },
+        body: { utrReference: 'UTR11223344' }
+      };
+      const disburseRes: any = {
+        status: (code: number) => {
+          statusCode = code;
+          return { json: (data: any) => { responseData = data; } };
+        },
+        json: (data: any) => { responseData = data; }
+      };
+
+      await ReturnController.disburseReturnRefund(disburseReq, disburseRes, (err) => { if (err) throw err; });
+      expect(statusCode).toBe(400);
+      expect(responseData.success).toBe(false);
+      expect(responseData.message).toContain('Cannot disburse refund yet');
+    });
+
+    it('strictly isolates multiple returns so completing Return A leaves Return B unaffected', async () => {
+      const orderA = await prisma.order.create({
+        data: {
+          orderNumber: 'TEST-ORDER-A',
+          studentId: 'stud_sourav',
+          providerId: 'prov_canteen',
+          serviceType: 'FOOD',
+          hallName: 'Hall 11',
+          roomNumber: 'B-304',
+          totalAmount: 50,
+          status: 'DELIVERED',
+          deliveredAt: new Date(),
+          providerAccepted: true,
+          paymentMethod: 'ONLINE',
+          paymentStatus: 'PAID'
+        }
+      });
+
+      const orderB = await prisma.order.create({
+        data: {
+          orderNumber: 'TEST-ORDER-B',
+          studentId: 'stud_sourav',
+          providerId: 'prov_canteen',
+          serviceType: 'STATIONERY',
+          hallName: 'Hall 11',
+          roomNumber: 'B-304',
+          totalAmount: 75,
+          status: 'DELIVERED',
+          deliveredAt: new Date(),
+          providerAccepted: true,
+          paymentMethod: 'ONLINE',
+          paymentStatus: 'PAID'
+        }
+      });
+
+      const retA = await (prisma as any).returnRequest.create({
+        data: {
+          orderId: orderA.id,
+          studentId: 'stud_sourav',
+          refundAmount: 50,
+          pickupOtp: '111111',
+          pickupOtpVerified: false,
+          status: 'PICKUP_ASSIGNED'
+        }
+      });
+
+      const retB = await (prisma as any).returnRequest.create({
+        data: {
+          orderId: orderB.id,
+          studentId: 'stud_sourav',
+          refundAmount: 75,
+          pickupOtp: '222222',
+          pickupOtpVerified: false,
+          status: 'PICKUP_ASSIGNED'
+        }
+      });
+
+      // Verify OTP for Return A only
+      let resData: any = null;
+      const verifyReqA: any = {
+        params: { id: retA.id },
+        user: { role: 'DELIVERY_BOY' },
+        body: { otp: '111111' }
+      };
+      const verifyResA: any = {
+        status: () => verifyResA,
+        json: (data: any) => { resData = data; }
+      };
+
+      await ReturnController.verifyReturnPickupOtp(verifyReqA, verifyResA, (err) => { if (err) throw err; });
+      expect(resData.success).toBe(true);
+
+      // Verify Return A is COMPLETED
+      const fetchedA = await (prisma as any).returnRequest.findUnique({ where: { id: retA.id } });
+      expect(fetchedA.status).toBe('COMPLETED');
+      expect(fetchedA.pickupOtpVerified).toBe(true);
+
+      // Verify Return B is strictly UNCHANGED
+      const fetchedB = await (prisma as any).returnRequest.findUnique({ where: { id: retB.id } });
+      expect(fetchedB.status).toBe('PICKUP_ASSIGNED');
+      expect(fetchedB.pickupOtpVerified).toBe(false);
+    });
+
+    it('does not synthesize duplicate return requests when querying non-existent or existing orders', async () => {
+      const allReturnsBefore = await (prisma as any).returnRequest.findMany();
+      const countBefore = allReturnsBefore.length;
+
+      let resData: any = null;
+      const queryReq: any = {
+        params: { id: 'NON-EXISTENT-ORDER-99999' },
+        user: { role: 'ADMIN' }
+      };
+      const queryRes: any = {
+        status: () => queryRes,
+        json: (data: any) => { resData = data; }
+      };
+
+      await ReturnController.getReturnById(queryReq, queryRes, (err) => { if (err) throw err; });
+      expect(resData.success).toBe(false);
+
+      const allReturnsAfter = await (prisma as any).returnRequest.findMany();
+      expect(allReturnsAfter.length).toBe(countBefore);
+    });
   });
 });

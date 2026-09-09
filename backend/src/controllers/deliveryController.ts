@@ -246,7 +246,16 @@ export class DeliveryController {
         orderBy: { createdAt: 'desc' }
       }).catch(() => []);
 
-      const formattedReturns = (availableReturns || []).map((r: any) => {
+      // Strict Deduplication: One return pickup task per order
+      const seenAvailOrderKeys = new Set<string>();
+      const uniqueAvailableReturns = (availableReturns || []).filter((r: any) => {
+        const key = String(r.orderId || r.order?.orderNumber || r.id).toLowerCase();
+        if (seenAvailOrderKeys.has(key)) return false;
+        seenAvailOrderKeys.add(key);
+        return true;
+      });
+
+      const formattedReturns = uniqueAvailableReturns.map((r: any) => {
         const studentName = r.studentName || r.order?.student?.fullName || 'Campus Student';
         const studentPhone = r.studentPhone || r.order?.student?.mobileNumber || '+91 98765 43210';
         const studentHall = r.hallName || r.order?.hallName || 'Campus Hostel';
@@ -260,7 +269,7 @@ export class DeliveryController {
           id: r.id,
           returnRequestId: r.id,
           orderId: r.orderId,
-          orderNumber: `RETURN #${r.order?.orderNumber || r.orderId?.substring(0, 8) || r.id.slice(-6)}`,
+          orderNumber: `#${r.order?.orderNumber || r.orderId}`,
           isReturnPickup: true,
           studentName,
           studentPhone,
@@ -584,6 +593,15 @@ export class DeliveryController {
         (r: any) => !r.pickupOtpVerified && !['PICKED_UP', 'REFUNDED', 'COMPLETED', 'REJECTED'].includes(r.status)
       );
 
+      // Strict Deduplication: Ensure only one return pickup task per order for the runner
+      const seenAssignedOrderKeys = new Set<string>();
+      const uniqueActiveReturns = activeReturnsOnly.filter((r: any) => {
+        const key = String(r.orderId || r.order?.orderNumber || r.id).toLowerCase();
+        if (seenAssignedOrderKeys.has(key)) return false;
+        seenAssignedOrderKeys.add(key);
+        return true;
+      });
+
       const formatted = orders.map((o) => {
         const studentAddress = `${o.hallName} • Room ${o.roomNumber}`;
         const providerAddress = o.provider?.fullName || 'Campus Food Court & Store';
@@ -612,7 +630,7 @@ export class DeliveryController {
         };
       });
 
-      const returnTasks = (activeReturnsOnly || []).map((r: any) => {
+      const returnTasks = uniqueActiveReturns.map((r: any) => {
         const studentName = r.studentName || r.order?.student?.fullName || 'Campus Student';
         const studentPhone = r.studentPhone || r.order?.student?.mobileNumber || '+91 98765 43210';
         const studentHall = r.hallName || r.order?.hallName || 'Campus Hostel';
@@ -627,7 +645,7 @@ export class DeliveryController {
           returnRequestId: r.id,
           orderId: r.orderId,
           isReturnPickup: true,
-          orderNumber: `RETURN #${r.order?.orderNumber || r.orderId?.substring(0, 8) || r.id.slice(-6)}`,
+          orderNumber: `#${r.order?.orderNumber || r.orderId}`,
           studentName,
           studentPhone,
           studentAddress,

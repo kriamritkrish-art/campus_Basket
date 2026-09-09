@@ -141,6 +141,8 @@ export class EmailService {
 
   /**
    * Sends order confirmation email with breakdown
+   * SECURITY RULE: NEVER include delivery OTP in order confirmation email.
+   * Delivery handover OTP is strictly visible only to the student on their live tracking screen upon room arrival.
    */
   async sendOrderConfirmationEmail(
     recipientEmail: string,
@@ -156,6 +158,7 @@ export class EmailService {
         <p>Total Paid: <strong>₹${totalAmount}</strong></p>
         <p>Items: ${itemsSummary}</p>
         <p style="color: #64748b; font-size: 13px;">Our campus dispatch team has received your order and is preparing it for room delivery.</p>
+        <p style="color: #94a3b8; font-size: 11px; margin-top: 16px;">Note: For your security, your delivery handover OTP will be displayed directly on your student live tracking screen when the campus runner reaches your hostel room door.</p>
       </div>
     `;
     return this.dispatchEmail(recipientEmail, subject, html);
