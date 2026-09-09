@@ -637,6 +637,20 @@ const fallbackHandlers: Record<string, any> = {
       }
       return JSON.parse(JSON.stringify(list));
     },
+    findFirst: async (args: any) => {
+      const id = args?.where?.id;
+      const orderId = args?.where?.orderId;
+      const deliveryBoyId = args?.where?.deliveryBoyId;
+      const earningType = args?.where?.earningType;
+      const found = fallbackDeliveryBoyEarnings.find((e) => {
+        if (id && e.id !== id) return false;
+        if (orderId && e.orderId !== orderId) return false;
+        if (deliveryBoyId && e.deliveryBoyId !== deliveryBoyId) return false;
+        if (earningType && e.earningType !== earningType) return false;
+        return true;
+      });
+      return found ? JSON.parse(JSON.stringify(found)) : null;
+    },
     findUnique: async (args: any) => {
       const id = args?.where?.id;
       const orderId = args?.where?.orderId;
@@ -1130,14 +1144,14 @@ const fallbackHandlers: Record<string, any> = {
           });
         }
         // Sync refundStatus & deliveryBoyId to persistent return request if present
-        if (args.data.refundStatus || args.data.deliveryBoyId !== undefined) {
+        if (args.data.refundStatus || args.data.deliveryBoyId !== undefined || args.data.returnPickupOtpVerified) {
           const retReq = persistentReturnRequests.find((r: any) => r.orderId === order.id || (order.orderNumber && r.orderId === order.orderNumber));
           if (retReq) {
             if (args.data.refundStatus) retReq.status = args.data.refundStatus;
-            if (args.data.refundStatus === 'PICKED_UP') {
-              retReq.status = 'PICKED_UP';
+            if (args.data.refundStatus === 'PICKED_UP' || args.data.refundStatus === 'PROCESSING' || args.data.returnPickupOtpVerified) {
               retReq.pickupOtpVerified = true;
-              retReq.pickupOtpVerifiedAt = new Date();
+              retReq.pickupOtpVerifiedAt = retReq.pickupOtpVerifiedAt || new Date();
+              retReq.completedAt = retReq.completedAt || new Date();
             }
             if (args.data.deliveryBoyId !== undefined) retReq.deliveryBoyId = args.data.deliveryBoyId;
             retReq.updatedAt = new Date();
@@ -2026,18 +2040,19 @@ const fallbackHandlers: Record<string, any> = {
       if (args.data.deliveryFeeDeducted !== undefined) {
         r.deliveryChargeDeducted = args.data.deliveryFeeDeducted;
       }
-      if (args.data.status === 'PICKED_UP' || args.data.pickupOtpVerified) {
+      if (args.data.status === 'COMPLETED' || args.data.status === 'PICKED_UP' || args.data.pickupOtpVerified) {
         r.pickupOtpVerified = true;
-        r.status = 'PICKED_UP';
-        r.pickupOtpVerifiedAt = new Date();
+        r.status = args.data.status || 'COMPLETED';
+        r.pickupOtpVerifiedAt = args.data.pickupOtpVerifiedAt || new Date();
+        r.completedAt = args.data.completedAt || new Date();
       }
 
       const matchedOrd: any = persistentOrders.find((o: any) => o.id === r.orderId || o.orderNumber === r.orderId);
       if (matchedOrd) {
         if (args.data.status) matchedOrd.refundStatus = args.data.status;
         if (args.data.pickupOtp) matchedOrd.returnPickupOtp = args.data.pickupOtp;
-        if (args.data.status === 'PICKED_UP' || args.data.pickupOtpVerified) {
-          matchedOrd.refundStatus = 'PICKED_UP';
+        if (args.data.status === 'COMPLETED' || args.data.status === 'PICKED_UP' || args.data.pickupOtpVerified) {
+          matchedOrd.refundStatus = args.data.status === 'COMPLETED' ? 'COMPLETED' : 'PROCESSING';
           matchedOrd.returnPickupOtpVerified = true;
         }
         saveOrders(persistentOrders);
@@ -2383,9 +2398,9 @@ export const prisma = new Proxy(rawPrisma as any, {
                   } catch (e) {}
                 }
 
-                // If mutation on returnRequest, also mirror to fallback persistent storage
+                // If mutation on returnRequest or order, also mirror to fallback persistent storage
                 if (
-                  modelName === 'returnRequest' &&
+                  (modelName === 'returnRequest' || modelName === 'order') &&
                   (methodKey === 'create' || methodKey === 'update' || methodKey === 'upsert') &&
                   typeof fallbackModel[methodKey] === 'function'
                 ) {

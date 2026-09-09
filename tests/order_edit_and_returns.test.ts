@@ -467,12 +467,29 @@ describe('Order Edit (Add Products) & Return Management with Runner OTP Pickup',
       await ReturnController.verifyReturnPickupOtp(validReq, validRes, (err) => { if (err) throw err; });
       expect(statusCode).toBe(200);
       expect(responseData.success).toBe(true);
-      expect(responseData.returnRequest.status).toBe('PICKED_UP');
+      expect(['COMPLETED', 'PICKED_UP'].includes(responseData.returnRequest.status)).toBe(true);
       expect(responseData.returnRequest.pickupOtpVerified).toBe(true);
+      expect(responseData.returnRequest.completedAt).toBeDefined();
 
       // Verify delivery runner wallet received return payout
       const updatedRunner = await prisma.deliveryBoy.findUnique({ where: { id: deliveryBoy.id } });
       expect(Number(updatedRunner.walletBalance)).toBe(initialWallet + 15);
+
+      // Verify IDEMPOTENCY: Repeat submission of OTP must NOT credit runner wallet again
+      const repeatRes: any = {
+        status: (code: number) => {
+          statusCode = code;
+          return { json: (data: any) => { responseData = data; } };
+        },
+        json: (data: any) => { responseData = data; }
+      };
+      await ReturnController.verifyReturnPickupOtp(validReq, repeatRes, (err) => { if (err) throw err; });
+      expect(statusCode).toBe(200);
+      expect(responseData.success).toBe(true);
+
+      const runnerAfterDuplicate = await prisma.deliveryBoy.findUnique({ where: { id: deliveryBoy.id } });
+      // Wallet MUST remain exactly initialWallet + 15, no duplicate +15!
+      expect(Number(runnerAfterDuplicate.walletBalance)).toBe(initialWallet + 15);
 
       // Admin disburse refund
       const disburseReq: any = {

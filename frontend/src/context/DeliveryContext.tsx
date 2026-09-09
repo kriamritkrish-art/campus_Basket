@@ -554,8 +554,10 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const baseObj = existingRaw ? JSON.parse(existingRaw) : {};
           localStorage.setItem(k, JSON.stringify({
             ...baseObj,
-            status: 'PICKED_UP',
+            status: 'COMPLETED',
             pickupOtpVerified: true,
+            pickupOtpVerifiedAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
             deliveryBoyPayout: target.earning || 15
           }));
         }

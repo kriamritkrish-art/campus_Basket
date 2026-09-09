@@ -248,7 +248,7 @@ export default function AdminOrdersPage() {
 
   const handleDisburseRefund = async () => {
     if (!selectedReturn) return;
-    const isPickedUp = selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP';
+    const isPickedUp = selectedReturn.status === 'COMPLETED' || selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP' || selectedReturn.order?.refundStatus === 'PROCESSING';
     if (!isPickedUp) {
       alert('Cannot disburse refund yet: Product pickup must be completed and verified via 6-digit OTP first.');
       return;
@@ -1370,7 +1370,7 @@ export default function AdminOrdersPage() {
                 )}
 
                 {/* Phase 2: Awaiting Pickup (Locked) */}
-                {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(selectedReturn.status) && !selectedReturn.pickupOtpVerified && selectedReturn.status !== 'PICKED_UP' && selectedReturn.order?.refundStatus !== 'PICKED_UP' && (
+                {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(selectedReturn.status) && !selectedReturn.pickupOtpVerified && selectedReturn.status !== 'COMPLETED' && selectedReturn.status !== 'PICKED_UP' && selectedReturn.order?.refundStatus !== 'PICKED_UP' && selectedReturn.order?.refundStatus !== 'PROCESSING' && (
                   <button
                     type="button"
                     disabled={true}
@@ -1382,7 +1382,7 @@ export default function AdminOrdersPage() {
                 )}
 
                 {/* Phase 3: Pickup completed (Enabled) */}
-                {(selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP') && (
+                {(selectedReturn.status === 'COMPLETED' || selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP' || selectedReturn.order?.refundStatus === 'PROCESSING') && selectedReturn.status !== 'REFUNDED' && (
                   <button
                     type="button"
                     onClick={handleDisburseRefund}

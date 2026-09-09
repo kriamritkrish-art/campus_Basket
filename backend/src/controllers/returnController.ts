@@ -507,12 +507,18 @@ export class ReturnController {
       }
 
       // Determine delivery boy to credit
-      let deliveryBoyId = returnRequest.deliveryBoyId;
+      let deliveryBoyId = returnRequest.deliveryBoyId || req.user?.deliveryBoyId;
       if (!deliveryBoyId && req.user?.role === 'DELIVERY_BOY') {
         const dbBoy = await (prisma as any).deliveryBoy.findFirst({
           where: { userId: req.user.userId }
         });
         if (dbBoy) deliveryBoyId = dbBoy.id;
+      }
+      if (!deliveryBoyId) {
+        const activeDb = await (prisma as any).deliveryBoy.findFirst({
+          where: { activeStatus: true }
+        });
+        if (activeDb) deliveryBoyId = activeDb.id;
       }
 
       // Fetch admin-configured return delivery payout
@@ -529,40 +535,52 @@ export class ReturnController {
         }
       }
 
-      // Mark return request as PICKED_UP (Physical collection verified via student OTP)
+      const now = new Date();
+      // Mark return request as COMPLETED (Physical collection verified via student OTP)
       const updatedReturn = await (prisma as any).returnRequest.update({
         where: { id: returnRequest.id },
         data: {
-          status: 'PICKED_UP',
+          status: 'COMPLETED',
           pickupOtpVerified: true,
-          pickupOtpVerifiedAt: new Date(),
+          pickupOtpVerifiedAt: now,
+          completedAt: now,
           deliveryBoyPayout: runnerRate,
           deliveryBoyId: deliveryBoyId || returnRequest.deliveryBoyId
         }
       });
 
-      // Credit Delivery Runner Dashboard Wallet immediately for completing the pickup
+      // Credit Delivery Runner Dashboard Wallet idempotently (prevent duplicate earnings)
       if (deliveryBoyId && runnerRate > 0) {
-        await (prisma as any).deliveryBoyEarning.create({
-          data: {
+        const existingEarning = await (prisma as any).deliveryBoyEarning.findFirst({
+          where: {
             deliveryBoyId,
             orderId: returnRequest.orderId,
-            amount: runnerRate,
-            paymentType: 'PER_DELIVERY',
-            earningType: 'RETURN_PAYOUT',
-            description: `Return pickup completed for order #${returnRequest.order?.orderNumber || returnRequest.orderId}`
+            earningType: 'RETURN_PAYOUT'
           }
-        }).catch(() => {});
+        }).catch(() => null);
 
-        await (prisma as any).deliveryBoy.update({
-          where: { id: deliveryBoyId },
-          data: {
-            walletBalance: { increment: runnerRate }
-          }
-        }).catch(() => {});
+        if (!existingEarning) {
+          await (prisma as any).deliveryBoyEarning.create({
+            data: {
+              deliveryBoyId,
+              orderId: returnRequest.orderId,
+              amount: runnerRate,
+              paymentType: 'PER_DELIVERY',
+              earningType: 'RETURN_PAYOUT',
+              description: `Return pickup completed for order #${returnRequest.order?.orderNumber || returnRequest.orderId}`
+            }
+          }).catch(() => {});
+
+          await (prisma as any).deliveryBoy.update({
+            where: { id: deliveryBoyId },
+            data: {
+              walletBalance: { increment: runnerRate }
+            }
+          }).catch(() => {});
+        }
       }
 
-      // Update Order Status History and status to PICKED_UP (Physical pickup completed, ready for Admin refund disbursement)
+      // Update Order Status History and status (Physical pickup completed, ready for Admin refund disbursement)
       const orderIdsToUpdate = [
         returnRequest.orderId,
         returnRequest.order?.id,
@@ -576,7 +594,7 @@ export class ReturnController {
           await (prisma as any).order.update({
             where: { id: oid },
             data: {
-              refundStatus: 'PICKED_UP',
+              refundStatus: 'PROCESSING',
               returnPickupOtpVerified: true,
               statusHistory: {
                 create: {
