@@ -106,9 +106,30 @@ export class ReturnController {
         orderBy: { createdAt: 'desc' }
       });
 
+      const enrichedReturns = (returns || []).map((ret: any) => {
+        const student = ret.order?.student;
+        const studentName = ret.studentName || student?.fullName || ret.order?.studentName || 'Campus Student';
+        const hallName = ret.hallName || ret.order?.hallName || student?.hallName || 'Campus Hostel';
+        const roomNumber = ret.roomNumber || ret.order?.roomNumber || student?.roomNumber || '';
+        const originalAmount = Number(ret.itemAmount || ret.originalAmount || ret.order?.subtotal || ret.order?.totalAmount || 0);
+        const refundAmount = Number(ret.refundAmount || 0);
+        const deliveryChargeDeducted = Number(ret.deliveryFeeDeducted !== undefined ? ret.deliveryFeeDeducted : (ret.deliveryChargeDeducted || 0));
+
+        return {
+          ...ret,
+          studentName,
+          hallName,
+          roomNumber,
+          originalAmount,
+          refundAmount,
+          deliveryChargeDeducted,
+          deliveryFeeDeducted: deliveryChargeDeducted
+        };
+      });
+
       res.status(200).json({
         success: true,
-        returns
+        returns: enrichedReturns
       });
     } catch (err) {
       next(err);

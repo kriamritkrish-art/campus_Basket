@@ -39,6 +39,88 @@ import { loadSavedReturnRequests, saveReturnRequests } from '../services/fallbac
 
 const persistentReturnRequests: any[] = loadSavedReturnRequests(fallbackReturnRequests);
 
+function enrichFallbackReturn(r: any): any {
+  if (!r) return null;
+  const rawOrder: any = fallbackOrders.find((o: any) => o.id === r.orderId || o.orderNumber === r.orderId);
+  let order: any = null;
+  if (rawOrder) {
+    const studentUser: any = fallbackUsers.find((u: any) => u.student?.id === rawOrder.studentId);
+    const provUser: any = fallbackUsers.find((u: any) => u.provider?.id === rawOrder.providerId);
+    const dbUser: any = rawOrder.deliveryBoyId ? fallbackUsers.find((u: any) => u.deliveryBoy?.id === rawOrder.deliveryBoyId) : null;
+    order = {
+      ...rawOrder,
+      student: rawOrder.student || (studentUser?.student ? {
+        fullName: studentUser.student.fullName,
+        mobileNumber: studentUser.student.mobileNumber,
+        roomNumber: studentUser.student.roomNumber,
+        hallName: studentUser.student.hallName || (studentUser.student as any).hallNumber,
+        user: { email: studentUser.email }
+      } : null),
+      provider: rawOrder.provider || (provUser?.provider ? {
+        fullName: provUser.provider.fullName,
+        mobileNumber: provUser.provider.mobileNumber,
+        serviceCategory: provUser.provider.serviceCategory
+      } : null),
+      deliveryBoy: rawOrder.deliveryBoy || (dbUser?.deliveryBoy ? {
+        id: dbUser.deliveryBoy.id,
+        fullName: dbUser.deliveryBoy.fullName,
+        mobileNumber: dbUser.deliveryBoy.mobileNumber,
+        vehicleType: dbUser.deliveryBoy.vehicleType
+      } : null),
+      items: rawOrder.items || [],
+      payment: rawOrder.payment || null
+    };
+  } else {
+    order = {
+      id: r.orderId,
+      orderNumber: r.orderId,
+      hallName: r.hallName || 'Campus Hostel',
+      roomNumber: r.roomNumber || 'Room',
+      totalAmount: r.itemAmount || r.refundAmount || 0,
+      student: {
+        fullName: r.studentName || 'Campus Student',
+        mobileNumber: r.studentPhone || '+91 98765 43210',
+        roomNumber: r.roomNumber || 'N/A',
+        hallName: r.hallName || 'Campus Hostel',
+        user: { email: 'student@nitdgp.ac.in' }
+      },
+      provider: {
+        fullName: 'Campus Vendor & Mart',
+        mobileNumber: '+91 98765 12345',
+        serviceCategory: 'FOOD'
+      },
+      deliveryBoy: null,
+      items: []
+    };
+  }
+
+  const pickupDbUser: any = r.deliveryBoyId ? fallbackUsers.find((u: any) => u.deliveryBoy?.id === r.deliveryBoyId) : null;
+  const deliveryFeeDeducted = r.deliveryFeeDeducted !== undefined ? Number(r.deliveryFeeDeducted) : Number(r.deliveryChargeDeducted || 0);
+  const studentName = r.studentName || order?.student?.fullName || 'Campus Student';
+  const hallName = r.hallName || order?.hallName || order?.student?.hallName || 'Campus Hostel';
+  const roomNumber = r.roomNumber || order?.roomNumber || order?.student?.roomNumber || '';
+  const originalAmount = Number(r.itemAmount || r.originalAmount || order?.subtotal || order?.totalAmount || 0);
+  const refundAmount = Number(r.refundAmount || 0);
+
+  return {
+    ...r,
+    studentName,
+    hallName,
+    roomNumber,
+    originalAmount,
+    refundAmount,
+    deliveryFeeDeducted,
+    deliveryChargeDeducted: deliveryFeeDeducted,
+    order,
+    deliveryBoy: pickupDbUser?.deliveryBoy ? {
+      id: pickupDbUser.deliveryBoy.id,
+      fullName: pickupDbUser.deliveryBoy.fullName,
+      mobileNumber: pickupDbUser.deliveryBoy.mobileNumber,
+      vehicleType: pickupDbUser.deliveryBoy.vehicleType
+    } : (r.deliveryBoy || null)
+  };
+}
+
 declare global {
   // eslint-disable-next-line no-var
   var rawPrismaInstance: PrismaClient | undefined;
@@ -1711,53 +1793,7 @@ const fallbackHandlers: Record<string, any> = {
           list = list.filter(l => l.status === args.where.status);
         }
       }
-      const enrich = (r: any): any => {
-        const rawOrder: any = fallbackOrders.find((o: any) => o.id === r.orderId || o.orderNumber === r.orderId);
-        let order: any = null;
-        if (rawOrder) {
-          const studentUser: any = fallbackUsers.find((u: any) => u.student?.id === rawOrder.studentId);
-          const provUser: any = fallbackUsers.find((u: any) => u.provider?.id === rawOrder.providerId);
-          const dbUser: any = rawOrder.deliveryBoyId ? fallbackUsers.find((u: any) => u.deliveryBoy?.id === rawOrder.deliveryBoyId) : null;
-          order = {
-            ...rawOrder,
-            student: rawOrder.student || (studentUser?.student ? {
-              fullName: studentUser.student.fullName,
-              mobileNumber: studentUser.student.mobileNumber,
-              roomNumber: studentUser.student.roomNumber,
-              hallName: studentUser.student.hallName || (studentUser.student as any).hallNumber,
-              user: { email: studentUser.email }
-            } : null),
-            provider: rawOrder.provider || (provUser?.provider ? {
-              fullName: provUser.provider.fullName,
-              mobileNumber: provUser.provider.mobileNumber,
-              serviceCategory: provUser.provider.serviceCategory
-            } : null),
-            deliveryBoy: rawOrder.deliveryBoy || (dbUser?.deliveryBoy ? {
-              id: dbUser.deliveryBoy.id,
-              fullName: dbUser.deliveryBoy.fullName,
-              mobileNumber: dbUser.deliveryBoy.mobileNumber,
-              vehicleType: dbUser.deliveryBoy.vehicleType
-            } : null),
-            items: rawOrder.items || [],
-            payment: rawOrder.payment || null
-          };
-        }
-        const pickupDbUser: any = r.deliveryBoyId ? fallbackUsers.find((u: any) => u.deliveryBoy?.id === r.deliveryBoyId) : null;
-        const deliveryFeeDeducted = r.deliveryFeeDeducted !== undefined ? r.deliveryFeeDeducted : (r.deliveryChargeDeducted || 0);
-        return {
-          ...r,
-          deliveryFeeDeducted,
-          deliveryChargeDeducted: deliveryFeeDeducted,
-          order,
-          deliveryBoy: pickupDbUser?.deliveryBoy ? {
-            id: pickupDbUser.deliveryBoy.id,
-            fullName: pickupDbUser.deliveryBoy.fullName,
-            mobileNumber: pickupDbUser.deliveryBoy.mobileNumber,
-            vehicleType: pickupDbUser.deliveryBoy.vehicleType
-          } : (r.deliveryBoy || null)
-        };
-      };
-      return JSON.parse(JSON.stringify(list.map(enrich)));
+      return JSON.parse(JSON.stringify(list.map(enrichFallbackReturn)));
     },
     findFirst: async (args?: any) => {
       const orList = args?.where?.OR;
@@ -1795,50 +1831,7 @@ const fallbackHandlers: Record<string, any> = {
         (item.orderId && idArray.includes(item.orderId.replace(/^#+/, '')))
       );
       if (!r) return null;
-      const rawOrder: any = fallbackOrders.find((o: any) => o.id === r.orderId || o.orderNumber === r.orderId);
-      let order: any = null;
-      if (rawOrder) {
-        const studentUser: any = fallbackUsers.find((u: any) => u.student?.id === rawOrder.studentId);
-        const provUser: any = fallbackUsers.find((u: any) => u.provider?.id === rawOrder.providerId);
-        const dbUser: any = rawOrder.deliveryBoyId ? fallbackUsers.find((u: any) => u.deliveryBoy?.id === rawOrder.deliveryBoyId) : null;
-        order = {
-          ...rawOrder,
-          student: rawOrder.student || (studentUser?.student ? {
-            fullName: studentUser.student.fullName,
-            mobileNumber: studentUser.student.mobileNumber,
-            roomNumber: studentUser.student.roomNumber,
-            hallName: studentUser.student.hallName || (studentUser.student as any).hallNumber,
-            user: { email: studentUser.email }
-          } : null),
-          provider: rawOrder.provider || (provUser?.provider ? {
-            fullName: provUser.provider.fullName,
-            mobileNumber: provUser.provider.mobileNumber,
-            serviceCategory: provUser.provider.serviceCategory
-          } : null),
-          deliveryBoy: rawOrder.deliveryBoy || (dbUser?.deliveryBoy ? {
-            id: dbUser.deliveryBoy.id,
-            fullName: dbUser.deliveryBoy.fullName,
-            mobileNumber: dbUser.deliveryBoy.mobileNumber,
-            vehicleType: dbUser.deliveryBoy.vehicleType
-          } : null),
-          items: rawOrder.items || [],
-          payment: rawOrder.payment || null
-        };
-      }
-      const pickupDbUser: any = r.deliveryBoyId ? fallbackUsers.find((u: any) => u.deliveryBoy?.id === r.deliveryBoyId) : null;
-      const deliveryFeeDeducted = r.deliveryFeeDeducted !== undefined ? r.deliveryFeeDeducted : (r.deliveryChargeDeducted || 0);
-      return JSON.parse(JSON.stringify({
-        ...r,
-        deliveryFeeDeducted,
-        deliveryChargeDeducted: deliveryFeeDeducted,
-        order,
-        deliveryBoy: pickupDbUser?.deliveryBoy ? {
-          id: pickupDbUser.deliveryBoy.id,
-          fullName: pickupDbUser.deliveryBoy.fullName,
-          mobileNumber: pickupDbUser.deliveryBoy.mobileNumber,
-          vehicleType: pickupDbUser.deliveryBoy.vehicleType
-        } : (r.deliveryBoy || null)
-      }));
+      return JSON.parse(JSON.stringify(enrichFallbackReturn(r)));
     },
     findUnique: async (args: any) => {
       const orList = args?.where?.OR;
@@ -1876,50 +1869,7 @@ const fallbackHandlers: Record<string, any> = {
         (c.orderId && idArray.includes(c.orderId.replace(/^#+/, '')))
       );
       if (!r) return null;
-      const rawOrder: any = fallbackOrders.find((o: any) => o.id === r.orderId || o.orderNumber === r.orderId);
-      let order: any = null;
-      if (rawOrder) {
-        const studentUser: any = fallbackUsers.find((u: any) => u.student?.id === rawOrder.studentId);
-        const provUser: any = fallbackUsers.find((u: any) => u.provider?.id === rawOrder.providerId);
-        const dbUser: any = rawOrder.deliveryBoyId ? fallbackUsers.find((u: any) => u.deliveryBoy?.id === rawOrder.deliveryBoyId) : null;
-        order = {
-          ...rawOrder,
-          student: rawOrder.student || (studentUser?.student ? {
-            fullName: studentUser.student.fullName,
-            mobileNumber: studentUser.student.mobileNumber,
-            roomNumber: studentUser.student.roomNumber,
-            hallName: studentUser.student.hallName || (studentUser.student as any).hallNumber,
-            user: { email: studentUser.email }
-          } : null),
-          provider: rawOrder.provider || (provUser?.provider ? {
-            fullName: provUser.provider.fullName,
-            mobileNumber: provUser.provider.mobileNumber,
-            serviceCategory: provUser.provider.serviceCategory
-          } : null),
-          deliveryBoy: rawOrder.deliveryBoy || (dbUser?.deliveryBoy ? {
-            id: dbUser.deliveryBoy.id,
-            fullName: dbUser.deliveryBoy.fullName,
-            mobileNumber: dbUser.deliveryBoy.mobileNumber,
-            vehicleType: dbUser.deliveryBoy.vehicleType
-          } : null),
-          items: rawOrder.items || [],
-          payment: rawOrder.payment || null
-        };
-      }
-      const pickupDbUser: any = r.deliveryBoyId ? fallbackUsers.find((u: any) => u.deliveryBoy?.id === r.deliveryBoyId) : null;
-      const deliveryFeeDeducted = r.deliveryFeeDeducted !== undefined ? r.deliveryFeeDeducted : (r.deliveryChargeDeducted || 0);
-      return JSON.parse(JSON.stringify({
-        ...r,
-        deliveryFeeDeducted,
-        deliveryChargeDeducted: deliveryFeeDeducted,
-        order,
-        deliveryBoy: pickupDbUser?.deliveryBoy ? {
-          id: pickupDbUser.deliveryBoy.id,
-          fullName: pickupDbUser.deliveryBoy.fullName,
-          mobileNumber: pickupDbUser.deliveryBoy.mobileNumber,
-          vehicleType: pickupDbUser.deliveryBoy.vehicleType
-        } : (r.deliveryBoy || null)
-      }));
+      return JSON.parse(JSON.stringify(enrichFallbackReturn(r)));
     },
     create: async (args: any) => {
       const deliveryFee = args.data.deliveryFeeDeducted !== undefined ? args.data.deliveryFeeDeducted : (args.data.deliveryChargeDeducted || 0);
@@ -1937,7 +1887,7 @@ const fallbackHandlers: Record<string, any> = {
       };
       persistentReturnRequests.unshift(rr);
       saveReturnRequests(persistentReturnRequests);
-      return JSON.parse(JSON.stringify(rr));
+      return JSON.parse(JSON.stringify(enrichFallbackReturn(rr)));
     },
     update: async (args: any) => {
       const orList = args?.where?.OR;
@@ -1980,50 +1930,7 @@ const fallbackHandlers: Record<string, any> = {
           r.deliveryChargeDeducted = args.data.deliveryFeeDeducted;
         }
         saveReturnRequests(persistentReturnRequests);
-        const rawOrder: any = fallbackOrders.find((o: any) => o.id === r.orderId || o.orderNumber === r.orderId);
-        let order: any = null;
-        if (rawOrder) {
-          const studentUser: any = fallbackUsers.find((u: any) => u.student?.id === rawOrder.studentId);
-          const provUser: any = fallbackUsers.find((u: any) => u.provider?.id === rawOrder.providerId);
-          const dbUser: any = rawOrder.deliveryBoyId ? fallbackUsers.find((u: any) => u.deliveryBoy?.id === rawOrder.deliveryBoyId) : null;
-          order = {
-            ...rawOrder,
-            student: rawOrder.student || (studentUser?.student ? {
-              fullName: studentUser.student.fullName,
-              mobileNumber: studentUser.student.mobileNumber,
-              roomNumber: studentUser.student.roomNumber,
-              hallName: studentUser.student.hallName || (studentUser.student as any).hallNumber,
-              user: { email: studentUser.email }
-            } : null),
-            provider: rawOrder.provider || (provUser?.provider ? {
-              fullName: provUser.provider.fullName,
-              mobileNumber: provUser.provider.mobileNumber,
-              serviceCategory: provUser.provider.serviceCategory
-            } : null),
-            deliveryBoy: rawOrder.deliveryBoy || (dbUser?.deliveryBoy ? {
-              id: dbUser.deliveryBoy.id,
-              fullName: dbUser.deliveryBoy.fullName,
-              mobileNumber: dbUser.deliveryBoy.mobileNumber,
-              vehicleType: dbUser.deliveryBoy.vehicleType
-            } : null),
-            items: rawOrder.items || [],
-            payment: rawOrder.payment || null
-          };
-        }
-        const pickupDbUser: any = r.deliveryBoyId ? fallbackUsers.find((u: any) => u.deliveryBoy?.id === r.deliveryBoyId) : null;
-        const deliveryFeeDeducted = r.deliveryFeeDeducted !== undefined ? r.deliveryFeeDeducted : (r.deliveryChargeDeducted || 0);
-        return JSON.parse(JSON.stringify({
-          ...r,
-          deliveryFeeDeducted,
-          deliveryChargeDeducted: deliveryFeeDeducted,
-          order,
-          deliveryBoy: pickupDbUser?.deliveryBoy ? {
-            id: pickupDbUser.deliveryBoy.id,
-            fullName: pickupDbUser.deliveryBoy.fullName,
-            mobileNumber: pickupDbUser.deliveryBoy.mobileNumber,
-            vehicleType: pickupDbUser.deliveryBoy.vehicleType
-          } : (r.deliveryBoy || null)
-        }));
+        return JSON.parse(JSON.stringify(enrichFallbackReturn(r)));
       }
       return args.data;
     },
@@ -2041,7 +1948,7 @@ const fallbackHandlers: Record<string, any> = {
         existing.deliveryFeeDeducted = deliveryFee;
         existing.deliveryChargeDeducted = deliveryFee;
         saveReturnRequests(persistentReturnRequests);
-        return JSON.parse(JSON.stringify(existing));
+        return JSON.parse(JSON.stringify(enrichFallbackReturn(existing)));
       }
       const deliveryFee = args.create.deliveryFeeDeducted !== undefined ? args.create.deliveryFeeDeducted : (args.create.deliveryChargeDeducted || 0);
       const rr = {
@@ -2055,7 +1962,7 @@ const fallbackHandlers: Record<string, any> = {
       };
       persistentReturnRequests.unshift(rr);
       saveReturnRequests(persistentReturnRequests);
-      return JSON.parse(JSON.stringify(rr));
+      return JSON.parse(JSON.stringify(enrichFallbackReturn(rr)));
     }
   },
   refundAccount: {
@@ -2328,6 +2235,45 @@ export const prisma = new Proxy(rawPrisma as any, {
                     if (fallbackResult) return fallbackResult;
                   } catch (e) {}
                 }
+
+                // If findMany on returnRequest or if MySQL returned 0 items:
+                // Merge fallback items that might not be in MySQL
+                if (
+                  methodKey === 'findMany' &&
+                  (modelName === 'returnRequest' || (Array.isArray(result) && result.length === 0)) &&
+                  typeof fallbackModel.findMany === 'function'
+                ) {
+                  try {
+                    const fallbackList = await fallbackModel.findMany(...args);
+                    if (Array.isArray(fallbackList) && fallbackList.length > 0) {
+                      if (!Array.isArray(result) || result.length === 0) {
+                        return fallbackList;
+                      }
+                      const combined = [...result];
+                      for (const fbItem of fallbackList) {
+                        const exists = combined.some(
+                          (c: any) => c.id === fbItem.id || (c.orderId && fbItem.orderId && (c.orderId === fbItem.orderId || c.orderNumber === fbItem.orderId))
+                        );
+                        if (!exists) {
+                          combined.push(fbItem);
+                        }
+                      }
+                      return combined;
+                    }
+                  } catch (e) {}
+                }
+
+                // If mutation on returnRequest, also mirror to fallback persistent storage
+                if (
+                  modelName === 'returnRequest' &&
+                  (methodKey === 'create' || methodKey === 'update' || methodKey === 'upsert') &&
+                  typeof fallbackModel[methodKey] === 'function'
+                ) {
+                  try {
+                    await fallbackModel[methodKey](...args);
+                  } catch (e) {}
+                }
+
                 return result;
               } catch (err: any) {
                 // If query fails due to connection error, validation error, missing table, or missing record, use fallback

@@ -913,7 +913,7 @@ export default function OrderTrackClient() {
               </div>
 
               {/* 6-Digit Return Pickup OTP Card */}
-              {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(currentReturn.status) && currentReturn.pickupOtp && (
+              {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(currentReturn.status) && (currentReturn.pickupOtp || currentReturn.otp) && (
                 <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-2xl border-2 border-amber-300 space-y-2">
                   <div className="flex items-center justify-between">
                     <div>
@@ -921,12 +921,13 @@ export default function OrderTrackClient() {
                         Your 6-Digit Return Pickup Code:
                       </span>
                       <div className="text-3xl font-black font-mono tracking-widest text-slate-900 mt-0.5">
-                        {currentReturn.pickupOtp}
+                        {currentReturn.pickupOtp || currentReturn.otp}
                       </div>
                     </div>
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(currentReturn.pickupOtp);
+                        const code = currentReturn.pickupOtp || currentReturn.otp;
+                        if (code) navigator.clipboard.writeText(code);
                         showToast('Return Pickup OTP copied to clipboard');
                       }}
                       className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"

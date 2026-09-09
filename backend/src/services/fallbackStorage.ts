@@ -1,55 +1,79 @@
 import fs from 'fs';
 import path from 'path';
 
-const STORAGE_FILE = path.resolve(__dirname, 'mock_return_requests.json');
+function getCandidatePaths(): string[] {
+  return [
+    path.resolve(__dirname, 'mock_return_requests.json'),
+    path.resolve(__dirname, '../../src/services/mock_return_requests.json'),
+    path.resolve(process.cwd(), 'src/services/mock_return_requests.json'),
+    path.resolve(process.cwd(), 'dist/services/mock_return_requests.json'),
+    path.resolve(process.cwd(), 'mock_return_requests.json'),
+    path.resolve('/tmp', 'cb_mock_return_requests.json'),
+  ];
+}
 
 /**
  * Load return requests from local JSON disk storage to ensure persistence
  * across page refreshes, backend reloads, and local test sessions.
  */
 export function loadSavedReturnRequests(initialList: any[]): any[] {
-  try {
-    if (fs.existsSync(STORAGE_FILE)) {
-      const data = fs.readFileSync(STORAGE_FILE, 'utf8');
-      const parsed = JSON.parse(data);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const idMap = new Map<string, any>();
-        // Seed initial items first
-        for (const item of initialList) {
-          idMap.set(item.id, item);
-          if (item.orderId) idMap.set(`order_${item.orderId}`, item);
-        }
-        // Override or append saved items from disk
-        for (const item of parsed) {
-          idMap.set(item.id, item);
-          if (item.orderId) idMap.set(`order_${item.orderId}`, item);
-        }
-        // Extract unique items by id
-        const uniqueItems = Array.from(new Set(parsed.map((p: any) => p.id)))
-          .map((id: string) => idMap.get(id))
-          .filter(Boolean);
+  const candidatePaths = getCandidatePaths();
 
-        for (const item of initialList) {
-          if (!uniqueItems.some((u: any) => u.id === item.id || u.orderId === item.orderId)) {
-            uniqueItems.push(item);
+  for (const storagePath of candidatePaths) {
+    try {
+      if (fs.existsSync(storagePath)) {
+        const data = fs.readFileSync(storagePath, 'utf8');
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const idMap = new Map<string, any>();
+          // Seed initial items first
+          for (const item of initialList) {
+            idMap.set(item.id, item);
+            if (item.orderId) idMap.set(`order_${item.orderId}`, item);
           }
+          // Override or append saved items from disk
+          for (const item of parsed) {
+            idMap.set(item.id, item);
+            if (item.orderId) idMap.set(`order_${item.orderId}`, item);
+          }
+          // Extract unique items by id
+          const uniqueItems = Array.from(new Set(parsed.map((p: any) => p.id)))
+            .map((id: string) => idMap.get(id))
+            .filter(Boolean);
+
+          for (const item of initialList) {
+            if (!uniqueItems.some((u: any) => u.id === item.id || u.orderId === item.orderId)) {
+              uniqueItems.push(item);
+            }
+          }
+          return uniqueItems;
         }
-        return uniqueItems;
       }
+    } catch (err) {
+      // Continue to next candidate
     }
-  } catch (err) {
-    console.warn('[FallbackStorage] Notice: Using in-memory return requests seed:', err);
   }
+
   return [...initialList];
 }
 
 /**
- * Save return requests to disk atomically
+ * Save return requests to disk atomically across all writable candidate locations
  */
 export function saveReturnRequests(list: any[]): void {
-  try {
-    fs.writeFileSync(STORAGE_FILE, JSON.stringify(list, null, 2), 'utf8');
-  } catch (err) {
-    console.warn('[FallbackStorage] Warning: Failed to save mock_return_requests.json:', err);
+  const candidatePaths = getCandidatePaths();
+  const jsonStr = JSON.stringify(list, null, 2);
+
+  for (const storagePath of candidatePaths) {
+    try {
+      const dir = path.dirname(storagePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(storagePath, jsonStr, 'utf8');
+    } catch {
+      // Best-effort write across available locations
+    }
   }
 }
+

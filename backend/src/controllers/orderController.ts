@@ -1019,7 +1019,7 @@ export class OrderController {
         return;
       }
 
-      if (order.status !== 'DELIVERED' && (order.status as string) !== 'COMPLETED') {
+      if (order.status !== 'DELIVERED' && (order.status as string) !== 'COMPLETED' && req.user?.role !== 'ADMIN') {
         res.status(400).json({
           success: false,
           message: 'Returns can only be requested after the order has been successfully delivered to your doorstep.'
@@ -1029,29 +1029,18 @@ export class OrderController {
 
       const isMindChange = reasonType === 'MIND_CHANGE';
       const actualReasonType = isMindChange ? 'MIND_CHANGE' : 'PRODUCT_ISSUE';
-      const details = (reasonDetails || reason || '').trim();
+      const details = (reasonDetails || reason || (isMindChange ? 'Customer mind change / item no longer needed' : 'Product defect/issue reported upon doorstep delivery')).trim();
 
       const returnCheck = RefundService.evaluateReturnEligibility({
         ...order,
         reasonType: actualReasonType
       });
-      if (!returnCheck.eligible) {
+      if (!returnCheck.eligible && req.user?.role !== 'ADMIN') {
         res.status(400).json({
           success: false,
           message: returnCheck.reason || 'This order is not eligible for return.'
         });
         return;
-      }
-
-      // For product-related issues, user must provide proof (photo or clear description)
-      if (actualReasonType === 'PRODUCT_ISSUE') {
-        if (!proofImageUrl && details.length < 10) {
-          res.status(400).json({
-            success: false,
-            message: 'Please provide proof of the product issue (either an image URL/photo proof or a detailed description of the defect).'
-          });
-          return;
-        }
       }
 
       // Calculate item total for returned items
@@ -1082,7 +1071,7 @@ export class OrderController {
         where: { orderId: order.id },
         update: {
           reasonType: actualReasonType,
-          reasonDetails: details || (isMindChange ? 'Customer mind change / not needed' : 'Product defect/issue reported'),
+          reasonDetails: details,
           proofImageUrl: proofImageUrl || null,
           itemAmount: itemTotal,
           deliveryFeeDeducted: deliveryFeeDeducted,
@@ -1093,7 +1082,7 @@ export class OrderController {
           orderId: order.id,
           studentId: order.studentId,
           reasonType: actualReasonType,
-          reasonDetails: details || (isMindChange ? 'Customer mind change / not needed' : 'Product defect/issue reported'),
+          reasonDetails: details,
           proofImageUrl: proofImageUrl || null,
           itemAmount: itemTotal,
           deliveryFeeDeducted: deliveryFeeDeducted,

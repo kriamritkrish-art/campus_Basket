@@ -272,8 +272,26 @@ export class DeliveryController {
         return;
       }
 
-      const order = await prisma.order.findUnique({ where: { id } });
+      let order = await prisma.order.findUnique({ where: { id } });
       if (!order) {
+        // Check if id corresponds to a return request
+        const returnReq = await (prisma as any).returnRequest.findUnique({ where: { id } }).catch(() => null);
+        if (returnReq) {
+          const updatedReturn = await (prisma as any).returnRequest.update({
+            where: { id: returnReq.id },
+            data: {
+              deliveryBoyId: deliveryBoy.id,
+              status: 'PICKUP_ASSIGNED'
+            }
+          });
+          res.status(200).json({
+            success: true,
+            message: 'Return pickup task accepted successfully.',
+            returnRequest: updatedReturn
+          });
+          return;
+        }
+
         res.status(404).json({ success: false, message: 'Order not found' });
         return;
       }
@@ -388,10 +406,10 @@ export class DeliveryController {
         returnRequestId: r.id,
         orderId: r.orderId,
         isReturnPickup: true,
-        orderNumber: `RETURN #${r.order?.orderNumber || r.id.slice(-6)}`,
-        studentName: r.order?.student?.fullName || 'Campus Student',
-        studentPhone: r.order?.student?.mobileNumber || '+91 98765 43210',
-        pickupLocation: `${r.order?.hallName || 'Hostel'} • Room ${r.order?.roomNumber || ''}`,
+        orderNumber: `RETURN #${r.order?.orderNumber || r.orderId?.substring(0, 8) || r.id.slice(-6)}`,
+        studentName: r.studentName || r.order?.student?.fullName || 'Campus Student',
+        studentPhone: r.studentPhone || r.order?.student?.mobileNumber || '+91 98765 43210',
+        pickupLocation: `${r.hallName || r.order?.hallName || 'Hostel'} • Room ${r.roomNumber || r.order?.roomNumber || ''}`,
         pickupStation: 'Student Hostel Doorstep Pickup',
         destination: r.order?.provider?.fullName || 'Campus Vendor / Return Desk',
         distance: '0.5 km',

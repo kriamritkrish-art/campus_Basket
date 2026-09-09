@@ -67,8 +67,8 @@ export default function AdminOrdersPage() {
   const fetchDeliveryBoys = async () => {
     try {
       const res = await apiRequest('/api/admin/delivery-boys');
-      if (res.success && res.deliveryBoys) {
-        setDeliveryBoys(res.deliveryBoys.filter((b: any) => b.status === 'ACTIVE'));
+      if (res.success && Array.isArray(res.deliveryBoys)) {
+        setDeliveryBoys(res.deliveryBoys);
       }
     } catch (e) {}
   };
@@ -134,9 +134,34 @@ export default function AdminOrdersPage() {
     try {
       setLoadingReturns(true);
       const res = await apiRequest('/api/returns');
-      if (res.success && res.returns) {
-        setReturnRequests(res.returns);
+      let returnsList = (res.success && Array.isArray(res.returns)) ? [...res.returns] : [];
+
+      // Also merge any locally tracked returns from localStorage
+      if (typeof window !== 'undefined') {
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('cb_return_')) {
+              const itemStr = localStorage.getItem(key);
+              if (itemStr) {
+                const item = JSON.parse(itemStr);
+                if (item && (item.id || item.orderId)) {
+                  const exists = returnsList.some((r: any) => 
+                    r.id === item.id || 
+                    (item.orderId && r.orderId === item.orderId) ||
+                    (item.orderNumber && r.order?.orderNumber === item.orderNumber)
+                  );
+                  if (!exists) {
+                    returnsList.unshift(item);
+                  }
+                }
+              }
+            }
+          }
+        } catch {}
       }
+
+      setReturnRequests(returnsList);
     } catch (e) {
       console.warn('Return requests fetch error:', e);
     } finally {
@@ -714,9 +739,9 @@ export default function AdminOrdersPage() {
                         </td>
 
                         <td className="px-5 py-4">
-                          <div className="font-bold text-[#17202A]">{ret.studentName || ret.order?.studentName}</div>
+                          <div className="font-bold text-[#17202A]">{ret.studentName || ret.order?.student?.fullName || ret.order?.studentName || 'Campus Student'}</div>
                           <div className="text-[11px] text-slate-500">
-                            {ret.hallName || ret.order?.hallName}, Room {ret.roomNumber || ret.order?.roomNumber}
+                            {ret.hallName || ret.order?.hallName || ret.order?.student?.hallName || 'Campus Hostel'}, Room {ret.roomNumber || ret.order?.roomNumber || ret.order?.student?.roomNumber || 'N/A'}
                           </div>
                         </td>
 
@@ -1234,9 +1259,15 @@ export default function AdminOrdersPage() {
                   <option value="">-- Select Runner to Visit Hostel Room --</option>
                   {deliveryBoys.map((boy) => (
                     <option key={boy.id} value={boy.id}>
-                      {boy.fullName} ({boy.user?.username || boy.phone})
+                      {boy.fullName} ({boy.user?.username || boy.phone || 'Runner'}) {boy.status === 'ACTIVE' || boy.activeStatus ? '🟢 (Online)' : '⚪ (Offline)'}
                     </option>
                   ))}
+                  {deliveryBoys.length === 0 && (
+                    <>
+                      <option value="db_bikash">Bikash Delivery (Runner)</option>
+                      <option value="db_boy_1">Campus Express Runner #1</option>
+                    </>
+                  )}
                 </select>
               </div>
             )}
