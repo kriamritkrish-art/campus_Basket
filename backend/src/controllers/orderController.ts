@@ -1038,6 +1038,14 @@ export class OrderController {
       const actualReasonType = isMindChange ? 'MIND_CHANGE' : 'PRODUCT_ISSUE';
       const details = (reasonDetails || reason || (isMindChange ? 'Customer mind change / item no longer needed' : 'Product defect/issue reported upon doorstep delivery')).trim();
 
+      if (actualReasonType === 'PRODUCT_ISSUE' && !proofImageUrl && (!details || details.length < 10)) {
+        res.status(400).json({
+          success: false,
+          message: 'A detailed explanation (at least 10 characters) or photo proof of the defect is required for product issues.'
+        });
+        return;
+      }
+
       const returnCheck = RefundService.evaluateReturnEligibility({
         ...order,
         reasonType: actualReasonType

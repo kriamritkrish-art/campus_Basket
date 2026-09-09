@@ -35,13 +35,19 @@ import {
   fallbackDeliveryBoyWithdrawals,
   fallbackReturnRequests
 } from '../services/fallbackData';
-import { loadSavedReturnRequests, saveReturnRequests } from '../services/fallbackStorage';
+import { loadSavedReturnRequests, saveReturnRequests, loadSavedOrders, saveOrders } from '../services/fallbackStorage';
 
+const persistentOrders: any[] = loadSavedOrders(fallbackOrders);
 const persistentReturnRequests: any[] = loadSavedReturnRequests(fallbackReturnRequests);
 
 function enrichFallbackReturn(r: any): any {
   if (!r) return null;
-  const rawOrder: any = fallbackOrders.find((o: any) => o.id === r.orderId || o.orderNumber === r.orderId);
+  const rawOrder: any = persistentOrders.find((o: any) => {
+    const oId = String(o.id || '').replace(/^#+/, '').trim();
+    const oNum = String(o.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+    const rOrd = String(r.orderId || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+    return o.id === r.orderId || o.orderNumber === r.orderId || (rOrd && (oId === rOrd || oNum === rOrd));
+  });
   let order: any = null;
   if (rawOrder) {
     const studentUser: any = fallbackUsers.find((u: any) => u.student?.id === rawOrder.studentId);
@@ -855,12 +861,12 @@ const fallbackHandlers: Record<string, any> = {
   order: {
     count: async (args: any) => {
       if (args?.where?.status) {
-        return fallbackOrders.filter((o) => o.status === args.where.status).length;
+        return persistentOrders.filter((o) => o.status === args.where.status).length;
       }
-      return fallbackOrders.length;
+      return persistentOrders.length;
     },
     findMany: async (args: any) => {
-      let orders = [...fallbackOrders];
+      let orders = [...persistentOrders];
       if (args?.where?.providerId) {
         orders = orders.filter((o) => o.providerId === args.where.providerId);
       }
@@ -951,13 +957,31 @@ const fallbackHandlers: Record<string, any> = {
       const orList: any[] = args?.where?.OR;
       let o: any = null;
       if (Array.isArray(orList) && orList.length > 0) {
-        o = fallbackOrders.find((item: any) =>
-          orList.some((c: any) => (c.id && item.id === c.id) || (c.orderNumber && item.orderNumber === c.orderNumber))
-        );
+        o = persistentOrders.find((item: any) => {
+          const itemCleanNum = String(item.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+          const itemIdClean = String(item.id || '').replace(/^#+/, '').trim();
+          return orList.some((c: any) => {
+            const cId = String(c.id || '').replace(/^#+/, '').trim();
+            const cNum = String(c.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+            return (
+              (c.id && (item.id === c.id || itemIdClean === cId || itemCleanNum === cId)) ||
+              (c.orderNumber && (item.orderNumber === c.orderNumber || itemCleanNum === cNum || itemIdClean === cNum))
+            );
+          });
+        });
       } else {
         const id = args?.where?.id || args?.where?.orderId;
         const orderNumber = args?.where?.orderNumber;
-        o = fallbackOrders.find((item: any) => (id && item.id === id) || (orderNumber && item.orderNumber === orderNumber));
+        const cleanId = String(id || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+        const cleanNum = String(orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+        o = persistentOrders.find((item: any) => {
+          const itemCleanNum = String(item.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+          const itemIdClean = String(item.id || '').replace(/^#+/, '').trim();
+          return (
+            (id && (item.id === id || itemIdClean === cleanId || itemCleanNum === cleanId)) ||
+            (orderNumber && (item.orderNumber === orderNumber || itemCleanNum === cleanNum || itemIdClean === cleanNum))
+          );
+        });
       }
       if (!o) return null;
       const studentUser = fallbackUsers.find((u: any) => u.student?.id === o.studentId);
@@ -1078,15 +1102,16 @@ const fallbackHandlers: Record<string, any> = {
         fallbackStationeryOrderDetails.push({ id: `sod_${Date.now()}`, orderId, ...args.data.stationeryOrderDetails.create, createdAt: new Date(), updatedAt: new Date() });
       }
 
-      fallbackOrders.unshift(newOrder as any);
+      persistentOrders.unshift(newOrder as any);
+      saveOrders(persistentOrders);
       return JSON.parse(JSON.stringify(newOrder));
     },
     update: async (args: any) => {
-      const idParam = String(args.where?.id || '').replace(/^#+/, '').trim();
-      const ordParam = String(args.where?.orderNumber || '').replace(/^#+/, '').trim();
-      const order = fallbackOrders.find((o) => {
+      const idParam = String(args.where?.id || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+      const ordParam = String(args.where?.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+      const order = persistentOrders.find((o) => {
         const oId = String(o.id || '').replace(/^#+/, '').trim();
-        const oNum = String(o.orderNumber || '').replace(/^#+/, '').trim();
+        const oNum = String(o.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
         return (
           o.id === args.where?.id ||
           o.orderNumber === args.where?.orderNumber ||
@@ -1109,13 +1134,18 @@ const fallbackHandlers: Record<string, any> = {
           const retReq = persistentReturnRequests.find((r: any) => r.orderId === order.id || (order.orderNumber && r.orderId === order.orderNumber));
           if (retReq) {
             if (args.data.refundStatus) retReq.status = args.data.refundStatus;
-            if (args.data.refundStatus === 'PICKED_UP') retReq.pickupOtpVerified = true;
+            if (args.data.refundStatus === 'PICKED_UP') {
+              retReq.status = 'PICKED_UP';
+              retReq.pickupOtpVerified = true;
+              retReq.pickupOtpVerifiedAt = new Date();
+            }
             if (args.data.deliveryBoyId !== undefined) retReq.deliveryBoyId = args.data.deliveryBoyId;
             retReq.updatedAt = new Date();
             saveReturnRequests(persistentReturnRequests);
           }
         }
         order.updatedAt = new Date();
+        saveOrders(persistentOrders);
         return JSON.parse(JSON.stringify(order));
       }
       return args.data;
@@ -1127,15 +1157,50 @@ const fallbackHandlers: Record<string, any> = {
         id: `oi_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
         ...args.data
       };
-      const order = fallbackOrders.find((o) => o.id === args.data?.orderId);
+      const order =
+        persistentOrders.find((o: any) => o.id === args.data?.orderId || o.orderNumber === args.data?.orderId) ||
+        fallbackOrders.find((o) => o.id === args.data?.orderId);
       if (order) {
-        if (!Array.isArray(order.items)) order.items = [];
-        order.items.push(newItem);
+        if (!Array.isArray((order as any).items)) (order as any).items = [];
+        (order as any).items.push(newItem);
+        saveOrders(persistentOrders);
       }
       return JSON.parse(JSON.stringify(newItem));
     },
-    update: async (args: any) => args.data,
-    findMany: async () => []
+    update: async (args: any) => {
+      for (const ord of persistentOrders) {
+        if (Array.isArray((ord as any).items)) {
+          const it = (ord as any).items.find((i: any) => i.id === args.where?.id);
+          if (it) {
+            Object.assign(it, args.data);
+            saveOrders(persistentOrders);
+            return JSON.parse(JSON.stringify(it));
+          }
+        }
+      }
+      for (const ord of fallbackOrders) {
+        if (Array.isArray(ord.items)) {
+          const it = ord.items.find((i: any) => i.id === args.where?.id);
+          if (it) {
+            Object.assign(it, args.data);
+            return JSON.parse(JSON.stringify(it));
+          }
+        }
+      }
+      return args.data;
+    },
+    findMany: async (args?: any) => {
+      const orderId = args?.where?.orderId;
+      if (orderId) {
+        const order =
+          persistentOrders.find((o: any) => o.id === orderId || o.orderNumber === orderId) ||
+          fallbackOrders.find((o) => o.id === orderId);
+        if (order && Array.isArray((order as any).items)) {
+          return JSON.parse(JSON.stringify((order as any).items));
+        }
+      }
+      return [];
+    }
   },
   laundryServiceConfig: {
     findMany: async (args?: any) => {
@@ -1810,7 +1875,7 @@ const fallbackHandlers: Record<string, any> = {
     findMany: async (args?: any) => {
       let list = [...persistentReturnRequests];
       if (args?.where?.orderId) {
-        const matchedOrder = fallbackOrders.find((o: any) => o.id === args.where.orderId || o.orderNumber === args.where.orderId);
+        const matchedOrder = persistentOrders.find((o: any) => o.id === args.where.orderId || o.orderNumber === args.where.orderId);
         const validIds = [args.where.orderId, matchedOrder?.id, matchedOrder?.orderNumber].filter(Boolean);
         list = list.filter(l => validIds.includes(l.orderId));
       }
@@ -1836,80 +1901,51 @@ const fallbackHandlers: Record<string, any> = {
       const allIds = new Set<string>();
       if (args?.where?.id) {
         allIds.add(String(args.where.id));
-        allIds.add(String(args.where.id).replace(/^#+/, ''));
+        allIds.add(String(args.where.id).replace(/^(RETURN\s*#*|#+)/i, '').trim());
       }
       if (args?.where?.orderId) {
         allIds.add(String(args.where.orderId));
-        allIds.add(String(args.where.orderId).replace(/^#+/, ''));
+        allIds.add(String(args.where.orderId).replace(/^(RETURN\s*#*|#+)/i, '').trim());
       }
       if (Array.isArray(orList)) {
         for (const cond of orList) {
           if (cond.id) {
             allIds.add(String(cond.id));
-            allIds.add(String(cond.id).replace(/^#+/, ''));
+            allIds.add(String(cond.id).replace(/^(RETURN\s*#*|#+)/i, '').trim());
           }
           if (cond.orderId) {
             allIds.add(String(cond.orderId));
-            allIds.add(String(cond.orderId).replace(/^#+/, ''));
+            allIds.add(String(cond.orderId).replace(/^(RETURN\s*#*|#+)/i, '').trim());
           }
         }
       }
 
       const idArray = Array.from(allIds).filter(Boolean);
-      const matchedOrder = fallbackOrders.find((o: any) => idArray.includes(o.id) || idArray.includes(o.orderNumber));
+      const matchedOrder = persistentOrders.find((o: any) => idArray.includes(o.id) || idArray.includes(o.orderNumber));
       if (matchedOrder?.id) idArray.push(matchedOrder.id);
       if (matchedOrder?.orderNumber) idArray.push(matchedOrder.orderNumber);
 
-      const r = persistentReturnRequests.find(item => 
-        idArray.includes(item.id) || 
-        idArray.includes(item.id.replace(/^#+/, '')) ||
-        idArray.includes(item.orderId) ||
-        (item.orderId && idArray.includes(item.orderId.replace(/^#+/, '')))
-      );
+      const r = persistentReturnRequests.find(item => {
+        const itemCleanId = String(item.id || '').replace(/^#+/, '').trim();
+        const itemCleanOrdId = String(item.orderId || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+        const itemOrderNum = String(item.order?.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+        return (
+          idArray.includes(item.id) ||
+          idArray.includes(itemCleanId) ||
+          idArray.includes(item.orderId) ||
+          idArray.includes(itemCleanOrdId) ||
+          (itemOrderNum && idArray.includes(itemOrderNum))
+        );
+      });
       if (!r) return null;
       return JSON.parse(JSON.stringify(enrichFallbackReturn(r)));
     },
     findUnique: async (args: any) => {
-      const orList = args?.where?.OR;
-      const allIds = new Set<string>();
-      if (args?.where?.id) {
-        allIds.add(String(args.where.id));
-        allIds.add(String(args.where.id).replace(/^#+/, ''));
-      }
-      if (args?.where?.orderId) {
-        allIds.add(String(args.where.orderId));
-        allIds.add(String(args.where.orderId).replace(/^#+/, ''));
-      }
-      if (Array.isArray(orList)) {
-        for (const cond of orList) {
-          if (cond.id) {
-            allIds.add(String(cond.id));
-            allIds.add(String(cond.id).replace(/^#+/, ''));
-          }
-          if (cond.orderId) {
-            allIds.add(String(cond.orderId));
-            allIds.add(String(cond.orderId).replace(/^#+/, ''));
-          }
-        }
-      }
-
-      const idArray = Array.from(allIds).filter(Boolean);
-      const matchedOrder = fallbackOrders.find((o: any) => idArray.includes(o.id) || idArray.includes(o.orderNumber));
-      if (matchedOrder?.id) idArray.push(matchedOrder.id);
-      if (matchedOrder?.orderNumber) idArray.push(matchedOrder.orderNumber);
-
-      const r = persistentReturnRequests.find(c => 
-        idArray.includes(c.id) || 
-        idArray.includes(c.id.replace(/^#+/, '')) ||
-        idArray.includes(c.orderId) ||
-        (c.orderId && idArray.includes(c.orderId.replace(/^#+/, '')))
-      );
-      if (!r) return null;
-      return JSON.parse(JSON.stringify(enrichFallbackReturn(r)));
+      return fallbackHandlers.returnRequest.findFirst(args);
     },
     create: async (args: any) => {
       const deliveryFee = args.data.deliveryFeeDeducted !== undefined ? args.data.deliveryFeeDeducted : (args.data.deliveryChargeDeducted || 0);
-      const matchedOrder = fallbackOrders.find((o: any) => o.id === args.data.orderId || o.orderNumber === args.data.orderId);
+      const matchedOrder = persistentOrders.find((o: any) => o.id === args.data.orderId || o.orderNumber === args.data.orderId);
       const rr = {
         id: `ret_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
         createdAt: new Date(),
@@ -1930,59 +1966,84 @@ const fallbackHandlers: Record<string, any> = {
       const allIds = new Set<string>();
       if (args?.where?.id) {
         allIds.add(String(args.where.id));
-        allIds.add(String(args.where.id).replace(/^#+/, ''));
+        allIds.add(String(args.where.id).replace(/^(RETURN\s*#*|#+)/i, '').trim());
       }
       if (args?.where?.orderId) {
         allIds.add(String(args.where.orderId));
-        allIds.add(String(args.where.orderId).replace(/^#+/, ''));
+        allIds.add(String(args.where.orderId).replace(/^(RETURN\s*#*|#+)/i, '').trim());
       }
       if (Array.isArray(orList)) {
         for (const cond of orList) {
           if (cond.id) {
             allIds.add(String(cond.id));
-            allIds.add(String(cond.id).replace(/^#+/, ''));
+            allIds.add(String(cond.id).replace(/^(RETURN\s*#*|#+)/i, '').trim());
           }
           if (cond.orderId) {
             allIds.add(String(cond.orderId));
-            allIds.add(String(cond.orderId).replace(/^#+/, ''));
+            allIds.add(String(cond.orderId).replace(/^(RETURN\s*#*|#+)/i, '').trim());
           }
         }
       }
 
       const idArray = Array.from(allIds).filter(Boolean);
-      const matchedOrder = fallbackOrders.find((o: any) => idArray.includes(o.id) || idArray.includes(o.orderNumber));
+      const matchedOrder = persistentOrders.find((o: any) => idArray.includes(o.id) || idArray.includes(o.orderNumber));
       if (matchedOrder?.id) idArray.push(matchedOrder.id);
       if (matchedOrder?.orderNumber) idArray.push(matchedOrder.orderNumber);
 
-      const r = persistentReturnRequests.find(item => 
-        idArray.includes(item.id) || 
-        idArray.includes(item.id.replace(/^#+/, '')) ||
-        idArray.includes(item.orderId) ||
-        (item.orderId && idArray.includes(item.orderId.replace(/^#+/, '')))
-      );
-      if (r) {
-        Object.assign(r, { ...args.data, updatedAt: new Date() });
-        if (args.data.pickupOtp) {
-          r.pickupOtp = args.data.pickupOtp;
-          r.otp = args.data.pickupOtp;
-        }
-        if (args.data.deliveryFeeDeducted !== undefined) {
-          r.deliveryChargeDeducted = args.data.deliveryFeeDeducted;
-        }
-        if (args.data.status === 'PICKED_UP' || args.data.pickupOtpVerified) {
-          r.pickupOtpVerified = true;
-          r.status = 'PICKED_UP';
-        }
-        const matchedOrd: any = fallbackOrders.find((o: any) => o.id === r.orderId || o.orderNumber === r.orderId);
-        if (matchedOrd) {
-          if (args.data.status) matchedOrd.refundStatus = args.data.status;
-          if (args.data.pickupOtp) matchedOrd.returnPickupOtp = args.data.pickupOtp;
-          if (args.data.status === 'PICKED_UP' || args.data.pickupOtpVerified) matchedOrd.refundStatus = 'PICKED_UP';
-        }
-        saveReturnRequests(persistentReturnRequests);
-        return JSON.parse(JSON.stringify(enrichFallbackReturn(r)));
+      let r = persistentReturnRequests.find(item => {
+        const itemCleanId = String(item.id || '').replace(/^#+/, '').trim();
+        const itemCleanOrdId = String(item.orderId || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+        const itemOrderNum = String(item.order?.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+        return (
+          idArray.includes(item.id) ||
+          idArray.includes(itemCleanId) ||
+          idArray.includes(item.orderId) ||
+          idArray.includes(itemCleanOrdId) ||
+          (itemOrderNum && idArray.includes(itemOrderNum))
+        );
+      });
+
+      if (!r) {
+        // Synthesize return request if updating non-existent return directly
+        const firstId = idArray[0] || `ord_${Date.now()}`;
+        r = {
+          id: `ret_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
+          orderId: matchedOrder?.id || firstId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          deliveryBoyPayout: 15,
+          refundAmount: 50,
+          status: 'REQUESTED'
+        };
+        persistentReturnRequests.unshift(r);
       }
-      return args.data;
+
+      Object.assign(r, { ...args.data, updatedAt: new Date() });
+      if (args.data.pickupOtp) {
+        r.pickupOtp = args.data.pickupOtp;
+        r.otp = args.data.pickupOtp;
+      }
+      if (args.data.deliveryFeeDeducted !== undefined) {
+        r.deliveryChargeDeducted = args.data.deliveryFeeDeducted;
+      }
+      if (args.data.status === 'PICKED_UP' || args.data.pickupOtpVerified) {
+        r.pickupOtpVerified = true;
+        r.status = 'PICKED_UP';
+        r.pickupOtpVerifiedAt = new Date();
+      }
+
+      const matchedOrd: any = persistentOrders.find((o: any) => o.id === r.orderId || o.orderNumber === r.orderId);
+      if (matchedOrd) {
+        if (args.data.status) matchedOrd.refundStatus = args.data.status;
+        if (args.data.pickupOtp) matchedOrd.returnPickupOtp = args.data.pickupOtp;
+        if (args.data.status === 'PICKED_UP' || args.data.pickupOtpVerified) {
+          matchedOrd.refundStatus = 'PICKED_UP';
+          matchedOrd.returnPickupOtpVerified = true;
+        }
+        saveOrders(persistentOrders);
+      }
+      saveReturnRequests(persistentReturnRequests);
+      return JSON.parse(JSON.stringify(enrichFallbackReturn(r)));
     },
     upsert: async (args: any) => {
       const matchedOrder = fallbackOrders.find((o: any) => o.id === args.where.orderId || o.orderNumber === args.where.orderId);

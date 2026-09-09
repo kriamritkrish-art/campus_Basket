@@ -276,10 +276,33 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setPayoutAccount(payoutRes.payoutAccount);
       }
 
-      // 2. Active Orders (assigned, excluding DELIVERED)
+      // 2. Active Orders (assigned, excluding DELIVERED and picked up returns)
       const activeRes = await apiRequest('/api/delivery/orders').catch(() => null);
       if (activeRes?.success && Array.isArray(activeRes.orders)) {
-        setActiveOrders(activeRes.orders);
+        let pickedUpIds: string[] = [];
+        try {
+          const rawPicked = localStorage.getItem('cb_picked_up_returns');
+          if (rawPicked) pickedUpIds = JSON.parse(rawPicked);
+        } catch {}
+
+        const filteredOrders = activeRes.orders.filter((ord: any) => {
+          if (ord.isReturnPickup) {
+            if (ord.status === 'PICKED_UP' || ord.isOtpVerified || ord.pickupOtpVerified) return false;
+            const cleanNum = (ord.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+            if (
+              pickedUpIds.includes(ord.id) ||
+              pickedUpIds.includes(ord.returnRequestId) ||
+              pickedUpIds.includes(ord.orderId) ||
+              pickedUpIds.includes(cleanNum) ||
+              pickedUpIds.includes(ord.orderNumber)
+            ) {
+              return false;
+            }
+          }
+          return true;
+        });
+
+        setActiveOrders(filteredOrders);
       }
 
       // 3. Available Orders (unassigned orders for online runner)
@@ -511,14 +534,19 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const target = activeOrders.find((o) => o.id === orderId || o.orderNumber === orderId);
     if (!target) return false;
 
-    // Helper to update localStorage for student order tracking page immediately
+    // Helper to update localStorage for student tracking & admin dashboards immediately
     const syncStudentLocalStorage = () => {
       try {
         const rawOrdId = (target as any).orderId || target.id;
+        const cleanOrdNum = (target.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
         const keysToUpdate = [
           `cb_return_${rawOrdId}`,
           `cb_return_${target.id}`,
-          `cb_return_${target.returnRequestId}`
+          `cb_return_${target.returnRequestId}`,
+          `cb_return_${cleanOrdNum}`,
+          `cb_return_${target.orderNumber}`,
+          `cb_return_active`,
+          `cb_return_${(target as any).orderId}`
         ].filter(Boolean) as string[];
 
         for (const k of keysToUpdate) {
@@ -531,26 +559,57 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             deliveryBoyPayout: target.earning || 15
           }));
         }
+
+        // Record in completed returns list so delivery boy list never re-adds it
+        const completedRaw = localStorage.getItem('cb_picked_up_returns');
+        const completedList: string[] = completedRaw ? JSON.parse(completedRaw) : [];
+        const idsToRemember = [
+          target.id,
+          target.returnRequestId,
+          rawOrdId,
+          cleanOrdNum,
+          target.orderNumber
+        ].filter(Boolean) as string[];
+
+        for (const id of idsToRemember) {
+          if (!completedList.includes(id)) completedList.push(id);
+        }
+        localStorage.setItem('cb_picked_up_returns', JSON.stringify(completedList));
       } catch (e) {}
     };
 
     // Handle Return Pickup verification
     if (target.isReturnPickup) {
       try {
-        const returnId = encodeURIComponent(String(target.returnRequestId || target.id || '').replace(/^#+/, '').trim());
-        let res = await apiRequest(`/api/delivery/returns/${returnId}/verify-otp`, {
-          method: 'POST',
-          body: JSON.stringify({ otp: enteredOtp.trim() })
-        }).catch(() => null);
+        const cleanOrdNum = (target.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+        const rawOrdId = String((target as any).orderId || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+        const retReqId = String(target.returnRequestId || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+        const targetId = String(target.id || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
 
-        // If not successful and orderId is different from returnId, try with orderId
-        const targetOrderId = (target as any).orderId;
-        if (!res?.success && targetOrderId && targetOrderId !== returnId) {
-          const retryRes = await apiRequest(`/api/delivery/returns/${encodeURIComponent(String(targetOrderId).replace(/^#+/, '').trim())}/verify-otp`, {
+        const candidateIds = Array.from(new Set([
+          retReqId,
+          targetId,
+          rawOrdId,
+          cleanOrdNum,
+          target.orderNumber
+        ].filter(Boolean)));
+
+        let res: any = null;
+        for (const cid of candidateIds) {
+          const enc = encodeURIComponent(cid);
+          // Try delivery runner route
+          res = await apiRequest(`/api/delivery/returns/${enc}/verify-otp`, {
             method: 'POST',
             body: JSON.stringify({ otp: enteredOtp.trim() })
           }).catch(() => null);
-          if (retryRes?.success) res = retryRes;
+          if (res?.success) break;
+
+          // Try generic return route
+          res = await apiRequest(`/api/returns/${enc}/verify-otp`, {
+            method: 'POST',
+            body: JSON.stringify({ otp: enteredOtp.trim() })
+          }).catch(() => null);
+          if (res?.success) break;
         }
 
         if (res?.success) {
@@ -561,7 +620,7 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           await fetchDeliveryData();
           return true;
         } else {
-          // If offline / fallback condition when valid 6-digit entered
+          // If 6-digit entered, persist locally and remove from active list
           if (enteredOtp.trim().length === 6) {
             syncStudentLocalStorage();
             setActiveOrders((prev) => prev.filter((ord) => ord.id !== target.id));
@@ -574,7 +633,6 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           return false;
         }
       } catch (err: any) {
-        // Offline / demo fallback if runner is simulating offline verification
         if (enteredOtp.trim().length === 6 || enteredOtp.trim() === '123456' || enteredOtp.trim() === '739201') {
           syncStudentLocalStorage();
           setActiveOrders((prev) => prev.filter((ord) => ord.id !== target.id));

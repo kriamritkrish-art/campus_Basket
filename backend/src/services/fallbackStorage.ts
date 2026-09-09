@@ -77,3 +77,70 @@ export function saveReturnRequests(list: any[]): void {
   }
 }
 
+function getOrderCandidatePaths(): string[] {
+  return [
+    path.resolve(__dirname, 'mock_orders.json'),
+    path.resolve(__dirname, '../../src/services/mock_orders.json'),
+    path.resolve(process.cwd(), 'src/services/mock_orders.json'),
+    path.resolve(process.cwd(), 'dist/services/mock_orders.json'),
+    path.resolve(process.cwd(), 'mock_orders.json'),
+    path.resolve('/tmp', 'cb_mock_orders.json'),
+  ];
+}
+
+export function loadSavedOrders(initialList: any[]): any[] {
+  const candidatePaths = getOrderCandidatePaths();
+
+  for (const storagePath of candidatePaths) {
+    try {
+      if (fs.existsSync(storagePath)) {
+        const data = fs.readFileSync(storagePath, 'utf8');
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const idMap = new Map<string, any>();
+          for (const item of initialList) {
+            idMap.set(item.id, item);
+            if (item.orderNumber) idMap.set(`num_${item.orderNumber}`, item);
+          }
+          for (const item of parsed) {
+            idMap.set(item.id, item);
+            if (item.orderNumber) idMap.set(`num_${item.orderNumber}`, item);
+          }
+          const uniqueItems = Array.from(new Set(parsed.map((p: any) => p.id)))
+            .map((id: string) => idMap.get(id))
+            .filter(Boolean);
+
+          for (const item of initialList) {
+            if (!uniqueItems.some((u: any) => u.id === item.id || (u.orderNumber && u.orderNumber === item.orderNumber))) {
+              uniqueItems.push(item);
+            }
+          }
+          return uniqueItems;
+        }
+      }
+    } catch (err) {
+      // Continue to next candidate
+    }
+  }
+
+  return [...initialList];
+}
+
+export function saveOrders(list: any[]): void {
+  const candidatePaths = getOrderCandidatePaths();
+  const jsonStr = JSON.stringify(list, null, 2);
+
+  for (const storagePath of candidatePaths) {
+    try {
+      const dir = path.dirname(storagePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(storagePath, jsonStr, 'utf8');
+    } catch {
+      // Best-effort write across available locations
+    }
+  }
+}
+
+

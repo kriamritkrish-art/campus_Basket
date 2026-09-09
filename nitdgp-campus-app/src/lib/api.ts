@@ -41,7 +41,9 @@ export async function apiRequest<T = any>(
   const base = getApiBase();
   const url = endpoint.startsWith('http') ? endpoint : `${base}${endpoint}`;
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
+  const token = typeof window !== 'undefined'
+    ? (localStorage.getItem('nit_token') || localStorage.getItem('token') || localStorage.getItem('cb_token'))
+    : null;
   const coordsStr = typeof window !== 'undefined' ? localStorage.getItem('nit_student_coords') : null;
 
   const headers: Record<string, string> = {

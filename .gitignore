@@ -59,3 +59,10 @@ storage_uploads/
 # Prisma generated
 prisma/generated/
 backend/prisma/generated/
+
+# Mock data runtime files
+mock_orders.json
+mock_return_requests.json
+backend/mock_orders.json
+backend/mock_return_requests.json
+backend/src/services/mock_orders.json
