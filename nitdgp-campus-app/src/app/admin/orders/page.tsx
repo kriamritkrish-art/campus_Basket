@@ -136,9 +136,31 @@ export default function AdminOrdersPage() {
       const res = await apiRequest('/api/returns');
       let returnsList = (res.success && Array.isArray(res.returns)) ? [...res.returns] : [];
 
-      // Also merge any locally tracked returns from localStorage
+      // Also merge and sync any locally tracked returns from localStorage
       if (typeof window !== 'undefined') {
         try {
+          let pickedUpIds: string[] = [];
+          try {
+            const raw = localStorage.getItem('cb_picked_up_returns');
+            if (raw) pickedUpIds = JSON.parse(raw);
+          } catch {}
+
+          for (const r of returnsList) {
+            const cleanOrd = String(r.orderId || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+            const cleanNum = String(r.order?.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+            if (
+              pickedUpIds.includes(r.id) ||
+              pickedUpIds.includes(r.orderId) ||
+              pickedUpIds.includes(cleanOrd) ||
+              pickedUpIds.includes(cleanNum)
+            ) {
+              if (r.status !== 'REFUNDED' && r.status !== 'COMPLETED') {
+                r.status = 'PICKED_UP';
+                r.pickupOtpVerified = true;
+              }
+            }
+          }
+
           for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key && key.startsWith('cb_return_')) {
@@ -146,13 +168,20 @@ export default function AdminOrdersPage() {
               if (itemStr) {
                 const item = JSON.parse(itemStr);
                 if (item && (item.id || item.orderId)) {
-                  const exists = returnsList.some((r: any) => 
+                  const existing = returnsList.find((r: any) => 
                     r.id === item.id || 
                     (item.orderId && r.orderId === item.orderId) ||
                     (item.orderNumber && r.order?.orderNumber === item.orderNumber)
                   );
-                  if (!exists) {
+                  if (!existing) {
                     returnsList.unshift(item);
+                  } else {
+                    if (item.status === 'PICKED_UP' || item.pickupOtpVerified) {
+                      if (existing.status !== 'REFUNDED' && existing.status !== 'COMPLETED') {
+                        existing.status = 'PICKED_UP';
+                        existing.pickupOtpVerified = true;
+                      }
+                    }
                   }
                 }
               }
@@ -248,7 +277,25 @@ export default function AdminOrdersPage() {
 
   const handleDisburseRefund = async () => {
     if (!selectedReturn) return;
-    const isPickedUp = selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP';
+    let pickedUpIds: string[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('cb_picked_up_returns');
+        if (raw) pickedUpIds = JSON.parse(raw);
+      } catch {}
+    }
+    const cleanOrdId = String(selectedReturn.orderId || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+    const isMarkedInStorage =
+      pickedUpIds.includes(selectedReturn.id) ||
+      pickedUpIds.includes(selectedReturn.orderId) ||
+      pickedUpIds.includes(cleanOrdId);
+
+    const isPickedUp =
+      selectedReturn.status === 'PICKED_UP' ||
+      selectedReturn.status === 'PROCESSING' ||
+      Boolean(selectedReturn.pickupOtpVerified) ||
+      selectedReturn.order?.refundStatus === 'PICKED_UP' ||
+      isMarkedInStorage;
     if (!isPickedUp) {
       alert('Cannot disburse refund yet: Product pickup must be completed and verified via 6-digit OTP first.');
       return;

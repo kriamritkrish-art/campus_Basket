@@ -148,8 +148,38 @@ export default function OrderTrackClient() {
   const [returnRequest, setReturnRequest] = useState<any>(() => {
     if (typeof window !== 'undefined' && orderId) {
       try {
-        const saved = localStorage.getItem(`cb_return_${orderId}`);
-        if (saved) return JSON.parse(saved);
+        const cleanId = String(orderId).replace(/^(RETURN\s*#*|#+)/i, '').trim();
+        const candidateKeys = [
+          `cb_return_${orderId}`,
+          `cb_return_${cleanId}`,
+          `cb_return_#${cleanId}`,
+          `cb_return_active`
+        ];
+        let found: any = null;
+        for (const k of candidateKeys) {
+          const saved = localStorage.getItem(k);
+          if (saved) {
+            found = JSON.parse(saved);
+            break;
+          }
+        }
+        if (found) {
+          let pickedUpIds: string[] = [];
+          try {
+            const raw = localStorage.getItem('cb_picked_up_returns');
+            if (raw) pickedUpIds = JSON.parse(raw);
+          } catch {}
+          if (
+            pickedUpIds.includes(orderId) ||
+            pickedUpIds.includes(cleanId) ||
+            pickedUpIds.includes(found.id) ||
+            pickedUpIds.includes(found.orderId)
+          ) {
+            found.status = found.status === 'REFUNDED' ? 'REFUNDED' : 'PICKED_UP';
+            found.pickupOtpVerified = true;
+          }
+          return found;
+        }
       } catch {}
     }
     return null;
@@ -170,43 +200,69 @@ export default function OrderTrackClient() {
 
   const fetchOrder = async () => {
     try {
-      const [orderRes, returnRes] = await Promise.all([
-        apiRequest(`/api/orders/${orderId}`),
-        apiRequest(`/api/orders/${orderId}/return`).catch(() => null)
+      const cleanId = String(orderId).replace(/^(RETURN\s*#*|#+)/i, '').trim();
+      const [orderRes, returnRes, directReturnRes] = await Promise.all([
+        apiRequest(`/api/orders/${encodeURIComponent(orderId)}`).catch(() => null),
+        apiRequest(`/api/orders/${encodeURIComponent(orderId)}/return`).catch(() => null),
+        apiRequest(`/api/returns/${encodeURIComponent(cleanId)}`).catch(() => null)
       ]);
 
-      if (orderRes.success && orderRes.order) {
-        setOrder(orderRes.order);
-        setNewRoomNumber(orderRes.order.roomNumber || '');
-        setNewInstructions(orderRes.order.specialInstructions || '');
+      let resolvedOrder = orderRes?.success && orderRes.order ? orderRes.order : null;
+      let resolvedReturn =
+        returnRes?.returnRequest ||
+        directReturnRes?.returnRequest ||
+        resolvedOrder?.returnRequest;
 
-        if (orderRes.order.returnRequest) {
-          setReturnRequest(orderRes.order.returnRequest);
-          if (typeof window !== 'undefined') {
-            try {
-              localStorage.setItem(`cb_return_${orderId}`, JSON.stringify(orderRes.order.returnRequest));
-              if (orderRes.order.id) localStorage.setItem(`cb_return_${orderRes.order.id}`, JSON.stringify(orderRes.order.returnRequest));
-              if (orderRes.order.orderNumber) localStorage.setItem(`cb_return_${orderRes.order.orderNumber}`, JSON.stringify(orderRes.order.returnRequest));
-            } catch {}
+      // Check if runner marked it as picked up in localStorage
+      if (typeof window !== 'undefined') {
+        let pickedUpIds: string[] = [];
+        try {
+          const raw = localStorage.getItem('cb_picked_up_returns');
+          if (raw) pickedUpIds = JSON.parse(raw);
+        } catch {}
+
+        const isMarkedPickedUp =
+          pickedUpIds.includes(orderId) ||
+          pickedUpIds.includes(cleanId) ||
+          (resolvedReturn && (pickedUpIds.includes(resolvedReturn.id) || pickedUpIds.includes(resolvedReturn.orderId)));
+
+        if (isMarkedPickedUp) {
+          if (resolvedReturn) {
+            resolvedReturn.status = resolvedReturn.status === 'REFUNDED' ? 'REFUNDED' : 'PICKED_UP';
+            resolvedReturn.pickupOtpVerified = true;
+          }
+          if (resolvedOrder) {
+            resolvedOrder.refundStatus = resolvedOrder.refundStatus === 'REFUNDED' ? 'REFUNDED' : 'PICKED_UP';
+            resolvedOrder.returnPickupOtpVerified = true;
           }
         }
-      } else {
-        setError(orderRes.message || 'Order not found');
       }
 
-      const resolvedReturn = returnRes?.returnRequest || orderRes?.order?.returnRequest;
+      if (resolvedOrder) {
+        setOrder(resolvedOrder);
+        setNewRoomNumber(resolvedOrder.roomNumber || '');
+        setNewInstructions(resolvedOrder.specialInstructions || '');
+      }
+
       if (resolvedReturn) {
         setReturnRequest(resolvedReturn);
         if (typeof window !== 'undefined') {
           try {
-            localStorage.setItem(`cb_return_${orderId}`, JSON.stringify(resolvedReturn));
-            if (orderRes?.order?.id) localStorage.setItem(`cb_return_${orderRes.order.id}`, JSON.stringify(resolvedReturn));
-            if (orderRes?.order?.orderNumber) localStorage.setItem(`cb_return_${orderRes.order.orderNumber}`, JSON.stringify(resolvedReturn));
+            const keys = [
+              `cb_return_${orderId}`,
+              `cb_return_${cleanId}`,
+              `cb_return_active`,
+              resolvedOrder?.id ? `cb_return_${resolvedOrder.id}` : null,
+              resolvedOrder?.orderNumber ? `cb_return_${resolvedOrder.orderNumber}` : null
+            ].filter(Boolean) as string[];
+            for (const k of keys) {
+              localStorage.setItem(k, JSON.stringify(resolvedReturn));
+            }
           } catch {}
         }
       }
     } catch (err: any) {
-      setError(err?.message || 'Failed to load order tracking details.');
+      // Keep state on transient network error
     } finally {
       setLoading(false);
     }
@@ -215,9 +271,18 @@ export default function OrderTrackClient() {
   useEffect(() => {
     if (orderId) {
       fetchOrder();
-      // Polling every 12 seconds for real-time runner/status updates
-      const timer = setInterval(fetchOrder, 12000);
-      return () => clearInterval(timer);
+      // Polling every 4 seconds for immediate runner/status updates
+      const timer = setInterval(fetchOrder, 4000);
+
+      const handleStorageUpdate = () => fetchOrder();
+      window.addEventListener('storage', handleStorageUpdate);
+      window.addEventListener('cb_return_status_changed', handleStorageUpdate);
+
+      return () => {
+        clearInterval(timer);
+        window.removeEventListener('storage', handleStorageUpdate);
+        window.removeEventListener('cb_return_status_changed', handleStorageUpdate);
+      };
     }
   }, [orderId]);
 
@@ -629,6 +694,26 @@ export default function OrderTrackClient() {
   // Current Status Headline & Explanation
   const getStatusBanner = () => {
     if (currentReturn && currentReturn.status !== 'REJECTED') {
+      let pickedUpIds: string[] = [];
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('cb_picked_up_returns');
+          if (raw) pickedUpIds = JSON.parse(raw);
+        } catch {}
+      }
+      const cleanOrdId = String(orderId || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+      const isMarkedInStorage =
+        pickedUpIds.includes(orderId) ||
+        pickedUpIds.includes(cleanOrdId) ||
+        (currentReturn && (pickedUpIds.includes(currentReturn.id) || pickedUpIds.includes(currentReturn.orderId)));
+
+      const isPickedUpState =
+        currentReturn.status === 'PICKED_UP' ||
+        currentReturn.status === 'PROCESSING' ||
+        Boolean(currentReturn.pickupOtpVerified) ||
+        (order as any)?.refundStatus === 'PICKED_UP' ||
+        isMarkedInStorage;
+
       if (currentReturn.status === 'REFUNDED' || currentReturn.status === 'COMPLETED') {
         return {
           title: 'Return Completed & Refund Disbursed',
@@ -637,7 +722,7 @@ export default function OrderTrackClient() {
           dotClass: 'bg-emerald-500'
         };
       }
-      if (currentReturn.status === 'PICKED_UP' || currentReturn.status === 'PROCESSING' || currentReturn.pickupOtpVerified || (order as any)?.refundStatus === 'PICKED_UP') {
+      if (isPickedUpState) {
         return {
           title: 'Item Picked Up — Refund Processing',
           desc: 'Product physically collected and OTP verified by campus runner. Admin is releasing your refund.',
@@ -848,7 +933,7 @@ export default function OrderTrackClient() {
                   {
                     id: 'PICKED_UP',
                     title: 'Hostel Room Pickup Verified',
-                    desc: ['PICKED_UP', 'REFUNDED', 'COMPLETED'].includes(currentReturn.status)
+                    desc: ['PICKED_UP', 'REFUNDED', 'COMPLETED'].includes(currentReturn.status) || Boolean(currentReturn.pickupOtpVerified)
                       ? 'Physical item collected and 6-digit OTP verified by runner at room door.'
                       : 'Share your 6-digit Return OTP with runner upon collection.'
                   },
@@ -857,14 +942,35 @@ export default function OrderTrackClient() {
                     title: 'Refund Disbursed to Account',
                     desc: ['REFUNDED', 'COMPLETED'].includes(currentReturn.status)
                       ? `Net refund of ₹${Number(currentReturn.refundAmount || 0).toFixed(2)} disbursed to your account.`
-                      : 'Admin releases payment directly to your account after physical pickup.'
+                      : (currentReturn.status === 'PICKED_UP' || Boolean(currentReturn.pickupOtpVerified))
+                        ? `Awaiting Admin to release refund of ₹${Number(currentReturn.refundAmount || 0).toFixed(2)} directly to your account.`
+                        : 'Admin releases payment directly to your account after physical pickup.'
                   }
                 ].map((step, idx) => {
                   const st = currentReturn.status;
-                  const isPickedUpState = st === 'PICKED_UP' || st === 'PROCESSING' || Boolean(currentReturn.pickupOtpVerified) || (order as any)?.refundStatus === 'PICKED_UP';
+                  let pickedUpIds: string[] = [];
+                  if (typeof window !== 'undefined') {
+                    try {
+                      const raw = localStorage.getItem('cb_picked_up_returns');
+                      if (raw) pickedUpIds = JSON.parse(raw);
+                    } catch {}
+                  }
+                  const cleanOrdId = String(orderId || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+                  const isMarkedInStorage =
+                    pickedUpIds.includes(orderId) ||
+                    pickedUpIds.includes(cleanOrdId) ||
+                    (currentReturn && (pickedUpIds.includes(currentReturn.id) || pickedUpIds.includes(currentReturn.orderId)));
+
+                  const isPickedUpState =
+                    st === 'PICKED_UP' ||
+                    st === 'PROCESSING' ||
+                    Boolean(currentReturn.pickupOtpVerified) ||
+                    (order as any)?.refundStatus === 'PICKED_UP' ||
+                    isMarkedInStorage;
+
                   let activeIdx = 1;
                   if (st === 'REFUNDED' || st === 'COMPLETED') activeIdx = 4;
-                  else if (isPickedUpState) activeIdx = 3;
+                  else if (isPickedUpState) activeIdx = 4;
                   else if (['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(st)) activeIdx = 2;
                   else activeIdx = 1;
 
@@ -926,8 +1032,21 @@ export default function OrderTrackClient() {
                 })}
               </div>
 
-              {/* 6-Digit Return Pickup OTP Card */}
-              {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(currentReturn.status) && !currentReturn.pickupOtpVerified && currentReturn.status !== 'PICKED_UP' && (order as any)?.refundStatus !== 'PICKED_UP' && (
+              {/* 6-Digit Return Pickup OTP Card - Hidden as soon as runner verifies OTP or pickup completes */}
+              {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(currentReturn.status) &&
+                !currentReturn.pickupOtpVerified &&
+                currentReturn.status !== 'PICKED_UP' &&
+                (order as any)?.refundStatus !== 'PICKED_UP' &&
+                !(() => {
+                  try {
+                    const cleanOrdId = String(orderId || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+                    const raw = localStorage.getItem('cb_picked_up_returns');
+                    const list = raw ? JSON.parse(raw) : [];
+                    return list.includes(orderId) || list.includes(cleanOrdId) || (currentReturn && (list.includes(currentReturn.id) || list.includes(currentReturn.orderId)));
+                  } catch {
+                    return false;
+                  }
+                })() && (
                 <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-2xl border-2 border-amber-300 space-y-2 shadow-xs">
                   <div className="flex items-center justify-between">
                     <div>

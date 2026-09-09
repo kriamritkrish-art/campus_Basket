@@ -3,7 +3,7 @@ import { prisma } from '../config/database';
 import { AuditService } from '../services/audit/AuditService';
 import { LedgerService } from '../services/financial/LedgerService';
 
-async function resolveReturnRequest(idParam: string, includeOrder: boolean = true): Promise<any> {
+export async function resolveReturnRequest(idParam: string, includeOrder: boolean = true): Promise<any> {
   if (!idParam) return null;
   const rawId = String(idParam).trim();
   const cleanId = rawId.replace(/^#+/, '').trim();

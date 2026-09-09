@@ -40,6 +40,41 @@ import { loadSavedReturnRequests, saveReturnRequests, loadSavedOrders, saveOrder
 const persistentOrders: any[] = loadSavedOrders(fallbackOrders);
 const persistentReturnRequests: any[] = loadSavedReturnRequests(fallbackReturnRequests);
 
+// Ensure any persistent return requests have a matching order in persistentOrders
+for (const ret of persistentReturnRequests) {
+  const retOrdId = String(ret.orderId || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+  const exists = persistentOrders.some((o: any) => {
+    const oId = String(o.id || '').replace(/^#+/, '').trim();
+    const oNum = String(o.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
+    return o.id === ret.orderId || o.orderNumber === ret.orderId || oId === retOrdId || oNum === retOrdId;
+  });
+  if (!exists && retOrdId) {
+    persistentOrders.unshift({
+      id: ret.orderId || `ord_${Date.now()}`,
+      orderNumber: ret.orderNumber || retOrdId,
+      studentId: ret.studentId || 'stud_sourav',
+      providerId: 'prov_canteen',
+      deliveryBoyId: ret.deliveryBoyId || 'db_boy_1',
+      serviceType: 'FOOD',
+      status: 'DELIVERED',
+      refundStatus: ret.status,
+      returnPickupOtpVerified: Boolean(ret.pickupOtpVerified),
+      totalAmount: Number(ret.refundAmount || ret.itemAmount || 50),
+      subtotal: Number(ret.refundAmount || ret.itemAmount || 50),
+      deliveryFee: 0,
+      discountAmount: 0,
+      paymentMethod: 'ONLINE',
+      paymentStatus: ret.status === 'REFUNDED' ? 'REFUNDED' : 'PAID',
+      hallName: ret.hallName || 'Hall 9',
+      roomNumber: ret.roomNumber || '123',
+      items: [],
+      statusHistory: [],
+      createdAt: ret.createdAt ? new Date(ret.createdAt) : new Date(),
+      updatedAt: new Date()
+    });
+  }
+}
+
 function enrichFallbackReturn(r: any): any {
   if (!r) return null;
   const rawOrder: any = persistentOrders.find((o: any) => {
@@ -2383,9 +2418,9 @@ export const prisma = new Proxy(rawPrisma as any, {
                   } catch (e) {}
                 }
 
-                // If mutation on returnRequest, also mirror to fallback persistent storage
+                // If mutation on returnRequest or order, also mirror to fallback persistent storage
                 if (
-                  modelName === 'returnRequest' &&
+                  (modelName === 'returnRequest' || modelName === 'order') &&
                   (methodKey === 'create' || methodKey === 'update' || methodKey === 'upsert') &&
                   typeof fallbackModel[methodKey] === 'function'
                 ) {
