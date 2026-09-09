@@ -781,12 +781,17 @@ export class OrderController {
       }).catch(() => null);
 
       // Include returnRequest if exists
+      const cleanId = id.replace(/^#+/, '').trim();
+      const cleanOrderNumber = (order.orderNumber || '').replace(/^#+/, '').trim();
       const returnReq = await (prisma as any).returnRequest.findFirst({
         where: {
           OR: [
             { orderId: order.id },
             { orderId: order.orderNumber },
-            { orderId: id }
+            { orderId: cleanOrderNumber },
+            { orderId: id },
+            { orderId: cleanId },
+            { orderId: `#${cleanId}` }
           ]
         },
         include: {
@@ -805,6 +810,7 @@ export class OrderController {
         success: true,
         order: {
           ...order,
+          refundStatus: returnReq?.status || order.refundStatus,
           deliveryOtp: order.status === 'DELIVERED' || (order as any).deliveryOtpVerified ? null : customerOtp,
           deliveryOtpVerified: (order as any).deliveryOtpVerified || false,
           deliveredAt: (order as any).deliveredAt || null,
@@ -819,6 +825,7 @@ export class OrderController {
           canReturn: returnCheck.eligible,
           returnMessage: returnCheck.reason || null,
           returnRequest: returnReq || (order as any).returnRequest || null,
+          returnPickupOtp: returnReq?.pickupOtp || null,
           codPaidAdvance,
           codRemainingCash,
           refundAccount: refundAccount || null,
@@ -1126,20 +1133,24 @@ export class OrderController {
   public static async getOrderReturn(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
+      const cleanId = id.replace(/^#+/, '').trim();
       const order = await prisma.order.findFirst({
         where: {
-          OR: [{ id }, { orderNumber: id }]
+          OR: [{ id }, { id: cleanId }, { orderNumber: id }, { orderNumber: cleanId }]
         },
         select: { id: true, orderNumber: true }
       });
 
-      const targetOrderId = order?.id || id;
+      const targetOrderId = order?.id || cleanId || id;
+      const cleanOrderNumber = (order?.orderNumber || '').replace(/^#+/, '').trim();
       const returnRequest = await (prisma as any).returnRequest.findFirst({
         where: {
           OR: [
             { orderId: targetOrderId },
             { orderId: id },
-            ...(order?.orderNumber ? [{ orderId: order.orderNumber }] : [])
+            { orderId: cleanId },
+            { orderId: `#${cleanId}` },
+            ...(cleanOrderNumber ? [{ orderId: cleanOrderNumber }, { orderId: `#${cleanOrderNumber}` }] : [])
           ]
         },
         include: {

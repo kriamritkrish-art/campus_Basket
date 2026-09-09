@@ -191,7 +191,20 @@ export default function AdminOrdersPage() {
         body: JSON.stringify({ deliveryBoyId: returnAssignBoyId || undefined })
       });
       if (res.success) {
-        alert('Return request approved successfully! 6-digit pickup OTP generated.');
+        if (typeof window !== 'undefined' && res.returnRequest) {
+          try {
+            const rawId = String(selectedReturn.id || selectedReturn.orderId || '').replace(/^#+/, '');
+            localStorage.setItem(`cb_return_${rawId}`, JSON.stringify(res.returnRequest));
+            localStorage.setItem('cb_return_active', JSON.stringify(res.returnRequest));
+            if (res.returnRequest.orderId) {
+              localStorage.setItem(`cb_return_${res.returnRequest.orderId}`, JSON.stringify(res.returnRequest));
+            }
+          } catch {}
+        }
+        alert(returnAssignBoyId
+          ? 'Return request approved and assigned directly to selected runner!'
+          : 'Return request approved and broadcasted to all online delivery runners to accept!'
+        );
         setReviewModalOpen(false);
         fetchReturnRequests();
         fetchOrders();
@@ -721,7 +734,7 @@ export default function AdminOrdersPage() {
                       <th className="px-5 py-3.5">Student / Room</th>
                       <th className="px-5 py-3.5">Reason Type</th>
                       <th className="px-5 py-3.5">Refund Calculation</th>
-                      <th className="px-5 py-3.5">Status &amp; OTP</th>
+                      <th className="px-5 py-3.5">Status</th>
                       <th className="px-5 py-3.5">Assigned Runner</th>
                       <th className="px-5 py-3.5 text-right">Review Action</th>
                     </tr>
@@ -777,11 +790,6 @@ export default function AdminOrdersPage() {
                           >
                             {ret.status}
                           </span>
-                          {ret.pickupOtp && (
-                            <div className="text-[11px] font-mono font-bold text-slate-700 mt-1">
-                              OTP: <span className="text-emerald-700">{ret.pickupOtp}</span>
-                            </div>
-                          )}
                         </td>
 
                         <td className="px-5 py-4">
@@ -1249,26 +1257,31 @@ export default function AdminOrdersPage() {
             ) : selectedReturn.status === 'REQUESTED' && (
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
-                  Assign Delivery Runner for Return Pickup
+                  Delivery Runner Assignment (Choose Specific or Broadcast)
                 </label>
                 <select
                   value={returnAssignBoyId}
                   onChange={(e) => setReturnAssignBoyId(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-semibold text-slate-800 focus:outline-none focus:border-rose-500"
                 >
-                  <option value="">-- Select Runner to Visit Hostel Room --</option>
+                  <option value="">📢 Broadcast to All Runners (Available for any online delivery boy to accept)</option>
                   {deliveryBoys.map((boy) => (
                     <option key={boy.id} value={boy.id}>
-                      {boy.fullName} ({boy.user?.username || boy.phone || 'Runner'}) {boy.status === 'ACTIVE' || boy.activeStatus ? '🟢 (Online)' : '⚪ (Offline)'}
+                      Directly Assign to: {boy.fullName} ({boy.user?.username || boy.phone || 'Runner'}) {boy.status === 'ACTIVE' || boy.activeStatus ? '🟢 (Online)' : '⚪ (Offline)'}
                     </option>
                   ))}
                   {deliveryBoys.length === 0 && (
                     <>
-                      <option value="db_bikash">Bikash Delivery (Runner)</option>
-                      <option value="db_boy_1">Campus Express Runner #1</option>
+                      <option value="db_bikash">Directly Assign to: Bikash Delivery (Runner)</option>
+                      <option value="db_boy_1">Directly Assign to: Campus Express Runner #1</option>
                     </>
                   )}
                 </select>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {returnAssignBoyId
+                    ? 'Selected runner will be exclusively assigned to pick up this return.'
+                    : 'This return pickup task will be available in the Delivery Boy portal for any active online runner to accept.'}
+                </p>
               </div>
             )}
 
@@ -1349,7 +1362,7 @@ export default function AdminOrdersPage() {
                     className="px-4 py-2 bg-[#4F9D32] hover:bg-[#347A27] text-white rounded-xl font-bold shadow-sm transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                   >
                     <Check className="w-4 h-4" />
-                    <span>{processingReturn ? 'Processing...' : 'Accept Return & Assign Runner'}</span>
+                    <span>{processingReturn ? 'Processing...' : (returnAssignBoyId ? 'Accept Return & Assign Runner' : 'Accept Return & Broadcast to All Runners')}</span>
                   </button>
                 )}
 

@@ -176,14 +176,15 @@ export class ReturnController {
 
       // Generate 6-digit OTP
       const pickupOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      const newStatus = deliveryBoyId ? 'PICKUP_ASSIGNED' : 'APPROVED';
+      const isDirectAssign = Boolean(deliveryBoyId && deliveryBoyId !== 'broadcast' && String(deliveryBoyId).trim() !== '');
+      const newStatus = isDirectAssign ? 'PICKUP_ASSIGNED' : 'APPROVED';
 
       const updated = await (prisma as any).returnRequest.update({
         where: { id: returnRequest.id },
         data: {
           status: newStatus,
           pickupOtp,
-          deliveryBoyId: deliveryBoyId || returnRequest.deliveryBoyId || null,
+          deliveryBoyId: isDirectAssign ? deliveryBoyId : null,
           reviewedBy: req.user?.email || 'ADMIN',
           reviewedAt: new Date(),
           adminNotes: adminNotes || returnRequest.adminNotes || 'Approved by Campus Administrator'
@@ -206,7 +207,7 @@ export class ReturnController {
                 previousStatus: returnRequest.order?.status || 'DELIVERED',
                 newStatus: returnRequest.order?.status || 'DELIVERED',
                 changedBy: req.user?.email || 'ADMIN',
-                notes: `Return request approved by Admin. 6-digit pickup OTP generated. ${deliveryBoyId ? `Runner assigned: ${updated.deliveryBoy?.fullName || deliveryBoyId}` : 'Awaiting runner assignment.'}`
+                notes: `Return request approved by Admin. 6-digit pickup OTP generated. ${isDirectAssign ? `Runner assigned: ${updated.deliveryBoy?.fullName || deliveryBoyId}` : 'Broadcasted to all online delivery runners to accept.'}`
               }
             }
           }

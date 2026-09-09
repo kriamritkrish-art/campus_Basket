@@ -228,18 +228,84 @@ export class DeliveryController {
         orderBy: { createdAt: 'desc' }
       });
 
+      // Query unassigned return pickups available for broadcast to all runners
+      const availableReturns = await (prisma as any).returnRequest.findMany({
+        where: {
+          deliveryBoyId: null,
+          status: { in: ['APPROVED', 'REQUESTED'] }
+        },
+        include: {
+          order: {
+            include: {
+              student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
+              provider: { select: { fullName: true, mobileNumber: true } },
+              items: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      }).catch(() => []);
+
+      const formattedReturns = (availableReturns || []).map((r: any) => {
+        const studentName = r.studentName || r.order?.student?.fullName || 'Campus Student';
+        const studentPhone = r.studentPhone || r.order?.student?.mobileNumber || '+91 98765 43210';
+        const studentHall = r.hallName || r.order?.hallName || 'Campus Hostel';
+        const studentRoom = r.roomNumber || r.order?.roomNumber || 'Room';
+        const studentAddress = `${studentHall} • Room ${studentRoom}`;
+        const providerName = r.order?.provider?.fullName || 'Campus Store & Return Counter';
+        const providerAddress = r.order?.provider?.fullName ? `${r.order.provider.fullName} • Store Desk` : 'Campus Mart Desk';
+        const productVal = Number(r.itemAmount || r.refundAmount || r.order?.totalAmount || 0);
+
+        return {
+          id: r.id,
+          returnRequestId: r.id,
+          orderId: r.orderId,
+          orderNumber: `RETURN #${r.order?.orderNumber || r.orderId?.substring(0, 8) || r.id.slice(-6)}`,
+          isReturnPickup: true,
+          studentName,
+          studentPhone,
+          studentAddress,
+          providerName,
+          providerAddress,
+          pickupLocation: studentAddress,
+          pickupStation: 'Student Hostel Doorstep Pickup',
+          destination: providerAddress,
+          distance: '0.6 km',
+          eta: '6–8 min',
+          earning: Number(r.deliveryBoyPayout) || 15,
+          productPrice: productVal,
+          totalAmount: productVal,
+          itemsCount: r.order?.items?.length || 1,
+          items: r.order?.items?.map((i: any) => `${i.quantity}x ${i.productName}`) || ['Return Parcel'],
+          itemsSummary: r.order?.items?.map((i: any) => `${i.quantity}x ${i.productName}`).join(', ') || 'Return Parcel',
+          urgency: 'NORMAL',
+          timeAgo: 'Just now',
+          status: 'APPROVED',
+          reasonType: r.reasonType,
+          specialInstructions: `Return Pickup. Collect item from ${studentName} at ${studentAddress}. Ask for 6-digit handover OTP. Deliver to ${providerAddress}.`
+        };
+      });
+
       const formatted = orders.map((o) => {
         const itemsSummary = o.items.map((i) => `${i.quantity}x ${i.productName}`).join(', ');
+        const studentAddress = `${o.hallName} • Room ${o.roomNumber}`;
+        const providerAddress = o.provider?.fullName ? `${o.provider.fullName} • Dispatch Counter` : 'Campus Food Court & Store';
+        const productVal = Number(o.totalAmount || 0);
         return {
           id: o.id,
           orderNumber: `#${o.orderNumber}`,
           studentName: o.student?.fullName || 'Campus Student',
           studentPhone: o.student?.mobileNumber || '+91 98765 43210',
-          pickupLocation: o.provider?.fullName || 'Campus Food Court & Store',
-          destination: `${o.hallName} • Room ${o.roomNumber}`,
+          studentAddress,
+          providerName: o.provider?.fullName || 'Campus Store',
+          providerAddress,
+          pickupLocation: providerAddress,
+          destination: studentAddress,
           distance: '0.9 km',
           eta: '10–12 min',
           earning: Math.max(30, Number(o.deliveryFee) || 35),
+          productPrice: productVal,
+          totalAmount: productVal,
           itemsCount: o.items.length,
           items: o.items.map((i) => `${i.quantity}x ${i.productName}`),
           itemsSummary,
@@ -253,7 +319,7 @@ export class DeliveryController {
       res.status(200).json({
         success: true,
         isOnline: true,
-        orders: formatted
+        orders: [...formattedReturns, ...formatted]
       });
     } catch (err) {
       next(err);
@@ -272,26 +338,48 @@ export class DeliveryController {
         return;
       }
 
-      let order = await prisma.order.findUnique({ where: { id } });
-      if (!order) {
-        // Check if id corresponds to a return request
-        const returnReq = await (prisma as any).returnRequest.findUnique({ where: { id } }).catch(() => null);
-        if (returnReq) {
-          const updatedReturn = await (prisma as any).returnRequest.update({
-            where: { id: returnReq.id },
-            data: {
-              deliveryBoyId: deliveryBoy.id,
-              status: 'PICKUP_ASSIGNED'
-            }
-          });
-          res.status(200).json({
-            success: true,
-            message: 'Return pickup task accepted successfully.',
-            returnRequest: updatedReturn
-          });
-          return;
-        }
+      const cleanId = id.replace(/^#+/, '').trim();
 
+      // Check if id corresponds to a return request
+      const returnReq = await (prisma as any).returnRequest.findFirst({
+        where: {
+          OR: [
+            { id },
+            { id: cleanId },
+            { orderId: id },
+            { orderId: cleanId }
+          ]
+        }
+      }).catch(() => null);
+
+      if (returnReq && (returnReq.status === 'APPROVED' || returnReq.status === 'REQUESTED' || !returnReq.deliveryBoyId)) {
+        const updatedReturn = await (prisma as any).returnRequest.update({
+          where: { id: returnReq.id },
+          data: {
+            deliveryBoyId: deliveryBoy.id,
+            status: 'PICKUP_ASSIGNED'
+          }
+        });
+        try {
+          await prisma.order.update({
+            where: { id: returnReq.orderId },
+            data: { refundStatus: 'APPROVED' }
+          });
+        } catch {}
+        res.status(200).json({
+          success: true,
+          message: 'Return pickup task accepted successfully.',
+          returnRequest: updatedReturn
+        });
+        return;
+      }
+
+      let order = await prisma.order.findFirst({
+        where: {
+          OR: [{ id }, { id: cleanId }, { orderNumber: id }, { orderNumber: cleanId }]
+        }
+      });
+      if (!order) {
         res.status(404).json({ success: false, message: 'Order not found' });
         return;
       }
@@ -383,47 +471,73 @@ export class DeliveryController {
         orderBy: { createdAt: 'desc' }
       }).catch(() => []);
 
-      const formatted = orders.map((o) => ({
-        id: o.id,
-        orderNumber: `#${o.orderNumber}`,
-        studentName: o.student?.fullName || 'Campus Student',
-        studentPhone: o.student?.mobileNumber || '+91 98765 43210',
-        pickupLocation: o.provider?.fullName || 'Campus Food Court & Store',
-        pickupStation: 'Express Dispatch Station #1',
-        destination: `${o.hallName} • Room ${o.roomNumber}`,
-        distance: '0.8 km',
-        eta: '8 min',
-        earning: Math.max(30, Number(o.deliveryFee) || 35),
-        status: o.status,
-        items: o.items.map((i) => `${i.quantity}x ${i.productName}`),
-        isOtpVerified: false,
-        acceptedAt: new Date(o.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        specialInstructions: o.specialInstructions || 'Call student upon hostel entry.'
-      }));
+      const formatted = orders.map((o) => {
+        const studentAddress = `${o.hallName} • Room ${o.roomNumber}`;
+        const providerAddress = o.provider?.fullName || 'Campus Food Court & Store';
+        const productVal = Number(o.totalAmount || 0);
+        return {
+          id: o.id,
+          orderNumber: `#${o.orderNumber}`,
+          studentName: o.student?.fullName || 'Campus Student',
+          studentPhone: o.student?.mobileNumber || '+91 98765 43210',
+          studentAddress,
+          providerName: providerAddress,
+          providerAddress,
+          pickupLocation: providerAddress,
+          pickupStation: 'Express Dispatch Station #1',
+          destination: studentAddress,
+          distance: '0.8 km',
+          eta: '8 min',
+          earning: Math.max(30, Number(o.deliveryFee) || 35),
+          productPrice: productVal,
+          totalAmount: productVal,
+          status: o.status,
+          items: o.items.map((i) => `${i.quantity}x ${i.productName}`),
+          isOtpVerified: false,
+          acceptedAt: new Date(o.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          specialInstructions: o.specialInstructions || 'Call student upon hostel entry.'
+        };
+      });
 
-      const returnTasks = (assignedReturns || []).map((r: any) => ({
-        id: r.id,
-        returnRequestId: r.id,
-        orderId: r.orderId,
-        isReturnPickup: true,
-        orderNumber: `RETURN #${r.order?.orderNumber || r.orderId?.substring(0, 8) || r.id.slice(-6)}`,
-        studentName: r.studentName || r.order?.student?.fullName || 'Campus Student',
-        studentPhone: r.studentPhone || r.order?.student?.mobileNumber || '+91 98765 43210',
-        pickupLocation: `${r.hallName || r.order?.hallName || 'Hostel'} • Room ${r.roomNumber || r.order?.roomNumber || ''}`,
-        pickupStation: 'Student Hostel Doorstep Pickup',
-        destination: r.order?.provider?.fullName || 'Campus Vendor / Return Desk',
-        distance: '0.5 km',
-        eta: '5 min',
-        earning: Number(r.deliveryBoyPayout) || 15.00,
-        status: 'PICKUP_ASSIGNED',
-        items: r.order?.items?.map((i: any) => `${i.quantity}x ${i.productName}`) || ['Return Package'],
-        isOtpVerified: Boolean(r.pickupOtpVerified),
-        reasonType: r.reasonType,
-        reasonDetails: r.reasonDetails,
-        proofImageUrl: r.proofImageUrl,
-        acceptedAt: new Date(r.updatedAt || r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        specialInstructions: `Return Reason: ${r.reasonType === 'PRODUCT_ISSUE' ? 'Product Defect/Issue' : 'Mind Change'}. Enter 6-digit OTP from student upon collection.`
-      }));
+      const returnTasks = (assignedReturns || []).map((r: any) => {
+        const studentName = r.studentName || r.order?.student?.fullName || 'Campus Student';
+        const studentPhone = r.studentPhone || r.order?.student?.mobileNumber || '+91 98765 43210';
+        const studentHall = r.hallName || r.order?.hallName || 'Campus Hostel';
+        const studentRoom = r.roomNumber || r.order?.roomNumber || 'Room';
+        const studentAddress = `${studentHall} • Room ${studentRoom}`;
+        const providerName = r.order?.provider?.fullName || 'Campus Vendor / Return Desk';
+        const providerAddress = r.order?.provider?.fullName ? `${r.order.provider.fullName} • Return Collection Counter` : 'Campus Vendor Return Desk';
+        const productVal = Number(r.itemAmount || r.refundAmount || r.order?.totalAmount || 0);
+
+        return {
+          id: r.id,
+          returnRequestId: r.id,
+          orderId: r.orderId,
+          isReturnPickup: true,
+          orderNumber: `RETURN #${r.order?.orderNumber || r.orderId?.substring(0, 8) || r.id.slice(-6)}`,
+          studentName,
+          studentPhone,
+          studentAddress,
+          providerName,
+          providerAddress,
+          pickupLocation: studentAddress,
+          pickupStation: 'Student Hostel Doorstep Pickup',
+          destination: providerAddress,
+          distance: '0.5 km',
+          eta: '5 min',
+          earning: Number(r.deliveryBoyPayout) || 15.00,
+          productPrice: productVal,
+          totalAmount: productVal,
+          status: 'PICKUP_ASSIGNED',
+          items: r.order?.items?.map((i: any) => `${i.quantity}x ${i.productName}`) || ['Return Package'],
+          isOtpVerified: Boolean(r.pickupOtpVerified),
+          reasonType: r.reasonType,
+          reasonDetails: r.reasonDetails,
+          proofImageUrl: r.proofImageUrl,
+          acceptedAt: new Date(r.updatedAt || r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          specialInstructions: `Return Reason: ${r.reasonType === 'PRODUCT_ISSUE' ? 'Product Defect/Issue' : 'Mind Change'}. Enter 6-digit OTP from student upon collection.`
+        };
+      });
 
       res.status(200).json({
         success: true,

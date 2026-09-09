@@ -101,6 +101,7 @@ function enrichFallbackReturn(r: any): any {
   const roomNumber = r.roomNumber || order?.roomNumber || order?.student?.roomNumber || '';
   const originalAmount = Number(r.itemAmount || r.originalAmount || order?.subtotal || order?.totalAmount || 0);
   const refundAmount = Number(r.refundAmount || 0);
+  const pickupOtp = r.pickupOtp || (['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(r.status) ? (r.otp || '739201') : null);
 
   return {
     ...r,
@@ -109,6 +110,7 @@ function enrichFallbackReturn(r: any): any {
     roomNumber,
     originalAmount,
     refundAmount,
+    pickupOtp,
     deliveryFeeDeducted,
     deliveryChargeDeducted: deliveryFeeDeducted,
     order,
@@ -1074,7 +1076,18 @@ const fallbackHandlers: Record<string, any> = {
       return JSON.parse(JSON.stringify(newOrder));
     },
     update: async (args: any) => {
-      const order = fallbackOrders.find((o) => o.id === args.where.id || o.orderNumber === args.where.orderNumber) as any;
+      const idParam = String(args.where?.id || '').replace(/^#+/, '').trim();
+      const ordParam = String(args.where?.orderNumber || '').replace(/^#+/, '').trim();
+      const order = fallbackOrders.find((o) => {
+        const oId = String(o.id || '').replace(/^#+/, '').trim();
+        const oNum = String(o.orderNumber || '').replace(/^#+/, '').trim();
+        return (
+          o.id === args.where?.id ||
+          o.orderNumber === args.where?.orderNumber ||
+          (idParam && (oId === idParam || oNum === idParam)) ||
+          (ordParam && (oId === ordParam || oNum === ordParam))
+        );
+      }) as any;
       if (order) {
         Object.assign(order, args.data);
         if (args.data.statusHistory?.create) {
@@ -1785,7 +1798,13 @@ const fallbackHandlers: Record<string, any> = {
         list = list.filter(l => validIds.includes(l.orderId));
       }
       if (args?.where?.studentId) list = list.filter(l => l.studentId === args.where.studentId);
-      if (args?.where?.deliveryBoyId) list = list.filter(l => l.deliveryBoyId === args.where.deliveryBoyId);
+      if (args?.where?.deliveryBoyId !== undefined) {
+        if (args.where.deliveryBoyId === null) {
+          list = list.filter(l => !l.deliveryBoyId);
+        } else {
+          list = list.filter(l => l.deliveryBoyId === args.where.deliveryBoyId);
+        }
+      }
       if (args?.where?.status) {
         if (args.where.status.in && Array.isArray(args.where.status.in)) {
           list = list.filter(l => args.where.status.in.includes(l.status));

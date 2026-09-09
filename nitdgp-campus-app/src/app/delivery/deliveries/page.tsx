@@ -134,11 +134,13 @@ export default function AvailableDeliveriesPage() {
               className="card p-5 bg-white flex flex-col justify-between hover:border-emerald-300 transition group"
             >
               <div>
-                {/* Card Top: Order Tag & Earning */}
+                {/* Card Top: Order Tag & Product Value */}
                 <div className="flex items-center justify-between pb-3 border-b border-gray-100">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-black uppercase text-[#36751F] bg-[#EAF6E5] px-2 py-0.5 rounded">
-                      NEW DELIVERY
+                    <span className={`text-xs font-black uppercase px-2 py-0.5 rounded ${
+                      order.isReturnPickup ? 'text-rose-700 bg-rose-50 border border-rose-200' : 'text-[#36751F] bg-[#EAF6E5]'
+                    }`}>
+                      {order.isReturnPickup ? '🔄 Return Pickup' : 'NEW DELIVERY'}
                     </span>
                     <span className="text-sm font-black text-gray-900 font-mono">
                       {order.orderNumber}
@@ -146,35 +148,43 @@ export default function AvailableDeliveriesPage() {
                   </div>
 
                   <div className="text-right">
-                    <div className="text-[10px] text-gray-400 uppercase font-bold">Earning</div>
-                    <div className="text-lg font-black text-emerald-700">₹{order.earning}</div>
+                    <div className="text-[10px] text-gray-400 uppercase font-bold">Product Value</div>
+                    <div className="text-base font-black text-emerald-700 font-mono">₹{order.productPrice || order.totalAmount || order.earning}</div>
                   </div>
                 </div>
 
-                {/* Location Waypoints */}
-                <div className="py-4 space-y-3">
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-6 h-6 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                {/* Location Waypoints: Both Provider and Student Addresses */}
+                <div className="py-3.5 space-y-2.5">
+                  {/* Provider Address Card */}
+                  <div className="p-2.5 rounded-lg bg-blue-50/50 border border-blue-100">
+                    <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold text-blue-700">
                       <Store className="w-3.5 h-3.5" />
+                      <span>{order.isReturnPickup ? 'Drop Address (Provider)' : 'Pickup Address (Provider)'}</span>
                     </div>
-                    <div>
-                      <div className="text-[10px] uppercase font-bold text-gray-400">PICKUP</div>
-                      <div className="text-xs font-bold text-gray-900">{order.pickupLocation}</div>
+                    <div className="text-xs font-bold text-gray-900 mt-0.5">
+                      {order.providerName || (order.isReturnPickup ? order.destination : order.pickupLocation)}
+                    </div>
+                    <div className="text-[11px] text-gray-500">
+                      {order.providerAddress || (order.isReturnPickup ? order.destination : 'Campus Merchant Counter')}
                     </div>
                   </div>
 
-                  <div className="ml-3 pl-3 border-l-2 border-dashed border-gray-200 py-0.5 text-[11px] font-mono text-gray-400">
+                  {/* Route line */}
+                  <div className="pl-3 border-l-2 border-dashed border-gray-200 py-0.5 text-[11px] font-mono text-gray-400">
                     {order.distance} • ~{order.eta}
                   </div>
 
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-6 h-6 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  {/* Student Address Card */}
+                  <div className="p-2.5 rounded-lg bg-emerald-50/50 border border-emerald-100">
+                    <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold text-emerald-800">
                       <MapPin className="w-3.5 h-3.5" />
+                      <span>{order.isReturnPickup ? 'Pickup Address (Student)' : 'Drop Address (Student)'}</span>
                     </div>
-                    <div>
-                      <div className="text-[10px] uppercase font-bold text-gray-400">DELIVER TO</div>
-                      <div className="text-xs font-bold text-gray-900">{order.destination}</div>
-                      <div className="text-[11px] text-gray-500">Customer: {order.studentName}</div>
+                    <div className="text-xs font-bold text-gray-900 mt-0.5">
+                      {order.studentName} {order.studentPhone ? `(${order.studentPhone})` : ''}
+                    </div>
+                    <div className="text-[11px] text-gray-700 font-semibold">
+                      {order.studentAddress || (order.isReturnPickup ? order.pickupLocation : order.destination)}
                     </div>
                   </div>
                 </div>

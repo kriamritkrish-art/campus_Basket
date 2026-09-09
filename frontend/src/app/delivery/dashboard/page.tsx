@@ -552,8 +552,8 @@ export default function DeliveryDashboardPage() {
 
                   <div className="flex items-center gap-2">
                     <div className="text-right pr-2">
-                      <div className="text-xs text-gray-400 font-semibold">Earn</div>
-                      <div className="text-sm font-black text-emerald-700">₹{order.earning}</div>
+                      <div className="text-[10px] text-gray-400 uppercase font-bold">Value</div>
+                      <div className="text-sm font-black text-emerald-700 font-mono">₹{order.productPrice || order.totalAmount || order.earning}</div>
                     </div>
                     <button
                       onClick={() => acceptAvailableOrder(order.id)}

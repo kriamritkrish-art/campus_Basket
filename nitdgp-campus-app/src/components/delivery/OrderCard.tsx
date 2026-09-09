@@ -184,34 +184,64 @@ export default function OrderCard({ order }: OrderCardProps) {
         </div>
 
         <div className="text-right">
-          <span className="text-lg font-black text-emerald-700">₹{order.earning}</span>
+          <span className="text-[10px] font-bold text-gray-400 block uppercase tracking-wider">Product Value</span>
+          <span className="text-base sm:text-lg font-black text-emerald-700 font-mono">
+            ₹{Number(order.productPrice || order.totalAmount || order.earning || 0).toFixed(2)}
+          </span>
         </div>
       </div>
 
-      {/* CORE INFO: Student Name • Destination • Route line */}
-      <div className="pt-3 space-y-1.5">
-        <div className="flex items-center justify-between text-xs">
-          <div className="font-extrabold text-gray-900 text-sm">
-            {order.studentName}
+      {/* ADDRESS SECTION: Both Provider & Student Addresses displayed prominently */}
+      <div className="pt-3 space-y-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+          {/* Provider Store Address Card */}
+          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-slate-500">
+              <Store className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span>{order.isReturnPickup ? 'Drop Address (Provider)' : 'Pickup Address (Provider)'}</span>
+            </div>
+            <div className="font-bold text-slate-900 line-clamp-1">
+              {order.providerName || (order.isReturnPickup ? order.destination : order.pickupLocation)}
+            </div>
+            <div className="text-[11px] text-slate-500 line-clamp-1">
+              {order.providerAddress || (order.isReturnPickup ? order.destination : order.pickupStation || 'Campus Food Court & Mart Desk')}
+            </div>
           </div>
-          <div className="text-xs text-gray-500 font-bold">
-            {order.dueInText || `ETA ${order.eta}`}
+
+          {/* Student Hostel Address Card */}
+          <div className="p-2.5 rounded-xl bg-emerald-50/60 border border-emerald-200/80 space-y-1">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-emerald-800">
+                <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>{order.isReturnPickup ? 'Pickup Address (Student)' : 'Drop Address (Student)'}</span>
+              </div>
+              {order.studentPhone && (
+                <a
+                  href={`tel:${order.studentPhone}`}
+                  className="text-[10px] font-bold text-emerald-700 hover:underline flex items-center gap-1"
+                >
+                  <Phone className="w-2.5 h-2.5" />
+                  <span>Call</span>
+                </a>
+              )}
+            </div>
+            <div className="font-bold text-slate-900 line-clamp-1">
+              {order.studentName}
+            </div>
+            <div className="text-[11px] text-slate-700 font-semibold line-clamp-1">
+              {order.studentAddress || (order.isReturnPickup ? order.pickupLocation : order.destination)}
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
-          <MapPin className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-          <span>{order.destination}</span>
-        </div>
-
-        {/* Compact Route Line (Section 13) */}
-        <div className="text-[11px] text-gray-500 bg-gray-50/80 p-2 rounded-lg border border-gray-100 flex items-center justify-between gap-2">
-          <div className="truncate font-medium">
-            <span className="text-gray-700 font-semibold">{order.pickupLocation}</span>
-            <span className="text-gray-400 mx-1">↓</span>
-            <span className="text-gray-900 font-bold">{order.destination}</span>
+        {/* Compact Route Distance & ETA Indicator */}
+        <div className="text-[11px] text-gray-500 bg-gray-50 p-2 rounded-lg border border-gray-100 flex items-center justify-between gap-2 font-mono">
+          <div className="truncate font-semibold text-gray-700 flex items-center gap-1">
+            <span>{order.isReturnPickup ? 'Student Room Doorstep' : 'Campus Merchant'}</span>
+            <span className="text-gray-400">➔</span>
+            <span>{order.isReturnPickup ? 'Merchant Counter' : 'Hostel Doorstep'}</span>
           </div>
-          <span className="font-mono text-gray-500 flex-shrink-0 font-semibold">
+          <span className="text-gray-600 shrink-0 font-bold">
             {order.distance} • {order.eta}
           </span>
         </div>

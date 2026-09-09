@@ -38,6 +38,11 @@ export interface ActiveDeliveryOrder {
   reasonType?: string;
   reasonDetails?: string;
   proofImageUrl?: string;
+  productPrice?: number;
+  totalAmount?: number;
+  studentAddress?: string;
+  providerAddress?: string;
+  providerName?: string;
 }
 
 export interface AvailableOrder {
@@ -45,11 +50,16 @@ export interface AvailableOrder {
   orderNumber: string;
   studentName: string;
   studentPhone?: string;
+  studentAddress?: string;
+  providerName?: string;
+  providerAddress?: string;
   pickupLocation: string;
   destination: string;
   distance: string;
   eta: string;
   earning: number;
+  productPrice?: number;
+  totalAmount?: number;
   itemsCount: number;
   items?: string[];
   itemsSummary?: string;
@@ -57,6 +67,8 @@ export interface AvailableOrder {
   timeAgo: string;
   status?: string;
   specialInstructions?: string;
+  isReturnPickup?: boolean;
+  returnRequestId?: string;
 }
 
 export interface HistoryOrder {
