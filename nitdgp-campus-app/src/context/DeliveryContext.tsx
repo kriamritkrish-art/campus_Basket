@@ -575,29 +575,11 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (!completedList.includes(id)) completedList.push(id);
         }
         localStorage.setItem('cb_picked_up_returns', JSON.stringify(completedList));
-
-        // Dispatch storage and custom events for immediate reactivity across tabs and components
-        window.dispatchEvent(new Event('storage'));
-        window.dispatchEvent(new CustomEvent('cb_return_status_changed', {
-          detail: {
-            returnId: target.id,
-            orderId: rawOrdId,
-            cleanOrdNum,
-            status: 'PICKED_UP'
-          }
-        }));
       } catch (e) {}
     };
 
-    // Handle Return Pickup verification robustly
-    const isReturnOrder = Boolean(
-      target.isReturnPickup ||
-      target.orderNumber?.toUpperCase().includes('RETURN') ||
-      (target as any).returnRequestId ||
-      ((target as any).refundStatus && (target as any).refundStatus !== 'NONE')
-    );
-
-    if (isReturnOrder) {
+    // Handle Return Pickup verification
+    if (target.isReturnPickup) {
       try {
         const cleanOrdNum = (target.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
         const rawOrdId = String((target as any).orderId || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
@@ -622,13 +604,6 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           }).catch(() => null);
           if (res?.success) break;
 
-          // Try order return route
-          res = await apiRequest(`/api/orders/${enc}/verify-return-otp`, {
-            method: 'POST',
-            body: JSON.stringify({ otp: enteredOtp.trim() })
-          }).catch(() => null);
-          if (res?.success) break;
-
           // Try generic return route
           res = await apiRequest(`/api/returns/${enc}/verify-otp`, {
             method: 'POST',
@@ -646,7 +621,7 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           return true;
         } else {
           // If 6-digit entered, persist locally and remove from active list
-          if (enteredOtp.trim().length === 6 || enteredOtp.trim() === '739201') {
+          if (enteredOtp.trim().length === 6) {
             syncStudentLocalStorage();
             setActiveOrders((prev) => prev.filter((ord) => ord.id !== target.id));
             setOtpModalOrder(null);

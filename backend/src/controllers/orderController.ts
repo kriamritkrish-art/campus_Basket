@@ -9,7 +9,6 @@ import { LedgerService } from '../services/financial/LedgerService';
 import { RefundService } from '../services/financial/RefundService';
 import { ReceiptPdfService } from '../services/pdf/ReceiptPdfService';
 import { env } from '../config/environment';
-import { resolveReturnRequest } from './returnController';
 
 const razorpayService = new RazorpayService();
 const emailService = new EmailService();
@@ -737,33 +736,6 @@ export class OrderController {
       });
 
       if (!order) {
-        const retReq = await resolveReturnRequest(id, true);
-        if (retReq) {
-          const synthOrder = {
-            id: retReq.orderId || id,
-            orderNumber: retReq.order?.orderNumber || retReq.orderId || id,
-            studentId: retReq.studentId || studentId || 'stud_sourav',
-            providerId: 'prov_canteen',
-            deliveryBoyId: retReq.deliveryBoyId || 'db_boy_1',
-            serviceType: 'FOOD',
-            status: 'DELIVERED',
-            refundStatus: retReq.status,
-            returnPickupOtpVerified: Boolean(retReq.pickupOtpVerified),
-            totalAmount: Number(retReq.refundAmount || retReq.itemAmount || 50),
-            subtotal: Number(retReq.refundAmount || retReq.itemAmount || 50),
-            deliveryFee: 0,
-            discountAmount: 0,
-            paymentMethod: 'ONLINE',
-            paymentStatus: retReq.status === 'REFUNDED' ? 'REFUNDED' : 'PAID',
-            hallName: retReq.hallName || 'Hall 9',
-            roomNumber: retReq.roomNumber || '123',
-            items: [],
-            statusHistory: [],
-            returnRequest: retReq
-          };
-          res.status(200).json({ success: true, order: synthOrder });
-          return;
-        }
         res.status(404).json({ success: false, message: 'Order not found' });
         return;
       }
@@ -809,13 +781,30 @@ export class OrderController {
       }).catch(() => null);
 
       // Include returnRequest if exists
-      const cleanId = id.replace(/^(RETURN\s*#*|#+)/i, '').trim();
-      const cleanOrderNumber = (order.orderNumber || '').replace(/^(RETURN\s*#*|#+)/i, '').trim();
-      const returnReq =
-        (await resolveReturnRequest(order.id, true)) ||
-        (await resolveReturnRequest(cleanOrderNumber, true)) ||
-        (await resolveReturnRequest(cleanId, true)) ||
-        (await resolveReturnRequest(id, true));
+      const cleanId = id.replace(/^#+/, '').trim();
+      const cleanOrderNumber = (order.orderNumber || '').replace(/^#+/, '').trim();
+      const returnReq = await (prisma as any).returnRequest.findFirst({
+        where: {
+          OR: [
+            { orderId: order.id },
+            { orderId: order.orderNumber },
+            { orderId: cleanOrderNumber },
+            { orderId: id },
+            { orderId: cleanId },
+            { orderId: `#${cleanId}` }
+          ]
+        },
+        include: {
+          deliveryBoy: {
+            select: {
+              id: true,
+              fullName: true,
+              mobileNumber: true,
+              vehicleType: true
+            }
+          }
+        }
+      }).catch(() => null);
 
       res.status(200).json({
         success: true,
@@ -1152,11 +1141,37 @@ export class OrderController {
   public static async getOrderReturn(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const cleanId = id.replace(/^(RETURN\s*#*|#+)/i, '').trim();
-      let returnRequest = await resolveReturnRequest(id, true);
-      if (!returnRequest && cleanId !== id) {
-        returnRequest = await resolveReturnRequest(cleanId, true);
-      }
+      const cleanId = id.replace(/^#+/, '').trim();
+      const order = await prisma.order.findFirst({
+        where: {
+          OR: [{ id }, { id: cleanId }, { orderNumber: id }, { orderNumber: cleanId }]
+        },
+        select: { id: true, orderNumber: true }
+      });
+
+      const targetOrderId = order?.id || cleanId || id;
+      const cleanOrderNumber = (order?.orderNumber || '').replace(/^#+/, '').trim();
+      const returnRequest = await (prisma as any).returnRequest.findFirst({
+        where: {
+          OR: [
+            { orderId: targetOrderId },
+            { orderId: id },
+            { orderId: cleanId },
+            { orderId: `#${cleanId}` },
+            ...(cleanOrderNumber ? [{ orderId: cleanOrderNumber }, { orderId: `#${cleanOrderNumber}` }] : [])
+          ]
+        },
+        include: {
+          deliveryBoy: {
+            select: {
+              id: true,
+              fullName: true,
+              mobileNumber: true,
+              vehicleType: true
+            }
+          }
+        }
+      });
 
       res.status(200).json({
         success: true,

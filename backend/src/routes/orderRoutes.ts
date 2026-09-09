@@ -4,8 +4,6 @@ import { authGuard } from '../middleware/authGuard';
 import { rbacGuard } from '../middleware/rbacGuard';
 import { geofenceGuard } from '../middleware/geofenceGuard';
 
-import { ReturnController } from '../controllers/returnController';
-
 const router = Router();
 
 // Public platform order policies (Accessible by students, guests, and checkout)
@@ -24,8 +22,7 @@ router.put('/:id/modify', rbacGuard(['STUDENT', 'ADMIN']), OrderController.modif
 router.patch('/:id/modify', rbacGuard(['STUDENT', 'ADMIN']), OrderController.modifyOrder);
 router.post('/:id/add-items', rbacGuard(['STUDENT', 'ADMIN']), OrderController.modifyOrder);
 router.post('/:id/cancel', rbacGuard(['STUDENT', 'ADMIN']), OrderController.cancelOrder);
-router.get('/:id/return', rbacGuard(['STUDENT', 'ADMIN', 'DELIVERY_BOY', 'DELIVERY']), OrderController.getOrderReturn);
+router.get('/:id/return', rbacGuard(['STUDENT', 'ADMIN', 'DELIVERY_BOY']), OrderController.getOrderReturn);
 router.post('/:id/return', rbacGuard(['STUDENT', 'ADMIN']), OrderController.requestReturn);
-router.post('/:id/verify-return-otp', rbacGuard(['ADMIN', 'DELIVERY_BOY', 'DELIVERY', 'STUDENT']), ReturnController.verifyReturnPickupOtp);
 
 export default router;
