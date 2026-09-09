@@ -63,6 +63,8 @@ export default function AdminOrdersPage() {
   const [returnAssignBoyId, setReturnAssignBoyId] = useState('');
   const [returnRejectionReason, setReturnRejectionReason] = useState('');
   const [processingReturn, setProcessingReturn] = useState(false);
+  const [adminEnteredOtp, setAdminEnteredOtp] = useState('');
+  const [adminVerifyingOtp, setAdminVerifyingOtp] = useState(false);
 
   const fetchDeliveryBoys = async () => {
     try {
@@ -146,12 +148,16 @@ export default function AdminOrdersPage() {
               if (itemStr) {
                 const item = JSON.parse(itemStr);
                 if (item && (item.id || item.orderId)) {
-                  const exists = returnsList.some((r: any) => 
+                  const idx = returnsList.findIndex((r: any) => 
                     r.id === item.id || 
                     (item.orderId && r.orderId === item.orderId) ||
                     (item.orderNumber && r.order?.orderNumber === item.orderNumber)
                   );
-                  if (!exists) {
+                  if (idx >= 0) {
+                    if (item.status === 'COMPLETED' || item.pickupOtpVerified) {
+                      returnsList[idx] = { ...returnsList[idx], ...item };
+                    }
+                  } else {
                     returnsList.unshift(item);
                   }
                 }
@@ -178,7 +184,78 @@ export default function AdminOrdersPage() {
     setSelectedReturn(ret);
     setReturnAssignBoyId(ret.deliveryBoyId || '');
     setReturnRejectionReason('');
+    setAdminEnteredOtp('');
     setReviewModalOpen(true);
+  };
+
+  const handleAdminVerifyOtp = async () => {
+    if (!selectedReturn || adminEnteredOtp.trim().length !== 6) {
+      alert('Please enter a valid 6-digit Return OTP.');
+      return;
+    }
+    setAdminVerifyingOtp(true);
+    try {
+      const returnId = encodeURIComponent(String(selectedReturn.id || selectedReturn.orderId || '').replace(/^#+/, '').trim());
+      const res = await apiRequest(`/api/returns/${returnId}/verify-otp`, {
+        method: 'POST',
+        body: JSON.stringify({ otp: adminEnteredOtp.trim() })
+      });
+      if (res.success) {
+        alert('✓ Return pickup verified successfully! Refund disbursement is now unlocked.');
+        setAdminEnteredOtp('');
+        const updatedObj = {
+          ...selectedReturn,
+          status: 'COMPLETED',
+          pickupOtpVerified: true,
+          pickupOtpVerifiedAt: new Date().toISOString()
+        };
+        setSelectedReturn(updatedObj);
+        if (typeof window !== 'undefined') {
+          try {
+            const rawId = String(selectedReturn.id || selectedReturn.orderId || '').replace(/^#+/, '');
+            localStorage.setItem(`cb_return_${rawId}`, JSON.stringify(updatedObj));
+            localStorage.setItem('cb_return_active', JSON.stringify(updatedObj));
+            if (selectedReturn.orderId) {
+              localStorage.setItem(`cb_return_${selectedReturn.orderId}`, JSON.stringify(updatedObj));
+            }
+          } catch {}
+        }
+        fetchReturnRequests();
+        fetchOrders();
+      } else {
+        alert(res.message || 'Incorrect 6-digit Return OTP. Please check the student live tracking screen.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to verify Return OTP.');
+    } finally {
+      setAdminVerifyingOtp(false);
+    }
+  };
+
+  const handleDirectAssignRunner = async () => {
+    if (!selectedReturn || !returnAssignBoyId) return;
+    setProcessingReturn(true);
+    try {
+      const returnId = encodeURIComponent(String(selectedReturn.id || selectedReturn.orderId || '').replace(/^#+/, '').trim());
+      const res = await apiRequest(`/api/returns/${returnId}/assign-delivery`, {
+        method: 'POST',
+        body: JSON.stringify({ deliveryBoyId: returnAssignBoyId })
+      });
+      if (res.success) {
+        alert('Delivery runner assigned successfully!');
+        if (res.returnRequest) {
+          setSelectedReturn(res.returnRequest);
+        }
+        fetchReturnRequests();
+        fetchOrders();
+      } else {
+        alert(res.message || 'Failed to assign runner.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error assigning runner');
+    } finally {
+      setProcessingReturn(false);
+    }
   };
 
   const handleApproveReturn = async () => {
@@ -1228,22 +1305,44 @@ export default function AdminOrdersPage() {
               </div>
             </div>
 
-            {/* Confidential Pickup OTP Notice (Strictly visible only to student dashboard) */}
-            {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(selectedReturn.status) && (
-              <div className="p-3 bg-blue-50/90 rounded-xl border border-blue-200 text-blue-900 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700 shrink-0">
-                  <ShieldCheck className="w-4 h-4" />
+            {/* Confidential Pickup OTP Notice & Direct Admin Handover Verification */}
+            {['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(selectedReturn.status) && !selectedReturn.pickupOtpVerified && selectedReturn.status !== 'COMPLETED' && selectedReturn.status !== 'PICKED_UP' && (
+              <div className="p-3 bg-blue-50/90 rounded-xl border border-blue-200 text-blue-900 space-y-2.5">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700 shrink-0">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div className="text-xs">
+                    <span className="font-bold block text-blue-950">Student Handover OTP Verification</span>
+                    <span className="text-[11px] text-blue-800">
+                      The runner collects and verifies this 6-digit code at the student's door. You can also verify the student's code here directly to complete the pickup and unlock refund disbursement.
+                    </span>
+                  </div>
                 </div>
-                <div className="text-xs">
-                  <span className="font-bold block text-blue-950">Student Handover OTP Active</span>
-                  <span className="text-[11px] text-blue-800">
-                    6-digit verification code is private to the student's dashboard. The delivery runner must collect and verify this OTP directly from the student at the hostel door.
-                  </span>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={adminEnteredOtp}
+                    onChange={(e) => setAdminEnteredOtp(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Enter 6-digit OTP"
+                    className="w-40 px-3 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-mono font-bold tracking-widest text-slate-800 focus:outline-none focus:border-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAdminVerifyOtp}
+                    disabled={adminVerifyingOtp || adminEnteredOtp.length !== 6}
+                    className="px-3.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs rounded-lg transition disabled:opacity-50 flex items-center gap-1 cursor-pointer"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    <span>{adminVerifyingOtp ? 'Verifying...' : 'Verify Pickup OTP'}</span>
+                  </button>
                 </div>
               </div>
             )}
 
-            {/* Assigned Pickup Runner (Runner B) */}
+            {/* Assigned Pickup Runner (Runner B) or Assignment Selector */}
             {selectedReturn.deliveryBoy ? (
               <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 flex items-center justify-between text-xs">
                 <div>
@@ -1257,33 +1356,45 @@ export default function AdminOrdersPage() {
                   Pickup Runner
                 </span>
               </div>
-            ) : selectedReturn.status === 'REQUESTED' && (
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">
+            ) : (selectedReturn.status === 'REQUESTED' || selectedReturn.status === 'APPROVED') && (
+              <div className="space-y-1.5 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <label className="font-bold text-slate-700 block">
                   Delivery Runner Assignment (Choose Specific or Broadcast)
                 </label>
-                <select
-                  value={returnAssignBoyId}
-                  onChange={(e) => setReturnAssignBoyId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-semibold text-slate-800 focus:outline-none focus:border-rose-500"
-                >
-                  <option value="">📢 Broadcast to All Runners (Available for any online delivery boy to accept)</option>
-                  {deliveryBoys.map((boy) => (
-                    <option key={boy.id} value={boy.id}>
-                      Directly Assign to: {boy.fullName} ({boy.user?.username || boy.phone || 'Runner'}) {boy.status === 'ACTIVE' || boy.activeStatus ? '🟢 (Online)' : '⚪ (Offline)'}
-                    </option>
-                  ))}
-                  {deliveryBoys.length === 0 && (
-                    <>
-                      <option value="db_bikash">Directly Assign to: Bikash Delivery (Runner)</option>
-                      <option value="db_boy_1">Directly Assign to: Campus Express Runner #1</option>
-                    </>
+                <div className="flex gap-2">
+                  <select
+                    value={returnAssignBoyId}
+                    onChange={(e) => setReturnAssignBoyId(e.target.value)}
+                    className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-1.5 font-semibold text-slate-800 focus:outline-none focus:border-rose-500 text-xs"
+                  >
+                    <option value="">📢 Broadcast to All Runners (Available for any online runner to accept)</option>
+                    {deliveryBoys.map((boy) => (
+                      <option key={boy.id} value={boy.id}>
+                        Directly Assign to: {boy.fullName} ({boy.user?.username || boy.phone || 'Runner'}) {boy.status === 'ACTIVE' || boy.activeStatus ? '🟢 (Online)' : '⚪ (Offline)'}
+                      </option>
+                    ))}
+                    {deliveryBoys.length === 0 && (
+                      <>
+                        <option value="db_bikash">Directly Assign to: Bikash Delivery (Runner)</option>
+                        <option value="db_boy_1">Directly Assign to: Campus Express Runner #1</option>
+                      </>
+                    )}
+                  </select>
+                  {selectedReturn.status === 'APPROVED' && returnAssignBoyId && (
+                    <button
+                      type="button"
+                      onClick={handleDirectAssignRunner}
+                      disabled={processingReturn}
+                      className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs transition disabled:opacity-50"
+                    >
+                      Assign
+                    </button>
                   )}
-                </select>
-                <p className="text-[11px] text-slate-500 mt-1">
+                </div>
+                <p className="text-[11px] text-slate-500">
                   {returnAssignBoyId
                     ? 'Selected runner will be exclusively assigned to pick up this return.'
-                    : 'This return pickup task will be available in the Delivery Boy portal for any active online runner to accept.'}
+                    : 'This return pickup task is broadcast to the Delivery Boy portal for any active online runner to accept.'}
                 </p>
               </div>
             )}

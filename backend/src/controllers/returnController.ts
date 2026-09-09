@@ -243,13 +243,12 @@ export class ReturnController {
         }
       });
 
-      // Safely Update Order Status History and synchronize pickup OTP
+      // Safely Update Order Status History
       try {
         await (prisma as any).order.update({
           where: { id: returnRequest.orderId },
           data: {
             refundStatus: 'APPROVED',
-            returnPickupOtp: pickupOtp,
             statusHistory: {
               create: {
                 previousStatus: returnRequest.order?.status || 'DELIVERED',
@@ -511,16 +510,19 @@ export class ReturnController {
 
       const now = new Date();
       // Mark return request as COMPLETED (Physical collection verified via student OTP)
+      const updateData: any = {
+        status: 'COMPLETED',
+        pickupOtpVerified: true,
+        pickupOtpVerifiedAt: now,
+        deliveryBoyPayout: runnerRate
+      };
+      if (deliveryBoyId || returnRequest.deliveryBoyId) {
+        updateData.deliveryBoyId = deliveryBoyId || returnRequest.deliveryBoyId;
+      }
+
       const updatedReturn = await (prisma as any).returnRequest.update({
         where: { id: returnRequest.id },
-        data: {
-          status: 'COMPLETED',
-          pickupOtpVerified: true,
-          pickupOtpVerifiedAt: now,
-          completedAt: now,
-          deliveryBoyPayout: runnerRate,
-          deliveryBoyId: deliveryBoyId || returnRequest.deliveryBoyId
-        }
+        data: updateData
       });
 
       // Credit Delivery Runner Dashboard Wallet idempotently (prevent duplicate earnings)
@@ -569,7 +571,6 @@ export class ReturnController {
             where: { id: oid },
             data: {
               refundStatus: 'PROCESSING',
-              returnPickupOtpVerified: true,
               statusHistory: {
                 create: {
                   previousStatus: returnRequest.order?.status || 'DELIVERED',
@@ -586,7 +587,13 @@ export class ReturnController {
       res.status(200).json({
         success: true,
         message: `Return pickup verified successfully! ₹${runnerRate.toFixed(2)} delivery fee credited to runner dashboard. Ready for Admin refund disbursement.`,
-        returnRequest: updatedReturn,
+        returnRequest: {
+          ...updatedReturn,
+          status: 'COMPLETED',
+          pickupOtpVerified: true,
+          pickupOtpVerifiedAt: now,
+          completedAt: now
+        },
         runnerPayoutCredited: runnerRate,
         refundDueAmount: Number(returnRequest.refundAmount)
       });
