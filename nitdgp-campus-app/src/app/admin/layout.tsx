@@ -203,6 +203,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     router.push(`/admin/orders?search=${encodeURIComponent(globalSearch.trim())}`);
   };
 
+  // Completely bypass sidebar & topbar for the full-width Order Payment & Settlement Ledger page
+  if (pathname?.startsWith('/admin/payments/gross-volume')) {
+    return (
+      <main className="w-full min-h-screen bg-[#F8FAFC] text-[#0F172A]">
+        {children}
+      </main>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F5F7F5] text-[#17202A] flex">
       {/* 1. FIXED DESKTOP SIDEBAR (#0F172A Dark Navy) */}
