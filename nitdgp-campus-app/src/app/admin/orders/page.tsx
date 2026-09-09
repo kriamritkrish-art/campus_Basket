@@ -139,7 +139,11 @@ export default function AdminOrdersPage() {
       const res = await apiRequest('/api/returns');
       let returnsList = (res.success && Array.isArray(res.returns)) ? [...res.returns] : [];
 
-      // Also merge any locally tracked returns from localStorage
+      // Status order: higher index = more advanced
+      const STATUS_ORDER = ['REQUESTED', 'APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PROCESSING', 'PICKED_UP', 'COMPLETED', 'REFUNDED'];
+      const statusRank = (s: string) => { const i = STATUS_ORDER.indexOf(s); return i === -1 ? 0 : i; };
+
+      // Merge localStorage entries — always prefer the more advanced status
       if (typeof window !== 'undefined') {
         try {
           for (let i = 0; i < localStorage.length; i++) {
@@ -149,16 +153,18 @@ export default function AdminOrdersPage() {
               if (itemStr) {
                 const item = JSON.parse(itemStr);
                 if (item && (item.id || item.orderId)) {
-                  const idx = returnsList.findIndex((r: any) => 
-                    r.id === item.id || 
+                  const idx = returnsList.findIndex((r: any) =>
+                    r.id === item.id ||
                     (item.orderId && r.orderId === item.orderId) ||
                     (item.orderNumber && r.order?.orderNumber === item.orderNumber)
                   );
                   if (idx >= 0) {
-                    if (item.status === 'COMPLETED' || item.pickupOtpVerified) {
+                    // Override if localStorage has a more advanced status than what API returned
+                    if (statusRank(item.status) > statusRank(returnsList[idx].status)) {
                       returnsList[idx] = { ...returnsList[idx], ...item };
                     }
-                  } else {
+                  } else if (item.status && item.status !== 'REQUESTED') {
+                    // Only add as a new row if it's not just a plain REQUESTED stale entry
                     returnsList.unshift(item);
                   }
                 }
@@ -269,13 +275,29 @@ export default function AdminOrdersPage() {
         body: JSON.stringify({ deliveryBoyId: returnAssignBoyId || undefined })
       });
       if (res.success) {
-        if (typeof window !== 'undefined' && res.returnRequest) {
+        const newStatus = returnAssignBoyId ? 'PICKUP_ASSIGNED' : 'APPROVED';
+        const updatedReturn = res.returnRequest
+          ? { ...selectedReturn, ...res.returnRequest, status: res.returnRequest.status || newStatus }
+          : { ...selectedReturn, status: newStatus };
+
+        // Optimistic update: immediately reflect new status in the table
+        setReturnRequests((prev: any[]) =>
+          prev.map((r: any) =>
+            (r.id === selectedReturn.id || r.orderId === selectedReturn.orderId)
+              ? { ...r, ...updatedReturn }
+              : r
+          )
+        );
+        setSelectedReturn(updatedReturn);
+
+        if (typeof window !== 'undefined') {
           try {
             const rawId = String(selectedReturn.id || selectedReturn.orderId || '').replace(/^#+/, '');
-            localStorage.setItem(`cb_return_${rawId}`, JSON.stringify(res.returnRequest));
-            localStorage.setItem('cb_return_active', JSON.stringify(res.returnRequest));
-            if (res.returnRequest.orderId) {
-              localStorage.setItem(`cb_return_${res.returnRequest.orderId}`, JSON.stringify(res.returnRequest));
+            const toStore = res.returnRequest || updatedReturn;
+            localStorage.setItem(`cb_return_${rawId}`, JSON.stringify(toStore));
+            localStorage.setItem('cb_return_active', JSON.stringify(toStore));
+            if (toStore.orderId) {
+              localStorage.setItem(`cb_return_${toStore.orderId}`, JSON.stringify(toStore));
             }
           } catch {}
         }
