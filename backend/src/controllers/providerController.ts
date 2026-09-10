@@ -1489,4 +1489,144 @@ export class ProviderController {
       next(err);
     }
   }
+
+  /**
+   * Section 6: Provider Settlements & Request Center
+   */
+  public static async getSettlements(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const providerId = await resolveProviderId(req);
+      if (!providerId) {
+        res.status(403).json({ success: false, message: 'Provider profile required' });
+        return;
+      }
+
+      const orders = await (prisma as any).order.findMany({
+        where: { providerId },
+        include: { student: true, items: true },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const settlements = await (prisma as any).settlement.findMany({
+        where: { providerId },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const requests = await (prisma as any).providerSettlementRequest.findMany({
+        where: { providerId },
+        orderBy: { requestDate: 'desc' }
+      });
+
+      let totalGrossSales = 0;
+      let totalPayable = 0;
+      let alreadySettled = 0;
+
+      const orderList = orders.map((o: any) => {
+        const total = Math.round((Number(o.totalAmount) || 0) * 100) / 100;
+        const commAmt = o.commissionAmount !== undefined ? Number(o.commissionAmount) : Math.round(total * 0.05 * 100) / 100;
+        const payable = o.providerPayable !== undefined ? Number(o.providerPayable) : Math.round((total - commAmt) * 100) / 100;
+        const settled = Number(o.providerSettledAmount) || 0;
+        const remaining = Math.max(0, Math.round((payable - settled) * 100) / 100);
+
+        totalGrossSales += total;
+        totalPayable += payable;
+        alreadySettled += settled;
+
+        return {
+          orderId: o.id,
+          orderNumber: o.orderNumber,
+          date: o.createdAt,
+          studentName: o.student?.fullName || 'Student',
+          products: o.items?.map((i: any) => `${i.productName} (x${i.quantity})`).join(', ') || o.serviceType,
+          orderAmount: total,
+          paymentMode: o.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD' : 'ONLINE',
+          providerPayable: payable,
+          settledAmount: settled,
+          remainingAmount: remaining,
+          orderStatus: o.status,
+          settlementStatus: o.settlementStatus || (remaining === 0 && settled > 0 ? 'SETTLED' : (settled > 0 ? 'PARTIALLY_SETTLED' : 'PENDING'))
+        };
+      });
+
+      const remainingPayable = Math.max(0, Math.round((totalPayable - alreadySettled) * 100) / 100);
+
+      res.status(200).json({
+        success: true,
+        summary: {
+          totalGrossSales: Math.round(totalGrossSales * 100) / 100,
+          totalProviderPayable: Math.round(totalPayable * 100) / 100,
+          alreadySettled: Math.round(alreadySettled * 100) / 100,
+          remainingPayable: remainingPayable,
+          eligibleOrdersCount: orders.filter((o: any) => o.status === 'DELIVERED').length
+        },
+        orders: orderList,
+        settlements,
+        requests
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Request Settlement Submission
+   */
+  public static async requestSettlement(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const providerId = await resolveProviderId(req);
+      if (!providerId) {
+        res.status(403).json({ success: false, message: 'Provider profile required' });
+        return;
+      }
+
+      const { amount, notes } = req.body;
+      const requestedAmt = Number(amount) || 0;
+
+      if (requestedAmt <= 0) {
+        res.status(400).json({ success: false, message: 'Requested amount must be greater than 0.' });
+        return;
+      }
+
+      const orders = await (prisma as any).order.findMany({
+        where: { providerId }
+      });
+
+      const totalPayable = orders.reduce((sum: number, o: any) => sum + (Number(o.providerPayable) || 0), 0);
+      const alreadySettled = orders.reduce((sum: number, o: any) => sum + (Number(o.providerSettledAmount) || 0), 0);
+      const remainingPayable = Math.max(0, Math.round((totalPayable - alreadySettled) * 100) / 100);
+
+      if (requestedAmt > remainingPayable && remainingPayable > 0) {
+        res.status(400).json({
+          success: false,
+          message: `Requested amount (₹${requestedAmt}) cannot exceed your eligible remaining payable (₹${remainingPayable}).`
+        });
+        return;
+      }
+
+      const eligibleOrderIds = orders
+        .filter((o: any) => (Number(o.providerPayable) || 0) > (Number(o.providerSettledAmount) || 0))
+        .map((o: any) => o.id);
+
+      const request = await (prisma as any).providerSettlementRequest.create({
+        data: {
+          providerId,
+          requestedAmount: requestedAmt,
+          eligiblePayable: totalPayable,
+          alreadySettled: alreadySettled,
+          remainingPayable: remainingPayable,
+          notes: notes || 'Settlement requested from Provider Dashboard',
+          relatedOrderIds: eligibleOrderIds
+        }
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Settlement request submitted successfully to Campus Basket Finance Cell.',
+        request
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
 }
+

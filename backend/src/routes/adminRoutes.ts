@@ -8,6 +8,7 @@ import { AdminPeopleController } from '../controllers/adminPeopleController';
 import { AdminCampusController } from '../controllers/adminCampusController';
 import { AdminPaymentController } from '../controllers/adminPaymentController';
 import { AdminLaundryController } from '../controllers/adminLaundryController';
+import { AdminFinanceController } from '../controllers/adminFinanceController';
 import { authGuard } from '../middleware/authGuard';
 import { rbacGuard } from '../middleware/rbacGuard';
 
@@ -34,6 +35,27 @@ router.use(rbacGuard(['ADMIN']));
 
 // 1. Dashboard Executive Overview & KPIs
 router.get('/dashboard', AdminController.getDashboardMetrics);
+
+// ==========================================
+// NEW ADMIN FINANCE SECTION & FINANCIAL LEDGER
+// ==========================================
+router.get('/finance/summary', AdminFinanceController.getSummary);
+router.get('/finance/provider-payables', AdminFinanceController.getProviderPayables);
+router.post('/finance/provider-payables/manage-status', AdminFinanceController.manageProviderStatus);
+router.post('/finance/provider-payables/settle', AdminFinanceController.manageProviderStatus);
+router.get('/finance/provider-requests', AdminFinanceController.getProviderRequests);
+router.post('/finance/provider-requests/:id/action', AdminFinanceController.handleProviderRequest);
+
+router.get('/finance/cod', AdminFinanceController.getCodCollections);
+router.post('/finance/cod/manage-status', AdminFinanceController.manageCodStatus);
+
+router.get('/finance/delivery-earnings', AdminFinanceController.getDeliveryBoyEarnings);
+router.post('/finance/delivery-earnings/settle', AdminFinanceController.settleDeliveryBoyEarnings);
+
+router.get('/finance/settlement-history', AdminFinanceController.getSettlementHistory);
+router.get('/finance/reports', AdminFinanceController.getFinancialReports);
+router.get('/finance/reports/csv', AdminFinanceController.exportCsv);
+router.get('/finance/reports/pdf', AdminFinanceController.exportPdf);
 
 // UNIFIED FINANCIAL PLATFORM & PAYMENTS (6 Dedicated Sections + Overrides + Exports)
 router.get('/payments/overview', AdminPaymentController.getOverview);
@@ -63,6 +85,7 @@ router.post('/payments/recheck-payment', AdminPaymentController.recheckRazorpayP
 router.post('/payments/mark-reconciled', AdminPaymentController.markReconciled);
 router.get('/payments/attempt-history/:orderId', AdminPaymentController.getPaymentAttemptHistory);
 router.get('/payments/webhook-logs', AdminPaymentController.getWebhookLogs);
+
 
 // 2. Commerce: Products & Inventory
 router.get('/products', AdminController.getAllProducts);

@@ -35,10 +35,29 @@ import {
   fallbackDeliveryBoyWithdrawals,
   fallbackReturnRequests
 } from '../services/fallbackData';
-import { loadSavedReturnRequests, saveReturnRequests, loadSavedOrders, saveOrders } from '../services/fallbackStorage';
+import { loadSavedReturnRequests, saveReturnRequests, loadSavedOrders, saveOrders, loadSavedList, saveList } from '../services/fallbackStorage';
 
 const persistentOrders: any[] = loadSavedOrders(fallbackOrders);
 const persistentReturnRequests: any[] = loadSavedReturnRequests(fallbackReturnRequests);
+const persistentSettlements: any[] = loadSavedList('mock_settlements.json', fallbackSettlements);
+const persistentCodCollections: any[] = loadSavedList('mock_cod_collections.json', fallbackCodCollections);
+const persistentDeliveryBoyEarnings: any[] = loadSavedList('mock_delivery_earnings.json', fallbackDeliveryBoyEarnings);
+const persistentLedger: any[] = loadSavedList('mock_financial_ledger.json', fallbackFinancialLedger);
+const persistentProviderRequests: any[] = loadSavedList('mock_provider_requests.json', [
+  {
+    id: 'req_001',
+    providerId: 'prov_canteen',
+    requestedAmount: 5000,
+    eligiblePayable: 11800,
+    alreadySettled: 8000,
+    remainingPayable: 3800,
+    status: 'PENDING',
+    requestDate: '2026-09-08T10:00:00Z',
+    notes: 'Fortnight canteen billing settlement request',
+    relatedOrderIds: ['ord_101', 'ord_105']
+  }
+]);
+
 
 function enrichFallbackReturn(r: any): any {
   if (!r) return null;
@@ -654,7 +673,7 @@ const fallbackHandlers: Record<string, any> = {
   },
   deliveryBoyEarning: {
     findMany: async (args: any) => {
-      let list = [...fallbackDeliveryBoyEarnings];
+      let list = [...persistentDeliveryBoyEarnings];
       if (args?.where?.deliveryBoyId) {
         list = list.filter((e) => e.deliveryBoyId === args.where.deliveryBoyId);
       }
@@ -668,7 +687,7 @@ const fallbackHandlers: Record<string, any> = {
       const orderId = args?.where?.orderId;
       const deliveryBoyId = args?.where?.deliveryBoyId;
       const earningType = args?.where?.earningType;
-      const found = fallbackDeliveryBoyEarnings.find((e) => {
+      const found = persistentDeliveryBoyEarnings.find((e) => {
         if (id && e.id !== id) return false;
         if (orderId && e.orderId !== orderId) return false;
         if (deliveryBoyId && e.deliveryBoyId !== deliveryBoyId) return false;
@@ -680,17 +699,30 @@ const fallbackHandlers: Record<string, any> = {
     findUnique: async (args: any) => {
       const id = args?.where?.id;
       const orderId = args?.where?.orderId;
-      const found = fallbackDeliveryBoyEarnings.find((e) => (id && e.id === id) || (orderId && e.orderId === orderId));
+      const found = persistentDeliveryBoyEarnings.find((e) => (id && e.id === id) || (orderId && e.orderId === orderId));
       return found ? JSON.parse(JSON.stringify(found)) : null;
     },
     create: async (args: any) => {
       const newRecord = {
         id: `earn_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         createdAt: new Date(),
+        status: 'ELIGIBLE',
         ...args.data
       };
-      fallbackDeliveryBoyEarnings.unshift(newRecord);
+      persistentDeliveryBoyEarnings.unshift(newRecord);
+      saveList('mock_delivery_earnings.json', persistentDeliveryBoyEarnings);
       return JSON.parse(JSON.stringify(newRecord));
+    },
+    update: async (args: any) => {
+      const id = args?.where?.id;
+      const orderId = args?.where?.orderId;
+      const found = persistentDeliveryBoyEarnings.find((e) => (id && e.id === id) || (orderId && e.orderId === orderId));
+      if (found) {
+        Object.assign(found, args.data);
+        saveList('mock_delivery_earnings.json', persistentDeliveryBoyEarnings);
+        return JSON.parse(JSON.stringify(found));
+      }
+      return args.data;
     }
   },
   category: {
@@ -1755,16 +1787,16 @@ const fallbackHandlers: Record<string, any> = {
   },
   financialLedger: {
     findMany: async (args?: any) => {
-      let entries = [...fallbackFinancialLedger];
+      let entries = [...persistentLedger];
       if (args?.where?.orderId) entries = entries.filter(e => e.orderId === args.where.orderId);
       if (args?.where?.settlementId) entries = entries.filter(e => e.settlementId === args.where.settlementId);
       if (args?.where?.entryType) entries = entries.filter(e => e.entryType === args.where.entryType);
       if (args?.take) entries = entries.slice(0, args.take);
-      return JSON.parse(JSON.stringify(entries.map(e => ({ isImmutable: true, balanceAfter: 500, ...e }))));
+      return JSON.parse(JSON.stringify(entries.map(e => ({ isImmutable: true, balanceAfter: e.balanceAfter || e.amount || 500, ...e }))));
     },
     findUnique: async (args: any) => {
-      const e = fallbackFinancialLedger.find(item => item.id === args.where.id);
-      return e ? JSON.parse(JSON.stringify({ isImmutable: true, balanceAfter: 500, ...e })) : null;
+      const e = persistentLedger.find(item => item.id === args.where.id);
+      return e ? JSON.parse(JSON.stringify({ isImmutable: true, balanceAfter: e.balanceAfter || e.amount || 500, ...e })) : null;
     },
     create: async (args: any) => {
       const entry = {
@@ -1774,14 +1806,15 @@ const fallbackHandlers: Record<string, any> = {
         balanceAfter: Number(args.data.amount) || 500,
         ...args.data
       };
-      fallbackFinancialLedger.unshift(entry);
+      persistentLedger.unshift(entry);
+      saveList('mock_financial_ledger.json', persistentLedger);
       return JSON.parse(JSON.stringify(entry));
     },
-    count: async () => fallbackFinancialLedger.length
+    count: async () => persistentLedger.length
   },
   settlement: {
     findMany: async (args?: any) => {
-      let stls = [...fallbackSettlements];
+      let stls = [...persistentSettlements];
       if (args?.where?.providerId) stls = stls.filter(s => s.providerId === args.where.providerId);
       if (args?.where?.status) stls = stls.filter(s => s.status === args.where.status);
       return JSON.parse(JSON.stringify(stls.map(s => {
@@ -1794,7 +1827,7 @@ const fallbackHandlers: Record<string, any> = {
       })));
     },
     findUnique: async (args: any) => {
-      const s = fallbackSettlements.find(item => item.id === args.where.id);
+      const s = persistentSettlements.find(item => item.id === args.where.id);
       if (!s) return null;
       const provUser = fallbackUsers.find(u => u.provider?.id === s.providerId);
       return JSON.parse(JSON.stringify({
@@ -1805,18 +1838,20 @@ const fallbackHandlers: Record<string, any> = {
     },
     create: async (args: any) => {
       const stl = { id: `stl_${Date.now()}`, settlementNumber: `STL-${Date.now()}`, createdAt: new Date(), updatedAt: new Date(), ...args.data };
-      fallbackSettlements.unshift(stl);
+      persistentSettlements.unshift(stl);
+      saveList('mock_settlements.json', persistentSettlements);
       return JSON.parse(JSON.stringify(stl));
     },
     update: async (args: any) => {
-      const s = fallbackSettlements.find(item => item.id === args.where.id);
+      const s = persistentSettlements.find(item => item.id === args.where.id);
       if (s) {
         Object.assign(s, args.data, { updatedAt: new Date() });
+        saveList('mock_settlements.json', persistentSettlements);
         return JSON.parse(JSON.stringify(s));
       }
       return args.data;
     },
-    count: async () => fallbackSettlements.length
+    count: async () => persistentSettlements.length
   },
   settlementItem: {
     findMany: async (args?: any) => {
@@ -1837,39 +1872,41 @@ const fallbackHandlers: Record<string, any> = {
   },
   cODCollection: {
     findMany: async (args?: any) => {
-      let cols = [...fallbackCodCollections];
+      let cols = [...persistentCodCollections];
       if (args?.where?.deliveryBoyId) cols = cols.filter(c => c.deliveryBoyId === args.where.deliveryBoyId);
       if (args?.where?.reconciliationStatus) cols = cols.filter(c => c.reconciliationStatus === args.where.reconciliationStatus);
       return JSON.parse(JSON.stringify(cols.map(c => {
-        const ord = fallbackOrders.find(o => o.id === c.orderId);
+        const ord = persistentOrders.find(o => o.id === c.orderId || o.orderNumber === c.orderId);
         const dbUser = fallbackUsers.find(u => u.deliveryBoy?.id === c.deliveryBoyId);
         return {
           ...c,
-          order: ord ? { id: ord.id, orderNumber: ord.orderNumber, totalAmount: ord.totalAmount, student: ord.student } : null,
+          order: ord ? { id: ord.id, orderNumber: ord.orderNumber, totalAmount: ord.totalAmount, student: ord.student, providerId: ord.providerId, provider: ord.provider, paymentMethod: ord.paymentMethod, status: ord.status } : null,
           deliveryBoy: dbUser?.deliveryBoy ? { id: dbUser.deliveryBoy.id, fullName: dbUser.deliveryBoy.fullName, mobileNumber: dbUser.deliveryBoy.mobileNumber } : null
         };
       })));
     },
     findUnique: async (args: any) => {
-      const c = fallbackCodCollections.find(item => item.id === args.where.id || item.orderId === args.where.orderId);
+      const c = persistentCodCollections.find(item => item.id === args.where.id || item.orderId === args.where.orderId);
       if (!c) return null;
-      const ord = fallbackOrders.find(o => o.id === c.orderId);
+      const ord = persistentOrders.find(o => o.id === c.orderId || o.orderNumber === c.orderId);
       const dbUser = fallbackUsers.find(u => u.deliveryBoy?.id === c.deliveryBoyId);
       return JSON.parse(JSON.stringify({
         ...c,
-        order: ord ? { id: ord.id, orderNumber: ord.orderNumber, totalAmount: ord.totalAmount, student: ord.student } : null,
+        order: ord ? { id: ord.id, orderNumber: ord.orderNumber, totalAmount: ord.totalAmount, student: ord.student, providerId: ord.providerId, provider: ord.provider, paymentMethod: ord.paymentMethod, status: ord.status } : null,
         deliveryBoy: dbUser?.deliveryBoy ? { id: dbUser.deliveryBoy.id, fullName: dbUser.deliveryBoy.fullName, mobileNumber: dbUser.deliveryBoy.mobileNumber } : null
       }));
     },
     create: async (args: any) => {
       const col = { id: `cod_${Date.now()}`, createdAt: new Date(), updatedAt: new Date(), ...args.data };
-      fallbackCodCollections.unshift(col);
+      persistentCodCollections.unshift(col);
+      saveList('mock_cod_collections.json', persistentCodCollections);
       return JSON.parse(JSON.stringify(col));
     },
     update: async (args: any) => {
-      const c = fallbackCodCollections.find(item => item.id === args.where.id || item.orderId === args.where.orderId);
+      const c = persistentCodCollections.find(item => item.id === args.where.id || item.orderId === args.where.orderId);
       if (c) {
         Object.assign(c, args.data, { updatedAt: new Date() });
+        saveList('mock_cod_collections.json', persistentCodCollections);
         return JSON.parse(JSON.stringify(c));
       }
       return args.data;
@@ -1877,16 +1914,50 @@ const fallbackHandlers: Record<string, any> = {
     upsert: async (args: any) => {
       const orderId = args.where?.orderId || args.create?.orderId;
       const id = args.where?.id;
-      let existing = fallbackCodCollections.find(item => (orderId && item.orderId === orderId) || (id && item.id === id));
+      let existing = persistentCodCollections.find(item => (orderId && item.orderId === orderId) || (id && item.id === id));
       if (existing) {
         Object.assign(existing, args.update, { updatedAt: new Date() });
+        saveList('mock_cod_collections.json', persistentCodCollections);
         return JSON.parse(JSON.stringify(existing));
       }
       const newCol = { id: `cod_${Date.now()}`, createdAt: new Date(), updatedAt: new Date(), ...args.create };
-      fallbackCodCollections.unshift(newCol);
+      persistentCodCollections.unshift(newCol);
+      saveList('mock_cod_collections.json', persistentCodCollections);
       return JSON.parse(JSON.stringify(newCol));
     },
-    count: async () => fallbackCodCollections.length
+    count: async () => persistentCodCollections.length
+  },
+  providerSettlementRequest: {
+    findMany: async (args?: any) => {
+      let list = [...persistentProviderRequests];
+      if (args?.where?.providerId) list = list.filter(r => r.providerId === args.where.providerId);
+      if (args?.where?.status) list = list.filter(r => r.status === args.where.status);
+      return JSON.parse(JSON.stringify(list));
+    },
+    findUnique: async (args: any) => {
+      const found = persistentProviderRequests.find(r => r.id === args.where.id);
+      return found ? JSON.parse(JSON.stringify(found)) : null;
+    },
+    create: async (args: any) => {
+      const newReq = {
+        id: `req_${Date.now()}`,
+        requestDate: new Date().toISOString(),
+        status: 'PENDING',
+        ...args.data
+      };
+      persistentProviderRequests.unshift(newReq);
+      saveList('mock_provider_requests.json', persistentProviderRequests);
+      return JSON.parse(JSON.stringify(newReq));
+    },
+    update: async (args: any) => {
+      const found = persistentProviderRequests.find(r => r.id === args.where.id);
+      if (found) {
+        Object.assign(found, args.data, { updatedAt: new Date() });
+        saveList('mock_provider_requests.json', persistentProviderRequests);
+        return JSON.parse(JSON.stringify(found));
+      }
+      return args.data;
+    }
   },
   adminStatusOverride: {
     findMany: async (args?: any) => {

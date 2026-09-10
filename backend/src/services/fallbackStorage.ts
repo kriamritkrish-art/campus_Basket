@@ -143,4 +143,57 @@ export function saveOrders(list: any[]): void {
   }
 }
 
+function getGenericCandidatePaths(filename: string): string[] {
+  return [
+    path.resolve(__dirname, filename),
+    path.resolve(__dirname, '../../src/services', filename),
+    path.resolve(process.cwd(), 'src/services', filename),
+    path.resolve(process.cwd(), 'dist/services', filename),
+    path.resolve(process.cwd(), filename),
+    path.resolve('/tmp', `cb_${filename}`),
+  ];
+}
+
+export function loadSavedList(filename: string, initialList: any[]): any[] {
+  const candidatePaths = getGenericCandidatePaths(filename);
+  for (const storagePath of candidatePaths) {
+    try {
+      if (fs.existsSync(storagePath)) {
+        const data = fs.readFileSync(storagePath, 'utf8');
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const map = new Map<string, any>();
+          for (const item of initialList) {
+            if (item.id) map.set(item.id, item);
+          }
+          for (const item of parsed) {
+            if (item.id) map.set(item.id, item);
+          }
+          return Array.from(map.values());
+        }
+      }
+    } catch {
+      // Continue to next candidate
+    }
+  }
+  return [...initialList];
+}
+
+export function saveList(filename: string, list: any[]): void {
+  const candidatePaths = getGenericCandidatePaths(filename);
+  const jsonStr = JSON.stringify(list, null, 2);
+  for (const storagePath of candidatePaths) {
+    try {
+      const dir = path.dirname(storagePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(storagePath, jsonStr, 'utf8');
+    } catch {
+      // Best-effort write
+    }
+  }
+}
+
+
 

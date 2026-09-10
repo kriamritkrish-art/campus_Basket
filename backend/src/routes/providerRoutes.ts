@@ -27,6 +27,8 @@ router.use(rbacGuard(['ADMIN', 'SERVICE_PROVIDER']));
 router.get('/dashboard', ProviderController.getDashboard);
 router.get('/analytics', ProviderController.getAnalytics);
 router.get('/export', ProviderController.exportData);
+router.get('/settlements', ProviderController.getSettlements);
+router.post('/settlements/request', ProviderController.requestSettlement);
 router.get('/settlement-account', ProviderController.getSettlementAccount);
 router.post('/settlement-account', ProviderController.saveSettlementAccount);
 router.get('/laundry-config', ProviderController.getLaundryConfig);

@@ -16,6 +16,7 @@ import {
   Compass,
   History,
   IndianRupee,
+  Banknote,
   Target,
   Bell,
   User,
@@ -111,6 +112,12 @@ function DeliveryLayoutInner({ children }: { children: React.ReactNode }) {
           label: 'Delivery History',
           href: '/delivery/history',
           icon: History,
+          badge: null,
+        },
+        {
+          label: 'COD Collection',
+          href: '/delivery/cod',
+          icon: Banknote,
           badge: null,
         },
         {

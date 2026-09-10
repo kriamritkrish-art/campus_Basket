@@ -1373,4 +1373,207 @@ export class DeliveryController {
       next(err);
     }
   }
+
+  /**
+   * Section 12: Delivery Boy COD Dashboard ("MY COD COLLECTION")
+   */
+  public static async getDeliveryCodCollections(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const deliveryBoy = await resolveDeliveryBoyProfile(req.user);
+      if (!deliveryBoy) {
+        res.status(403).json({ success: false, message: 'Delivery runner profile required' });
+        return;
+      }
+
+      const { dateRange, startDate, endDate, providerId, collectionStatus } = req.query;
+
+      const orders = await (prisma as any).order.findMany({
+        where: {
+          deliveryBoyId: deliveryBoy.id,
+          paymentMethod: 'CASH_ON_DELIVERY'
+        },
+        include: {
+          student: true,
+          provider: true
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const codCollections = await (prisma as any).cODCollection.findMany({
+        where: { deliveryBoyId: deliveryBoy.id }
+      });
+
+      const now = new Date();
+      const isSameDay = (d1: Date, d2: Date) =>
+        d1.getFullYear() === d2.getFullYear() &&
+        d1.getMonth() === d2.getMonth() &&
+        d1.getDate() === d2.getDate();
+
+      let todayExpected = 0;
+      let todayCollected = 0;
+      let todayDeliveredCodCount = 0;
+
+      const detailedList: any[] = [];
+
+      for (const ord of orders) {
+        const codEntry = codCollections.find((c: any) => c.orderId === ord.id || c.orderId === ord.orderNumber);
+        const orderAmt = Math.round((Number(ord.totalAmount) || 0) * 100) / 100;
+        const isCollected = ord.paymentStatus === 'COD_COLLECTED' || codEntry?.collectionStatus === 'COLLECTED';
+        const collectedAmt = codEntry ? Number(codEntry.collectedAmount) : (isCollected ? orderAmt : 0);
+        const pendingAmt = Math.max(0, Math.round((orderAmt - collectedAmt) * 100) / 100);
+        const currentStatus = codEntry?.collectionStatus || (isCollected ? 'COLLECTED' : 'PENDING');
+
+        const ordDate = new Date(ord.createdAt);
+        if (isSameDay(ordDate, now)) {
+          todayExpected += orderAmt;
+          todayCollected += collectedAmt;
+          if (ord.status === 'DELIVERED') todayDeliveredCodCount += 1;
+        }
+
+        detailedList.push({
+          orderId: ord.id,
+          orderNumber: ord.orderNumber,
+          student: ord.student?.fullName || 'Student',
+          provider: ord.provider?.fullName || 'Campus Store',
+          providerId: ord.providerId,
+          orderAmount: orderAmt,
+          codAmount: orderAmt,
+          collectedAmount: collectedAmt,
+          pendingAmount: pendingAmt,
+          collectionStatus: currentStatus,
+          orderStatus: ord.status,
+          date: ord.createdAt
+        });
+      }
+
+      // Apply Filters
+      let filtered = detailedList;
+      if (dateRange === 'today') {
+        filtered = filtered.filter(f => isSameDay(new Date(f.date), now));
+      } else if (dateRange === 'yesterday') {
+        const yest = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        filtered = filtered.filter(f => isSameDay(new Date(f.date), yest));
+      } else if (dateRange === 'week') {
+        filtered = filtered.filter(f => (now.getTime() - new Date(f.date).getTime()) <= 7 * 24 * 60 * 60 * 1000);
+      } else if (dateRange === 'month') {
+        filtered = filtered.filter(f => new Date(f.date).getFullYear() === now.getFullYear() && new Date(f.date).getMonth() === now.getMonth());
+      } else if (startDate && endDate) {
+        filtered = filtered.filter(f => new Date(f.date) >= new Date(startDate as string) && new Date(f.date) <= new Date(endDate as string));
+      }
+
+      if (providerId && providerId !== 'ALL') {
+        filtered = filtered.filter(f => f.providerId === providerId);
+      }
+      if (collectionStatus && collectionStatus !== 'ALL') {
+        filtered = filtered.filter(f => f.collectionStatus === collectionStatus);
+      }
+
+      const totalCod = filtered.reduce((s, r) => s + r.codAmount, 0);
+      const totalCol = filtered.reduce((s, r) => s + r.collectedAmount, 0);
+
+      res.status(200).json({
+        success: true,
+        cards: {
+          todayCod: Math.round(todayExpected * 100) / 100,
+          todayCollected: Math.round(todayCollected * 100) / 100,
+          todayPending: Math.max(0, Math.round((todayExpected - todayCollected) * 100) / 100),
+          todayDeliveredCount: todayDeliveredCodCount,
+          totalFilteredCod: Math.round(totalCod * 100) / 100,
+          totalFilteredCollected: Math.round(totalCol * 100) / 100,
+          totalFilteredPending: Math.max(0, Math.round((totalCod - totalCol) * 100) / 100)
+        },
+        orders: filtered
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Section 17: Daily Delivery Boy Earnings View
+   */
+  public static async getDailyEarningsBreakdown(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const deliveryBoy = await resolveDeliveryBoyProfile(req.user);
+      if (!deliveryBoy) {
+        res.status(403).json({ success: false, message: 'Delivery runner profile required' });
+        return;
+      }
+
+      const orders = await (prisma as any).order.findMany({
+        where: { deliveryBoyId: deliveryBoy.id },
+        include: { provider: true },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const earnings = await (prisma as any).deliveryBoyEarning.findMany({
+        where: { deliveryBoyId: deliveryBoy.id }
+      });
+
+      const now = new Date();
+      const isSameDay = (d1: Date, d2: Date) =>
+        d1.getFullYear() === d2.getFullYear() &&
+        d1.getMonth() === d2.getMonth() &&
+        d1.getDate() === d2.getDate();
+
+      const isMonthly = (deliveryBoy as any).paymentType === 'MONTHLY_CONTRACT';
+      const perRate = isMonthly ? 0 : Number((deliveryBoy as any).perDeliveryRate || 10);
+
+      let todayOrdersDelivered = 0;
+      let todayCodCollected = 0;
+      let todayEligibleEarnings = 0;
+      let todaySettledEarnings = 0;
+
+      const detailedRecords: any[] = [];
+
+      for (const ord of orders) {
+        const ordDate = new Date(ord.createdAt);
+        const isDelivered = ord.status === 'DELIVERED';
+        const isCod = ord.paymentMethod === 'CASH_ON_DELIVERY';
+        const codAmt = isCod ? Number(ord.totalAmount) || 0 : 0;
+        const earnRecord = earnings.find((e: any) => e.orderId === ord.id || (ord.orderNumber && e.orderId === ord.orderNumber));
+
+        const eligibleEarning = isMonthly ? 0 : (earnRecord ? Number(earnRecord.amount) : (isDelivered && ord.deliveryOtpVerified ? perRate : 0));
+        const earningStatus = isMonthly ? 'MONTHLY_CONTRACTUAL' : (earnRecord?.status || (isDelivered && ord.deliveryOtpVerified ? 'ELIGIBLE' : 'PENDING_OTP'));
+
+        if (isSameDay(ordDate, now)) {
+          if (isDelivered) todayOrdersDelivered += 1;
+          if (isCod && ord.paymentStatus === 'COD_COLLECTED') todayCodCollected += codAmt;
+          todayEligibleEarnings += eligibleEarning;
+          if (earningStatus === 'SETTLED') todaySettledEarnings += eligibleEarning;
+        }
+
+        detailedRecords.push({
+          orderId: ord.id,
+          orderNumber: ord.orderNumber,
+          date: ord.createdAt,
+          provider: ord.provider?.fullName || 'Campus Store',
+          paymentMode: isCod ? 'COD' : 'ONLINE',
+          orderAmount: Number(ord.totalAmount) || 0,
+          codAmount: codAmt,
+          deliveryStatus: ord.status,
+          otpVerified: Boolean(ord.deliveryOtpVerified),
+          eligibleEarning,
+          earningStatus
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        contractType: isMonthly ? 'Monthly Contractual' : 'Per Delivery',
+        perOrderRate: isMonthly ? 'Not Applicable' : `₹${perRate}`,
+        today: {
+          ordersDelivered: todayOrdersDelivered,
+          codCollected: Math.round(todayCodCollected * 100) / 100,
+          eligibleEarnings: Math.round(todayEligibleEarnings * 100) / 100,
+          settledEarnings: Math.round(todaySettledEarnings * 100) / 100,
+          pendingEarnings: Math.max(0, Math.round((todayEligibleEarnings - todaySettledEarnings) * 100) / 100)
+        },
+        records: detailedRecords
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
 }
+

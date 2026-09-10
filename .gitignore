@@ -61,8 +61,7 @@ prisma/generated/
 backend/prisma/generated/
 
 # Mock data runtime files
-mock_orders.json
-mock_return_requests.json
-backend/mock_orders.json
-backend/mock_return_requests.json
-backend/src/services/mock_orders.json
+mock_*.json
+**/mock_*.json
+backend/mock_*.json
+backend/src/services/mock_*.json

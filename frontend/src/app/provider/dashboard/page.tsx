@@ -68,6 +68,7 @@ import {
   Tooltip,
   Legend
 } from 'recharts';
+import OrderFinancialDetailsModal from '../../../components/common/OrderFinancialDetailsModal';
 
 export default function ProviderDashboardPage() {
   const { user, role, isAuthenticated, isLoading, logout } = useAuth();
@@ -224,6 +225,45 @@ export default function ProviderDashboardPage() {
       setSettlementMessage(err.message || 'Error saving settlement account');
     } finally {
       setSettlementSaving(false);
+    }
+  };
+
+  // Provider Settlement Requests & Ledger History
+  const [providerSettlementsData, setProviderSettlementsData] = useState<any>(null);
+  const [requestSettlementModalOpen, setRequestSettlementModalOpen] = useState(false);
+  const [settlementRequestNotes, setSettlementRequestNotes] = useState('');
+  const [submittingSettlementRequest, setSubmittingSettlementRequest] = useState(false);
+  const [selectedFinancialOrderId, setSelectedFinancialOrderId] = useState<string | null>(null);
+
+  const loadProviderSettlements = async () => {
+    try {
+      const res = await apiRequest('/api/provider/settlements').catch(() => null);
+      if (res?.success && res.data) {
+        setProviderSettlementsData(res.data);
+      }
+    } catch {}
+  };
+
+  const handleRequestSettlement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmittingSettlementRequest(true);
+    try {
+      const res = await apiRequest('/api/provider/settlements/request', {
+        method: 'POST',
+        body: JSON.stringify({ notes: settlementRequestNotes })
+      });
+      if (res?.success) {
+        showToast('Settlement payout request submitted to Central Treasury');
+        setRequestSettlementModalOpen(false);
+        setSettlementRequestNotes('');
+        await Promise.all([loadProviderSettlements(), loadAnalytics()]);
+      } else {
+        alert(res?.message || 'Failed to submit settlement request');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Error submitting settlement request');
+    } finally {
+      setSubmittingSettlementRequest(false);
     }
   };
 
@@ -433,6 +473,7 @@ export default function ProviderDashboardPage() {
     loadLaundryJobs();
     loadSettlementAccount();
     loadLaundryConfig();
+    loadProviderSettlements();
   };
 
   useEffect(() => {
@@ -3018,8 +3059,15 @@ export default function ProviderDashboardPage() {
                   </div>
                 </div>
 
-                <div className="p-3 bg-slate-100 rounded-lg text-xs text-slate-600">
-                  Campus settlements are reconciled directly via the Campus Basket Central Finance Cell on a weekly cycle.
+                <div className="p-3 bg-slate-100 rounded-lg text-xs text-slate-600 flex items-center justify-between gap-3 flex-wrap">
+                  <span>Campus settlements are reconciled directly via the Campus Basket Central Finance Cell.</span>
+                  <button
+                    onClick={() => setRequestSettlementModalOpen(true)}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <IndianRupee className="w-3.5 h-3.5" />
+                    <span>Request Settlement Payout</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -3061,6 +3109,157 @@ export default function ProviderDashboardPage() {
                 <Edit2 className="w-3.5 h-3.5" />
                 <span>{settlementAccount ? 'Update Payout Account' : 'Set Payout Account'}</span>
               </button>
+            </div>
+
+            {/* Orders Pending Settlement Breakdown */}
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-600" />
+                    Orders Awaiting Treasury Settlement ({providerSettlementsData?.pendingOrders?.length || 0})
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Completed deliveries ready for payout reconciliation. Zero duplicate records.
+                  </p>
+                </div>
+                {providerSettlementsData?.pendingOrders?.length > 0 && (
+                  <button
+                    onClick={() => setRequestSettlementModalOpen(true)}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs cursor-pointer"
+                  >
+                    Request Payout Now
+                  </button>
+                )}
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-black uppercase text-slate-500">
+                      <th className="py-3 px-4">Order ID</th>
+                      <th className="py-3 px-3">Date</th>
+                      <th className="py-3 px-3">Customer</th>
+                      <th className="py-3 px-3 text-right">Order Gross</th>
+                      <th className="py-3 px-3 text-right">5% Commission</th>
+                      <th className="py-3 px-3 text-right">Net Payable</th>
+                      <th className="py-3 px-3 text-center">Status</th>
+                      <th className="py-3 px-4 text-right">Financial Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {providerSettlementsData?.pendingOrders && providerSettlementsData.pendingOrders.length > 0 ? (
+                      providerSettlementsData.pendingOrders.map((ord: any) => (
+                        <tr key={ord.id} className="hover:bg-slate-50/80 transition">
+                          <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                            {ord.orderNumber}
+                          </td>
+                          <td className="py-3 px-3 text-slate-500">
+                            {new Date(ord.createdAt).toLocaleDateString('en-IN')}
+                          </td>
+                          <td className="py-3 px-3 text-slate-700 font-medium">{ord.customerName}</td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">
+                            ₹{Number(ord.totalAmount).toFixed(2)}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono text-purple-700">
+                            -₹{Number(ord.campusCommission).toFixed(2)}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-black text-emerald-800">
+                            ₹{Number(ord.providerPayable).toFixed(2)}
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                              PENDING
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              onClick={() => setSelectedFinancialOrderId(ord.id)}
+                              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-bold text-[11px] transition cursor-pointer"
+                            >
+                              View Ledger
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={8} className="py-8 text-center text-slate-400">
+                          All completed orders have been settled or no orders are currently pending.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Provider Settlement Payout History */}
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    Settlement Payout History &amp; Bank Transfers ({providerSettlementsData?.history?.length || 0})
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Official disbursement log with bank references and UTR numbers.
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-black uppercase text-slate-500">
+                      <th className="py-3 px-4">Settlement ID</th>
+                      <th className="py-3 px-3">Date</th>
+                      <th className="py-3 px-3 text-right">Disbursed Amount</th>
+                      <th className="py-3 px-3">Mode</th>
+                      <th className="py-3 px-3">UTR / Bank Ref</th>
+                      <th className="py-3 px-3 text-center">Status</th>
+                      <th className="py-3 px-4">Reconciled Orders</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {providerSettlementsData?.history && providerSettlementsData.history.length > 0 ? (
+                      providerSettlementsData.history.map((h: any) => (
+                        <tr key={h.id} className="hover:bg-slate-50/80 transition">
+                          <td className="py-3 px-4 font-mono font-bold text-slate-900">{h.id}</td>
+                          <td className="py-3 px-3 text-slate-500">
+                            {new Date(h.settledAt || h.createdAt).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric'
+                            })}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-black text-emerald-800 text-sm">
+                            ₹{Number(h.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-3 px-3 font-mono font-semibold text-slate-700">{h.paymentMode}</td>
+                          <td className="py-3 px-3 font-mono text-slate-800">
+                            {h.utrReference || <span className="text-slate-400 italic">Central Remittance</span>}
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {h.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-slate-600 font-mono text-[11px]">
+                            {Array.isArray(h.orders) ? `${h.orders.length} order(s)` : 'Direct settlement'}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-slate-400">
+                          No institutional payout records generated yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -4526,6 +4725,100 @@ export default function ProviderDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Request Settlement Payout Modal */}
+      {requestSettlementModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  Request Settlement Payout
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Submit reconciliation claim to Central Campus Basket Treasury
+                </p>
+              </div>
+              <button
+                onClick={() => setRequestSettlementModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRequestSettlement} className="space-y-4 text-xs">
+              <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 space-y-1">
+                <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
+                  Pending Settlement Balance
+                </div>
+                <div className="text-2xl font-black text-emerald-950 font-mono">
+                  ₹{Number(providerSettlementsData?.totals?.remainingAmount ?? analytics?.paymentAnalytics?.pendingSettlement ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </div>
+                <div className="text-[11px] text-emerald-700 font-medium">
+                  {providerSettlementsData?.pendingOrders?.length || 0} order(s) eligible for settlement
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Payout Destination Account
+                </label>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 font-mono text-[11px] text-slate-700">
+                  {settlementAccount ? (
+                    settlementAccount.accountType === 'UPI' ? (
+                      <div>UPI VPA: <strong>{settlementAccount.upiIdMasked}</strong></div>
+                    ) : (
+                      <div>Bank A/C: <strong>{settlementAccount.accountNumberMasked}</strong> ({settlementAccount.bankName})</div>
+                    )
+                  ) : (
+                    <span className="text-amber-700 font-sans">
+                      ⚠️ No payout account linked yet. Central Treasury will prompt for account details.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Notes for Treasury Admin (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Weekly settlement request for completed campus deliveries..."
+                  value={settlementRequestNotes}
+                  onChange={(e) => setSettlementRequestNotes(e.target.value)}
+                  className="w-full text-xs p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setRequestSettlementModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingSettlementRequest}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold disabled:opacity-50 cursor-pointer shadow-xs"
+                >
+                  {submittingSettlementRequest ? 'Submitting...' : 'Submit Request'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Original Order Financial Details Modal */}
+      <OrderFinancialDetailsModal
+        orderId={selectedFinancialOrderId}
+        isOpen={Boolean(selectedFinancialOrderId)}
+        onClose={() => setSelectedFinancialOrderId(null)}
+      />
     </div>
   );
 }
