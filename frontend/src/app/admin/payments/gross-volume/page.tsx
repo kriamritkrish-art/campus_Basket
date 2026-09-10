@@ -800,6 +800,23 @@ export default function OrderPaymentSettlementLedgerPage() {
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Direct Jump to Flowcharts & Documentation */}
+            <button
+              onClick={() => {
+                setDocOpen(true);
+                setDocTab('FLOWCHARTS');
+                const el = document.getElementById('engine-documentation-section');
+                if (el) {
+                  el.scrollIntoView({ behavior: 'smooth' });
+                }
+              }}
+              className="px-3.5 py-2.5 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 hover:from-indigo-700 hover:to-purple-800 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-2 cursor-pointer"
+              title="Jump to Visual Flowcharts, Lifecycle Rules & Status Matrix"
+            >
+              <GitMerge className="w-3.5 h-3.5 text-indigo-200" />
+              <span>Flowcharts &amp; Docs</span>
+            </button>
+
             <button
               onClick={fetchLedgerData}
               disabled={loading}
@@ -1672,7 +1689,10 @@ export default function OrderPaymentSettlementLedgerPage() {
         {/* =========================================================================
             5B. COMPREHENSIVE STATUS DOCUMENTATION & INTERACTIVE FINANCIAL FLOWCHARTS
         ========================================================================= */}
-        <section className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+        <section
+          id="engine-documentation-section"
+          className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden scroll-mt-20"
+        >
           {/* Header & Tab Selector */}
           <div className="p-4 sm:p-5 bg-gradient-to-r from-[#0F172A] via-slate-900 to-slate-800 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
