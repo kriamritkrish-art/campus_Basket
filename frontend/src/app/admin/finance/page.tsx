@@ -469,40 +469,60 @@ export default function AdminFinancePage() {
     window.open(`/api/admin/finance/reports/export/pdf?${query.toString()}`, '_blank');
   };
 
-  // Filtered Providers
+  // Filtered Providers (Safe against undefined properties)
   const filteredProviders = useMemo(() => {
+    if (!Array.isArray(providersData)) return [];
+    const search = (providerSearch || '').trim().toLowerCase();
     return providersData.filter((p) => {
+      if (!p) return false;
+      const name = String(p.providerName || '').toLowerCase();
+      const category = String(p.businessCategory || '').toLowerCase();
+      const phone = String(p.contactPhone || '').toLowerCase();
       const matchesSearch =
-        p.providerName.toLowerCase().includes(providerSearch.toLowerCase()) ||
-        p.businessCategory.toLowerCase().includes(providerSearch.toLowerCase()) ||
-        (p.contactPhone && p.contactPhone.includes(providerSearch));
+        !search ||
+        name.includes(search) ||
+        category.includes(search) ||
+        phone.includes(search);
       const matchesStatus =
         providerStatusFilter === 'ALL' || p.settlementStatus === providerStatusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [providersData, providerSearch, providerStatusFilter]);
 
-  // Filtered COD Collections
+  // Filtered COD Collections (Safe against undefined properties)
   const filteredCodOrders = useMemo(() => {
-    if (!codSummary?.detailedOrders) return [];
+    if (!codSummary?.detailedOrders || !Array.isArray(codSummary.detailedOrders)) return [];
+    const search = (codSearch || '').trim().toLowerCase();
     return codSummary.detailedOrders.filter((o: any) => {
+      if (!o) return false;
+      const orderNum = String(o.orderNumber || o.id || '').toLowerCase();
+      const cust = String(o.customerName || '').toLowerCase();
+      const prov = String(o.providerName || '').toLowerCase();
+      const runner = String(o.runnerName || '').toLowerCase();
       const matchesSearch =
-        o.orderNumber.toLowerCase().includes(codSearch.toLowerCase()) ||
-        o.customerName.toLowerCase().includes(codSearch.toLowerCase()) ||
-        o.providerName.toLowerCase().includes(codSearch.toLowerCase()) ||
-        (o.runnerName && o.runnerName.toLowerCase().includes(codSearch.toLowerCase()));
+        !search ||
+        orderNum.includes(search) ||
+        cust.includes(search) ||
+        prov.includes(search) ||
+        runner.includes(search);
       const matchesStatus =
         codStatusFilter === 'ALL' || o.collectionStatus === codStatusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [codSummary, codSearch, codStatusFilter]);
 
-  // Filtered Delivery Boys
+  // Filtered Delivery Boys (Safe against undefined properties)
   const filteredDeliveryBoys = useMemo(() => {
+    if (!Array.isArray(deliveryData)) return [];
+    const search = (deliverySearch || '').trim().toLowerCase();
     return deliveryData.filter((d) => {
+      if (!d) return false;
+      const runner = String(d.runnerName || '').toLowerCase();
+      const phone = String(d.contactPhone || '').toLowerCase();
       const matchesSearch =
-        d.runnerName.toLowerCase().includes(deliverySearch.toLowerCase()) ||
-        (d.contactPhone && d.contactPhone.includes(deliverySearch));
+        !search ||
+        runner.includes(search) ||
+        phone.includes(search);
       const matchesContract =
         deliveryContractFilter === 'ALL' || d.contractType === deliveryContractFilter;
       return matchesSearch && matchesContract;
