@@ -450,20 +450,28 @@ export class ProviderController {
       let assignedRunnerId = order.deliveryBoyId;
       let defaultNote = notes || `Provider updated status to ${status.replace(/_/g, ' ')}`;
 
-      // If provider is accepting the order and no runner is assigned yet, dispatch an active runner
-      if (status === 'ACCEPTED' && !order.deliveryBoyId) {
+      // Attempt to auto-assign an active online delivery runner if not yet assigned
+      if (!assignedRunnerId && ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP'].includes(status)) {
         const activeRunner = await prisma.deliveryBoy.findFirst({
           where: { activeStatus: true }
         });
         if (activeRunner) {
           assignedRunnerId = activeRunner.id;
-          newStatus = 'DELIVERY_ASSIGNED';
-          defaultNote = notes || `Order accepted by provider. Delivery partner ${activeRunner.fullName} (${activeRunner.mobileNumber}) assigned for pickup at shop.`;
+          if (status === 'ACCEPTED') {
+            newStatus = 'DELIVERY_ASSIGNED';
+            defaultNote = notes || `Order accepted by provider. Delivery partner ${activeRunner.fullName} (${activeRunner.mobileNumber}) assigned for pickup at shop.`;
+          } else {
+            defaultNote = notes || `Order ${status.toLowerCase().replace(/_/g, ' ')} by provider. Delivery partner ${activeRunner.fullName} (${activeRunner.mobileNumber}) assigned.`;
+          }
         } else {
-          defaultNote = notes || `Order accepted by provider. Preparing item; awaiting delivery runner check-in.`;
+          if (status === 'ACCEPTED') {
+            defaultNote = notes || `Order accepted by provider. Preparing items; awaiting available runner pickup.`;
+          } else if (status === 'READY_FOR_PICKUP') {
+            defaultNote = notes || `Order prepared and ready at shop counter. Broadcasted to active runner pool for pickup.`;
+          }
         }
       } else if (status === 'READY_FOR_PICKUP') {
-        defaultNote = notes || `Order handed over to delivery partner at shop. Ready for campus delivery.`;
+        defaultNote = notes || `Order prepared at shop counter. Ready for delivery partner pickup and transit to student hostel.`;
       }
 
       const updated = await prisma.order.update({
@@ -491,7 +499,7 @@ export class ProviderController {
       res.status(200).json({
         success: true,
         message: status === 'READY_FOR_PICKUP'
-          ? 'Product marked as handed over to delivery partner!'
+          ? (assignedRunnerId ? 'Order marked ready and assigned to runner for pickup!' : 'Order marked ready! Broadcasted to campus delivery fleet.')
           : `Order status updated to ${newStatus.replace(/_/g, ' ')}`,
         order: updated
       });

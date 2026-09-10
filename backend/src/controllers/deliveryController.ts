@@ -214,15 +214,25 @@ export class DeliveryController {
         return;
       }
 
-      // Query unassigned, confirmed/ready orders
+      // Query unassigned, confirmed/ready orders respecting Provider Dispatch & Delivery Policy:
+      // 1. Auto-assign providers: orders are available immediately upon placement (CONFIRMED or later)
+      // 2. Require-acceptance providers: orders are only available AFTER provider acceptance (ACCEPTED, PREPARING, READY, READY_FOR_PICKUP)
       const orders = await prisma.order.findMany({
         where: {
           deliveryBoyId: null,
-          status: { in: ['CONFIRMED', 'ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP'] }
+          OR: [
+            {
+              status: 'CONFIRMED',
+              provider: { autoAssignDelivery: true }
+            },
+            {
+              status: { in: ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP'] }
+            }
+          ]
         },
         include: {
           student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
-          provider: { select: { fullName: true, mobileNumber: true } },
+          provider: { select: { fullName: true, mobileNumber: true, autoAssignDelivery: true } },
           items: true
         },
         orderBy: { createdAt: 'desc' }
@@ -386,6 +396,9 @@ export class DeliveryController {
       let order = await prisma.order.findFirst({
         where: {
           OR: [{ id }, { id: cleanId }, { orderNumber: id }, { orderNumber: cleanId }]
+        },
+        include: {
+          provider: true
         }
       });
       if (!order) {
@@ -395,6 +408,15 @@ export class DeliveryController {
 
       if (order.deliveryBoyId && order.deliveryBoyId !== deliveryBoy.id) {
         res.status(400).json({ success: false, message: 'Order has already been accepted by another runner.' });
+        return;
+      }
+
+      // Enforce Provider Workflow Policy: If provider requires acceptance first and hasn't accepted, prevent runner acceptance
+      if (order.status === 'CONFIRMED' && order.provider && !order.provider.autoAssignDelivery && !order.providerAccepted) {
+        res.status(400).json({
+          success: false,
+          message: 'This provider must accept the order before a delivery partner can be assigned.'
+        });
         return;
       }
 

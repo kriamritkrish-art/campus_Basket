@@ -627,7 +627,7 @@ export default function OrderTrackPage() {
     const s = order.status;
     if (s === 'ACCEPTED') return 1;
     if (s === 'PREPARING') return 2;
-    if (s === 'READY' || s === 'PACKED') return 3;
+    if (s === 'READY' || s === 'PACKED' || s === 'READY_FOR_PICKUP') return 3;
     if (s === 'DELIVERY_ASSIGNED' || s === 'PICKED_UP') return 4;
     if (s === 'OUT_FOR_DELIVERY' || s === 'IN_TRANSIT') return 5;
     if (s === 'DELIVERED' || s === 'COMPLETED') return 6;

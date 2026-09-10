@@ -2359,7 +2359,7 @@ export default function ProviderDashboardPage() {
                               <button
                                 onClick={() => handleUpdateOrderStatus(ord.id, 'ACCEPTED')}
                                 className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded-lg font-bold text-[11px] shadow-xs inline-flex items-center gap-1 cursor-pointer transition active:scale-95"
-                                title="Accept order and assign delivery runner"
+                                title="Accept order and unlock for delivery runner"
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                                 <span>Accept Order</span>
@@ -2376,7 +2376,7 @@ export default function ProviderDashboardPage() {
                               </button>
                             )}
 
-                            {/* 3. Hand Over to Delivery Boy */}
+                            {/* 3. Hand Over to Delivery Boy / Mark Ready */}
                             {(ord.status === 'DELIVERY_ASSIGNED' || ord.status === 'PREPARING') && (
                               <button
                                 onClick={() => handleUpdateOrderStatus(ord.id, 'READY_FOR_PICKUP')}
@@ -2384,14 +2384,26 @@ export default function ProviderDashboardPage() {
                                 title="Physical hand-off of items to delivery partner"
                               >
                                 <Bike className="w-3.5 h-3.5" />
-                                <span>Hand Over to Delivery Boy</span>
+                                <span>{ord.deliveryBoy ? 'Hand Over to Delivery Boy' : 'Mark Ready for Pickup'}</span>
                               </button>
                             )}
 
-                            {/* 4. Handed Over status badge */}
-                            {['READY_FOR_PICKUP', 'PICKED_UP', 'OUT_FOR_DELIVERY'].includes(ord.status) && (
+                            {/* 4. Handover & Dispatch Progression Badges */}
+                            {ord.status === 'READY_FOR_PICKUP' && (
+                              <span className="inline-block text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-md font-semibold">
+                                {ord.deliveryBoy ? '🟡 Ready at Counter' : '📢 Broadcast to Runners'}
+                              </span>
+                            )}
+
+                            {ord.status === 'PICKED_UP' && (
+                              <span className="inline-block text-[10px] bg-purple-50 text-purple-800 border border-purple-200 px-2 py-0.5 rounded-md font-semibold">
+                                ✓ Picked Up by Runner
+                              </span>
+                            )}
+
+                            {ord.status === 'OUT_FOR_DELIVERY' && (
                               <span className="inline-block text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-md font-semibold">
-                                ✓ Handed Over
+                                🚚 Out for Delivery
                               </span>
                             )}
 
