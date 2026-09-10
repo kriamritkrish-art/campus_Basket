@@ -196,6 +196,7 @@ export default function AdminProvidersPage() {
         phone: editForm.phone,
         serviceCategory: editForm.serviceCategory,
         activeStatus: editForm.activeStatus,
+        autoAssignDelivery: editForm.autoAssignDelivery,
       };
       if (editForm.password) {
         payload.password = editForm.password;

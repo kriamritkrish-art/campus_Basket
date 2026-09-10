@@ -111,6 +111,7 @@ router.delete('/students/:id', AdminPeopleController.deleteStudent);
 
 router.get('/providers', AdminPeopleController.getProviders);
 router.post('/providers', AdminPeopleController.createProvider);
+router.put('/providers/:id', AdminPeopleController.updateProvider);
 router.patch('/providers/:id', AdminPeopleController.updateProvider);
 router.delete('/providers/:id', AdminPeopleController.deleteProvider);
 router.patch('/providers/:id/status', AdminPeopleController.toggleProviderActive);
@@ -120,6 +121,7 @@ router.get('/providers/:providerId/analytics', AdminController.getProviderSalesA
 router.get('/delivery-boys/stats', AdminPeopleController.getDeliveryStats);
 router.get('/delivery-boys', AdminPeopleController.getDeliveryBoys);
 router.post('/delivery-boys', AdminPeopleController.createDeliveryBoy);
+router.put('/delivery-boys/:id', AdminPeopleController.updateDeliveryBoy);
 router.patch('/delivery-boys/:id', AdminPeopleController.updateDeliveryBoy);
 router.delete('/delivery-boys/:id', AdminPeopleController.deleteDeliveryBoy);
 router.post('/delivery-boys/:id/adjust', AdminPeopleController.adjustDeliveryBoyEarnings);

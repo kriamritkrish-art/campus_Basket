@@ -20,13 +20,25 @@ function matchesCategory(providerCategory: string, category: { name: string; slu
   return cSlug === pCat || cName === pCat;
 }
 
+export async function resolveProviderId(req: Request): Promise<string | null> {
+  if (req.user?.providerId) return req.user.providerId;
+  if (req.user?.role === 'SERVICE_PROVIDER' && req.user?.userId) {
+    const prov = await prisma.serviceProvider.findUnique({ where: { userId: req.user.userId } });
+    if (prov) return prov.id;
+  }
+  if (req.user?.role === 'ADMIN' && req.query.providerId) {
+    return String(req.query.providerId);
+  }
+  return null;
+}
+
 export class ProviderController {
   /**
    * Section 7: Service Provider Individual Dashboard
    */
   public static async getDashboard(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const providerId = req.user?.providerId;
+      const providerId = await resolveProviderId(req);
       if (!providerId) {
         res.status(403).json({ success: false, message: 'Provider profile required' });
         return;
@@ -50,10 +62,9 @@ export class ProviderController {
       monthStart.setHours(0, 0, 0, 0);
 
       const isLaundryProvider =
-        !provider.serviceCategory ||
-        provider.serviceCategory.toLowerCase().includes('laundry') ||
-        provider.serviceCategory.toLowerCase().includes('all') ||
-        provider.serviceCategory === 'LAUNDRY';
+        Boolean(provider.serviceCategory) &&
+        (provider.serviceCategory.toLowerCase().includes('laundry') ||
+         provider.serviceCategory === 'LAUNDRY');
 
       const [products, orders, laundryJobs] = await Promise.all([
         prisma.product.findMany({
@@ -70,19 +81,19 @@ export class ProviderController {
           },
           orderBy: { createdAt: 'desc' }
         }),
-        prisma.laundryOrder.findMany({
-          where: isLaundryProvider
-            ? { OR: [{ providerId }, { providerId: null }] }
-            : { providerId },
-          include: {
-            student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
-            items: true,
-            photos: true,
-            otps: true,
-            deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true } }
-          },
-          orderBy: { createdAt: 'desc' }
-        })
+        isLaundryProvider
+          ? prisma.laundryOrder.findMany({
+              where: { providerId },
+              include: {
+                student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
+                items: true,
+                photos: true,
+                otps: true,
+                deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true } }
+              },
+              orderBy: { createdAt: 'desc' }
+            })
+          : Promise.resolve([])
       ]);
 
       const deliveredOrders = orders.filter((o) => o.status === 'DELIVERED');
@@ -174,7 +185,7 @@ export class ProviderController {
    */
   public static async getProducts(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const providerId = req.user?.providerId;
+      const providerId = await resolveProviderId(req);
       if (!providerId) {
         res.status(403).json({ success: false, message: 'Provider profile required' });
         return;
@@ -210,7 +221,7 @@ export class ProviderController {
    */
   public static async createProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const providerId = req.user?.providerId;
+      const providerId = await resolveProviderId(req);
       if (!providerId) {
         res.status(403).json({ success: false, message: 'Provider profile required' });
         return;
@@ -339,7 +350,11 @@ export class ProviderController {
   public static async updateProduct(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const providerId = req.user?.providerId;
+      const providerId = await resolveProviderId(req);
+      if (!providerId) {
+        res.status(403).json({ success: false, message: 'Provider profile required' });
+        return;
+      }
       const { price, discountPrice, stock, availability } = req.body;
 
       const product = await prisma.product.findUnique({ where: { id } });
@@ -389,7 +404,7 @@ export class ProviderController {
    */
   public static async getOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const providerId = req.user?.providerId;
+      const providerId = await resolveProviderId(req);
       if (!providerId) {
         res.status(403).json({ success: false, message: 'Provider profile required' });
         return;
@@ -424,7 +439,11 @@ export class ProviderController {
     try {
       const { id } = req.params;
       const { status, notes } = req.body;
-      const providerId = req.user?.providerId;
+      const providerId = await resolveProviderId(req);
+      if (!providerId) {
+        res.status(403).json({ success: false, message: 'Provider profile required' });
+        return;
+      }
 
       const order = await prisma.order.findUnique({ where: { id } });
       if (!order) {
@@ -432,8 +451,11 @@ export class ProviderController {
         return;
       }
 
-      if (order.providerId && order.providerId !== providerId) {
-        res.status(403).json({ success: false, message: 'You are not assigned to this order' });
+      if (!order.providerId || order.providerId !== providerId) {
+        res.status(403).json({
+          success: false,
+          message: 'Access denied: You are only permitted to manage orders placed for your own food and products.'
+        });
         return;
       }
 
@@ -513,15 +535,7 @@ export class ProviderController {
    */
   public static async getAnalytics(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      let providerId = req.user?.providerId;
-      if (req.user?.role === 'SERVICE_PROVIDER') {
-        if (!providerId && req.user?.userId) {
-          const prov = await prisma.serviceProvider.findUnique({ where: { userId: req.user.userId } });
-          if (prov) providerId = prov.id;
-        }
-      } else if (req.user?.role === 'ADMIN' && req.query.providerId) {
-        providerId = String(req.query.providerId);
-      }
+      const providerId = await resolveProviderId(req);
 
       if (!providerId) {
         res.status(403).json({ success: false, message: 'Provider profile required' });
@@ -566,13 +580,9 @@ export class ProviderController {
 
       if (isDemoMode) {
         const { fallbackOrders, fallbackProducts } = await import('../services/fallbackData');
-        const provCategory = (provider.serviceCategory || '').toLowerCase();
-        const isFoodVendor = provCategory.includes('food') || provCategory.includes('canteen') || providerId === 'prov_canteen';
-        if (isFoodVendor) {
-          allOrders = fallbackOrders.filter((o) => o.providerId === 'prov_canteen' || o.providerId === providerId);
-          if (allProducts.length === 0) {
-            allProducts = fallbackProducts.filter((p) => p.providerId === 'prov_canteen' || p.providerId === providerId);
-          }
+        allOrders = fallbackOrders.filter((o) => o.providerId === providerId);
+        if (allProducts.length === 0) {
+          allProducts = fallbackProducts.filter((p) => p.providerId === providerId);
         }
       }
 
@@ -1150,15 +1160,7 @@ export class ProviderController {
    */
   public static async exportData(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      let providerId = req.user?.providerId;
-      if (req.user?.role === 'SERVICE_PROVIDER') {
-        if (!providerId && req.user?.userId) {
-          const prov = await prisma.serviceProvider.findUnique({ where: { userId: req.user.userId } });
-          if (prov) providerId = prov.id;
-        }
-      } else if (req.user?.role === 'ADMIN' && req.query.providerId) {
-        providerId = String(req.query.providerId);
-      }
+      const providerId = await resolveProviderId(req);
 
       if (!providerId) {
         res.status(403).json({ success: false, message: 'Provider profile required' });
@@ -1176,8 +1178,8 @@ export class ProviderController {
       let demoProducts: any[] | null = null;
       if (isDemo) {
         const { fallbackOrders, fallbackProducts } = await import('../services/fallbackData');
-        demoOrders = fallbackOrders.filter((o) => o.providerId === 'prov_canteen' || o.providerId === providerId);
-        demoProducts = fallbackProducts.filter((p) => p.providerId === 'prov_canteen' || p.providerId === providerId);
+        demoOrders = fallbackOrders.filter((o) => o.providerId === providerId);
+        demoProducts = fallbackProducts.filter((p) => p.providerId === providerId);
       }
 
       if (type === 'customers') {
@@ -1185,10 +1187,6 @@ export class ProviderController {
           where: { providerId },
           include: { student: { include: { hall: true } } }
         })) as any[]);
-        if (orders.length === 0 && !demoOrders) {
-          const { fallbackOrders } = await import('../services/fallbackData');
-          orders = fallbackOrders.filter((o) => o.providerId === 'prov_canteen');
-        }
 
         const customerMap: Record<string, any> = {};
         orders.forEach((o) => {
@@ -1235,10 +1233,6 @@ export class ProviderController {
           where: { providerId },
           include: { category: true }
         })) as any[]);
-        if (products.length === 0 && !demoProducts) {
-          const { fallbackProducts } = await import('../services/fallbackData');
-          products = fallbackProducts.filter((p) => p.providerId === 'prov_canteen');
-        }
 
         const header = 'Product Name,Category,Price (INR),Current Stock,Low Stock Threshold,Approval Status\n';
         const rows = products.map((p) =>
@@ -1264,10 +1258,6 @@ export class ProviderController {
           include: { items: true },
           orderBy: { createdAt: 'desc' }
         })) as any[]);
-        if (orders.length === 0 && !demoOrders) {
-          const { fallbackOrders } = await import('../services/fallbackData');
-          orders = fallbackOrders.filter((o) => o.providerId === 'prov_canteen');
-        }
 
         const dailyMap: Record<string, { date: string; sales: number; orders: number; items: number }> = {};
         orders.forEach((o) => {
@@ -1300,10 +1290,6 @@ export class ProviderController {
         },
         orderBy: { createdAt: 'desc' }
       })) as any[]);
-      if (orders.length === 0 && !demoOrders) {
-        const { fallbackOrders } = await import('../services/fallbackData');
-        orders = fallbackOrders.filter((o) => o.providerId === 'prov_canteen');
-      }
 
       const header = 'Order Number,Date,Customer Name,Hostel,Room,Items,Total Amount (INR),Status,Payment Method,Delivery Runner\n';
       const rows = orders.map((o) => {
@@ -1335,7 +1321,7 @@ export class ProviderController {
    */
   public static async getSettlementAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const providerId = req.user?.providerId;
+      const providerId = await resolveProviderId(req);
       if (!providerId) {
         res.status(403).json({ success: false, message: 'Provider profile required' });
         return;
@@ -1368,7 +1354,7 @@ export class ProviderController {
    */
   public static async saveSettlementAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const providerId = req.user?.providerId;
+      const providerId = await resolveProviderId(req);
       if (!providerId) {
         res.status(403).json({ success: false, message: 'Provider profile required' });
         return;
@@ -1412,7 +1398,7 @@ export class ProviderController {
    */
   public static async getLaundryConfig(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const providerId = req.user?.providerId;
+      const providerId = await resolveProviderId(req);
       if (!providerId) {
         res.status(403).json({ success: false, message: 'Provider profile required' });
         return;
@@ -1462,7 +1448,7 @@ export class ProviderController {
    */
   public static async saveLaundryConfig(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const providerId = req.user?.providerId;
+      const providerId = await resolveProviderId(req);
       if (!providerId) {
         res.status(403).json({ success: false, message: 'Provider profile required' });
         return;

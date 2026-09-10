@@ -381,6 +381,24 @@ const fallbackHandlers: Record<string, any> = {
           user: { id: u.id, email: u.email, username: u.username, role: u.role, isActive: u.isActive }
         })),
     count: async () => fallbackUsers.filter((u: any) => u.provider).length,
+    create: async (args: any) => {
+      const newSp = {
+        id: `prov_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        userId: args.data.userId,
+        fullName: args.data.fullName,
+        mobileNumber: args.data.mobileNumber,
+        serviceCategory: args.data.serviceCategory,
+        assignedZones: args.data.assignedZones || 'ALL',
+        activeStatus: args.data.activeStatus ?? true,
+        autoAssignDelivery: args.data.autoAssignDelivery ?? false,
+        plainPassword: args.data.plainPassword || null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      const user = fallbackUsers.find((u) => u.id === args.data.userId);
+      if (user) (user as any).provider = newSp;
+      return JSON.parse(JSON.stringify(newSp));
+    },
     update: async (args: any) => {
       const id = args?.where?.id;
       const user = fallbackUsers.find((u: any) => u.provider && u.provider.id === id);
@@ -389,6 +407,14 @@ const fallbackHandlers: Record<string, any> = {
         return JSON.parse(JSON.stringify(user.provider));
       }
       return args?.data || null;
+    },
+    delete: async (args: any) => {
+      const id = args?.where?.id;
+      const user = fallbackUsers.find((u: any) => u.provider && u.provider.id === id);
+      if (user) {
+        (user as any).provider = null;
+      }
+      return { id };
     }
   },
   deliveryBoy: {
@@ -910,6 +936,22 @@ const fallbackHandlers: Record<string, any> = {
         } else if (typeof args.where.status === 'string') {
           orders = orders.filter((o) => o.status === args.where.status);
         }
+      }
+      if (args?.where?.OR && Array.isArray(args.where.OR)) {
+        orders = orders.filter((o) => {
+          return args.where.OR.some((cond: any) => {
+            if (cond.status) {
+              if (typeof cond.status === 'string' && o.status !== cond.status) return false;
+              if (cond.status.in && Array.isArray(cond.status.in) && !cond.status.in.includes(o.status)) return false;
+            }
+            if (cond.provider?.autoAssignDelivery !== undefined) {
+              const provUser = fallbackUsers.find((u: any) => u.provider?.id === o.providerId);
+              const autoAssign = Boolean(o.provider?.autoAssignDelivery ?? provUser?.provider?.autoAssignDelivery);
+              if (autoAssign !== cond.provider.autoAssignDelivery) return false;
+            }
+            return true;
+          });
+        });
       }
       const mapped = orders.map((o: any) => {
         const studentUser = fallbackUsers.find((u: any) => u.student?.id === o.studentId);

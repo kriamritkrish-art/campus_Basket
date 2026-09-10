@@ -371,6 +371,32 @@ export async function autoSeedDatabase(prisma: any): Promise<void> {
     });
 
     // 7. Products
+    const foodProv = await prisma.serviceProvider.findFirst({ where: { serviceCategory: { contains: 'Food' } } });
+    const fruitsProv = await prisma.serviceProvider.findFirst({ where: { serviceCategory: { contains: 'Fruit' } } });
+    const essentialsProv = await prisma.serviceProvider.findFirst({ where: { serviceCategory: { contains: 'Essential' } } });
+
+    // Backfill unassigned products to their respective category provider
+    try {
+      if (foodProv) {
+        await prisma.product.updateMany({
+          where: { providerId: null, categoryId: catFood.id },
+          data: { providerId: foodProv.id }
+        });
+      }
+      if (fruitsProv) {
+        await prisma.product.updateMany({
+          where: { providerId: null, categoryId: catFruits.id },
+          data: { providerId: fruitsProv.id }
+        });
+      }
+      if (essentialsProv) {
+        await prisma.product.updateMany({
+          where: { providerId: null, categoryId: catEssentials.id },
+          data: { providerId: essentialsProv.id }
+        });
+      }
+    } catch (e) {}
+
     const existingProducts = await prisma.product.count();
     if (existingProducts > 0) {
       console.info(`[AutoSeed] Database already has ${existingProducts} products. Skipping product catalog creation.`);
@@ -541,13 +567,22 @@ export async function autoSeedDatabase(prisma: any): Promise<void> {
     ];
 
     for (const p of products) {
+      const provId = p.categoryId === catFood.id
+        ? foodProv?.id
+        : p.categoryId === catFruits.id
+        ? fruitsProv?.id
+        : essentialsProv?.id;
+
       await prisma.product.upsert({
         where: { slug: p.slug },
-        update: {},
+        update: {
+          ...(provId ? { providerId: provId } : {})
+        },
         create: {
           name: p.name,
           slug: p.slug,
           categoryId: p.categoryId,
+          providerId: provId || null,
           description: p.description,
           price: p.price,
           discountPrice: p.discountPrice,

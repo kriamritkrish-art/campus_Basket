@@ -263,21 +263,39 @@ export class OrderController {
 
       const orderNumber = generateOrderNumber();
 
-      // Determine provider from ordered products
-      const firstProductWithProvider = products.find((p) => p.providerId);
-      let targetProviderId: string | null = firstProductWithProvider?.providerId || null;
+      // Enforce clean vendor scoping: Each order belongs to a single provider
+      const distinctProviderIds = Array.from(
+        new Set(products.map((p) => p.providerId).filter(Boolean))
+      );
 
-      // If products don't have providerId yet, map from category as fallback
+      if (distinctProviderIds.length > 1) {
+        res.status(400).json({
+          success: false,
+          message: 'Your cart contains items from multiple vendors. Please place separate orders for each provider.'
+        });
+        return;
+      }
+
+      let targetProviderId: string | null = (distinctProviderIds[0] as string) || null;
+
+      // If products don't have providerId yet (e.g. legacy products), map from category as fallback
       if (!targetProviderId && products[0]?.categoryId) {
         const cat = await prisma.category.findUnique({ where: { id: products[0].categoryId } });
-        const provCategory = cat?.name?.toLowerCase() || '';
+        const catName = (cat?.name || '').toLowerCase();
+        const catSlug = (cat?.slug || '').toLowerCase();
+
+        let categoryKeyword = 'Food';
+        if (catName.includes('fruit') || catSlug.includes('fruit')) {
+          categoryKeyword = 'Fruit';
+        } else if (catName.includes('laund') || catSlug.includes('laund')) {
+          categoryKeyword = 'Laundry';
+        } else if (catName.includes('station') || catName.includes('essential') || catSlug.includes('essential')) {
+          categoryKeyword = 'Essential';
+        }
+
         const matchProv = await prisma.serviceProvider.findFirst({
           where: {
-            OR: [
-              { serviceCategory: { contains: 'Food' } },
-              { serviceCategory: { contains: 'Fruit' } },
-              { serviceCategory: { contains: 'Essential' } }
-            ]
+            serviceCategory: { contains: categoryKeyword }
           }
         });
         if (matchProv) targetProviderId = matchProv.id;
