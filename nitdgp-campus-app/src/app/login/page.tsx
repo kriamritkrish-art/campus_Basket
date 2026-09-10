@@ -267,6 +267,30 @@ function LoginForm() {
     }
   };
 
+  // Android uses the native Google account picker because Google Identity Services
+  // cannot reliably open its browser flow inside a Capacitor WebView.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    (window as any).handleAndroidGoogleToken = (payload: { credential?: string }) => {
+      if (payload?.credential) {
+        void handleGoogleSuccess({ credential: payload.credential });
+      } else {
+        setGoogleLoading(false);
+        setError('Google did not return a valid account token.');
+      }
+    };
+    (window as any).handleAndroidGoogleError = (statusCode?: number) => {
+      setGoogleLoading(false);
+      setError(`Google Sign-In could not be completed${statusCode ? ` (code ${statusCode})` : ''}. Please try again.`);
+    };
+
+    return () => {
+      delete (window as any).handleAndroidGoogleToken;
+      delete (window as any).handleAndroidGoogleError;
+    };
+  }, []);
+
   // Google Identity Services (GSI) Client Integration
   useEffect(() => {
     if (activeRole !== 'STUDENT') return;
@@ -338,6 +362,11 @@ function LoginForm() {
     const isCapacitor =
       typeof window !== 'undefined' &&
       (!!(window as any).Capacitor?.isNativePlatform?.() || window.location.protocol === 'capacitor:');
+
+    if (isCapacitor && (window as any).AndroidNativeAuth?.triggerNativeGoogleSignIn) {
+      (window as any).AndroidNativeAuth.triggerNativeGoogleSignIn();
+      return;
+    }
 
     // 1. Try Google OAuth2 Token Client (opens genuine Google account picker popup)
     if (typeof window !== 'undefined' && (window as any).google?.accounts?.oauth2 && !isCapacitor) {
