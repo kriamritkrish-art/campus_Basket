@@ -41,21 +41,28 @@ router.get('/dashboard', AdminController.getDashboardMetrics);
 // ==========================================
 router.get('/finance/summary', AdminFinanceController.getSummary);
 router.get('/finance/provider-payables', AdminFinanceController.getProviderPayables);
+router.get('/finance/providers', AdminFinanceController.getProviderPayables);
 router.post('/finance/provider-payables/manage-status', AdminFinanceController.manageProviderStatus);
+router.post('/finance/providers/status', AdminFinanceController.manageProviderStatus);
 router.post('/finance/provider-payables/settle', AdminFinanceController.manageProviderStatus);
 router.get('/finance/provider-requests', AdminFinanceController.getProviderRequests);
 router.post('/finance/provider-requests/:id/action', AdminFinanceController.handleProviderRequest);
+router.post('/finance/provider-requests/handle', AdminFinanceController.handleProviderRequest);
 
 router.get('/finance/cod', AdminFinanceController.getCodCollections);
 router.post('/finance/cod/manage-status', AdminFinanceController.manageCodStatus);
+router.post('/finance/cod/status', AdminFinanceController.manageCodStatus);
 
 router.get('/finance/delivery-earnings', AdminFinanceController.getDeliveryBoyEarnings);
 router.post('/finance/delivery-earnings/settle', AdminFinanceController.settleDeliveryBoyEarnings);
 
 router.get('/finance/settlement-history', AdminFinanceController.getSettlementHistory);
+router.get('/finance/history', AdminFinanceController.getSettlementHistory);
 router.get('/finance/reports', AdminFinanceController.getFinancialReports);
 router.get('/finance/reports/csv', AdminFinanceController.exportCsv);
+router.get('/finance/reports/export/csv', AdminFinanceController.exportCsv);
 router.get('/finance/reports/pdf', AdminFinanceController.exportPdf);
+router.get('/finance/reports/export/pdf', AdminFinanceController.exportPdf);
 
 // UNIFIED FINANCIAL PLATFORM & PAYMENTS (6 Dedicated Sections + Overrides + Exports)
 router.get('/payments/overview', AdminPaymentController.getOverview);

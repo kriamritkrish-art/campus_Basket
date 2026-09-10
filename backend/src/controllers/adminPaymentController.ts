@@ -45,7 +45,7 @@ export class AdminPaymentController {
           }
         }
 
-        const commAmt = Number(o.commissionAmount) || Math.round(amt * 0.05 * 100) / 100;
+        const commAmt = Number(o.commissionAmount) || 0;
         totalCommissionEarned += commAmt;
 
         if (['REQUESTED', 'PENDING_ADMIN_REVIEW', 'REFUND_PENDING', 'PROCESSING'].includes(o.refundStatus) || o.paymentStatus === 'REFUND_PENDING') {

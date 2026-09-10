@@ -3008,17 +3008,11 @@ export default function ProviderDashboardPage() {
                       -₹{Number(analytics?.revenueBreakdown?.refunds || 0).toLocaleString('en-IN')}
                     </span>
                   </div>
-                  <div className="flex justify-between py-2 border-b border-slate-100 text-indigo-700">
-                    <span>Campus Platform Fee (5% Commission)</span>
-                    <span className="font-bold">
-                      -₹{Number((analytics?.revenueBreakdown?.grossSales || 0) * 0.05).toFixed(2)}
-                    </span>
-                  </div>
                   <div className="flex justify-between py-3 border-t-2 border-slate-900 text-sm font-bold text-slate-900 bg-emerald-50 px-3 rounded-lg">
                     <span className="text-emerald-900">Final Net Provider Earnings</span>
                     <span className="text-emerald-700">
                       ₹{Number(
-                        Math.max(0, (analytics?.revenueBreakdown?.grossSales || 0) * 0.95 - (analytics?.revenueBreakdown?.discounts || 0) - (analytics?.revenueBreakdown?.refunds || 0))
+                        Math.max(0, (analytics?.revenueBreakdown?.grossSales || 0) - (analytics?.revenueBreakdown?.discounts || 0) - (analytics?.revenueBreakdown?.refunds || 0))
                       ).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
@@ -3097,7 +3091,7 @@ export default function ProviderDashboardPage() {
                     )}
                   </p>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Net weekly sales proceeds (after 5% platform fee) are credited directly to this account.
+                    Net weekly sales proceeds are credited directly to this account with zero deductions.
                   </p>
                 </div>
               </div>
@@ -3141,7 +3135,6 @@ export default function ProviderDashboardPage() {
                       <th className="py-3 px-3">Date</th>
                       <th className="py-3 px-3">Customer</th>
                       <th className="py-3 px-3 text-right">Order Gross</th>
-                      <th className="py-3 px-3 text-right">5% Commission</th>
                       <th className="py-3 px-3 text-right">Net Payable</th>
                       <th className="py-3 px-3 text-center">Status</th>
                       <th className="py-3 px-4 text-right">Financial Details</th>
@@ -3160,9 +3153,6 @@ export default function ProviderDashboardPage() {
                           <td className="py-3 px-3 text-slate-700 font-medium">{ord.customerName}</td>
                           <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">
                             ₹{Number(ord.totalAmount).toFixed(2)}
-                          </td>
-                          <td className="py-3 px-3 text-right font-mono text-purple-700">
-                            -₹{Number(ord.campusCommission).toFixed(2)}
                           </td>
                           <td className="py-3 px-3 text-right font-mono font-black text-emerald-800">
                             ₹{Number(ord.providerPayable).toFixed(2)}
@@ -3184,7 +3174,7 @@ export default function ProviderDashboardPage() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={8} className="py-8 text-center text-slate-400">
+                        <td colSpan={7} className="py-8 text-center text-slate-400">
                           All completed orders have been settled or no orders are currently pending.
                         </td>
                       </tr>

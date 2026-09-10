@@ -55,12 +55,12 @@ export default function OrderFinancialDetailsModal({ order: initialOrder, orderI
   const codCollected = isCod ? Number(order.codCollected || (order.paymentStatus === 'COD_COLLECTED' ? totalAmt : 0)) : 0;
   const pendingCod = Math.max(0, codExpected - codCollected);
 
-  const provPayable = Number(order.providerPayable !== undefined ? order.providerPayable : Math.round(totalAmt * 0.95 * 100) / 100);
+  const provPayable = Number(order.providerPayable !== undefined ? order.providerPayable : totalAmt);
   const provSettled = Number(order.settledAmount || order.providerSettled || order.providerSettledAmount || 0);
   const provRemaining = Math.max(0, provPayable - provSettled);
 
   const deliveryEarning = Number(order.deliveryEarning !== undefined ? order.deliveryEarning : (order.eligibleEarning !== undefined ? order.eligibleEarning : 10));
-  const adminComm = Number(order.commissionAmount !== undefined ? order.commissionAmount : Math.round(totalAmt * 0.05 * 100) / 100);
+  const adminComm = Number(order.commissionAmount !== undefined ? order.commissionAmount : 0);
 
   const isOtpVerified = Boolean(order.otpVerified || order.deliveryOtpVerified);
   const codStatus = order.codStatus || (isCod ? (codCollected >= codExpected && codExpected > 0 ? 'COLLECTED' : 'PENDING') : 'NOT_APPLICABLE');
@@ -147,7 +147,7 @@ export default function OrderFinancialDetailsModal({ order: initialOrder, orderI
               <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
                 <div className="text-[10px] font-medium text-emerald-700">Provider Payable</div>
                 <div className="text-base font-black text-emerald-700 mt-0.5">₹{provPayable.toFixed(2)}</div>
-                <div className="text-[10px] text-slate-400">Net after 5% fee</div>
+                <div className="text-[10px] text-slate-400">100% to Provider</div>
               </div>
 
               <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
@@ -161,11 +161,6 @@ export default function OrderFinancialDetailsModal({ order: initialOrder, orderI
                 <div className="text-base font-black text-purple-700 mt-0.5">₹{deliveryEarning.toFixed(2)}</div>
                 <div className="text-[10px] text-slate-400">OTP Payout</div>
               </div>
-            </div>
-
-            <div className="mt-3 pt-3 border-t border-slate-200/80 flex items-center justify-between text-xs">
-              <span className="text-slate-600 font-medium">Campus Platform Commission (5%):</span>
-              <span className="font-bold text-slate-900">₹{adminComm.toFixed(2)}</span>
             </div>
           </div>
 

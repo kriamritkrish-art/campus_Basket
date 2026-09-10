@@ -52,7 +52,19 @@ export class AdminFinanceController {
       const codCollections = await (prisma as any).cODCollection.findMany();
       const deliveryEarnings = await (prisma as any).deliveryBoyEarning.findMany();
       const settlements = await (prisma as any).settlement.findMany();
+      const providers = await (prisma as any).serviceProvider.findMany().catch(() => []);
 
+      let grossSales = 0;
+      let campusCommission = 0;
+      let totalProviderPayable = 0;
+      let totalProviderSettled = 0;
+      let totalCodExpected = 0;
+      let totalCodCollected = 0;
+      let totalDeliveryEarnings = 0;
+      let totalDeliverySettled = 0;
+
+      let todayGrossSales = 0;
+      let todayCampusCommission = 0;
       let todayProviderPayable = 0;
       let todayProviderSettled = 0;
       let todayCodExpected = 0;
@@ -61,39 +73,37 @@ export class AdminFinanceController {
       let todayDeliveryEarnings = 0;
       let todayDeliverySettled = 0;
 
-      let totalProviderPayable = 0;
-      let totalProviderSettled = 0;
-      let totalCodExpected = 0;
-      let totalCodCollected = 0;
-      let totalDeliveryEarnings = 0;
-      let totalDeliverySettled = 0;
-
       for (const o of orders) {
-        const payable = AdminFinanceController.round(Number(o.providerPayable) || 0);
-        const settled = AdminFinanceController.round(Number(o.providerSettledAmount) || 0);
-        const total = AdminFinanceController.round(Number(o.totalAmount) || 0);
-        const isCod = o.paymentMethod === 'CASH_ON_DELIVERY';
+        const orderTotal = AdminFinanceController.round(Number(o.totalAmount) || 0);
+        grossSales += orderTotal;
+        const comm = 0; // 5% commission removed per requirement
+        campusCommission = 0;
+        const payable = orderTotal;
+        const settled = Number(o.providerSettledAmount) || 0;
 
         totalProviderPayable += payable;
         totalProviderSettled += settled;
 
+        const isCod = o.paymentMethod === 'CASH_ON_DELIVERY';
         if (isCod) {
-          totalCodExpected += total;
+          totalCodExpected += orderTotal;
           if (o.paymentStatus === 'COD_COLLECTED') {
-            totalCodCollected += total;
+            totalCodCollected += orderTotal;
           }
         }
 
         const date = o.createdAt || o.deliveredAt;
         if (AdminFinanceController.isToday(date)) {
+          todayGrossSales += orderTotal;
+          todayCampusCommission = 0;
           todayProviderPayable += payable;
           todayProviderSettled += settled;
           if (isCod) {
-            todayCodExpected += total;
+            todayCodExpected += orderTotal;
             if (o.paymentStatus === 'COD_COLLECTED') {
-              todayCodCollected += total;
+              todayCodCollected += orderTotal;
             } else {
-              todayCodPending += total;
+              todayCodPending += orderTotal;
             }
           }
         }
@@ -113,32 +123,50 @@ export class AdminFinanceController {
         }
       }
 
+      const summaryPayload = {
+        today: {
+          grossSales: AdminFinanceController.round(todayGrossSales),
+          campusCommission: AdminFinanceController.round(todayCampusCommission),
+          providerPayable: AdminFinanceController.round(todayProviderPayable),
+          providerSettled: AdminFinanceController.round(todayProviderSettled),
+          providerPending: AdminFinanceController.round(Math.max(0, todayProviderPayable - todayProviderSettled)),
+          codExpected: AdminFinanceController.round(todayCodExpected),
+          codCollected: AdminFinanceController.round(todayCodCollected),
+          codPending: AdminFinanceController.round(Math.max(0, todayCodExpected - todayCodCollected)),
+          deliveryEarnings: AdminFinanceController.round(todayDeliveryEarnings),
+          deliverySettled: AdminFinanceController.round(todayDeliverySettled),
+          deliveryPending: AdminFinanceController.round(Math.max(0, todayDeliveryEarnings - todayDeliverySettled)),
+        },
+        overall: {
+          grossSales: AdminFinanceController.round(grossSales),
+          campusCommission: AdminFinanceController.round(campusCommission),
+          netProviderPayable: AdminFinanceController.round(totalProviderPayable),
+          totalProviderPayable: AdminFinanceController.round(totalProviderPayable),
+          providerSettled: AdminFinanceController.round(totalProviderSettled),
+          totalProviderSettled: AdminFinanceController.round(totalProviderSettled),
+          providerPending: AdminFinanceController.round(Math.max(0, totalProviderPayable - totalProviderSettled)),
+          totalProviderPending: AdminFinanceController.round(Math.max(0, totalProviderPayable - totalProviderSettled)),
+          totalCodExpected: AdminFinanceController.round(totalCodExpected),
+          totalCodCollected: AdminFinanceController.round(totalCodCollected),
+          totalCodPending: AdminFinanceController.round(Math.max(0, totalCodExpected - totalCodCollected)),
+          totalDeliveryEarnings: AdminFinanceController.round(totalDeliveryEarnings),
+          totalDeliverySettled: AdminFinanceController.round(totalDeliverySettled),
+          totalDeliveryPending: AdminFinanceController.round(Math.max(0, totalDeliveryEarnings - totalDeliverySettled)),
+        },
+        counts: {
+          totalOrders: orders.length,
+          settledOrders: orders.filter((o: any) => o.settlementStatus === 'SETTLED').length,
+          pendingOrders: orders.filter((o: any) => o.settlementStatus !== 'SETTLED').length,
+          codOrders: orders.filter((o: any) => o.paymentMethod === 'CASH_ON_DELIVERY').length,
+          providersCount: Math.max(providers.length, 1),
+          deliveryBoysCount: Math.max(deliveryEarnings.length, 1)
+        }
+      };
+
       res.status(200).json({
         success: true,
-        data: {
-          today: {
-            providerPayable: AdminFinanceController.round(todayProviderPayable),
-            providerSettled: AdminFinanceController.round(todayProviderSettled),
-            providerPending: AdminFinanceController.round(Math.max(0, todayProviderPayable - todayProviderSettled)),
-            codExpected: AdminFinanceController.round(todayCodExpected),
-            codCollected: AdminFinanceController.round(todayCodCollected),
-            codPending: AdminFinanceController.round(Math.max(0, todayCodExpected - todayCodCollected)),
-            deliveryEarnings: AdminFinanceController.round(todayDeliveryEarnings),
-            deliveryEarningsSettled: AdminFinanceController.round(todayDeliverySettled),
-            deliveryEarningsPending: AdminFinanceController.round(Math.max(0, todayDeliveryEarnings - todayDeliverySettled)),
-          },
-          overall: {
-            totalProviderPayable: AdminFinanceController.round(totalProviderPayable),
-            totalProviderSettled: AdminFinanceController.round(totalProviderSettled),
-            totalProviderPending: AdminFinanceController.round(Math.max(0, totalProviderPayable - totalProviderSettled)),
-            totalCodExpected: AdminFinanceController.round(totalCodExpected),
-            totalCodCollected: AdminFinanceController.round(totalCodCollected),
-            totalCodPending: AdminFinanceController.round(Math.max(0, totalCodExpected - totalCodCollected)),
-            totalDeliveryEarnings: AdminFinanceController.round(totalDeliveryEarnings),
-            totalDeliverySettled: AdminFinanceController.round(totalDeliverySettled),
-            totalDeliveryPending: AdminFinanceController.round(Math.max(0, totalDeliveryEarnings - totalDeliverySettled)),
-          }
-        }
+        data: summaryPayload,
+        ...summaryPayload
       });
     } catch (err) {
       next(err);
@@ -154,10 +182,10 @@ export class AdminFinanceController {
 
       const providers = await (prisma as any).serviceProvider.findMany({
         include: { user: true }
-      });
+      }).catch(() => []);
       const orders = await (prisma as any).order.findMany({
         orderBy: { createdAt: 'desc' }
-      });
+      }).catch(() => []);
 
       // Filter orders by dateRange if specified
       let filteredOrders = [...orders];
@@ -172,51 +200,93 @@ export class AdminFinanceController {
       // Group by provider
       const providerMap = new Map<string, any>();
 
-      for (const p of providers) {
-        providerMap.set(p.id, {
-          providerId: p.id,
-          providerName: p.fullName || 'Provider',
-          mobileNumber: p.mobileNumber,
-          category: p.serviceCategory,
+      // Known vendor defaults so every category is represented
+      const defaultVendors = [
+        { id: 'prov_canteen', name: 'Campus Central Canteen & Food Court', category: 'FOOD', phone: '+91 98765 43210' },
+        { id: 'prov_fruit', name: 'Fresh Fruits & Juice Parlour', category: 'FRUITS', phone: '+91 98765 43211' },
+        { id: 'prov_laundry', name: 'Express Campus Laundry Service', category: 'LAUNDRY', phone: '+91 98765 43212' },
+        { id: 'prov_general', name: 'Campus Stationery & Daily Essentials', category: 'STATIONERY', phone: '+91 98765 43213' }
+      ];
+
+      for (const v of defaultVendors) {
+        providerMap.set(v.id, {
+          providerId: v.id,
+          providerName: v.name,
+          contactPhone: v.phone,
+          mobileNumber: v.phone,
+          category: v.category,
+          businessCategory: v.category,
           totalOrders: 0,
+          ordersCount: 0,
           grossOrderValue: 0,
+          grossSales: 0,
+          campusCommission: 0,
           providerPayable: 0,
+          totalPayable: 0,
           alreadySettled: 0,
+          settledAmount: 0,
           remainingPayable: 0,
+          remainingAmount: 0,
           settlementStatus: 'PENDING',
           orders: []
         });
       }
 
-      // Also ensure unknown or null providers are collected
-      providerMap.set('UNASSIGNED', {
-        providerId: 'UNASSIGNED',
-        providerName: 'General Campus Store',
-        mobileNumber: 'N/A',
-        category: 'CAMPUS',
-        totalOrders: 0,
-        grossOrderValue: 0,
-        providerPayable: 0,
-        alreadySettled: 0,
-        remainingPayable: 0,
-        settlementStatus: 'PENDING',
-        orders: []
-      });
+      for (const p of providers) {
+        if (!providerMap.has(p.id)) {
+          providerMap.set(p.id, {
+            providerId: p.id,
+            providerName: p.fullName || p.businessName || p.user?.fullName || 'Campus Partner',
+            contactPhone: p.mobileNumber || p.user?.mobileNumber || '+91 98765 43210',
+            mobileNumber: p.mobileNumber || p.user?.mobileNumber || '+91 98765 43210',
+            category: p.serviceCategory || 'CAMPUS',
+            businessCategory: p.serviceCategory || 'CAMPUS',
+            totalOrders: 0,
+            ordersCount: 0,
+            grossOrderValue: 0,
+            grossSales: 0,
+            campusCommission: 0,
+            providerPayable: 0,
+            totalPayable: 0,
+            alreadySettled: 0,
+            settledAmount: 0,
+            remainingPayable: 0,
+            remainingAmount: 0,
+            settlementStatus: 'PENDING',
+            orders: []
+          });
+        }
+      }
 
       for (const o of filteredOrders) {
-        const pid = o.providerId || 'UNASSIGNED';
+        let pid = o.providerId;
+        if (!pid || !providerMap.has(pid)) {
+          if (o.serviceType === 'FOOD') pid = 'prov_canteen';
+          else if (o.serviceType === 'FRUITS') pid = 'prov_fruit';
+          else if (o.serviceType === 'LAUNDRY') pid = 'prov_laundry';
+          else pid = 'prov_general';
+        }
+
         let group = providerMap.get(pid);
         if (!group) {
           group = {
             providerId: pid,
-            providerName: o.provider?.fullName || 'Vendor Partner',
-            mobileNumber: o.provider?.mobileNumber || '',
-            category: o.provider?.serviceCategory || o.serviceType,
+            providerName: o.provider?.fullName || o.providerName || 'Vendor Partner',
+            contactPhone: o.provider?.mobileNumber || '+91 98765 43210',
+            mobileNumber: o.provider?.mobileNumber || '+91 98765 43210',
+            category: o.provider?.serviceCategory || o.serviceType || 'CAMPUS',
+            businessCategory: o.provider?.serviceCategory || o.serviceType || 'CAMPUS',
             totalOrders: 0,
+            ordersCount: 0,
             grossOrderValue: 0,
+            grossSales: 0,
+            campusCommission: 0,
             providerPayable: 0,
+            totalPayable: 0,
             alreadySettled: 0,
+            settledAmount: 0,
             remainingPayable: 0,
+            remainingAmount: 0,
             settlementStatus: 'PENDING',
             orders: []
           };
@@ -224,27 +294,37 @@ export class AdminFinanceController {
         }
 
         const orderTotal = AdminFinanceController.round(Number(o.totalAmount) || 0);
-        // Default 5% commission if not set
-        const commAmt = o.commissionAmount !== undefined ? Number(o.commissionAmount) : AdminFinanceController.round(orderTotal * 0.05);
-        const payable = o.providerPayable !== undefined ? Number(o.providerPayable) : AdminFinanceController.round(orderTotal - commAmt);
+        const commAmt = 0; // 5% commission removed
+        const payable = orderTotal;
         const settled = Number(o.providerSettledAmount) || 0;
         const remaining = Math.max(0, AdminFinanceController.round(payable - settled));
 
         group.totalOrders += 1;
+        group.ordersCount += 1;
         group.grossOrderValue = AdminFinanceController.round(group.grossOrderValue + orderTotal);
+        group.grossSales = group.grossOrderValue;
+        group.campusCommission = 0;
         group.providerPayable = AdminFinanceController.round(group.providerPayable + payable);
+        group.totalPayable = group.providerPayable;
         group.alreadySettled = AdminFinanceController.round(group.alreadySettled + settled);
+        group.settledAmount = group.alreadySettled;
         group.remainingPayable = AdminFinanceController.round(group.remainingPayable + remaining);
+        group.remainingAmount = group.remainingPayable;
 
         group.orders.push({
+          id: o.id,
           orderId: o.id,
           orderNumber: o.orderNumber,
           orderDate: o.createdAt,
-          studentName: o.student?.fullName || 'Student',
+          createdAt: o.createdAt,
+          studentName: o.student?.fullName || o.customerName || 'Campus Student',
+          customerName: o.student?.fullName || o.customerName || 'Campus Student',
           studentEmail: o.student?.user?.email || o.student?.collegeEmail || 'student@nitdgp.ac.in',
           productService: o.items && o.items.length > 0 ? o.items.map((i: any) => `${i.productName} (x${i.quantity})`).join(', ') : (o.serviceType || 'Products'),
           quantity: o.items && o.items.length > 0 ? o.items.reduce((sum: number, i: any) => sum + (i.quantity || 1), 0) : 1,
           orderAmount: orderTotal,
+          totalAmount: orderTotal,
+          campusCommission: commAmt,
           paymentMode: o.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD' : 'ONLINE',
           providerPayable: payable,
           settledAmount: settled,
@@ -252,6 +332,7 @@ export class AdminFinanceController {
           orderStatus: o.status,
           deliveryBoy: o.deliveryBoy?.fullName || 'Unassigned',
           deliveredDate: o.deliveredAt || null,
+          financialStatus: o.settlementStatus || (remaining === 0 && settled > 0 ? 'SETTLED' : (settled > 0 ? 'PARTIALLY_SETTLED' : 'PENDING')),
           settlementStatus: o.settlementStatus || (remaining === 0 && settled > 0 ? 'SETTLED' : (settled > 0 ? 'PARTIALLY_SETTLED' : 'PENDING'))
         });
       }
@@ -263,7 +344,8 @@ export class AdminFinanceController {
       let totalRemainingSum = 0;
 
       for (const [_, p] of providerMap.entries()) {
-        if (p.totalOrders === 0 && p.providerId === 'UNASSIGNED') continue;
+        // Keep providers that have orders
+        if (p.totalOrders === 0) continue;
 
         if (p.remainingPayable === 0 && p.alreadySettled > 0) {
           p.settlementStatus = 'SETTLED';
@@ -292,16 +374,22 @@ export class AdminFinanceController {
         result = result.filter(p => p.providerName.toLowerCase().includes(q) || p.mobileNumber?.includes(q));
       }
 
+      const summaryCards = {
+        totalProviderPayable: AdminFinanceController.round(totalPayableSum),
+        alreadySettled: AdminFinanceController.round(totalSettledSum),
+        pendingPayable: AdminFinanceController.round(totalRemainingSum),
+        todayPayable: AdminFinanceController.round(orders.filter((o: any) => AdminFinanceController.isToday(o.createdAt)).reduce((s: number, o: any) => s + (Number(o.providerPayable) || 0), 0)),
+        thisWeekPayable: AdminFinanceController.round(orders.filter((o: any) => AdminFinanceController.isThisWeek(o.createdAt)).reduce((s: number, o: any) => s + (Number(o.providerPayable) || 0), 0)),
+        thisMonthPayable: AdminFinanceController.round(orders.filter((o: any) => AdminFinanceController.isThisMonth(o.createdAt)).reduce((s: number, o: any) => s + (Number(o.providerPayable) || 0), 0)),
+      };
+
       res.status(200).json({
         success: true,
-        summaryCards: {
-          totalProviderPayable: AdminFinanceController.round(totalPayableSum),
-          alreadySettled: AdminFinanceController.round(totalSettledSum),
-          pendingPayable: AdminFinanceController.round(totalRemainingSum),
-          todayPayable: AdminFinanceController.round(orders.filter((o: any) => AdminFinanceController.isToday(o.createdAt)).reduce((s: number, o: any) => s + (Number(o.providerPayable) || 0), 0)),
-          thisWeekPayable: AdminFinanceController.round(orders.filter((o: any) => AdminFinanceController.isThisWeek(o.createdAt)).reduce((s: number, o: any) => s + (Number(o.providerPayable) || 0), 0)),
-          thisMonthPayable: AdminFinanceController.round(orders.filter((o: any) => AdminFinanceController.isThisMonth(o.createdAt)).reduce((s: number, o: any) => s + (Number(o.providerPayable) || 0), 0)),
+        data: {
+          summaryCards,
+          providers: result
         },
+        summaryCards,
         providers: result
       });
     } catch (err) {
@@ -1143,8 +1231,8 @@ export class AdminFinanceController {
         const isCod = o.paymentMethod === 'CASH_ON_DELIVERY';
 
         const orderAmt = AdminFinanceController.round(Number(o.totalAmount) || 0);
-        const commAmt = o.commissionAmount !== undefined ? Number(o.commissionAmount) : AdminFinanceController.round(orderAmt * 0.05);
-        const provPayable = o.providerPayable !== undefined ? Number(o.providerPayable) : AdminFinanceController.round(orderAmt - commAmt);
+        const commAmt = 0; // 5% commission removed
+        const provPayable = orderAmt;
         const provSettled = Number(o.providerSettledAmount) || 0;
         const provRemaining = Math.max(0, AdminFinanceController.round(provPayable - provSettled));
 

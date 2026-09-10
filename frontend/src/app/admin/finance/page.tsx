@@ -37,6 +37,8 @@ import {
 
 interface FinanceSummary {
   today: {
+    todayGrossSales?: number;
+    grossSales?: number;
     providerPayable: number;
     providerSettled: number;
     providerPending: number;
@@ -169,7 +171,7 @@ export default function AdminFinancePage() {
     try {
       const res = await apiRequest('/api/admin/finance/summary').catch(() => null);
       if (res?.success) {
-        setSummary(res.data);
+        setSummary(res.data || res);
       }
     } catch {}
   };
@@ -177,13 +179,27 @@ export default function AdminFinancePage() {
   // Load Providers Tab Data
   const fetchProviders = async () => {
     try {
-      const res = await apiRequest('/api/admin/finance/providers').catch(() => null);
+      const res = await apiRequest('/api/admin/finance/provider-payables').catch(() => null);
       if (res?.success) {
-        setProvidersData(res.data.providers || []);
+        const list = res.data?.providers || res.providers || (Array.isArray(res.data) ? res.data : []);
+        setProvidersData(
+          list.map((p: any) => ({
+            ...p,
+            providerName: p.providerName || p.name || 'Vendor Partner',
+            businessCategory: p.businessCategory || p.category || 'CAMPUS',
+            ordersCount: p.ordersCount ?? p.totalOrders ?? (p.orders?.length || 0),
+            grossSales: Number(p.grossSales ?? p.grossOrderValue ?? 0),
+            campusCommission: 0,
+            totalPayable: Number(p.totalPayable ?? p.providerPayable ?? (p.grossSales ?? p.grossOrderValue ?? 0)),
+            settledAmount: Number(p.settledAmount ?? p.alreadySettled ?? 0),
+            remainingAmount: Number(p.remainingAmount ?? p.remainingPayable ?? 0),
+            settlementStatus: p.settlementStatus || 'PENDING'
+          }))
+        );
       }
       const reqRes = await apiRequest('/api/admin/finance/provider-requests').catch(() => null);
       if (reqRes?.success) {
-        setProviderRequests(reqRes.data || []);
+        setProviderRequests(reqRes.data || reqRes.requests || (Array.isArray(reqRes) ? reqRes : []));
       }
     } catch {}
   };
@@ -193,7 +209,7 @@ export default function AdminFinancePage() {
     try {
       const res = await apiRequest('/api/admin/finance/cod').catch(() => null);
       if (res?.success) {
-        setCodSummary(res.data);
+        setCodSummary(res.data || res);
       }
     } catch {}
   };
@@ -203,7 +219,8 @@ export default function AdminFinancePage() {
     try {
       const res = await apiRequest('/api/admin/finance/delivery-earnings').catch(() => null);
       if (res?.success) {
-        setDeliveryData(res.data.deliveryBoys || []);
+        const list = res.data?.deliveryBoys || res.deliveryBoys || (Array.isArray(res.data) ? res.data : []);
+        setDeliveryData(list);
       }
     } catch {}
   };
@@ -216,7 +233,7 @@ export default function AdminFinancePage() {
       if (historyStatusFilter !== 'ALL') query.set('status', historyStatusFilter);
       const res = await apiRequest(`/api/admin/finance/history?${query.toString()}`).catch(() => null);
       if (res?.success) {
-        setHistoryData(res.data.settlements || []);
+        setHistoryData(res.data?.settlements || res.settlements || res.history || (Array.isArray(res.data) ? res.data : []));
       }
     } catch {}
   };
@@ -231,7 +248,7 @@ export default function AdminFinancePage() {
       if (reportStatusFilter !== 'ALL') query.set('status', reportStatusFilter);
       const res = await apiRequest(`/api/admin/finance/reports?${query.toString()}`).catch(() => null);
       if (res?.success) {
-        setReportsData(res.data);
+        setReportsData(res.data || res);
       }
     } catch {}
   };
@@ -610,11 +627,11 @@ export default function AdminFinancePage() {
           </div>
         </div>
 
-        {/* Concept 4: Campus 5% Commission */}
+        {/* Concept 4: Total Campus Volume */}
         <div className="bg-white p-5 rounded-2xl border border-purple-100 shadow-xs hover:border-purple-300 transition">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-              Campus Net Revenue (5%)
+              Total Campus Volume
             </span>
             <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center">
               <Sparkles className="w-4 h-4" />
@@ -622,10 +639,10 @@ export default function AdminFinancePage() {
           </div>
           <div className="mt-3">
             <div className="text-2xl font-black text-purple-950 font-mono">
-              ₹{Number(summary?.overall?.campusCommission || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              ₹{Number(summary?.overall?.grossSales || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </div>
             <div className="flex items-center justify-between text-xs mt-2 text-gray-500">
-              <span>Gross Orders: <strong className="text-gray-800 font-mono">₹{Number(summary?.overall?.grossSales || 0).toFixed(0)}</strong></span>
+              <span>Today Volume: <strong className="text-gray-800 font-mono">₹{Number(summary?.today?.todayGrossSales || 0).toFixed(0)}</strong></span>
               <span>Orders: <strong className="text-purple-800">{summary?.counts?.totalOrders || 0}</strong></span>
             </div>
           </div>
@@ -880,7 +897,6 @@ export default function AdminFinancePage() {
                     <th className="py-3.5 px-3">Category</th>
                     <th className="py-3.5 px-3 text-right">Orders</th>
                     <th className="py-3.5 px-3 text-right">Gross Sales</th>
-                    <th className="py-3.5 px-3 text-right">5% Commission</th>
                     <th className="py-3.5 px-3 text-right">Net Payable</th>
                     <th className="py-3.5 px-3 text-right">Settled</th>
                     <th className="py-3.5 px-3 text-right">Remaining</th>
@@ -911,9 +927,6 @@ export default function AdminFinancePage() {
                           </td>
                           <td className="py-3.5 px-3 text-right font-bold text-gray-900 font-mono">
                             ₹{Number(p.grossSales).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                          </td>
-                          <td className="py-3.5 px-3 text-right font-bold text-purple-700 font-mono">
-                            -₹{Number(p.campusCommission).toFixed(2)}
                           </td>
                           <td className="py-3.5 px-3 text-right font-black text-indigo-900 font-mono">
                             ₹{Number(p.totalPayable).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -1642,9 +1655,9 @@ export default function AdminFinancePage() {
               </div>
 
               <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs">
-                <div className="text-[11px] font-bold text-purple-600 uppercase">Campus 5% Commission</div>
+                <div className="text-[11px] font-bold text-purple-600 uppercase">Filtered Orders Count</div>
                 <div className="text-xl font-black text-purple-900 font-mono mt-1">
-                  ₹{Number(reportsData.totals.campusCommission || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  {reportsData.orders?.length || 0}
                 </div>
               </div>
 
@@ -1682,7 +1695,6 @@ export default function AdminFinancePage() {
                     <th className="py-3 px-3">Customer</th>
                     <th className="py-3 px-3">Payment</th>
                     <th className="py-3 px-3 text-right">Order Amount</th>
-                    <th className="py-3 px-3 text-right">5% Fee</th>
                     <th className="py-3 px-3 text-right">Net Payable</th>
                     <th className="py-3 px-3 text-center">Status</th>
                   </tr>
@@ -1709,9 +1721,6 @@ export default function AdminFinancePage() {
                         <td className="py-3 px-3 text-right font-mono font-bold text-gray-900">
                           ₹{Number(ord.totalAmount).toFixed(2)}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-purple-700">
-                          -₹{Number(ord.campusCommission).toFixed(2)}
-                        </td>
                         <td className="py-3 px-3 text-right font-mono font-bold text-emerald-800">
                           ₹{Number(ord.providerPayable).toFixed(2)}
                         </td>
@@ -1724,7 +1733,7 @@ export default function AdminFinancePage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={9} className="py-8 text-center text-gray-400">
+                      <td colSpan={8} className="py-8 text-center text-gray-400">
                         No orders found in the selected report criteria.
                       </td>
                     </tr>
@@ -2192,7 +2201,6 @@ export default function AdminFinancePage() {
                     <th className="py-2 px-3">Date</th>
                     <th className="py-2 px-3">Customer</th>
                     <th className="py-2 px-3 text-right">Order Amount</th>
-                    <th className="py-2 px-3 text-right">5% Fee</th>
                     <th className="py-2 px-3 text-right">Net Payable</th>
                     <th className="py-2 px-3 text-center">Settlement Status</th>
                     <th className="py-2 px-3 text-right">Details</th>
@@ -2210,9 +2218,6 @@ export default function AdminFinancePage() {
                       <td className="py-3 px-3 text-gray-700">{ord.customerName}</td>
                       <td className="py-3 px-3 text-right font-mono font-bold text-gray-900">
                         ₹{Number(ord.totalAmount).toFixed(2)}
-                      </td>
-                      <td className="py-3 px-3 text-right font-mono text-purple-700">
-                        -₹{Number(ord.campusCommission).toFixed(2)}
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-bold text-emerald-800">
                         ₹{Number(ord.providerPayable).toFixed(2)}

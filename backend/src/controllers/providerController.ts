@@ -1523,8 +1523,8 @@ export class ProviderController {
 
       const orderList = orders.map((o: any) => {
         const total = Math.round((Number(o.totalAmount) || 0) * 100) / 100;
-        const commAmt = o.commissionAmount !== undefined ? Number(o.commissionAmount) : Math.round(total * 0.05 * 100) / 100;
-        const payable = o.providerPayable !== undefined ? Number(o.providerPayable) : Math.round((total - commAmt) * 100) / 100;
+        const commAmt = 0; // 5% commission removed - providers receive 100%
+        const payable = o.providerPayable !== undefined ? Number(o.providerPayable) : total;
         const settled = Number(o.providerSettledAmount) || 0;
         const remaining = Math.max(0, Math.round((payable - settled) * 100) / 100);
 
