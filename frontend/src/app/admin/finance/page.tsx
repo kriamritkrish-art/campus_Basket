@@ -210,7 +210,13 @@ export default function AdminFinancePage() {
     try {
       const res = await apiRequest('/api/admin/finance/cod').catch(() => null);
       if (res?.success) {
-        setCodSummary(res.data || res);
+        const payload = res.data || res;
+        const boys = payload.deliveryBoys || payload.deliveryBoySummary || [];
+        setCodSummary({
+          ...payload,
+          deliveryBoys: boys,
+          deliveryBoySummary: boys
+        });
       }
     } catch {}
   };
@@ -352,6 +358,21 @@ export default function AdminFinancePage() {
         runner.includes(search);
       const matchesStatus =
         codStatusFilter === 'ALL' || o.collectionStatus === codStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [codSummary, codSearch, codStatusFilter]);
+
+  // Filtered Delivery Boys for COD Collections Tab (Safe against undefined properties)
+  const filteredCodDeliveryBoys = useMemo(() => {
+    const list = codSummary?.deliveryBoys || codSummary?.deliveryBoySummary || [];
+    if (!Array.isArray(list)) return [];
+    const search = (codSearch || '').trim().toLowerCase();
+    return list.filter((r: any) => {
+      if (!r) return false;
+      const runner = String(r.runnerName || r.deliveryBoyName || '').toLowerCase();
+      const phone = String(r.contactPhone || r.deliveryBoyId || '').toLowerCase();
+      const matchesSearch = !search || runner.includes(search) || phone.includes(search);
+      const matchesStatus = codStatusFilter === 'ALL' || r.collectionStatus === codStatusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [codSummary, codSearch, codStatusFilter]);
@@ -849,7 +870,7 @@ export default function AdminFinancePage() {
                   codView === 'RUNNERS' ? 'bg-white text-gray-900 shadow-xs' : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                By Delivery Partner ({codSummary?.deliveryBoys?.length || 0})
+                By Delivery Partner ({filteredCodDeliveryBoys.length})
               </button>
               <button
                 onClick={() => setCodView('ORDERS')}
@@ -894,7 +915,7 @@ export default function AdminFinancePage() {
               <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-black text-gray-900">
-                    COD Collections By Delivery Partner ({codSummary?.deliveryBoys?.length || 0})
+                    COD Collections By Delivery Partner ({filteredCodDeliveryBoys.length})
                   </h3>
                   <p className="text-xs text-gray-500 mt-0.5">
                     Cash collection status by runner. Read-only audit overview.
@@ -916,8 +937,8 @@ export default function AdminFinancePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {codSummary?.deliveryBoys && codSummary.deliveryBoys.length > 0 ? (
-                      codSummary.deliveryBoys.map((runner: any, idx: number) => {
+                    {filteredCodDeliveryBoys && filteredCodDeliveryBoys.length > 0 ? (
+                      filteredCodDeliveryBoys.map((runner: any, idx: number) => {
                         const expected = Number(runner.expectedAmount || runner.codExpected || 0);
                         const collected = Number(runner.collectedAmount || runner.codCollected || 0);
                         const pending = Math.max(0, expected - collected);
