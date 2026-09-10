@@ -191,6 +191,7 @@ enum ReturnStatus {
   REJECTED
   PICKUP_ASSIGNED
   PICKED_UP
+  AWAITING_STUDENT_DETAILS
   REFUNDED
   COMPLETED
   CANCELLED
@@ -1386,6 +1387,9 @@ model ReturnRequest {
   deliveryFeeDeducted   Decimal          @default(0.00) @db.Decimal(10, 2)
   refundAmount          Decimal          @db.Decimal(10, 2)
   deliveryBoyPayout     Decimal          @default(0.00) @db.Decimal(10, 2)
+  refundFailureReason   String?          // e.g. "BANK/ACCOUNT DETAILS REQUIRED"
+  refundMethod          String?          // "RAZORPAY_GATEWAY" or "MANUAL"
+  refundTransactionRef  String?          // UTR or Razorpay Refund ID
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
 

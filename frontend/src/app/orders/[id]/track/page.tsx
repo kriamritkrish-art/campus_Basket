@@ -1041,6 +1041,40 @@ export default function OrderTrackPage() {
                   </div>
                 </div>
 
+                {/* Urgent Action Banner: Missing Bank Details */}
+                {(currentReturn.status === 'AWAITING_STUDENT_DETAILS' || currentReturn.refundFailureReason === 'BANK/ACCOUNT DETAILS REQUIRED') && (
+                  <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-300 text-amber-950 space-y-2">
+                    <div className="flex items-center gap-2 font-bold text-xs text-amber-900">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>⚠️ Action Required: Bank / UPI Details Needed for Refund</span>
+                    </div>
+                    <div className="text-[11px] text-amber-900 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-amber-800">Status:</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-900 border border-amber-300">
+                          AWAITING STUDENT DETAILS
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-amber-800">Failure Reason:</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-200">
+                          BANK/ACCOUNT DETAILS REQUIRED
+                        </span>
+                      </div>
+                      <p className="text-slate-600 leading-relaxed pt-1">
+                        The admin is attempting to disburse your refund of <strong className="text-slate-900 font-mono">₹{Number(currentReturn.refundAmount).toFixed(2)}</strong>, but manual payment requires your bank account or UPI details.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setAccountModalOpen(true)}
+                      className="w-full py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <Banknote className="w-3.5 h-3.5" />
+                      <span>Provide Bank / UPI Details to Receive Refund</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* Refund Destination Account Card */}
                 <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
                   {order.refundAccount ? (

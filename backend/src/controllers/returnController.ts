@@ -2,6 +2,51 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
 import { AuditService } from '../services/audit/AuditService';
 import { LedgerService } from '../services/financial/LedgerService';
+import { RazorpayService } from '../services/payment/RazorpayService';
+
+const razorpayService = new RazorpayService();
+
+async function enrichReturnRecord(ret: any): Promise<any> {
+  if (!ret) return null;
+  const student = ret.order?.student;
+  const studentId = ret.studentId || student?.id || ret.order?.studentId;
+  let refundAccount: any = null;
+  if (studentId) {
+    try {
+      refundAccount = await (prisma as any).refundAccount.findFirst({
+        where: { studentId }
+      });
+    } catch (e) {}
+  }
+  if (!refundAccount && student?.refundAccounts && student.refundAccounts.length > 0) {
+    refundAccount = student.refundAccounts.find((a: any) => a.isDefault) || student.refundAccounts[0];
+  }
+
+  const formattedRefundAccount = refundAccount ? {
+    accountType: refundAccount.accountType || 'BANK_ACCOUNT',
+    accountHolderName: refundAccount.accountHolderName || student?.fullName || 'Student',
+    bankName: refundAccount.bankName || null,
+    accountNumber: refundAccount.accountNumberEncrypted || refundAccount.accountNumber || refundAccount.accountNumberMasked || null,
+    accountNumberMasked: refundAccount.accountNumberMasked || refundAccount.accountNumber || null,
+    ifscCode: refundAccount.ifscCode || null,
+    upiId: refundAccount.upiIdEncrypted || refundAccount.upiId || refundAccount.upiIdMasked || null,
+    upiIdMasked: refundAccount.upiIdMasked || refundAccount.upiId || null,
+    isVerified: Boolean(refundAccount.isVerified)
+  } : null;
+
+  const paymentMethod = ret.order?.paymentMethod || ret.order?.payment?.paymentMethod || 'ONLINE';
+  const razorpayPaymentId = ret.order?.payment?.razorpayPaymentId || ret.order?.razorpayPaymentId || null;
+  const razorpayOrderId = ret.order?.payment?.razorpayOrderId || ret.order?.razorpayOrderId || null;
+
+  return {
+    ...ret,
+    paymentMethod,
+    razorpayPaymentId,
+    razorpayOrderId,
+    refundAccount: formattedRefundAccount,
+    refundFailureReason: ret.status === 'AWAITING_STUDENT_DETAILS' ? 'BANK/ACCOUNT DETAILS REQUIRED' : (ret.refundFailureReason || null)
+  };
+}
 
 async function resolveReturnRequest(idParam: string, includeOrder: boolean = true): Promise<any> {
   if (!idParam) return null;
@@ -14,7 +59,16 @@ async function resolveReturnRequest(idParam: string, includeOrder: boolean = tru
     ? {
         order: {
           include: {
-            student: { select: { fullName: true, mobileNumber: true, roomNumber: true, user: { select: { email: true } } } },
+            student: { 
+              select: { 
+                id: true,
+                fullName: true, 
+                mobileNumber: true, 
+                roomNumber: true, 
+                user: { select: { email: true } },
+                refundAccounts: true
+              } 
+            },
             provider: { select: { fullName: true, mobileNumber: true, serviceCategory: true } },
             deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } },
             items: true,
@@ -84,7 +138,7 @@ async function resolveReturnRequest(idParam: string, includeOrder: boolean = tru
         where: { id: tid },
         include: includeObj
       });
-      if (record) return record;
+      if (record) return await enrichReturnRecord(record);
     } catch (e) {}
   }
 
@@ -107,7 +161,7 @@ async function resolveReturnRequest(idParam: string, includeOrder: boolean = tru
         (matchedOrderId && ordId === matchedOrderId.toLowerCase())
       );
     });
-    if (matched) return matched;
+    if (matched) return await enrichReturnRecord(matched);
   } catch (e) {}
 
   // Strictly return null if no return record matches. Never auto-create duplicate returns on lookup.
@@ -147,7 +201,8 @@ export class ReturnController {
         orderBy: { createdAt: 'desc' }
       });
 
-      const enrichedReturns = (returns || []).map((ret: any) => {
+      const enrichedReturns = await Promise.all((returns || []).map(async (ret: any) => {
+        const base = await enrichReturnRecord(ret);
         const student = ret.order?.student;
         const studentName = ret.studentName || student?.fullName || ret.order?.studentName || 'Campus Student';
         // hallName is on Order model, not Student model — use order.hallName
@@ -160,7 +215,7 @@ export class ReturnController {
         const orderNumber = ret.order?.orderNumber || ret.orderNumber || null;
 
         return {
-          ...ret,
+          ...base,
           studentName,
           hallName,
           roomNumber,
@@ -170,7 +225,7 @@ export class ReturnController {
           deliveryFeeDeducted: deliveryChargeDeducted,
           orderNumber
         };
-      });
+      }));
 
       res.status(200).json({
         success: true,
@@ -600,15 +655,16 @@ export class ReturnController {
       next(err);
     }
   }
-
   /**
-   * Admin: Disburse Refund to Student Account
-   * Strictly gated: Can ONLY be executed AFTER the item has been picked up (status === 'PICKED_UP' or verified).
-   */
+     * Admin: Disburse Refund to Student Account
+    * Supports:
+    * 1. RAZORPAY_GATEWAY: Direct instant reversal back to original payment source (online orders only)
+    * 2. MANUAL: Manual transfer to student bank/UPI with UTR reference (mandatory for COD, optional for online)
+    */
   public static async disburseReturnRefund(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const { utrReference, adminNotes } = req.body;
+      const { refundMethod = 'MANUAL', utrReference, adminNotes } = req.body;
 
       const returnRequest = await resolveReturnRequest(id, true);
 
@@ -618,7 +674,7 @@ export class ReturnController {
       }
 
       // STRICT GATE: Pickup MUST be completed before admin can disburse refund
-      const isPickedUp = returnRequest.status === 'PICKED_UP' || returnRequest.pickupOtpVerified || returnRequest.status === 'PROCESSING' || returnRequest.order?.refundStatus === 'PICKED_UP' || returnRequest.status === 'COMPLETED';
+      const isPickedUp = returnRequest.status === 'PICKED_UP' || returnRequest.pickupOtpVerified || returnRequest.status === 'PROCESSING' || returnRequest.status === 'AWAITING_STUDENT_DETAILS' || returnRequest.order?.refundStatus === 'PICKED_UP' || returnRequest.status === 'COMPLETED';
       if (!isPickedUp) {
         res.status(400).json({
           success: false,
@@ -627,11 +683,62 @@ export class ReturnController {
         return;
       }
 
+      const orderPaymentMethod = returnRequest.order?.paymentMethod || returnRequest.order?.payment?.paymentMethod || 'ONLINE';
+      const isCodOrder = orderPaymentMethod === 'CASH_ON_DELIVERY';
+
+      let effectiveUtr = utrReference;
+      let disbursalModeNote = '';
+
+      if (refundMethod === 'RAZORPAY_GATEWAY') {
+        if (isCodOrder) {
+          res.status(400).json({
+            success: false,
+            message: 'Direct Razorpay Gateway Refund is not available for Cash on Delivery (COD) orders. Please disburse manually using student bank/UPI details.'
+          });
+          return;
+        }
+
+        const razorpayPaymentId = returnRequest.order?.payment?.razorpayPaymentId || returnRequest.order?.razorpayPaymentId;
+        if (!razorpayPaymentId) {
+          res.status(400).json({
+            success: false,
+            message: 'No Razorpay Payment ID found on this order to execute gateway refund. Please disburse manually.'
+          });
+          return;
+        }
+
+        try {
+          const rzpRefund = await razorpayService.refundPayment(
+            razorpayPaymentId,
+            Number(returnRequest.refundAmount),
+            {
+              orderId: returnRequest.orderId,
+              returnId: returnRequest.id,
+              adminUser: req.user?.email || 'ADMIN'
+            }
+          );
+          effectiveUtr = rzpRefund.id;
+          disbursalModeNote = `[Direct Gateway Refund via Razorpay API: ${rzpRefund.id}]`;
+        } catch (gatewayErr: any) {
+          res.status(502).json({
+            success: false,
+            message: `Razorpay refund failed: ${gatewayErr?.message || 'Gateway error'}. You can try manual disbursal.`
+          });
+          return;
+        }
+      } else {
+        // Manual disbursal
+        disbursalModeNote = `[Manual Disbursal: ${effectiveUtr || 'Cash/Offline Transfer'}]`;
+      }
+
       const updated = await (prisma as any).returnRequest.update({
         where: { id: returnRequest.id },
         data: {
           status: 'REFUNDED',
-          adminNotes: adminNotes || returnRequest.adminNotes || `Refund disbursed. UTR: ${utrReference || 'N/A'}`
+          refundMethod,
+          refundTransactionRef: effectiveUtr || null,
+          refundFailureReason: null,
+          adminNotes: adminNotes ? `${disbursalModeNote} ${adminNotes}` : disbursalModeNote
         }
       });
 
@@ -647,7 +754,7 @@ export class ReturnController {
               previousStatus: returnRequest.order?.status || 'DELIVERED',
               newStatus: returnRequest.order?.status || 'DELIVERED',
               changedBy: req.user?.email || 'ADMIN',
-              notes: `Refund of ₹${Number(returnRequest.refundAmount).toFixed(2)} disbursed to student account by Admin. ${utrReference ? `UTR: ${utrReference}` : ''}`
+              notes: `Refund of ₹${Number(returnRequest.refundAmount).toFixed(2)} disbursed (${refundMethod}). Ref: ${effectiveUtr || 'N/A'}`
             }
           }
         }
@@ -660,9 +767,9 @@ export class ReturnController {
         debitAccount: 'STUDENT_REFUND_LIABILITY',
         creditAccount: 'PLATFORM_ESCROW_VAULT',
         amount: Number(returnRequest.refundAmount),
-        referenceId: utrReference || `REF_${returnRequest.id}`,
-        description: `Refund disbursed for order #${returnRequest.order?.orderNumber || returnRequest.orderId}. Net refund: ₹${returnRequest.refundAmount}. Deducted return fee: ₹${returnRequest.deliveryFeeDeducted}.`,
-        metadata: { returnRequestId: returnRequest.id, utrReference }
+        referenceId: effectiveUtr || `REF_${returnRequest.id}`,
+        description: `Refund disbursed for order #${returnRequest.order?.orderNumber || returnRequest.orderId} via ${refundMethod}. Net: ₹${returnRequest.refundAmount}. Deducted: ₹${returnRequest.deliveryFeeDeducted}.`,
+        metadata: { returnRequestId: returnRequest.id, utrReference: effectiveUtr, refundMethod }
       }).catch(() => {});
 
       await AuditService.log(prisma, {
@@ -670,14 +777,77 @@ export class ReturnController {
         action: 'RETURN_REFUND_DISBURSED',
         entity: 'ReturnRequest',
         entityId: returnRequest.id,
-        newValue: { refundAmount: returnRequest.refundAmount, utrReference }
+        newValue: { refundAmount: returnRequest.refundAmount, utrReference: effectiveUtr, refundMethod }
       });
 
       res.status(200).json({
         success: true,
-        message: `Refund of ₹${Number(returnRequest.refundAmount).toFixed(2)} successfully disbursed to student account!`,
+        message: `Refund of ₹${Number(returnRequest.refundAmount).toFixed(2)} successfully disbursed via ${refundMethod === 'RAZORPAY_GATEWAY' ? 'Direct Razorpay Reversal' : 'Manual Transfer'}!`,
         returnRequest: updated,
-        refundAmount: Number(returnRequest.refundAmount)
+        refundAmount: Number(returnRequest.refundAmount),
+        referenceId: effectiveUtr
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Admin: Flag Return Request as Awaiting Student Account Details
+   * Sets failure reason to 'BANK/ACCOUNT DETAILS REQUIRED' so student is prompted to provide details.
+   */
+  public static async requestAccountDetails(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { notes } = req.body;
+
+      const returnRequest = await resolveReturnRequest(id, true);
+      if (!returnRequest) {
+        res.status(404).json({ success: false, message: 'Return request not found' });
+        return;
+      }
+
+      const updated = await (prisma as any).returnRequest.update({
+        where: { id: returnRequest.id },
+        data: {
+          status: 'AWAITING_STUDENT_DETAILS',
+          refundFailureReason: 'BANK/ACCOUNT DETAILS REQUIRED',
+          adminNotes: notes || 'Disbursal paused: Student bank account or UPI details required for manual transfer.'
+        }
+      });
+
+      try {
+        await prisma.order.update({
+          where: { id: returnRequest.orderId },
+          data: {
+            refundStatus: 'AWAITING_STUDENT_DETAILS',
+            statusHistory: {
+              create: {
+                previousStatus: returnRequest.order?.status || 'DELIVERED',
+                newStatus: returnRequest.order?.status || 'DELIVERED',
+                changedBy: req.user?.email || 'ADMIN',
+                notes: 'Refund paused: Student bank/UPI account details required for refund distribution. Failure Reason: BANK/ACCOUNT DETAILS REQUIRED.'
+              }
+            }
+          }
+        });
+      } catch (orderErr) {}
+
+      try {
+        await AuditService.log(prisma, {
+          userId: req.user?.userId,
+          action: 'REFUND_AWAITING_STUDENT_DETAILS',
+          entity: 'ReturnRequest',
+          entityId: returnRequest.id,
+          newValue: { status: 'AWAITING_STUDENT_DETAILS', failureReason: 'BANK/ACCOUNT DETAILS REQUIRED' }
+        });
+      } catch (auditErr) {}
+
+      res.status(200).json({
+        success: true,
+        message: 'Status updated to AWAITING STUDENT DETAILS. Failure reason recorded as BANK/ACCOUNT DETAILS REQUIRED.',
+        returnRequest: updated,
+        failureReason: 'BANK/ACCOUNT DETAILS REQUIRED'
       });
     } catch (err) {
       next(err);

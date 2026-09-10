@@ -67,6 +67,13 @@ export default function AdminOrdersPage() {
   const [adminEnteredOtp, setAdminEnteredOtp] = useState('');
   const [adminVerifyingOtp, setAdminVerifyingOtp] = useState(false);
 
+  // Refund Disbursal Configuration State in Return Review Modal
+  const [refundMethod, setRefundMethod] = useState<'RAZORPAY_GATEWAY' | 'MANUAL'>('MANUAL');
+  const [refundUtr, setRefundUtr] = useState('');
+  const [refundAdminNotes, setRefundAdminNotes] = useState('');
+  const [isCashHandover, setIsCashHandover] = useState(false);
+  const [requestingDetails, setRequestingDetails] = useState(false);
+
   const fetchDeliveryBoys = async () => {
     try {
       const res = await apiRequest('/api/admin/delivery-boys');
@@ -140,7 +147,7 @@ export default function AdminOrdersPage() {
       let returnsList = (res.success && Array.isArray(res.returns)) ? [...res.returns] : [];
 
       // Status order: higher index = more advanced
-      const STATUS_ORDER = ['REQUESTED', 'APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED', 'PROCESSING', 'PICKED_UP', 'COMPLETED', 'REFUNDED'];
+      const STATUS_ORDER = ['REQUESTED', 'APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED', 'AWAITING_STUDENT_DETAILS', 'PROCESSING', 'PICKED_UP', 'COMPLETED', 'REFUNDED'];
       const statusRank = (s: string) => { const i = STATUS_ORDER.indexOf(s); return i === -1 ? 0 : i; };
 
       // Merge localStorage entries — always prefer the more advanced status
@@ -187,12 +194,29 @@ export default function AdminOrdersPage() {
     fetchReturnRequests();
   }, [statusFilter, paymentFilter, hallFilter, dateRange]);
 
-  const openReturnReviewModal = (ret: any) => {
+  const openReturnReviewModal = async (ret: any) => {
+    const isOnline = (ret.paymentMethod === 'ONLINE' || ret.order?.paymentMethod === 'ONLINE' || ret.order?.payment?.paymentMethod === 'ONLINE');
     setSelectedReturn(ret);
+    setRefundMethod(isOnline ? 'RAZORPAY_GATEWAY' : 'MANUAL');
+    setRefundUtr(`CB-REF-${Date.now().toString().slice(-6)}`);
+    setRefundAdminNotes('');
+    setIsCashHandover(false);
     setReturnAssignBoyId(ret.deliveryBoyId || '');
     setReturnRejectionReason('');
     setAdminEnteredOtp('');
     setReviewModalOpen(true);
+
+    try {
+      const returnId = encodeURIComponent(String(ret.id || ret.orderId || '').replace(/^#+/, '').trim());
+      const res = await apiRequest(`/api/returns/${returnId}`);
+      if (res.success && res.returnRequest) {
+        setSelectedReturn(res.returnRequest);
+        const latestIsOnline = (res.returnRequest.paymentMethod === 'ONLINE' || res.returnRequest.order?.paymentMethod === 'ONLINE' || res.returnRequest.order?.payment?.paymentMethod === 'ONLINE');
+        if (!latestIsOnline) {
+          setRefundMethod('MANUAL');
+        }
+      }
+    } catch {}
   };
 
   const handleAdminVerifyOtp = async () => {
@@ -348,23 +372,41 @@ export default function AdminOrdersPage() {
 
   const handleDisburseRefund = async () => {
     if (!selectedReturn) return;
-    const isPickedUp = selectedReturn.status === 'COMPLETED' || selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP' || selectedReturn.order?.refundStatus === 'PROCESSING';
+    const isPickedUp = selectedReturn.status === 'COMPLETED' || selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || selectedReturn.status === 'AWAITING_STUDENT_DETAILS' || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP' || selectedReturn.order?.refundStatus === 'PROCESSING';
     if (!isPickedUp) {
       alert('Cannot disburse refund yet: Product pickup must be completed and verified via 6-digit OTP first.');
       return;
     }
-    const utr = prompt(`Confirm and disburse refund of ₹${selectedReturn.refundAmount} to student. Enter UTR / Payment Reference (optional):`, `CB-REF-${Date.now().toString().slice(-6)}`);
-    if (utr === null) return;
+
+    const orderPaymentMethod = selectedReturn.paymentMethod || selectedReturn.order?.paymentMethod || selectedReturn.order?.payment?.paymentMethod || 'ONLINE';
+    const isOnline = orderPaymentMethod === 'ONLINE' || orderPaymentMethod === 'RAZORPAY';
+
+    if (refundMethod === 'RAZORPAY_GATEWAY' && !isOnline) {
+      alert('Direct Razorpay Gateway Refund is not available for Cash on Delivery (COD) orders. Please select Manual Disbursal.');
+      return;
+    }
+
+    if (refundMethod === 'MANUAL' && !selectedReturn.refundAccount && !isCashHandover) {
+      const proceed = confirm('Student has not provided bank or UPI details yet. If you are paying cash in person, please check "Physical cash handed over". Would you like to flag this return as "Bank Details Missing" instead?');
+      if (proceed) {
+        handleRequestStudentAccountDetails();
+        return;
+      }
+    }
 
     setProcessingReturn(true);
     try {
       const returnId = encodeURIComponent(String(selectedReturn.id || selectedReturn.orderId || '').replace(/^#+/, '').trim());
       const res = await apiRequest(`/api/returns/${returnId}/disburse-refund`, {
         method: 'POST',
-        body: JSON.stringify({ transactionReference: utr.trim() || undefined })
+        body: JSON.stringify({
+          refundMethod,
+          utrReference: refundMethod === 'MANUAL' ? (isCashHandover ? `CASH-${refundUtr.trim() || Date.now()}` : refundUtr.trim() || undefined) : undefined,
+          adminNotes: refundAdminNotes.trim() || undefined
+        })
       });
       if (res.success) {
-        alert(`Refund of ₹${selectedReturn.refundAmount} successfully disbursed! Financial ledger recorded.`);
+        alert(`Refund of ₹${selectedReturn.refundAmount} successfully disbursed via ${refundMethod === 'RAZORPAY_GATEWAY' ? 'Direct Razorpay Reversal' : 'Manual Disbursal'}!`);
         setReviewModalOpen(false);
         fetchReturnRequests();
         fetchOrders();
@@ -375,6 +417,39 @@ export default function AdminOrdersPage() {
       alert(err.message || 'Error disbursing refund');
     } finally {
       setProcessingReturn(false);
+    }
+  };
+
+  const handleRequestStudentAccountDetails = async () => {
+    if (!selectedReturn) return;
+    setRequestingDetails(true);
+    try {
+      const returnId = encodeURIComponent(String(selectedReturn.id || selectedReturn.orderId || '').replace(/^#+/, '').trim());
+      const res = await apiRequest(`/api/returns/${returnId}/request-account-details`, {
+        method: 'POST',
+        body: JSON.stringify({
+          notes: refundAdminNotes.trim() || 'Student bank account or UPI details required for manual refund disbursal.'
+        })
+      });
+      if (res.success) {
+        alert('Disbursal paused. Status updated to AWAITING STUDENT DETAILS and Failure Reason recorded as: BANK/ACCOUNT DETAILS REQUIRED. The student will be prompted to submit account details.');
+        const updated = {
+          ...selectedReturn,
+          status: 'AWAITING_STUDENT_DETAILS',
+          refundFailureReason: 'BANK/ACCOUNT DETAILS REQUIRED'
+        };
+        setSelectedReturn(updated);
+        setReturnRequests((prev) =>
+          prev.map((r) => (r.id === selectedReturn.id || r.orderId === selectedReturn.orderId ? updated : r))
+        );
+        fetchReturnRequests();
+      } else {
+        alert(res.message || 'Failed to update failure reason.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error requesting account details');
+    } finally {
+      setRequestingDetails(false);
     }
   };
 
@@ -462,6 +537,8 @@ export default function AdminOrdersPage() {
         return 'bg-purple-100 text-purple-800 border-purple-300';
       case 'PICKED_UP':
         return 'bg-indigo-100 text-indigo-800 border-indigo-300';
+      case 'AWAITING_STUDENT_DETAILS':
+        return 'bg-amber-100 text-amber-900 border-amber-400';
       case 'COMPLETED':
       case 'REFUNDED':
         return 'bg-emerald-100 text-[#347A27] border-emerald-300';
@@ -885,12 +962,26 @@ export default function AdminOrdersPage() {
 
                         <td className="px-5 py-4">
                           <span
-                            className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${getReturnStatusBadge(
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${getReturnStatusBadge(
                               ret.status
                             )}`}
                           >
-                            {ret.status}
+                            {ret.status === 'AWAITING_STUDENT_DETAILS'
+                              ? '⚠️ Awaiting Account Details'
+                              : ret.status === 'PICKED_UP'
+                              ? '📦 Picked Up (Verified)'
+                              : ret.status}
                           </span>
+                          {ret.refundFailureReason && (
+                            <div className="text-[10px] font-bold text-rose-700 mt-1">
+                              Reason: {ret.refundFailureReason}
+                            </div>
+                          )}
+                          {ret.status === 'REFUNDED' && (
+                            <div className="text-[10px] text-emerald-800 font-semibold mt-0.5">
+                              {ret.refundMethod === 'RAZORPAY_GATEWAY' ? '⚡ Razorpay Gateway' : `🏦 Manual ${ret.refundTransactionRef ? `(${ret.refundTransactionRef})` : ''}`}
+                            </div>
+                          )}
                         </td>
 
                         <td className="px-5 py-4">
@@ -907,9 +998,13 @@ export default function AdminOrdersPage() {
                         <td className="px-5 py-4 text-right">
                           <button
                             onClick={() => openReturnReviewModal(ret)}
-                            className="px-3 py-1.5 bg-slate-100 hover:bg-[#4F9D32] hover:text-white text-slate-700 font-bold rounded-xl text-xs transition shadow-2xs"
+                            className={`px-3 py-1.5 font-bold rounded-xl text-xs transition shadow-2xs ${
+                              ret.status === 'AWAITING_STUDENT_DETAILS'
+                                ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                                : 'bg-slate-100 hover:bg-[#4F9D32] hover:text-white text-slate-700'
+                            }`}
                           >
-                            Review &amp; Manage
+                            {ret.status === 'AWAITING_STUDENT_DETAILS' ? 'Re-Distribute Refund' : 'Review & Manage'}
                           </button>
                         </td>
                       </tr>
@@ -1553,10 +1648,242 @@ export default function AdminOrdersPage() {
               <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-900 text-xs flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>
-                  <strong>Refund Disbursed & Completed:</strong> ₹{selectedReturn.refundAmount} has been released and recorded in financial ledgers.
+                  <strong>Refund Disbursed &amp; Completed:</strong> ₹{selectedReturn.refundAmount} has been released and recorded in financial ledgers via {selectedReturn.refundMethod === 'RAZORPAY_GATEWAY' ? 'Direct Razorpay Gateway Reversal' : 'Manual Disbursal'}.
                 </span>
               </div>
             )}
+
+            {/* Student Refund Destination Account & Disbursal Channels (Online Razorpay vs Manual COD) */}
+            {(() => {
+              const orderPaymentMethod = selectedReturn.paymentMethod || selectedReturn.order?.paymentMethod || selectedReturn.order?.payment?.paymentMethod || 'ONLINE';
+              const isOnline = orderPaymentMethod === 'ONLINE' || orderPaymentMethod === 'RAZORPAY';
+              const hasAccount = Boolean(selectedReturn.refundAccount);
+              const isAwaitingDetails = selectedReturn.status === 'AWAITING_STUDENT_DETAILS';
+              const isPickedUp = selectedReturn.status === 'COMPLETED' || selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || isAwaitingDetails || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP' || selectedReturn.order?.refundStatus === 'PROCESSING';
+
+              return (
+                <div className="space-y-3 pt-2">
+                  {/* Student Provided Account Details Card */}
+                  <div className={`p-3.5 rounded-xl border space-y-2.5 transition-all ${
+                    hasAccount
+                      ? 'bg-emerald-50/50 border-emerald-300 text-slate-800'
+                      : isAwaitingDetails
+                      ? 'bg-amber-50 border-amber-300 text-amber-950'
+                      : 'bg-slate-50 border-slate-200 text-slate-800'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Banknote className={`w-4 h-4 ${hasAccount ? 'text-emerald-700' : 'text-amber-600'}`} />
+                        <span className="font-bold text-xs uppercase tracking-wider">
+                          Student Refund Destination Account Details
+                        </span>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        hasAccount
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          : 'bg-amber-100 text-amber-800 border-amber-300'
+                      }`}>
+                        {hasAccount ? '✓ Verified Details Provided' : '⚠️ Bank Details Missing'}
+                      </span>
+                    </div>
+
+                    {hasAccount ? (
+                      <div className="bg-white p-3 rounded-lg border border-emerald-200 space-y-1.5 text-xs shadow-2xs">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-700">
+                          <div>
+                            <span className="text-[10px] font-semibold text-slate-400 block uppercase">Account Holder</span>
+                            <strong className="text-slate-900">{selectedReturn.refundAccount.accountHolderName || selectedReturn.studentName || selectedReturn.order?.student?.fullName}</strong>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-semibold text-slate-400 block uppercase">Bank Name</span>
+                            <strong className="text-slate-900">{selectedReturn.refundAccount.bankName || 'State Bank of India (NIT Campus)'}</strong>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-semibold text-slate-400 block uppercase">Account Number</span>
+                            <strong className="font-mono text-emerald-800 tracking-wider">
+                              {selectedReturn.refundAccount.accountNumber || '•••• •••• ••••'}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-semibold text-slate-400 block uppercase">IFSC Code</span>
+                            <strong className="font-mono text-slate-800">{selectedReturn.refundAccount.ifscCode || 'SBIN0002110'}</strong>
+                          </div>
+                        </div>
+                        {selectedReturn.refundAccount.upiId && (
+                          <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-xs">
+                            <span className="text-[10px] font-semibold text-slate-400 uppercase">UPI VPA / ID:</span>
+                            <strong className="font-mono text-indigo-700 font-bold">{selectedReturn.refundAccount.upiId}</strong>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="bg-white/80 p-3 rounded-lg border border-amber-300 space-y-2 text-xs">
+                        <p className="text-amber-900 font-medium leading-relaxed">
+                          Student has <strong>not yet submitted</strong> bank account or UPI details in their profile or tracking screen.
+                        </p>
+
+                        {/* If status is already Awaiting or has Failure Reason */}
+                        {(isAwaitingDetails || selectedReturn.refundFailureReason) && (
+                          <div className="p-2.5 bg-rose-50 rounded-lg border border-rose-200 text-rose-900 space-y-1">
+                            <div className="flex items-center gap-1.5 font-bold text-xs">
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Payment Status: FAILED / PAUSED</span>
+                            </div>
+                            <div className="text-[11px]">
+                              Failure Reason: <strong className="text-rose-950 font-black">BANK/ACCOUNT DETAILS REQUIRED</strong>
+                            </div>
+                            <p className="text-[10px] text-rose-700">
+                              Student has been notified to enter their bank details on the order tracking page. Once provided, this order will be unlocked for re-distribution.
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Action to flag as Bank Details Missing */}
+                        {!isAwaitingDetails && isPickedUp && selectedReturn.status !== 'REFUNDED' && (
+                          <div className="pt-1 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={handleRequestStudentAccountDetails}
+                              disabled={requestingDetails}
+                              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                            >
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              <span>{requestingDetails ? 'Flagging...' : 'Flag: Bank Details Missing (Request Student Details)'}</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Disbursal Channel Options (Only shown when pickup is ready or completed and not yet refunded) */}
+                  {isPickedUp && selectedReturn.status !== 'REFUNDED' && (
+                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800 text-xs uppercase tracking-wider block">
+                          Refund Disbursal Channel
+                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          isOnline
+                            ? 'bg-blue-100 text-blue-800 border-blue-300'
+                            : 'bg-amber-100 text-amber-800 border-amber-300'
+                        }`}>
+                          Original Payment: {isOnline ? '💳 Online (Prepaid)' : '💵 Cash On Delivery (COD)'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {/* Option 1: Direct Razorpay Gateway */}
+                        <div
+                          onClick={() => {
+                            if (isOnline) setRefundMethod('RAZORPAY_GATEWAY');
+                          }}
+                          className={`p-3 rounded-xl border transition-all ${
+                            !isOnline
+                              ? 'bg-slate-100/70 border-slate-200 opacity-60 cursor-not-allowed'
+                              : refundMethod === 'RAZORPAY_GATEWAY'
+                              ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-500/20 shadow-xs cursor-pointer'
+                              : 'bg-white border-slate-200 hover:border-blue-300 cursor-pointer'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
+                              <CreditCard className="w-4 h-4 text-blue-600" />
+                              <span>⚡ Direct Razorpay Gateway</span>
+                            </div>
+                            <input
+                              type="radio"
+                              name="refundMethodRadio"
+                              checked={refundMethod === 'RAZORPAY_GATEWAY'}
+                              onChange={() => { if (isOnline) setRefundMethod('RAZORPAY_GATEWAY'); }}
+                              disabled={!isOnline}
+                              className="accent-blue-600 cursor-pointer"
+                            />
+                          </div>
+                          <p className="text-[11px] text-slate-600 leading-relaxed">
+                            {isOnline
+                              ? 'Instant direct reversal to student’s original source (Card/UPI/Netbanking) via Razorpay. Does not require bank account details.'
+                              : '❌ Not available for COD orders — physical cash was collected, so no Razorpay gateway payment exists to reverse.'}
+                          </p>
+                        </div>
+
+                        {/* Option 2: Manual Disbursal */}
+                        <div
+                          onClick={() => setRefundMethod('MANUAL')}
+                          className={`p-3 rounded-xl border transition-all cursor-pointer ${
+                            refundMethod === 'MANUAL'
+                              ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs'
+                              : 'bg-white border-slate-200 hover:border-emerald-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-1.5 font-bold text-xs text-slate-900">
+                              <Banknote className="w-4 h-4 text-emerald-600" />
+                              <span>🏦 Manual Disbursal</span>
+                            </div>
+                            <input
+                              type="radio"
+                              name="refundMethodRadio"
+                              checked={refundMethod === 'MANUAL'}
+                              onChange={() => setRefundMethod('MANUAL')}
+                              className="accent-emerald-600 cursor-pointer"
+                            />
+                          </div>
+                          <p className="text-[11px] text-slate-600 leading-relaxed">
+                            Admin manually transfers funds via IMPS/NEFT/UPI to student’s bank account or hands over physical cash directly.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Manual Disbursal Fields */}
+                      {refundMethod === 'MANUAL' && (
+                        <div className="p-3 bg-white rounded-xl border border-emerald-200 space-y-2.5 animate-fade-in text-xs">
+                          <div>
+                            <label className="font-semibold text-slate-700 block mb-1">
+                              UTR Reference / Bank Transaction ID / Cash Receipt Ref:
+                            </label>
+                            <input
+                              type="text"
+                              value={refundUtr}
+                              onChange={(e) => setRefundUtr(e.target.value)}
+                              placeholder="e.g. UTR12345678 or CB-CASH-REF"
+                              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-semibold text-slate-900 focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
+
+                          {!hasAccount && (
+                            <label className="flex items-center gap-2 p-2 bg-amber-50 rounded-lg border border-amber-200 text-amber-900 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={isCashHandover}
+                                onChange={(e) => setIsCashHandover(e.target.checked)}
+                                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                              />
+                              <span className="text-[11px] font-semibold">
+                                Physical cash has been handed over directly to the student in person. (Bypasses missing bank details)
+                              </span>
+                            </label>
+                          )}
+
+                          <div>
+                            <label className="font-semibold text-slate-700 block mb-1">
+                              Admin Notes / Settlement Memo (Optional):
+                            </label>
+                            <input
+                              type="text"
+                              value={refundAdminNotes}
+                              onChange={(e) => setRefundAdminNotes(e.target.value)}
+                              placeholder="e.g. Transferred via campus SBI branch or UPI"
+                              className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Modal Actions */}
             <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100 flex-wrap">
@@ -1607,17 +1934,52 @@ export default function AdminOrdersPage() {
                   </button>
                 )}
 
-                {/* Phase 3: Pickup completed (Enabled) */}
-                {(selectedReturn.status === 'COMPLETED' || selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP' || selectedReturn.order?.refundStatus === 'PROCESSING') && selectedReturn.status !== 'REFUNDED' && (
-                  <button
-                    type="button"
-                    onClick={handleDisburseRefund}
-                    disabled={processingReturn}
-                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black shadow-md transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    <span>{processingReturn ? 'Disbursing...' : `Disburse Refund (₹${selectedReturn.refundAmount})`}</span>
-                  </button>
+                {/* Phase 3: Pickup completed OR Awaiting Student Details */}
+                {(selectedReturn.status === 'COMPLETED' || selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || selectedReturn.status === 'AWAITING_STUDENT_DETAILS' || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP' || selectedReturn.order?.refundStatus === 'PROCESSING') && selectedReturn.status !== 'REFUNDED' && (
+                  <>
+                    {/* If in Awaiting Details and student STILL hasn't provided details AND not cash handover AND refundMethod is MANUAL */}
+                    {selectedReturn.status === 'AWAITING_STUDENT_DETAILS' && !selectedReturn.refundAccount && !isCashHandover && refundMethod === 'MANUAL' ? (
+                      <button
+                        type="button"
+                        onClick={handleRequestStudentAccountDetails}
+                        disabled={requestingDetails}
+                        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold shadow-md transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        <AlertTriangle className="w-4 h-4" />
+                        <span>{requestingDetails ? 'Updating...' : '⚠️ Awaiting Student Account Details'}</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleDisburseRefund}
+                        disabled={processingReturn}
+                        className={`px-5 py-2 rounded-xl font-black shadow-md transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                          selectedReturn.status === 'AWAITING_STUDENT_DETAILS'
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                            : refundMethod === 'RAZORPAY_GATEWAY'
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        }`}
+                      >
+                        {selectedReturn.status === 'AWAITING_STUDENT_DETAILS' ? (
+                          <>
+                            <RefreshCw className={`w-4 h-4 ${processingReturn ? 'animate-spin' : ''}`} />
+                            <span>{processingReturn ? 'Re-Distributing...' : `Re-Distribute Refund (₹${selectedReturn.refundAmount})`}</span>
+                          </>
+                        ) : refundMethod === 'RAZORPAY_GATEWAY' ? (
+                          <>
+                            <CreditCard className="w-4 h-4" />
+                            <span>{processingReturn ? 'Processing Gateway Reversal...' : `Disburse via Razorpay Gateway (₹${selectedReturn.refundAmount})`}</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle className="w-4 h-4" />
+                            <span>{processingReturn ? 'Disbursing...' : `Disburse Manual Refund (₹${selectedReturn.refundAmount})`}</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>

@@ -1329,29 +1329,29 @@ export default function OrderPaymentSettlementLedgerPage() {
         ========================================================================= */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
           {/* Desktop & Tablet Table */}
-          <div className="hidden md:block overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto overflow-y-auto max-h-[750px] border-b border-slate-200">
             <table className="w-full border-collapse text-left text-xs">
               {/* Table Header */}
-              <thead className="bg-[#0F172A] text-white">
+              <thead className="sticky top-0 z-20 bg-[#0F172A] text-white shadow-xs">
                 <tr className="border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider select-none">
-                  <th className="py-3 px-3.5 whitespace-nowrap">ORDER DATE</th>
-                  <th className="py-3 px-3.5 whitespace-nowrap">ORDER ID</th>
-                  <th className="py-3 px-3.5 whitespace-nowrap">STUDENT</th>
-                  <th className="py-3 px-3.5 whitespace-nowrap">PROVIDER</th>
-                  <th className="py-3 px-3.5 whitespace-nowrap">DELIVERY BOY</th>
-                  <th className="py-3 px-3.5 text-right whitespace-nowrap">TOTAL AMOUNT</th>
-                  <th className="py-3 px-3.5 text-center whitespace-nowrap">PAYMENT METHOD</th>
-                  <th className="py-3 px-3.5 text-right whitespace-nowrap">ONLINE PAID</th>
-                  <th className="py-3 px-3.5 text-right whitespace-nowrap">COD ADVANCE</th>
-                  <th className="py-3 px-3.5 text-right whitespace-nowrap">COD CASH</th>
-                  <th className="py-3 px-3.5 text-center whitespace-nowrap">PAYMENT STATUS</th>
-                  <th className="py-3 px-3.5 text-center whitespace-nowrap">FAILURE REASON</th>
-                  <th className="py-3 px-3.5 text-center whitespace-nowrap">RECONCILIATION</th>
-                  <th className="py-3 px-3.5 text-center whitespace-nowrap">CANCEL REFUND</th>
-                  <th className="py-3 px-3.5 text-center whitespace-nowrap">RETURN REFUND</th>
-                  <th className="py-3 px-3.5 text-right whitespace-nowrap">REFUND TOTAL</th>
-                  <th className="py-3 px-3.5 text-right whitespace-nowrap">NET CB RECEIVED</th>
-                  <th className="py-3 px-3.5 text-center whitespace-nowrap">ACTIONS</th>
+                  <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">ORDER DATE</th>
+                  <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">ORDER ID</th>
+                  <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">STUDENT</th>
+                  <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">PROVIDER</th>
+                  <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">DELIVERY BOY</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">TOTAL AMOUNT</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">PAYMENT METHOD</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">ONLINE PAID</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">COD ADVANCE</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">COD CASH</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">PAYMENT STATUS</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">FAILURE REASON</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">RECONCILIATION</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">CANCEL REFUND</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">RETURN REFUND</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">REFUND TOTAL</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">NET CB RECEIVED</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">ACTIONS</th>
                 </tr>
               </thead>
 

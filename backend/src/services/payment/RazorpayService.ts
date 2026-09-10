@@ -194,4 +194,44 @@ export class RazorpayService {
       created_at: Math.floor(Date.now() / 1000)
     };
   }
+
+  /**
+   * Initiates an instant refund via Razorpay Refund API
+   * Refunds money directly back to the student's original payment source (UPI/Card/NetBanking)
+   */
+  async refundPayment(
+    razorpayPaymentId: string,
+    amountInRupees: number,
+    notes?: Record<string, string>
+  ): Promise<{ id: string; amount: number; status: string; currency: string }> {
+    const amountInPaise = Math.round(amountInRupees * 100);
+
+    if (this.razorpayInstance && !this.isTestMode && !razorpayPaymentId.startsWith('pay_mock_')) {
+      try {
+        const refund = await (this.razorpayInstance.payments as any).refund(razorpayPaymentId, {
+          amount: amountInPaise,
+          notes: notes || {}
+        });
+        return {
+          id: refund.id,
+          amount: Number(refund.amount),
+          status: refund.status || 'processed',
+          currency: refund.currency || 'INR'
+        };
+      } catch (err: any) {
+        console.error('[RazorpayService] refundPayment error:', err?.error?.description || err?.message || err);
+        throw new Error(err?.error?.description || err?.message || 'Razorpay refund failed');
+      }
+    }
+
+    // Mock mode for sandbox/staging
+    const mockRefundId = `rfnd_mock_${crypto.randomBytes(8).toString('hex')}`;
+    return {
+      id: mockRefundId,
+      amount: amountInPaise,
+      status: 'processed',
+      currency: 'INR'
+    };
+  }
 }
+

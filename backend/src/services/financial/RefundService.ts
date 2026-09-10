@@ -197,7 +197,7 @@ export class RefundService {
       maskedUpi = `${handle.slice(0, prefixLen)}****@${domain}`;
     }
 
-    return (prisma as any).refundAccount.upsert({
+    const account = await (prisma as any).refundAccount.upsert({
       where: { studentId },
       update: {
         accountType: accType,
@@ -225,6 +225,33 @@ export class RefundService {
         isPrimary: true
       }
     });
+
+    // If any return requests were waiting for student account details, update them so admin can re-distribute
+    try {
+      await (prisma as any).returnRequest.updateMany({
+        where: {
+          order: { studentId },
+          status: 'AWAITING_STUDENT_DETAILS'
+        },
+        data: {
+          status: 'COMPLETED',
+          refundFailureReason: null,
+          adminNotes: 'Student has provided refund account details. Ready for Admin re-distribution.'
+        }
+      });
+
+      await (prisma as any).order.updateMany({
+        where: {
+          studentId,
+          refundStatus: 'AWAITING_STUDENT_DETAILS'
+        },
+        data: {
+          refundStatus: 'PROCESSING'
+        }
+      });
+    } catch (updateErr) {}
+
+    return account;
   }
 
   /**
