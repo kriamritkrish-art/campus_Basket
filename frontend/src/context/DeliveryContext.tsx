@@ -135,6 +135,19 @@ export interface TodayStats {
   dailyTarget: number;
 }
 
+export interface DeliveryProfile {
+  id: string;
+  fullName: string;
+  mobileNumber?: string | null;
+  vehicleType?: string | null;
+  currentZone?: string | null;
+  email?: string | null;
+  activeStatus?: boolean;
+  paymentType?: 'PER_DELIVERY' | 'MONTHLY_CONTRACT' | string;
+  perDeliveryRate?: number;
+  monthlySalary?: number;
+}
+
 interface DeliveryContextType {
   isOnline: boolean;
   toggleOnline: () => void;
@@ -162,6 +175,7 @@ interface DeliveryContextType {
   rejectActiveOrder: (orderId: string, reason?: string) => Promise<boolean>;
 
   deliveryHistory: HistoryOrder[];
+  deliveryProfile: DeliveryProfile | null;
   todayStats: TodayStats;
   notifications: RunnerNotification[];
   markNotificationRead: (id: string) => void;
@@ -198,6 +212,7 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [activeOrders, setActiveOrders] = useState<ActiveDeliveryOrder[]>([]);
   const [availableOrders, setAvailableOrders] = useState<AvailableOrder[]>([]);
   const [deliveryHistory, setDeliveryHistory] = useState<HistoryOrder[]>([]);
+  const [deliveryProfile, setDeliveryProfile] = useState<DeliveryProfile | null>(null);
   const [notifications, setNotifications] = useState<RunnerNotification[]>([]);
   const [payoutAccount, setPayoutAccount] = useState<DeliveryPayoutAccount | null>(null);
   const [withdrawals, setWithdrawals] = useState<DeliveryWithdrawal[]>([]);
@@ -243,6 +258,9 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // 1. Dashboard & Online Status & Stats
       const dashRes = await apiRequest('/api/delivery/dashboard').catch(() => null);
       if (dashRes?.success) {
+        if (dashRes.deliveryBoy) {
+          setDeliveryProfile(dashRes.deliveryBoy);
+        }
         if (typeof dashRes.deliveryBoy?.activeStatus === 'boolean') {
           setIsOnline(dashRes.deliveryBoy.activeStatus);
         }
@@ -796,6 +814,7 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         rejectAvailableOrder,
         rejectActiveOrder,
         deliveryHistory,
+        deliveryProfile,
         todayStats,
         notifications,
         markNotificationRead,
