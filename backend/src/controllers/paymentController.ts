@@ -30,6 +30,7 @@ import { RazorpayService } from '../services/payment/RazorpayService';
 import { PaymentReconciliationService } from '../services/payment/PaymentReconciliationService';
 import { ReceiptService } from '../services/receipt/ReceiptService';
 import { IdGeneratorService } from '../utils/IdGeneratorService';
+import { PaymentFailureService } from '../services/payment/PaymentFailureService';
 
 const razorpayService = new RazorpayService();
 const receiptService = new ReceiptService();
@@ -226,6 +227,131 @@ export class PaymentController {
   }
 
   /**
+   * POST /api/payments/record-failure
+   * Called by client (frontend Razorpay modal `rzp.on('payment.failed')`) to record
+   * a failed payment attempt idempotently and classify failure reasons.
+   */
+  public static async recordPaymentFailure(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const {
+        orderId,
+        razorpayOrderId,
+        razorpayPaymentId,
+        errorCode,
+        errorDescription,
+        errorReason,
+        errorSource,
+        errorStep
+      } = req.body;
+
+      if (!razorpayOrderId && !orderId) {
+        res.status(400).json({ success: false, message: 'Order ID or Razorpay Order ID required' });
+        return;
+      }
+
+      const payment = await prisma.payment.findFirst({
+        where: razorpayOrderId ? { razorpayOrderId } : { orderId },
+        include: { order: true }
+      });
+
+      if (!payment) {
+        res.status(404).json({ success: false, message: 'Payment record not found' });
+        return;
+      }
+
+      // If already captured, do not regress status!
+      if (['CAPTURED', 'SUCCESS', 'PAID'].includes(payment.status as string)) {
+        res.status(200).json({
+          success: true,
+          message: 'Payment is already captured. Status not changed.',
+          alreadyCaptured: true
+        });
+        return;
+      }
+
+      // Classify the failure
+      const classification = PaymentFailureService.classifyFailure({
+        errorCode,
+        errorDescription,
+        errorReason,
+        errorSource,
+        errorStep
+      });
+
+      const failureStatus = classification.isAccountDetailsIssue ? 'FAILED_ACCOUNT_DETAILS' : 'FAILED';
+      const reconciliationStatus = classification.potentialDebitReview
+        ? 'CUSTOMER_DEBIT_REVIEW'
+        : payment.reconciliationStatus;
+
+      // Update payment record
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: failureStatus as any,
+          razorpayPaymentId: razorpayPaymentId || payment.razorpayPaymentId,
+          failureReason: classification.canonicalReason,
+          failureCode: classification.failureCode,
+          reconciliationStatus: reconciliationStatus as any,
+          attemptNumber: { increment: 1 }
+        }
+      });
+
+      // Also update Order paymentStatus
+      if (payment.orderId) {
+        await prisma.order.update({
+          where: { id: payment.orderId },
+          data: {
+            paymentStatus: failureStatus as any,
+            reconciliationStatus: reconciliationStatus as any
+          }
+        });
+      }
+
+      // Record transaction for attempt history
+      const txId = razorpayPaymentId
+        ? `client_fail_${razorpayPaymentId}`
+        : `client_fail_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+      const existingTx = await prisma.paymentTransaction.findUnique({ where: { transactionId: txId } });
+      if (!existingTx) {
+        await prisma.paymentTransaction.create({
+          data: {
+            paymentId: payment.id,
+            transactionId: txId,
+            provider: 'RAZORPAY',
+            eventType: 'client.payment.failed',
+            payload: JSON.stringify({
+              errorCode,
+              errorDescription,
+              errorReason,
+              errorSource,
+              errorStep,
+              canonicalReason: classification.canonicalReason,
+              failureCode: classification.failureCode
+            }),
+            status: failureStatus
+          }
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: classification.studentFriendlyMessage,
+        data: {
+          canonicalReason: classification.canonicalReason,
+          failureCode: classification.failureCode,
+          isAccountDetailsIssue: classification.isAccountDetailsIssue,
+          potentialDebitReview: classification.potentialDebitReview,
+          studentFriendlyMessage: classification.studentFriendlyMessage,
+          nextExpectedState: classification.nextExpectedState
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Razorpay Webhook Handler
    *
    * Receives server-to-server events from Razorpay.
@@ -403,18 +529,48 @@ export class PaymentController {
 
     // Only update if not already captured
     if (!['CAPTURED', 'SUCCESS', 'PAID'].includes(payment.status as string)) {
-      const failureReason = payload?.payment?.entity?.error_description || 'Payment failed at gateway';
+      const paymentEntity = payload?.payment?.entity;
+      const errorDescription = paymentEntity?.error_description || 'Payment failed at gateway';
+      const errorCode = paymentEntity?.error_code;
+      const errorReason = paymentEntity?.error_reason;
+      const errorSource = paymentEntity?.error_source;
+      const errorStep = paymentEntity?.error_step;
+
+      const classification = PaymentFailureService.classifyFailure({
+        errorDescription,
+        errorCode,
+        errorReason,
+        errorSource,
+        errorStep
+      });
+
+      const failureStatus = classification.isAccountDetailsIssue ? 'FAILED_ACCOUNT_DETAILS' : 'FAILED';
+      const reconciliationStatus = classification.potentialDebitReview
+        ? 'CUSTOMER_DEBIT_REVIEW'
+        : 'NOT_REQUIRED';
 
       await prisma.payment.update({
         where: { id: payment.id },
         data: {
-          status: 'FAILED' as any,
+          status: failureStatus as any,
           razorpayPaymentId,
           razorpayEventId: eventId,
-          failureReason,
-          reconciliationStatus: 'NOT_REQUIRED' as any
+          failureReason: classification.canonicalReason,
+          failureCode: classification.failureCode,
+          reconciliationStatus: reconciliationStatus as any,
+          attemptNumber: { increment: 1 }
         }
       });
+
+      if (payment.orderId) {
+        await prisma.order.update({
+          where: { id: payment.orderId },
+          data: {
+            paymentStatus: failureStatus as any,
+            reconciliationStatus: reconciliationStatus as any
+          }
+        });
+      }
 
       // Record transaction for attempt history
       await prisma.paymentTransaction.create({
@@ -423,8 +579,12 @@ export class PaymentController {
           transactionId: `webhook_fail_${eventId}`,
           provider: 'RAZORPAY',
           eventType: 'payment.failed',
-          payload: JSON.stringify(payload),
-          status: 'FAILED'
+          payload: JSON.stringify({
+            ...payload,
+            canonicalReason: classification.canonicalReason,
+            failureCode: classification.failureCode
+          }),
+          status: failureStatus
         }
       });
     }

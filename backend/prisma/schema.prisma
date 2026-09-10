@@ -101,6 +101,7 @@ enum PaymentStatus {
   REFUND_FAILED
   // ── Special ───────────────────────────────────────────────────────────────
   RECONCILIATION_REQUIRED
+  FAILED_ACCOUNT_DETAILS // Payment failed: Bank or payment account details required/invalid
 }
 
 // ─── NEW: Reconciliation Status Enum ──────────────────────────────────────────
@@ -781,10 +782,12 @@ model Payment {
   razorpayEventId      String?               // Last processed webhook event ID
   capturedAt           DateTime?             // When Razorpay confirmed capture
   failureReason        String?               @db.Text // Razorpay failure description
+  failureCode          String?               // Gateway failure code or classification
   attemptNumber        Int                   @default(1) // Payment attempt count
   // ── Reconciliation ───────────────────────────────────────────────────────
   reconciliationStatus ReconciliationStatus  @default(NOT_REQUIRED)
   reconciledAt         DateTime?
+  reconciliationTimestamp DateTime?           // Explicit timestamp of last reconciliation event
   reconciledBy         String?               // System or Admin user ID
   // ── COD Fields ───────────────────────────────────────────────────────────
   cashCollectedBy      String?

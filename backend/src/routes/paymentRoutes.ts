@@ -10,6 +10,9 @@ router.post('/webhook', PaymentController.webhook);
 // Verifying checkout payment signature
 router.post('/verify', authGuard, PaymentController.verifyPayment);
 
+// Recording client-side payment attempt failures & account status
+router.post('/record-failure', PaymentController.recordPaymentFailure);
+
 // Downloading receipt
 router.get('/receipt/:receiptNumber', PaymentController.getReceipt);
 

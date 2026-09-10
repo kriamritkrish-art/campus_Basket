@@ -965,7 +965,8 @@ export class AdminPaymentController {
       providerId,
       deliveryBoyId,
       search,
-      sortBy
+      sortBy,
+      paymentFailureReason
     } = query;
 
     let rawOrders: any[] = [];
@@ -1212,12 +1213,16 @@ export class AdminPaymentController {
         razorpayPaymentId: o.payment?.razorpayPaymentId || null,
         razorpayEventId: o.payment?.razorpayEventId || null,
         capturedAt: o.payment?.capturedAt || null,
-        failureReason: o.payment?.failureReason || null,
+        failureReason: o.payment?.failureReason || (normalizedPayStatus === 'FAILED' ? 'Payment Failed at Gateway' : 'N/A'),
+        failureCode: o.payment?.failureCode || (o.paymentStatus === 'FAILED_ACCOUNT_DETAILS' ? 'FAILED_ACCOUNT_DETAILS' : null),
+        paymentFailureReason: o.payment?.failureReason || (o.paymentStatus === 'FAILED_ACCOUNT_DETAILS' ? 'BANK/ACCOUNT DETAILS REQUIRED' : (normalizedPayStatus === 'FAILED' ? 'UNKNOWN' : 'N/A')),
+        paymentFailureCode: o.payment?.failureCode || (o.paymentStatus === 'FAILED_ACCOUNT_DETAILS' ? 'FAILED_ACCOUNT_DETAILS' : null),
         paymentAttemptCount: o.payment?.attemptNumber || 1,
         paymentAttempts,
         reconciliationStatus: o.reconciliationStatus || 'NOT_REQUIRED',
         paymentReconciliationStatus: o.payment?.reconciliationStatus || 'NOT_REQUIRED',
         reconciledAt: o.payment?.reconciledAt || null,
+        reconciliationTimestamp: o.payment?.reconciliationTimestamp || o.payment?.reconciledAt || null,
         reconciledBy: o.payment?.reconciledBy || null,
         // ── Settlement Fields ──────────────────────────────────────────────────
         settlementStatus: o.settlementStatus || 'NOT_ELIGIBLE',
@@ -1275,6 +1280,36 @@ export class AdminPaymentController {
     // 4. Payment Status
     if (paymentStatus && paymentStatus !== 'ALL') {
       filtered = filtered.filter((o) => o.paymentStatus === paymentStatus);
+    }
+
+    // 4b. Payment Failure Reason Filter
+    if (paymentFailureReason && paymentFailureReason !== 'ALL') {
+      if (paymentFailureReason === 'FAILED') {
+        filtered = filtered.filter(
+          (o) =>
+            o.paymentStatus === 'FAILED' ||
+            o.paymentStatus === 'FAILED_ACCOUNT_DETAILS' ||
+            (o.paymentFailureReason && o.paymentFailureReason !== 'N/A')
+        );
+      } else if (paymentFailureReason === 'FAILED_ACCOUNT_DETAILS') {
+        filtered = filtered.filter(
+          (o) =>
+            o.paymentFailureReason === 'BANK/ACCOUNT DETAILS REQUIRED' ||
+            o.paymentStatus === 'FAILED_ACCOUNT_DETAILS'
+        );
+      } else if (paymentFailureReason === 'PAYMENT_DECLINED') {
+        filtered = filtered.filter((o) => o.paymentFailureReason === 'PAYMENT DECLINED');
+      } else if (paymentFailureReason === 'PAYMENT_TIMEOUT') {
+        filtered = filtered.filter((o) => o.paymentFailureReason === 'PAYMENT TIMEOUT');
+      } else if (paymentFailureReason === 'RAZORPAY_ERROR') {
+        filtered = filtered.filter((o) => o.paymentFailureReason === 'RAZORPAY ERROR');
+      } else if (paymentFailureReason === 'NETWORK_TECHNICAL_ERROR') {
+        filtered = filtered.filter((o) => o.paymentFailureReason === 'NETWORK/TECHNICAL ERROR');
+      } else if (paymentFailureReason === 'UNKNOWN') {
+        filtered = filtered.filter((o) => o.paymentFailureReason === 'UNKNOWN');
+      } else {
+        filtered = filtered.filter((o) => o.paymentFailureReason === paymentFailureReason);
+      }
     }
 
     // 5. Refund Status Filter
@@ -1337,7 +1372,9 @@ export class AdminPaymentController {
           o.studentRoom.toLowerCase().includes(q) ||
           o.providerName.toLowerCase().includes(q) ||
           o.deliveryBoyName.toLowerCase().includes(q) ||
-          o.itemsSummary.toLowerCase().includes(q)
+          o.itemsSummary.toLowerCase().includes(q) ||
+          (o.razorpayOrderId && o.razorpayOrderId.toLowerCase().includes(q)) ||
+          (o.razorpayPaymentId && o.razorpayPaymentId.toLowerCase().includes(q))
       );
     }
 
