@@ -1639,7 +1639,6 @@ export default function OrderPaymentSettlementLedgerPage() {
                       <span>{renderPaymentBadge(selectedOrder.paymentStatus)}</span>
                     </div>
                   </div>
-                  </div>
                 </div>
 
                 {/* C. Razorpay / Gateway Information */}
