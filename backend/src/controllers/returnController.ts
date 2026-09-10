@@ -541,12 +541,9 @@ export class ReturnController {
         });
         if (dbBoy) deliveryBoyId = dbBoy.id;
       }
-      if (!deliveryBoyId) {
-        const activeDb = await (prisma as any).deliveryBoy.findFirst({
-          where: { activeStatus: true }
-        });
-        if (activeDb) deliveryBoyId = activeDb.id;
-      }
+
+      // Do not backfill payout attribution to an arbitrary active runner.
+      // The return request must resolve to the actual responsible delivery-boy identity.
 
       // Fetch admin-configured return delivery payout
       const payoutSetting = await prisma.adminSetting.findUnique({

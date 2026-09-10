@@ -66,9 +66,13 @@ export class LedgerService {
   }): Promise<any> {
     const orderId = order.id || order.orderId || `ord_${Date.now()}`;
     const total = Number(order.totalAmount !== undefined ? order.totalAmount : (order.amount !== undefined ? order.amount : 0));
-    const commRate = order.commissionRate !== undefined ? Number(order.commissionRate) : 5.0;
-    const commAmt = order.commissionAmount !== undefined ? Number(order.commissionAmount) : Math.round(total * (commRate / 100) * 100) / 100;
-    const provPayable = order.providerPayable !== undefined ? Number(order.providerPayable) : Math.round((total - commAmt) * 100) / 100;
+    // Provider settlement is computed from the actual product value, not customer total.
+    const productValue = Number(order.totalAmount) || total;
+    const commRate = 0;
+    const commAmt = 0;
+    const provPayable = order.providerPayable !== undefined
+      ? Number(order.providerPayable)
+      : Math.max(0, Math.round((productValue - Number(order.amount || 0) + Number(order.totalAmount || 0) - Number(order.amount || 0)) * 100) / 100);
 
     const sourceAccount = order.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD_RECEIVABLE_IN_TRANSIT' : 'CAMPUS_ESCROW_GATEWAY';
 

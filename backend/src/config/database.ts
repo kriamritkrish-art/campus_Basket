@@ -457,10 +457,7 @@ const fallbackHandlers: Record<string, any> = {
     findFirst: async (args: any) => {
       const userId = args?.where?.userId || args?.where?.OR?.find((o: any) => o.userId)?.userId;
       const id = args?.where?.id || args?.where?.OR?.find((o: any) => o.id)?.id;
-      let user = fallbackUsers.find((u: any) => u.deliveryBoy && ((userId && (u.deliveryBoy.userId === userId || u.id === userId)) || (id && u.deliveryBoy.id === id)));
-      if (!user && !userId && !id) {
-        user = fallbackUsers.find((u: any) => u.deliveryBoy);
-      }
+      const user = fallbackUsers.find((u: any) => u.deliveryBoy && ((userId && (u.deliveryBoy.userId === userId || u.id === userId)) || (id && u.deliveryBoy.id === id)));
       if (!user?.deliveryBoy) return null;
       const dbEarnings = fallbackDeliveryBoyEarnings.filter((e) => e.deliveryBoyId === user.deliveryBoy.id);
       const payoutAccount = fallbackDeliveryBoyPayoutAccounts.find((p) => p.deliveryBoyId === user.deliveryBoy.id) || null;

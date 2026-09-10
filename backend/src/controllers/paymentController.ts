@@ -154,13 +154,10 @@ export class PaymentController {
             let newOrderStatus: any = 'CONFIRMED';
             let autoAssignedRunnerId: string | null = null;
 
-            // Auto-assign delivery if configured
+            // Delivery assignment is intentionally deferred until a runner explicitly accepts the order.
+            // Never auto-assign to a random active runner; each delivery boy must claim the order independently.
             if (currentOrder.provider?.autoAssignDelivery) {
-              const runner = await tx.deliveryBoy.findFirst({ where: { activeStatus: true } });
-              if (runner) {
-                autoAssignedRunnerId = runner.id;
-                newOrderStatus = 'DELIVERY_ASSIGNED';
-              }
+              newOrderStatus = 'CONFIRMED';
             }
 
             const paymentNote = isCodWithAdvance

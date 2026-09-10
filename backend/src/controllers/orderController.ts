@@ -316,15 +316,10 @@ export class OrderController {
         ? `Order initiated: Partial COD Advance of ₹${advanceRequired} required to confirm order. Remaining ₹${remainingCashDue} payable in cash at delivery.`
         : 'Order initiated at checkout';
 
+      // Delivery assignment is intentionally deferred until a runner accepts an available order.
+      // Provider acceptance makes the order available to eligible delivery boys, not auto-assigned to one runner.
       if (data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired === 0 && targetProvider?.autoAssignDelivery) {
-        const activeRunner = await prisma.deliveryBoy.findFirst({
-          where: { activeStatus: true }
-        });
-        if (activeRunner) {
-          assignedDeliveryBoyId = activeRunner.id;
-          initialStatus = 'DELIVERY_ASSIGNED';
-          initialStatusNote = `Auto-assigned to delivery partner ${activeRunner.fullName} (${activeRunner.mobileNumber})`;
-        }
+        initialStatusNote = 'Order placed and available for eligible delivery partners after provider acceptance.';
       }
 
       // Robust Category & Service Type Detection across all ordered items
@@ -363,9 +358,11 @@ export class OrderController {
         serviceType = 'FOOD';
       }
 
-      const commissionRate = 5.0;
-      const commissionAmount = Math.round(totalAmount * (commissionRate / 100) * 100) / 100;
-      const providerPayable = Math.round((totalAmount - commissionAmount) * 100) / 100;
+      // Provider settlement must use the actual product value only.
+      // Delivery fee is not provider revenue and must not be added to the settlement amount.
+      const providerPayable = Math.round((subtotal - discountAmount) * 100) / 100;
+      const commissionRate = 0;
+      const commissionAmount = 0;
 
       // Transactionally deduct stock, create order, order items, status history
       const createdOrder = await prisma.$transaction(async (tx) => {

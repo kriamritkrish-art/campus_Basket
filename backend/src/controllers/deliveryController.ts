@@ -28,8 +28,11 @@ async function resolveDeliveryBoyProfile(user?: any) {
     });
   }
 
-  if (!deliveryBoy && (user.role === 'ADMIN' || user.role === 'DELIVERY_BOY')) {
+  // Never fall back to a random first delivery boy for admin requests.
+  // Each runner must resolve only by their real user/deliveryBoy identity.
+  if (!deliveryBoy && user.role === 'DELIVERY_BOY' && user.userId) {
     deliveryBoy = await prisma.deliveryBoy.findFirst({
+      where: { userId: user.userId },
       include: { user: true }
     });
   }
@@ -220,15 +223,8 @@ export class DeliveryController {
       const orders = await prisma.order.findMany({
         where: {
           deliveryBoyId: null,
-          OR: [
-            {
-              status: 'CONFIRMED',
-              provider: { autoAssignDelivery: true }
-            },
-            {
-              status: { in: ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP'] }
-            }
-          ]
+          status: { in: ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP'] },
+          providerAccepted: true
         },
         include: {
           student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
@@ -406,13 +402,8 @@ export class DeliveryController {
         return;
       }
 
-      if (order.deliveryBoyId && order.deliveryBoyId !== deliveryBoy.id) {
-        res.status(400).json({ success: false, message: 'Order has already been accepted by another runner.' });
-        return;
-      }
-
-      // Enforce Provider Workflow Policy: If provider requires acceptance first and hasn't accepted, prevent runner acceptance
-      if (order.status === 'CONFIRMED' && order.provider && !order.provider.autoAssignDelivery && !order.providerAccepted) {
+      // Enforce Provider Workflow Policy: a provider must accept the order before it can be claimed by a delivery partner.
+      if (!order.providerAccepted && order.provider && !order.provider.autoAssignDelivery) {
         res.status(400).json({
           success: false,
           message: 'This provider must accept the order before a delivery partner can be assigned.'
@@ -420,25 +411,61 @@ export class DeliveryController {
         return;
       }
 
-      const updated = await prisma.order.update({
-        where: { id },
-        data: {
-          deliveryBoyId: deliveryBoy.id,
-          status: 'DELIVERY_ASSIGNED',
-          statusHistory: {
-            create: {
-              previousStatus: order.status,
-              newStatus: 'DELIVERY_ASSIGNED',
-              changedBy: deliveryBoy.fullName,
-              notes: `Order accepted by runner ${deliveryBoy.fullName}`
-            }
-          }
-        },
-        include: {
-          student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
-          provider: { select: { fullName: true, mobileNumber: true } },
-          items: true
+      const updated = await prisma.$transaction(async (tx) => {
+        const lockedOrder = await tx.order.findUnique({
+          where: { id: order.id },
+          include: { provider: true }
+        });
+
+        if (!lockedOrder) {
+          throw new Error('Order not found');
         }
+
+        if (lockedOrder.deliveryBoyId && lockedOrder.deliveryBoyId !== deliveryBoy.id) {
+          throw new Error('Order already accepted by another delivery partner.');
+        }
+
+        if (!lockedOrder.providerAccepted && lockedOrder.provider && !lockedOrder.provider.autoAssignDelivery) {
+          throw new Error('This provider must accept the order before a delivery partner can be assigned.');
+        }
+
+        const claimed = await tx.order.updateMany({
+          where: {
+            id: lockedOrder.id,
+            deliveryBoyId: null,
+            status: { in: ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP'] }
+          },
+          data: {
+            deliveryBoyId: deliveryBoy.id,
+            status: 'DELIVERY_ASSIGNED',
+            updatedAt: new Date()
+          }
+        });
+
+        if (claimed.count !== 1) {
+          throw new Error('Order already accepted by another delivery partner.');
+        }
+
+        return tx.order.update({
+          where: { id: lockedOrder.id },
+          data: {
+            deliveryBoyId: deliveryBoy.id,
+            status: 'DELIVERY_ASSIGNED',
+            statusHistory: {
+              create: {
+                previousStatus: lockedOrder.status,
+                newStatus: 'DELIVERY_ASSIGNED',
+                changedBy: deliveryBoy.fullName,
+                notes: `Order accepted by runner ${deliveryBoy.fullName}`
+              }
+            }
+          },
+          include: {
+            student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
+            provider: { select: { fullName: true, mobileNumber: true } },
+            items: true
+          }
+        });
       });
 
       await AuditService.log(prisma, {
@@ -924,6 +951,10 @@ export class DeliveryController {
             deliveryBoyId: deliveryBoy.id,
             deliveryOtpVerified: true,
             deliveredAt: now,
+            settlementStatus: 'ELIGIBLE',
+            providerPayable: Number(order.providerPayable) > 0
+              ? Number(order.providerPayable)
+              : Math.round((Number(order.subtotal || order.totalAmount) - Number(order.discountAmount || 0)) * 100) / 100,
             ...(isCod ? { paymentStatus: 'COD_COLLECTED' } : {}),
             statusHistory: {
               create: {

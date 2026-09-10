@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AdminFinanceController } from '../backend/src/controllers/adminFinanceController';
 import { DeliveryController } from '../backend/src/controllers/deliveryController';
 import { prisma } from '../backend/src/config/database';
@@ -44,6 +44,53 @@ describe('Provider Settlement + COD Collection + Delivery Boy Earnings Financial
 
     const ordersAfter = await (prisma as any).order.findMany();
     expect(ordersAfter.length).toBe(countBefore);
+  });
+
+  it('Requirement 4: COD reconciliation does not invent a default runner when a real delivery boy is missing', async () => {
+    const orderFindMany = vi.spyOn((prisma as any).order, 'findMany');
+    const codFindMany = vi.spyOn((prisma as any).cODCollection, 'findMany');
+    const deliveryBoyFindMany = vi.spyOn((prisma as any).deliveryBoy, 'findMany');
+    const providerFindMany = vi.spyOn((prisma as any).serviceProvider, 'findMany');
+
+    try {
+      orderFindMany.mockResolvedValue([
+        {
+          id: 'ord_unassigned_cod',
+          orderNumber: 'ORD-COD-UNASSIGNED',
+          createdAt: new Date().toISOString(),
+          deliveredAt: new Date().toISOString(),
+          paymentMethod: 'CASH_ON_DELIVERY',
+          status: 'DELIVERED',
+          deliveryOtpVerified: true,
+          totalAmount: 245,
+          providerId: 'prov_canteen',
+          student: { fullName: 'Aanya', mobileNumber: '+91 99999 12345' },
+          provider: { fullName: 'Campus Canteen' },
+          items: [{ productName: 'Veg Bowl' }]
+        }
+      ]);
+      codFindMany.mockResolvedValue([]);
+      deliveryBoyFindMany.mockResolvedValue([]);
+      providerFindMany.mockResolvedValue([]);
+
+      const req = mockReq();
+      const res = mockRes();
+
+      await AdminFinanceController.getCodCollections(req, res, () => {});
+
+      const normalizedRows = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data?.collections) ? res.data.collections : [];
+      const targetRow = normalizedRows.find((row: any) => row.orderId === 'ord_unassigned_cod');
+
+      expect(targetRow).toBeDefined();
+      expect(targetRow.deliveryBoyId).toBeNull();
+      expect(targetRow.deliveryBoyId).not.toBe('db_boy_1');
+      expect(targetRow.runnerName).not.toContain('Bikash');
+    } finally {
+      orderFindMany.mockRestore();
+      codFindMany.mockRestore();
+      deliveryBoyFindMany.mockRestore();
+      providerFindMany.mockRestore();
+    }
   });
 
   it('Requirement 3 & 4: Calculates separate Provider Payable, COD, and Delivery Earnings without mixing', async () => {

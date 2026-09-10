@@ -339,11 +339,7 @@ export class AdminPaymentController {
       const deliveryBoys = await (prisma as any).deliveryBoy.findMany().catch(() => []);
       const providers = await (prisma as any).serviceProvider.findMany().catch(() => []);
 
-      const defaultRunners = [
-        { id: 'db_boy_1', fullName: 'Bikash Mondal (Lead Runner)', mobileNumber: '+91 98765 43220', vehicleType: 'Motorcycle' },
-        { id: 'db_boy_2', fullName: 'Rajesh Kumar (Express Runner)', mobileNumber: '+91 98765 43221', vehicleType: 'Bicycle' }
-      ];
-      const activeRunners = deliveryBoys.length > 0 ? deliveryBoys : defaultRunners;
+      const activeRunners = deliveryBoys;
 
       // Filter all COD orders
       let codOrders = orders.filter((o: any) =>
@@ -406,18 +402,10 @@ export class AdminPaymentController {
         const codEntry = codList.find((c: any) => c.orderId === ord.id || c.orderId === ord.orderNumber);
 
         // Resolve assigned runner
-        let assignedRunnerId = ord.deliveryBoyId;
-        if (!assignedRunnerId && codEntry?.deliveryBoyId) {
-          assignedRunnerId = codEntry.deliveryBoyId;
-        }
-        if (!assignedRunnerId) {
-          const hashIdx = Math.abs(AdminPaymentController.hashString(ord.id || ord.orderNumber || '')) % activeRunners.length;
-          assignedRunnerId = activeRunners[hashIdx].id;
-        }
-
-        const runner = activeRunners.find((d: any) => d.id === assignedRunnerId) || deliveryBoys.find((d: any) => d.id === assignedRunnerId);
-        const runnerName = runner?.fullName || (assignedRunnerId === 'db_boy_1' ? 'Bikash Mondal (Lead Runner)' : (assignedRunnerId === 'db_boy_2' ? 'Rajesh Kumar (Express Runner)' : 'Campus Delivery Partner'));
-        const runnerPhone = runner?.mobileNumber || runner?.phone || '+91 98765 43220';
+        const assignedRunnerId = ord.deliveryBoyId ?? codEntry?.deliveryBoyId ?? null;
+        const runner = assignedRunnerId ? (activeRunners.find((d: any) => d.id === assignedRunnerId) || deliveryBoys.find((d: any) => d.id === assignedRunnerId)) : null;
+        const runnerName = runner?.fullName || (assignedRunnerId ? 'Campus Delivery Partner' : 'Unassigned Delivery Partner');
+        const runnerPhone = runner?.mobileNumber || runner?.phone || null;
 
         const prov = providers.find((p: any) => p.id === ord.providerId);
         const expectedAmt = AdminPaymentController.round(Number(ord.totalAmount) || 0);
@@ -482,7 +470,7 @@ export class AdminPaymentController {
         normalizedCollections.push(normalizedRow);
 
         // Group into delivery boy summary
-        if (!runnerMap.has(assignedRunnerId)) {
+        if (assignedRunnerId && !runnerMap.has(assignedRunnerId)) {
           runnerMap.set(assignedRunnerId, {
             deliveryBoyId: assignedRunnerId,
             name: runnerName,
@@ -504,28 +492,30 @@ export class AdminPaymentController {
           });
         }
 
-        const rStat = runnerMap.get(assignedRunnerId);
-        rStat.codOrdersCount += 1;
-        rStat.expectedAmount = AdminPaymentController.round(rStat.expectedAmount + expectedAmt);
-        rStat.collectedAmount = AdminPaymentController.round(rStat.collectedAmount + collectedAmt);
-        rStat.difference = AdminPaymentController.round(rStat.collectedAmount - rStat.expectedAmount);
+        if (assignedRunnerId) {
+          const rStat = runnerMap.get(assignedRunnerId);
+          rStat.codOrdersCount += 1;
+          rStat.expectedAmount = AdminPaymentController.round(rStat.expectedAmount + expectedAmt);
+          rStat.collectedAmount = AdminPaymentController.round(rStat.collectedAmount + collectedAmt);
+          rStat.difference = AdminPaymentController.round(rStat.collectedAmount - rStat.expectedAmount);
 
-        if (reconciliationStatus === 'RECONCILED') {
-          rStat.reconciledOrdersCount += 1;
-        } else {
-          rStat.pendingOrdersCount += 1;
+          if (reconciliationStatus === 'RECONCILED') {
+            rStat.reconciledOrdersCount += 1;
+          } else {
+            rStat.pendingOrdersCount += 1;
+          }
+
+          if (isEligible) {
+            rStat.eligibleOrdersCount += 1;
+            rStat.eligibleAmount = AdminPaymentController.round(rStat.eligibleAmount + collectedAmt);
+          }
+
+          if (diff !== 0) {
+            rStat.differenceRequiringAttention = AdminPaymentController.round(rStat.differenceRequiringAttention + Math.abs(diff));
+          }
+
+          rStat.orders.push(normalizedRow);
         }
-
-        if (isEligible) {
-          rStat.eligibleOrdersCount += 1;
-          rStat.eligibleAmount = AdminPaymentController.round(rStat.eligibleAmount + collectedAmt);
-        }
-
-        if (diff !== 0) {
-          rStat.differenceRequiringAttention = AdminPaymentController.round(rStat.differenceRequiringAttention + Math.abs(diff));
-        }
-
-        rStat.orders.push(normalizedRow);
       }
 
       // Compute status for each delivery boy

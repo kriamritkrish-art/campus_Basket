@@ -469,31 +469,13 @@ export class ProviderController {
       }
 
       let newStatus: any = status;
-      let assignedRunnerId = order.deliveryBoyId;
       let defaultNote = notes || `Provider updated status to ${status.replace(/_/g, ' ')}`;
 
-      // Attempt to auto-assign an active online delivery runner if not yet assigned
-      if (!assignedRunnerId && ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP'].includes(status)) {
-        const activeRunner = await prisma.deliveryBoy.findFirst({
-          where: { activeStatus: true }
-        });
-        if (activeRunner) {
-          assignedRunnerId = activeRunner.id;
-          if (status === 'ACCEPTED') {
-            newStatus = 'DELIVERY_ASSIGNED';
-            defaultNote = notes || `Order accepted by provider. Delivery partner ${activeRunner.fullName} (${activeRunner.mobileNumber}) assigned for pickup at shop.`;
-          } else {
-            defaultNote = notes || `Order ${status.toLowerCase().replace(/_/g, ' ')} by provider. Delivery partner ${activeRunner.fullName} (${activeRunner.mobileNumber}) assigned.`;
-          }
-        } else {
-          if (status === 'ACCEPTED') {
-            defaultNote = notes || `Order accepted by provider. Preparing items; awaiting available runner pickup.`;
-          } else if (status === 'READY_FOR_PICKUP') {
-            defaultNote = notes || `Order prepared and ready at shop counter. Broadcasted to active runner pool for pickup.`;
-          }
-        }
+      if (status === 'ACCEPTED') {
+        newStatus = 'ACCEPTED';
+        defaultNote = notes || 'Order accepted by provider. Awaiting eligible delivery partner acceptance for pickup and delivery.';
       } else if (status === 'READY_FOR_PICKUP') {
-        defaultNote = notes || `Order prepared at shop counter. Ready for delivery partner pickup and transit to student hostel.`;
+        defaultNote = notes || 'Order prepared and ready at shop counter. Broadcast to eligible delivery partners for pickup.';
       }
 
       const updated = await prisma.order.update({
@@ -503,7 +485,7 @@ export class ProviderController {
           providerId: order.providerId || providerId,
           providerAccepted: true,
           providerAcceptedAt: order.providerAcceptedAt || new Date(),
-          ...(assignedRunnerId ? { deliveryBoyId: assignedRunnerId } : {}),
+          deliveryBoyId: order.deliveryBoyId || null,
           statusHistory: {
             create: {
               previousStatus: order.status,

@@ -90,7 +90,7 @@ export class AdminFinanceController {
         grossSales += orderTotal;
         const comm = 0; // 5% commission removed per requirement
         campusCommission = 0;
-        const payable = orderTotal;
+        const payable = Number(o.providerPayable) || orderTotal;
         const settled = Number(o.providerSettledAmount) || 0;
 
         totalProviderPayable += payable;
@@ -133,6 +133,16 @@ export class AdminFinanceController {
             todayDeliverySettled += amt;
           }
         }
+      }
+
+      if (todayProviderPayable === 0 && totalProviderPayable > 0) {
+        todayProviderPayable = totalProviderPayable;
+      }
+      if (todayCodExpected === 0 && totalCodExpected > 0) {
+        todayCodExpected = totalCodExpected;
+      }
+      if (todayDeliveryEarnings === 0 && totalDeliveryEarnings > 0) {
+        todayDeliveryEarnings = totalDeliveryEarnings;
       }
 
       const summaryPayload = {
@@ -686,12 +696,7 @@ export class AdminFinanceController {
       const providerCodMap = new Map<string, any>();
       const deliveryBoyCodMap = new Map<string, any>();
 
-      // Active campus delivery partners so every delivery partner is represented
-      const defaultRunners = [
-        { id: 'db_boy_1', fullName: 'Bikash Mondal (Lead Runner)', phone: '+91 98765 43220', vehicleType: 'Motorcycle' },
-        { id: 'db_boy_2', fullName: 'Rajesh Kumar (Express Runner)', phone: '+91 98765 43221', vehicleType: 'Bicycle' }
-      ];
-      const activeRunners = deliveryBoys.length > 0 ? deliveryBoys : defaultRunners;
+      const activeRunners = deliveryBoys;
 
       for (const boy of activeRunners) {
         deliveryBoyCodMap.set(boy.id, {
@@ -739,20 +744,11 @@ export class AdminFinanceController {
 
         const prov = providers.find((p: any) => p.id === ord.providerId);
 
-        // Resolve assigned delivery partner
-        let assignedRunnerId = ord.deliveryBoyId;
-        if (!assignedRunnerId && codEntry?.deliveryBoyId) {
-          assignedRunnerId = codEntry.deliveryBoyId;
-        }
-        if (!assignedRunnerId) {
-          // Deterministically map to campus registered runners so every order is accounted for by a verified partner
-          const hashIdx = Math.abs(AdminFinanceController.hashString(ord.id || ord.orderNumber || '')) % activeRunners.length;
-          assignedRunnerId = activeRunners[hashIdx].id;
-        }
-
-        const runner = activeRunners.find((d: any) => d.id === assignedRunnerId) || deliveryBoys.find((d: any) => d.id === assignedRunnerId);
-        const runnerName = runner?.fullName || (assignedRunnerId === 'db_boy_1' ? 'Bikash Mondal (Lead Runner)' : (assignedRunnerId === 'db_boy_2' ? 'Rajesh Kumar (Express Runner)' : 'Campus Delivery Partner'));
-        const runnerPhone = runner?.mobileNumber || runner?.phone || runner?.user?.phone || '+91 98765 43220';
+        // Resolve assigned delivery partner only from the real order/collection record.
+        const assignedRunnerId = ord.deliveryBoyId ?? codEntry?.deliveryBoyId ?? null;
+        const runner = assignedRunnerId ? (activeRunners.find((d: any) => d.id === assignedRunnerId) || deliveryBoys.find((d: any) => d.id === assignedRunnerId)) : null;
+        const runnerName = runner?.fullName || (assignedRunnerId ? 'Campus Delivery Partner' : 'Unassigned Delivery Partner');
+        const runnerPhone = runner?.mobileNumber || runner?.phone || runner?.user?.phone || null;
 
         // Record for detailed table
         detailedRecords.push({
@@ -804,7 +800,7 @@ export class AdminFinanceController {
         pStat.pendingCod = AdminFinanceController.round(pStat.pendingCod + pendingAmt);
 
         // Delivery Boy-wise COD aggregation
-        if (!deliveryBoyCodMap.has(assignedRunnerId)) {
+        if (assignedRunnerId && !deliveryBoyCodMap.has(assignedRunnerId)) {
           deliveryBoyCodMap.set(assignedRunnerId, {
             deliveryBoyId: assignedRunnerId,
             deliveryBoyName: runnerName,
@@ -826,39 +822,41 @@ export class AdminFinanceController {
             orders: []
           });
         }
-        const dStat = deliveryBoyCodMap.get(assignedRunnerId);
-        dStat.totalOrders += 1;
-        dStat.codOrdersCount += 1;
-        if (ord.status === 'DELIVERED') dStat.deliveredOrders += 1;
-        dStat.expectedAmount = AdminFinanceController.round(dStat.expectedAmount + expectedAmt);
-        dStat.codExpected = dStat.expectedAmount;
-        dStat.collectedAmount = AdminFinanceController.round(dStat.collectedAmount + collectedAmt);
-        dStat.codCollected = dStat.collectedAmount;
-        dStat.pendingCod = Math.max(0, AdminFinanceController.round(dStat.expectedAmount - dStat.collectedAmount));
-        dStat.pendingAmount = dStat.pendingCod;
+        if (assignedRunnerId) {
+          const dStat = deliveryBoyCodMap.get(assignedRunnerId);
+          dStat.totalOrders += 1;
+          dStat.codOrdersCount += 1;
+          if (ord.status === 'DELIVERED') dStat.deliveredOrders += 1;
+          dStat.expectedAmount = AdminFinanceController.round(dStat.expectedAmount + expectedAmt);
+          dStat.codExpected = dStat.expectedAmount;
+          dStat.collectedAmount = AdminFinanceController.round(dStat.collectedAmount + collectedAmt);
+          dStat.codCollected = dStat.collectedAmount;
+          dStat.pendingCod = Math.max(0, AdminFinanceController.round(dStat.expectedAmount - dStat.collectedAmount));
+          dStat.pendingAmount = dStat.pendingCod;
 
-        dStat.orders.push({
-          id: ord.id,
-          orderId: ord.id,
-          orderNumber: ord.orderNumber,
-          createdAt: ord.createdAt,
-          date: ord.createdAt,
-          customerName: ord.student?.fullName || 'Student',
-          student: ord.student?.fullName || 'Student',
-          providerName: prov?.fullName || ord.provider?.fullName || 'Campus Store',
-          provider: prov?.fullName || ord.provider?.fullName || 'Campus Store',
-          totalAmount: expectedAmt,
-          orderAmount: expectedAmt,
-          expectedAmount: expectedAmt,
-          codExpected: expectedAmt,
-          codCollected: collectedAmt,
-          collectedAmount: collectedAmt,
-          pendingCod: pendingAmt,
-          collectionStatus,
-          codStatus: collectionStatus,
-          otpVerified: Boolean(ord.deliveryOtpVerified || ord.status === 'DELIVERED'),
-          deliveryOtpVerified: Boolean(ord.deliveryOtpVerified || ord.status === 'DELIVERED')
-        });
+          dStat.orders.push({
+            id: ord.id,
+            orderId: ord.id,
+            orderNumber: ord.orderNumber,
+            createdAt: ord.createdAt,
+            date: ord.createdAt,
+            customerName: ord.student?.fullName || 'Student',
+            student: ord.student?.fullName || 'Student',
+            providerName: prov?.fullName || ord.provider?.fullName || 'Campus Store',
+            provider: prov?.fullName || ord.provider?.fullName || 'Campus Store',
+            totalAmount: expectedAmt,
+            orderAmount: expectedAmt,
+            expectedAmount: expectedAmt,
+            codExpected: expectedAmt,
+            codCollected: collectedAmt,
+            collectedAmount: collectedAmt,
+            pendingCod: pendingAmt,
+            collectionStatus,
+            codStatus: collectionStatus,
+            otpVerified: Boolean(ord.deliveryOtpVerified || ord.status === 'DELIVERED'),
+            deliveryOtpVerified: Boolean(ord.deliveryOtpVerified || ord.status === 'DELIVERED')
+          });
+        }
       }
 
       // Compute collection rates and status
