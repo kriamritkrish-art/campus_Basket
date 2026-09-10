@@ -74,6 +74,7 @@ router.post('/payments/settlements/generate', AdminPaymentController.generateSet
 router.post('/payments/settlements/disburse', AdminPaymentController.disburseSettlement);
 router.get('/payments/cod', AdminPaymentController.getCodReconciliation);
 router.post('/payments/cod/reconcile', AdminPaymentController.reconcileCod);
+router.post('/payments/cod/bulk-reconcile', AdminPaymentController.bulkReconcileDeliveryBoyCod);
 router.get('/payments/ledger', AdminPaymentController.getFinancialLedger);
 router.post('/payments/override-status', AdminPaymentController.overrideStatus);
 router.get('/payments/export', AdminPaymentController.exportData);
