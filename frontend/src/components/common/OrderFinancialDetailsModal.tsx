@@ -66,6 +66,26 @@ export default function OrderFinancialDetailsModal({ order: initialOrder, orderI
   const codStatus = order.codStatus || (isCod ? (codCollected >= codExpected && codExpected > 0 ? 'COLLECTED' : 'PENDING') : 'NOT_APPLICABLE');
   const settlementStatus = order.settlementStatus || (provRemaining === 0 && provSettled > 0 ? 'SETTLED' : (provSettled > 0 ? 'PARTIALLY_SETTLED' : 'PENDING'));
 
+  const studentName = typeof order.student === 'object' && order.student !== null
+    ? (order.student.fullName || order.student.name || 'Campus Student')
+    : (order.studentName || (typeof order.student === 'string' ? order.student : 'Campus Student'));
+
+  const studentEmail = typeof order.student === 'object' && order.student !== null
+    ? (order.student.collegeEmail || order.student.email || 'student@nitdgp.ac.in')
+    : (order.studentEmail || 'student@nitdgp.ac.in');
+
+  const providerName = typeof order.provider === 'object' && order.provider !== null
+    ? (order.provider.businessName || order.provider.fullName || 'Vendor')
+    : (order.providerName || (typeof order.provider === 'string' ? order.provider : 'Vendor'));
+
+  const deliveryRunnerName = typeof order.deliveryBoy === 'object' && order.deliveryBoy !== null
+    ? (order.deliveryBoy.fullName || 'Unassigned')
+    : (order.deliveryBoyName || (typeof order.deliveryBoy === 'string' ? order.deliveryBoy : 'Unassigned'));
+
+  const productName = typeof order.product === 'object' && order.product !== null
+    ? (order.product.name || 'Campus Essentials')
+    : (order.product || order.productService || 'Campus Essentials');
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden my-8">
@@ -103,8 +123,8 @@ export default function OrderFinancialDetailsModal({ order: initialOrder, orderI
                 <User className="w-3.5 h-3.5 text-indigo-600" />
                 Student
               </div>
-              <div className="font-bold text-xs text-slate-900 truncate">{order.student || order.studentName || 'Campus Student'}</div>
-              <div className="text-[11px] text-slate-500 truncate">{order.studentEmail || 'student@nitdgp.ac.in'}</div>
+              <div className="font-bold text-xs text-slate-900 truncate">{studentName}</div>
+              <div className="text-[11px] text-slate-500 truncate">{studentEmail}</div>
             </div>
 
             {/* Provider */}
@@ -113,8 +133,8 @@ export default function OrderFinancialDetailsModal({ order: initialOrder, orderI
                 <Store className="w-3.5 h-3.5 text-emerald-600" />
                 Provider
               </div>
-              <div className="font-bold text-xs text-slate-900 truncate">{order.provider || order.providerName || 'Vendor'}</div>
-              <div className="text-[11px] text-slate-500 truncate">{order.product || order.productService || 'Campus Essentials'}</div>
+              <div className="font-bold text-xs text-slate-900 truncate">{providerName}</div>
+              <div className="text-[11px] text-slate-500 truncate">{productName}</div>
             </div>
 
             {/* Delivery Runner */}
@@ -123,7 +143,7 @@ export default function OrderFinancialDetailsModal({ order: initialOrder, orderI
                 <Truck className="w-3.5 h-3.5 text-blue-600" />
                 Delivery Runner
               </div>
-              <div className="font-bold text-xs text-slate-900 truncate">{order.deliveryBoy || order.deliveryBoyName || 'Unassigned'}</div>
+              <div className="font-bold text-xs text-slate-900 truncate">{deliveryRunnerName}</div>
               <div className="text-[11px] text-slate-500">Status: {order.deliveryStatus || order.orderStatus || 'DELIVERED'}</div>
             </div>
           </div>

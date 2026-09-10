@@ -105,6 +105,14 @@ const formatDateSafe = (val: any, includeTime = false): string => {
   });
 };
 
+const safeText = (val: any, fallback = '—'): string => {
+  if (val === null || val === undefined) return fallback;
+  if (typeof val === 'object') {
+    return val.fullName || val.name || val.businessName || val.rollNumber || fallback;
+  }
+  return String(val);
+};
+
 export default function AdminFinancePage() {
   const [activeTab, setActiveTab] = useState<
     'PROVIDERS' | 'COD' | 'DELIVERY' | 'HISTORY' | 'REPORTS'
@@ -1016,9 +1024,9 @@ export default function AdminFinancePage() {
                             <td className="py-3.5 px-3 text-gray-500">
                               {formatDateSafe(row.createdAt || row.date)}
                             </td>
-                            <td className="py-3.5 px-3 font-medium text-gray-800">{row.customerName}</td>
-                            <td className="py-3.5 px-3 text-gray-600">{row.providerName}</td>
-                            <td className="py-3.5 px-3 font-medium text-gray-700">{row.runnerName || 'Unassigned'}</td>
+                            <td className="py-3.5 px-3 font-medium text-gray-800">{safeText(row.customerName, 'Customer')}</td>
+                            <td className="py-3.5 px-3 text-gray-600">{safeText(row.providerName, 'Provider')}</td>
+                            <td className="py-3.5 px-3 font-medium text-gray-700">{safeText(row.runnerName, 'Unassigned')}</td>
                             <td className="py-3.5 px-3 text-right font-mono font-bold text-gray-900">
                               {formatCurrency(expected)}
                             </td>
@@ -1457,9 +1465,9 @@ export default function AdminFinancePage() {
                         <td className="py-3 px-3 text-gray-500">
                           {formatDateSafe(ord.createdAt)}
                         </td>
-                        <td className="py-3 px-3 font-semibold text-gray-800">{ord.providerName}</td>
-                        <td className="py-3 px-3 text-gray-700">{ord.customerName}</td>
-                        <td className="py-3 px-3 font-mono text-[11px] text-gray-600">{ord.paymentMethod}</td>
+                        <td className="py-3 px-3 font-semibold text-gray-800">{safeText(ord.providerName, 'Provider')}</td>
+                        <td className="py-3 px-3 text-gray-700">{safeText(ord.customerName, 'Customer')}</td>
+                        <td className="py-3 px-3 font-mono text-[11px] text-gray-600">{safeText(ord.paymentMethod, 'ONLINE')}</td>
                         <td className="py-3 px-3 text-right font-mono font-bold text-gray-900">
                           {formatCurrency(ord.totalAmount)}
                         </td>
@@ -1690,10 +1698,10 @@ export default function AdminFinancePage() {
                                 {formatDateSafe(ord.createdAt || ord.orderDate)}
                               </td>
                               <td className="py-2.5 px-2 font-medium text-gray-800 truncate max-w-[100px]">
-                                {ord.studentName || ord.customerName || 'Student'}
+                                {safeText(ord.studentName || ord.customerName || ord.student, 'Student')}
                               </td>
                               <td className="py-2.5 px-2 text-gray-700 truncate max-w-[130px]">
-                                {ord.productService || 'Products'}
+                                {safeText(ord.productService || ord.product, 'Products')}
                               </td>
                               <td className="py-2.5 px-2 text-center font-mono">
                                 {ord.quantity || 1}
@@ -1702,10 +1710,10 @@ export default function AdminFinancePage() {
                                 {formatCurrency(orderAmt)}
                               </td>
                               <td className="py-2.5 px-2 font-mono text-[10px] text-gray-600">
-                                {ord.paymentMode}
+                                {safeText(ord.paymentMode, 'ONLINE')}
                               </td>
                               <td className="py-2.5 px-2 text-gray-600 truncate max-w-[90px]">
-                                {ord.deliveryBoy || 'Unassigned'}
+                                {safeText(ord.deliveryBoy || ord.deliveryBoyName, 'Unassigned')}
                               </td>
                               <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-800">
                                 {formatCurrency(payable)}
@@ -1929,8 +1937,8 @@ export default function AdminFinancePage() {
                             <td className="py-2.5 px-2 text-gray-500">
                               {formatDateSafe(ord.createdAt || ord.date)}
                             </td>
-                            <td className="py-2.5 px-2 text-gray-700">{ord.customerName || 'Student'}</td>
-                            <td className="py-2.5 px-2 text-gray-600">{ord.providerName || 'Vendor'}</td>
+                            <td className="py-2.5 px-2 text-gray-700">{safeText(ord.customerName || ord.student, 'Student')}</td>
+                            <td className="py-2.5 px-2 text-gray-600">{safeText(ord.providerName || ord.provider, 'Vendor')}</td>
                             <td className="py-2.5 px-2 text-right font-mono font-bold text-gray-900">
                               {formatCurrency(ord.totalAmount || ord.orderAmount)}
                             </td>
