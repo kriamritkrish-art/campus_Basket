@@ -6,6 +6,8 @@ import { RefundService } from '../services/financial/RefundService';
 import { AuditService } from '../services/audit/AuditService';
 import { DeliverySettlementPdfService } from '../services/pdf/DeliverySettlementPdfService';
 import { GrossVolumePdfService, LedgerPdfRow, LedgerPdfData } from '../services/pdf/GrossVolumePdfService';
+import { PaymentReconciliationService } from '../services/payment/PaymentReconciliationService';
+
 
 export class AdminPaymentController {
   /**
@@ -974,11 +976,18 @@ export class AdminPaymentController {
           items: true,
           provider: true,
           deliveryBoy: true,
-          payment: true,
+          payment: {
+            include: {
+              transactions: {
+                orderBy: { createdAt: 'asc' }
+              }
+            }
+          },
           returnRequest: true,
           cancellationRequest: true,
           refunds: true,
-          codCollection: true
+          codCollection: true,
+          settlementItem: true
         },
         orderBy: { createdAt: 'desc' }
       });
@@ -1138,15 +1147,28 @@ export class AdminPaymentController {
         ? o.items.map((i: any) => `${i.quantity || 1}x ${i.productName || 'Item'}`).join(', ')
         : 'General Order Items';
 
-      // Semantic Payment Status
+      // Payment status normalization — standardize display to CAPTURED (preferred term)
+      // SUCCESS and PAID are legacy values kept for backward compatibility
       let normalizedPayStatus = o.paymentStatus || 'PENDING';
-      if (['SUCCESS', 'PAID'].includes(normalizedPayStatus)) normalizedPayStatus = 'PAID';
+      if (['SUCCESS', 'PAID', 'CAPTURED'].includes(normalizedPayStatus)) normalizedPayStatus = 'CAPTURED';
       if (['REFUNDED'].includes(normalizedPayStatus) || o.refundStatus === 'COMPLETED') normalizedPayStatus = 'REFUNDED';
       if (['REFUND_PENDING', 'PARTIALLY_REFUNDED'].includes(normalizedPayStatus)) normalizedPayStatus = 'PARTIALLY_REFUNDED';
-      if (['COD_PENDING', 'PENDING'].includes(normalizedPayStatus)) normalizedPayStatus = 'PENDING';
+      if (['COD_PENDING', 'PENDING', 'PROCESSING', 'CREATED'].includes(normalizedPayStatus)) normalizedPayStatus = 'PENDING';
+      if (normalizedPayStatus === 'RECONCILIATION_REQUIRED') normalizedPayStatus = 'RECONCILIATION_REQUIRED';
 
       // Display order ID
       const orderNumberDisplay = o.orderNumber?.startsWith('#') ? o.orderNumber : `#${o.orderNumber || o.id}`;
+
+      // Extract payment attempt history from transactions
+      const paymentAttempts = Array.isArray(o.payment?.transactions)
+        ? o.payment.transactions.map((t: any) => ({
+            attemptId: t.transactionId,
+            razorpayPaymentId: t.transactionId.replace('verify_', '').replace('webhook_fail_', '').replace('webhook_', ''),
+            eventType: t.eventType,
+            status: t.status,
+            time: t.createdAt
+          }))
+        : [];
 
       return {
         id: o.id,
@@ -1176,7 +1198,7 @@ export class AdminPaymentController {
         deliveryFee,
         totalAmount: grossAmount,
         grossAmount,
-        paymentMethod: o.paymentMethod || 'ONLINE',
+        paymentMethod: o.paymentMethod || 'RAZORPAY',
         paymentStatus: normalizedPayStatus,
         onlinePaid,
         onlineAmount: onlinePaid,
@@ -1185,6 +1207,23 @@ export class AdminPaymentController {
         codAmount: codCash,
         commissionRate,
         commissionAmount,
+        // ── Razorpay / Reconciliation Fields ───────────────────────────────────
+        razorpayOrderId: o.payment?.razorpayOrderId || null,
+        razorpayPaymentId: o.payment?.razorpayPaymentId || null,
+        razorpayEventId: o.payment?.razorpayEventId || null,
+        capturedAt: o.payment?.capturedAt || null,
+        failureReason: o.payment?.failureReason || null,
+        paymentAttemptCount: o.payment?.attemptNumber || 1,
+        paymentAttempts,
+        reconciliationStatus: o.reconciliationStatus || 'NOT_REQUIRED',
+        paymentReconciliationStatus: o.payment?.reconciliationStatus || 'NOT_REQUIRED',
+        reconciledAt: o.payment?.reconciledAt || null,
+        reconciledBy: o.payment?.reconciledBy || null,
+        // ── Settlement Fields ──────────────────────────────────────────────────
+        settlementStatus: o.settlementStatus || 'NOT_ELIGIBLE',
+        providerPayable: Number(o.providerPayable) || 0,
+        settlementItem: o.settlementItem || null,
+        // ── Refund Fields ──────────────────────────────────────────────────────
         cancellationRefund: {
           status: cancelRefundStatus,
           eligibleAmount: cancelEligibleAmount,
@@ -1335,9 +1374,15 @@ export class AdminPaymentController {
       totalFinalCampusBasketEarning += item.finalCampusBasketEarning;
     }
 
+    // Reconciliation required count
+    const reconciliationRequired = filtered.filter(
+      (o) => o.reconciliationStatus !== 'NOT_REQUIRED' && o.reconciliationStatus !== 'AUTO_RECONCILED' && o.reconciliationStatus !== 'MANUALLY_RECONCILED'
+    ).length;
+
     // Distinct lists for dynamic filter options
     const distinctProviders = Array.from(new Set(allMappedOrders.map((o) => o.providerName))).filter(Boolean);
     const distinctDeliveryBoys = Array.from(new Set(allMappedOrders.map((o) => o.deliveryBoyName))).filter(Boolean);
+    const distinctReconciliationStatuses = Array.from(new Set(allMappedOrders.map((o) => o.reconciliationStatus))).filter(Boolean);
 
     return {
       metrics: {
@@ -1353,11 +1398,13 @@ export class AdminPaymentController {
         refundsDistributed: Math.round(totalRefundsDistributed * 100) / 100,
         totalRefundsDisbursed: Math.round(totalRefundsDistributed * 100) / 100,
         finalCampusBasketEarning: Math.round(totalFinalCampusBasketEarning * 100) / 100,
-        totalNetPlatformRevenue: Math.round(totalFinalCampusBasketEarning * 100) / 100
+        totalNetPlatformRevenue: Math.round(totalFinalCampusBasketEarning * 100) / 100,
+        reconciliationRequired
       },
       orders: filtered,
       distinctProviders,
-      distinctDeliveryBoys
+      distinctDeliveryBoys,
+      distinctReconciliationStatuses
     };
   }
 
@@ -1517,5 +1564,215 @@ export class AdminPaymentController {
       next(err);
     }
   }
-}
+  /**
+   * =============================================================================
+   *  RECONCILIATION MANAGEMENT ENDPOINTS
+   * =============================================================================
+   */
 
+  /**
+   * GET /admin/payments/reconciliation-queue
+   * Returns all orders requiring admin attention for payment reconciliation.
+   */
+  public static async getReconciliationQueue(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const orders = await prisma.order.findMany({
+        where: {
+          reconciliationStatus: {
+            in: ['PENDING', 'AMOUNT_MISMATCH', 'PAYMENT_NOT_FOUND', 'CUSTOMER_DEBIT_REVIEW'] as any
+          }
+        },
+        include: {
+          student: { select: { fullName: true, rollNumber: true, collegeEmail: true } },
+          payment: true,
+          provider: { select: { fullName: true } },
+          deliveryBoy: { select: { fullName: true } }
+        },
+        orderBy: { updatedAt: 'desc' }
+      });
+
+      res.status(200).json({
+        success: true,
+        count: orders.length,
+        data: orders.map((o: any) => ({
+          orderId: o.id,
+          orderNumber: o.orderNumber,
+          studentName: o.student?.fullName,
+          studentEmail: o.student?.collegeEmail,
+          studentRoll: o.student?.rollNumber,
+          providerName: o.provider?.fullName,
+          totalAmount: Number(o.totalAmount),
+          orderStatus: o.status,
+          paymentStatus: o.paymentStatus,
+          reconciliationStatus: o.reconciliationStatus,
+          razorpayOrderId: o.payment?.razorpayOrderId,
+          razorpayPaymentId: o.payment?.razorpayPaymentId,
+          expectedAmount: Number(o.payment?.amount || o.totalAmount),
+          failureReason: o.payment?.failureReason,
+          createdAt: o.createdAt
+        }))
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * POST /admin/payments/recheck-payment
+   * Manually trigger Razorpay API verification for one order.
+   */
+  public static async recheckRazorpayPayment(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { orderId } = req.body;
+      const adminUserId = (req as any).user?.id || 'admin_user';
+
+      if (!orderId) {
+        res.status(400).json({ success: false, message: 'orderId is required' });
+        return;
+      }
+
+      const result = await PaymentReconciliationService.reconcileOrder(
+        orderId,
+        adminUserId,
+        'Manual recheck by admin'
+      );
+
+      await AuditService.log(prisma, {
+        userId: adminUserId,
+        action: 'PAYMENT_RECHECK',
+        entity: 'Order',
+        entityId: orderId,
+        newValue: result,
+        ipAddress: req.ip
+      });
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+        data: result
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * POST /admin/payments/mark-reconciled
+   * Admin manually marks an order as reconciled with mandatory reason.
+   */
+  public static async markReconciled(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { orderId, note, newOrderStatus } = req.body;
+      const adminUserId = (req as any).user?.id || 'admin_user';
+
+      if (!orderId || !note || note.trim().length < 10) {
+        res.status(400).json({
+          success: false,
+          message: 'orderId and a detailed note (min 10 characters) are required for manual reconciliation'
+        });
+        return;
+      }
+
+      const result = await PaymentReconciliationService.adminManualReconcile(
+        orderId,
+        adminUserId,
+        note.trim(),
+        newOrderStatus
+      );
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+        data: result
+      });
+    } catch (err: any) {
+      next(err);
+    }
+  }
+
+  /**
+   * GET /admin/payments/attempt-history/:orderId
+   * Returns payment attempt history for an order.
+   */
+  public static async getPaymentAttemptHistory(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { orderId } = req.params;
+
+      const payment = await prisma.payment.findFirst({
+        where: { orderId },
+        include: {
+          transactions: { orderBy: { createdAt: 'asc' } },
+          reconciliationLogs: { orderBy: { createdAt: 'desc' } }
+        }
+      });
+
+      if (!payment) {
+        res.status(404).json({ success: false, message: 'No payment record found for this order' });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          paymentId: payment.id,
+          paymentNumber: (payment as any).paymentNumber,
+          razorpayOrderId: payment.razorpayOrderId,
+          razorpayPaymentId: payment.razorpayPaymentId,
+          status: payment.status,
+          amount: Number(payment.amount),
+          reconciliationStatus: (payment as any).reconciliationStatus,
+          capturedAt: (payment as any).capturedAt,
+          failureReason: (payment as any).failureReason,
+          attemptNumber: (payment as any).attemptNumber || 1,
+          transactions: payment.transactions,
+          reconciliationLogs: (payment as any).reconciliationLogs
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * GET /admin/payments/webhook-logs
+   * Returns Razorpay webhook log for an order (audit trail).
+   */
+  public static async getWebhookLogs(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { orderId, razorpayOrderId, status } = req.query;
+
+      const where: any = {};
+      if (orderId) where.relatedOrderId = orderId;
+      if (razorpayOrderId) where.razorpayOrderId = razorpayOrderId;
+      if (status) where.processingStatus = status;
+
+      const logs = await prisma.razorpayWebhookLog.findMany({
+        where,
+        orderBy: { receivedAt: 'desc' },
+        take: 100
+      });
+
+      res.status(200).json({
+        success: true,
+        count: logs.length,
+        data: logs.map((l: any) => ({
+          webhookLogId: l.webhookLogId,
+          eventId: l.eventId,
+          eventType: l.eventType,
+          razorpayOrderId: l.razorpayOrderId,
+          razorpayPaymentId: l.razorpayPaymentId,
+          relatedOrderId: l.relatedOrderId,
+          processingStatus: l.processingStatus,
+          signatureValid: l.signatureValid,
+          receivedAt: l.receivedAt,
+          processedAt: l.processedAt,
+          failureReason: l.failureReason,
+          retryCount: l.retryCount
+          // rawPayload intentionally omitted from list view (use individual endpoint for full details)
+        }))
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+}

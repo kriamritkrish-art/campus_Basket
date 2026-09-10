@@ -147,31 +147,51 @@ export class RazorpayService {
   }
 
   /**
-   * Triggers a refund for a captured payment
+   * Fetches all payments made against a Razorpay Order ID.
+   * Used by PaymentReconciliationService to verify captured payments
+   * when the frontend callback failed or webhook was missed.
+   *
+   * Returns an array of Razorpay payment entities.
+   * Each payment has: { id, status, amount (paise), created_at, error_description }
    */
-  async refundPayment(
-    paymentId: string,
-    amountInRupees?: number,
-    notes?: Record<string, string>
-  ): Promise<{ refundId: string; status: string; amount: number }> {
-    if (this.razorpayInstance && !this.isTestMode && !paymentId.startsWith('pay_mock_')) {
-      const options: any = { notes };
-      if (amountInRupees) {
-        options.amount = Math.round(amountInRupees * 100);
+  async fetchOrderPayments(razorpayOrderId: string): Promise<any[]> {
+    if (this.razorpayInstance && !this.isTestMode && !razorpayOrderId.startsWith('order_rzp_mock_')) {
+      try {
+        const response = await this.razorpayInstance.orders.fetchPayments(razorpayOrderId);
+        // The SDK returns { entity: 'collection', count, items: [...] }
+        const items = (response as any)?.items || [];
+        return items;
+      } catch (err: any) {
+        console.error('[RazorpayService] fetchOrderPayments error:', err?.error?.description || err?.message);
+        throw err;
       }
-      const refund = await this.razorpayInstance.payments.refund(paymentId, options);
-      return {
-        refundId: refund.id,
-        status: refund.status || 'processed',
-        amount: Number(refund.amount) / 100
-      };
     }
 
-    // Mock refund
+    // Mock mode: return empty array (no real payments to reconcile)
+    return [];
+  }
+
+  /**
+   * Fetches a single Razorpay payment's current status.
+   * Used for manual admin reconciliation ("Recheck Razorpay Payment" button).
+   */
+  async fetchPaymentDetails(razorpayPaymentId: string): Promise<any | null> {
+    if (this.razorpayInstance && !this.isTestMode && !razorpayPaymentId.startsWith('pay_mock_')) {
+      try {
+        const payment = await this.razorpayInstance.payments.fetch(razorpayPaymentId);
+        return payment;
+      } catch (err: any) {
+        console.error('[RazorpayService] fetchPaymentDetails error:', err?.error?.description || err?.message);
+        return null;
+      }
+    }
+
+    // Mock mode: simulate a captured payment
     return {
-      refundId: `rfnd_mock_${crypto.randomBytes(8).toString('hex')}`,
-      status: 'processed',
-      amount: amountInRupees || 0
+      id: razorpayPaymentId,
+      status: 'captured',
+      amount: 0, // caller should use stored expected amount
+      created_at: Math.floor(Date.now() / 1000)
     };
   }
 }

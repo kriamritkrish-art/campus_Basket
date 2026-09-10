@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { apiRequest, getApiBase } from '../../../../lib/api';
@@ -39,8 +39,20 @@ import {
   LogOut,
   Info,
   Shield,
-  FileSpreadsheet
+  FileSpreadsheet,
+  AlertTriangle,
+  Zap,
+  Activity
 } from 'lucide-react';
+
+
+export interface PaymentAttempt {
+  attemptId: string;
+  razorpayPaymentId: string;
+  eventType: string;
+  status: string;
+  time: string;
+}
 
 export interface LedgerOrder {
   id: string;
@@ -79,6 +91,22 @@ export interface LedgerOrder {
   codAmount: number;
   commissionRate: number;
   commissionAmount: number;
+  // ── Razorpay / Reconciliation Fields ──────────────────────────────────────
+  razorpayOrderId: string | null;
+  razorpayPaymentId: string | null;
+  razorpayEventId: string | null;
+  capturedAt: string | null;
+  failureReason: string | null;
+  paymentAttemptCount: number;
+  paymentAttempts: PaymentAttempt[];
+  reconciliationStatus: string;
+  paymentReconciliationStatus: string;
+  reconciledAt: string | null;
+  reconciledBy: string | null;
+  // ── Settlement Fields ──────────────────────────────────────────────────────
+  settlementStatus: string;
+  providerPayable: number;
+  // ── Refund Fields ──────────────────────────────────────────────────────────
   cancellationRefund: {
     status: 'UNCLAIMED' | 'CLAIMED' | 'DISTRIBUTED' | 'NOT_APPLICABLE';
     eligibleAmount: number;
@@ -108,7 +136,9 @@ export interface LedgerMetrics {
   codCash: number;
   refundsDistributed: number;
   finalCampusBasketEarning: number;
+  reconciliationRequired: number;
 }
+
 
 export default function OrderPaymentSettlementLedgerPage() {
   const router = useRouter();
@@ -124,8 +154,10 @@ export default function OrderPaymentSettlementLedgerPage() {
     codAdvance: 0,
     codCash: 0,
     refundsDistributed: 0,
-    finalCampusBasketEarning: 0
+    finalCampusBasketEarning: 0,
+    reconciliationRequired: 0
   });
+
 
   const [distinctProviders, setDistinctProviders] = useState<string[]>([]);
   const [distinctDeliveryBoys, setDistinctDeliveryBoys] = useState<string[]>([]);
@@ -140,7 +172,9 @@ export default function OrderPaymentSettlementLedgerPage() {
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('ALL');
   const [refundStatusFilter, setRefundStatusFilter] = useState('ALL');
   const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
+  const [reconciliationStatusFilter, setReconciliationStatusFilter] = useState('ALL');
   const [providerFilter, setProviderFilter] = useState('ALL');
+
   const [deliveryBoyFilter, setDeliveryBoyFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('date_desc');
 
@@ -207,7 +241,9 @@ export default function OrderPaymentSettlementLedgerPage() {
     setPaymentStatusFilter('ALL');
     setRefundStatusFilter('ALL');
     setOrderStatusFilter('ALL');
+    setReconciliationStatusFilter('ALL');
     setProviderFilter('ALL');
+
     setDeliveryBoyFilter('ALL');
     setSortBy('date_desc');
     setCurrentPage(1);
@@ -242,7 +278,8 @@ export default function OrderPaymentSettlementLedgerPage() {
             codAdvance: res.data.metrics.codAdvance ?? 0,
             codCash: res.data.metrics.codCash ?? 0,
             refundsDistributed: res.data.metrics.refundsDistributed ?? 0,
-            finalCampusBasketEarning: res.data.metrics.finalCampusBasketEarning ?? 0
+            finalCampusBasketEarning: res.data.metrics.finalCampusBasketEarning ?? 0,
+            reconciliationRequired: res.data.metrics.reconciliationRequired ?? 0
           });
         }
         if (res.data.distinctProviders) setDistinctProviders(res.data.distinctProviders);
@@ -500,8 +537,10 @@ export default function OrderPaymentSettlementLedgerPage() {
     paymentStatusFilter !== 'ALL' ||
     refundStatusFilter !== 'ALL' ||
     orderStatusFilter !== 'ALL' ||
+    reconciliationStatusFilter !== 'ALL' ||
     providerFilter !== 'ALL' ||
     deliveryBoyFilter !== 'ALL';
+
 
   const exportHelperText = useMemo(() => {
     if (orders.length === 0) return 'No matching orders to export.';
@@ -509,22 +548,33 @@ export default function OrderPaymentSettlementLedgerPage() {
     return `Exporting all ${orders.length} orders`;
   }, [orders.length, isAnyFilterActive]);
 
-  // Badges helper
+  // Payment badge helper — CAPTURED is the canonical successful status
+  // Maps legacy SUCCESS/PAID to CAPTURED for display
   const renderPaymentBadge = (status: string) => {
     switch (status) {
+      case 'CAPTURED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">CAPTURED</span>;
       case 'PAID':
-        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">PAID</span>;
+      case 'SUCCESS':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">CAPTURED</span>;
+      case 'AUTHORIZED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">AUTHORIZED</span>;
+      case 'FAILED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800 border border-red-200">FAILED</span>;
       case 'PARTIALLY_PAID':
       case 'PARTIALLY_REFUNDED':
-        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">PARTIALLY PAID</span>;
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">PARTIAL</span>;
       case 'PENDING':
         return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">PENDING</span>;
       case 'REFUNDED':
         return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-200">REFUNDED</span>;
+      case 'RECONCILIATION_REQUIRED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-orange-100 text-orange-800 border border-orange-300">⚠ REVIEW</span>;
       default:
         return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">{status}</span>;
     }
   };
+
 
   const renderRefundStatusBadge = (status: string, amount: number) => {
     switch (status) {
@@ -789,6 +839,26 @@ export default function OrderPaymentSettlementLedgerPage() {
               Student Paid − Refunds Distributed
             </div>
           </div>
+
+          {/* 8. RECONCILIATION REQUIRED (clickable red card) */}
+          {metrics.reconciliationRequired > 0 && (
+            <button
+              onClick={() => setReconciliationStatusFilter('PENDING')}
+              className="bg-orange-50 p-3.5 rounded-xl border-2 border-orange-400 shadow-xs flex flex-col justify-between hover:bg-orange-100 transition cursor-pointer text-left"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-orange-800">RECONCILIATION REQUIRED</span>
+                <AlertTriangle className="w-3.5 h-3.5 text-orange-600 animate-pulse" />
+              </div>
+              <div className="mt-1">
+                <span className="text-xl sm:text-2xl font-black text-orange-700">{metrics.reconciliationRequired}</span>
+                <span className="text-xs text-orange-600 ml-1 font-semibold">Orders</span>
+              </div>
+              <div className="mt-1 text-[9px] font-semibold text-orange-600/80 leading-tight">
+                Tap to filter → Admin review needed
+              </div>
+            </button>
+          )}
         </section>
 
         {/* =========================================================================
@@ -921,10 +991,14 @@ export default function OrderPaymentSettlementLedgerPage() {
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-slate-400 cursor-pointer"
               >
                 <option value="ALL">All</option>
-                <option value="PAID">Paid</option>
-                <option value="PARTIALLY_REFUNDED">Partially Paid</option>
+                <option value="CAPTURED">Captured</option>
+                <option value="PAID">Paid (Legacy)</option>
+                <option value="AUTHORIZED">Authorized</option>
+                <option value="FAILED">Failed</option>
+                <option value="PARTIALLY_REFUNDED">Partial Refund</option>
                 <option value="PENDING">Pending</option>
                 <option value="REFUNDED">Refunded</option>
+                <option value="RECONCILIATION_REQUIRED">Review Required</option>
               </select>
             </div>
 
@@ -1010,7 +1084,29 @@ export default function OrderPaymentSettlementLedgerPage() {
               </select>
             </div>
 
-            {/* 8. Sort By */}
+            {/* 8. Reconciliation Status */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">RECONCILIATION</label>
+              <select
+                value={reconciliationStatusFilter}
+                onChange={(e) => {
+                  setReconciliationStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-slate-400 cursor-pointer"
+              >
+                <option value="ALL">All</option>
+                <option value="NOT_REQUIRED">Not Required</option>
+                <option value="AUTO_RECONCILED">Auto Reconciled</option>
+                <option value="MANUALLY_RECONCILED">Manually Reconciled</option>
+                <option value="PENDING">Pending</option>
+                <option value="AMOUNT_MISMATCH">Amount Mismatch</option>
+                <option value="PAYMENT_NOT_FOUND">Not Found</option>
+                <option value="CUSTOMER_DEBIT_REVIEW">Customer Debit Review</option>
+              </select>
+            </div>
+
+            {/* 9. Sort By */}
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">SORT BY</label>
               <select
@@ -1072,6 +1168,7 @@ export default function OrderPaymentSettlementLedgerPage() {
                   <th className="py-3 px-3.5 text-right whitespace-nowrap">COD ADVANCE</th>
                   <th className="py-3 px-3.5 text-right whitespace-nowrap">COD CASH</th>
                   <th className="py-3 px-3.5 text-center whitespace-nowrap">PAYMENT STATUS</th>
+                  <th className="py-3 px-3.5 text-center whitespace-nowrap">RECONCILIATION</th>
                   <th className="py-3 px-3.5 text-center whitespace-nowrap">CANCEL REFUND</th>
                   <th className="py-3 px-3.5 text-center whitespace-nowrap">RETURN REFUND</th>
                   <th className="py-3 px-3.5 text-right whitespace-nowrap">REFUND TOTAL</th>
@@ -1222,6 +1319,21 @@ export default function OrderPaymentSettlementLedgerPage() {
                         {/* 11. Payment Status */}
                         <td className="py-3 px-3.5 text-center whitespace-nowrap">
                           {renderPaymentBadge(ord.paymentStatus)}
+                        </td>
+
+                        {/* 11b. Reconciliation Status */}
+                        <td className="py-3 px-3.5 text-center whitespace-nowrap">
+                          {(() => {
+                            const rs = ord.reconciliationStatus || 'NOT_REQUIRED';
+                            if (rs === 'NOT_REQUIRED') return <span className="text-slate-300 text-[10px] font-medium">—</span>;
+                            if (rs === 'AUTO_RECONCILED') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">AUTO ✓</span>;
+                            if (rs === 'MANUALLY_RECONCILED') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">MANUAL ✓</span>;
+                            if (rs === 'PENDING') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-300 animate-pulse">PENDING</span>;
+                            if (rs === 'AMOUNT_MISMATCH') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700 border border-red-300">⚠ MISMATCH</span>;
+                            if (rs === 'PAYMENT_NOT_FOUND') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700 border border-red-300">NOT FOUND</span>;
+                            if (rs === 'CUSTOMER_DEBIT_REVIEW') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-50 text-orange-700 border border-orange-300">DEBIT REVIEW</span>;
+                            return <span className="text-[10px] text-slate-500">{rs}</span>;
+                          })()}
                         </td>
 
                         {/* 12. Cancellation Refund */}
@@ -1527,9 +1639,174 @@ export default function OrderPaymentSettlementLedgerPage() {
                       <span>{renderPaymentBadge(selectedOrder.paymentStatus)}</span>
                     </div>
                   </div>
+                  </div>
                 </div>
 
-                {/* 3. Refund Information & Policy Calculation */}
+                {/* C. Razorpay / Gateway Information */}
+                <div className="space-y-3">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-indigo-600" />
+                    <span>RAZORPAY GATEWAY INFORMATION</span>
+                  </h3>
+                  {selectedOrder.paymentMethod === 'CASH_ON_DELIVERY' && !selectedOrder.razorpayOrderId ? (
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px] text-slate-400 italic">
+                      COD order — no Razorpay gateway used for this payment.
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2 text-[11px]">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 font-semibold">Razorpay Order ID:</span>
+                        <span className="font-mono font-bold text-slate-800 text-[10px] break-all text-right max-w-[50%]">
+                          {selectedOrder.razorpayOrderId || <span className="text-slate-300 not-italic">Not available</span>}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 font-semibold">Razorpay Payment ID:</span>
+                        <span className="font-mono font-bold text-slate-800 text-[10px] break-all text-right max-w-[50%]">
+                          {selectedOrder.razorpayPaymentId || <span className="text-slate-300 not-italic">Not yet captured</span>}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 font-semibold">Captured At:</span>
+                        <span className="font-bold text-slate-800">
+                          {selectedOrder.capturedAt
+                            ? new Date(selectedOrder.capturedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                            : <span className="text-slate-300">Not captured</span>}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center border-t border-slate-200 pt-2">
+                        <span className="text-slate-500 font-semibold">Reconciliation:</span>
+                        <span className="font-bold text-[10px]">
+                          {(() => {
+                            const rs = selectedOrder.reconciliationStatus || 'NOT_REQUIRED';
+                            if (rs === 'NOT_REQUIRED') return <span className="text-slate-400">Not Required</span>;
+                            if (rs === 'AUTO_RECONCILED') return <span className="text-emerald-700">✓ Auto Reconciled{selectedOrder.reconciledAt ? ` (${new Date(selectedOrder.reconciledAt).toLocaleDateString('en-IN')})` : ''}</span>;
+                            if (rs === 'MANUALLY_RECONCILED') return <span className="text-blue-700">✓ Admin Reconciled{selectedOrder.reconciledBy ? ` by ${selectedOrder.reconciledBy}` : ''}</span>;
+                            if (rs === 'PENDING') return <span className="text-amber-700 animate-pulse">⏳ Pending Review</span>;
+                            if (rs === 'AMOUNT_MISMATCH') return <span className="text-red-700">⚠ Amount Mismatch</span>;
+                            if (rs === 'PAYMENT_NOT_FOUND') return <span className="text-red-700">✗ Payment Not Found on Razorpay</span>;
+                            if (rs === 'CUSTOMER_DEBIT_REVIEW') return <span className="text-orange-700">⚠ Customer Debit Review</span>;
+                            return <span>{rs}</span>;
+                          })()}
+                        </span>
+                      </div>
+                      {selectedOrder.failureReason && (
+                        <div className="p-2 bg-red-50 rounded-lg border border-red-200 text-[10px] text-red-700">
+                          <span className="font-bold">Failure Reason: </span>{selectedOrder.failureReason}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* D. Payment Attempt History */}
+                {Array.isArray(selectedOrder.paymentAttempts) && selectedOrder.paymentAttempts.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                      <Activity className="w-4 h-4 text-slate-600" />
+                      <span>PAYMENT ATTEMPT HISTORY ({selectedOrder.paymentAttempts.length})</span>
+                    </h3>
+                    <div className="space-y-2">
+                      {selectedOrder.paymentAttempts.map((attempt, i) => (
+                        <div key={attempt.attemptId || i} className="flex items-start justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px]">
+                          <div className="space-y-0.5">
+                            <div className="font-mono text-slate-600">{attempt.razorpayPaymentId || attempt.attemptId}</div>
+                            <div className="text-slate-400">{attempt.eventType}</div>
+                            <div className="text-slate-400">{attempt.time ? new Date(attempt.time).toLocaleString('en-IN') : '—'}</div>
+                          </div>
+                          <div>
+                            {attempt.status === 'CAPTURED' || attempt.status === 'SUCCESS' ? (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold">CAPTURED</span>
+                            ) : attempt.status === 'FAILED' ? (
+                              <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-800 border border-red-200 font-bold">FAILED</span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-bold">{attempt.status}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* E. Manual Reconciliation Panel (only shown when admin review needed) */}
+                {['PENDING', 'AMOUNT_MISMATCH', 'PAYMENT_NOT_FOUND', 'CUSTOMER_DEBIT_REVIEW'].includes(selectedOrder.reconciliationStatus) && (
+                  <div className="p-4 rounded-xl bg-orange-50 border-2 border-orange-300 space-y-3">
+                    <div className="flex items-center gap-2 text-orange-900 font-bold">
+                      <AlertTriangle className="w-4 h-4 text-orange-600" />
+                      <span>ADMIN RECONCILIATION REQUIRED</span>
+                      <span className="text-[10px] font-normal text-orange-700 ml-auto">Status: {selectedOrder.reconciliationStatus}</span>
+                    </div>
+                    {selectedOrder.reconciliationStatus === 'AMOUNT_MISMATCH' && (
+                      <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-[11px] text-red-800">
+                        ⚠ Razorpay payment amount does not match the expected order amount. Review before confirming.
+                        {selectedOrder.failureReason && <div className="mt-1 font-bold">{selectedOrder.failureReason}</div>}
+                      </div>
+                    )}
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await apiRequest('/api/admin/payments/recheck-payment', {
+                              method: 'POST',
+                              body: JSON.stringify({ orderId: selectedOrder.id })
+                            });
+                            if (res.success) {
+                              setRefundSuccessMsg(`Recheck: ${res.message}`);
+                              await fetchLedgerData();
+                            } else {
+                              setRefundErrorMsg(res.message || 'Recheck failed');
+                            }
+                          } catch (e: any) {
+                            setRefundErrorMsg(e?.message || 'Server error');
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] rounded-lg transition flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Recheck via Razorpay API
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-[11px] font-bold text-orange-900">MANUAL RECONCILIATION NOTE (required, min 10 chars):</label>
+                      <textarea
+                        value={distributeNotesInput}
+                        onChange={(e) => setDistributeNotesInput(e.target.value)}
+                        rows={2}
+                        placeholder="Describe why this payment is being manually reconciled..."
+                        className="w-full bg-white border border-orange-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-orange-500 resize-none"
+                      />
+                      <button
+                        disabled={distributeNotesInput.trim().length < 10}
+                        onClick={async () => {
+                          if (distributeNotesInput.trim().length < 10) return;
+                          try {
+                            const res = await apiRequest('/api/admin/payments/mark-reconciled', {
+                              method: 'POST',
+                              body: JSON.stringify({ orderId: selectedOrder.id, note: distributeNotesInput.trim() })
+                            });
+                            if (res.success) {
+                              setRefundSuccessMsg(`Order marked as reconciled. ${res.message}`);
+                              await fetchLedgerData();
+                            } else {
+                              setRefundErrorMsg(res.message || 'Failed');
+                            }
+                          } catch (e: any) {
+                            setRefundErrorMsg(e?.message || 'Server error');
+                          }
+                        }}
+                        className="w-full py-2 bg-orange-600 hover:bg-orange-700 disabled:opacity-40 text-white font-bold text-xs rounded-lg transition flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Shield className="w-3.5 h-3.5" />
+                        Mark as Manually Reconciled
+                      </button>
+                    </div>
+                    {refundErrorMsg && <div className="p-2 rounded bg-rose-100 text-rose-800 text-[11px] font-bold border border-rose-300">{refundErrorMsg}</div>}
+                    {refundSuccessMsg && <div className="p-2 rounded bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-300">{refundSuccessMsg}</div>}
+                  </div>
+                )}
+
+                {/* F. Refund Information & Policy Calculation */}
                 <div className="space-y-3">
                   <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
                     <RotateCcw className="w-4 h-4 text-slate-600" />

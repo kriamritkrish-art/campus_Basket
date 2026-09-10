@@ -79,19 +79,41 @@ enum PaymentMethod {
 }
 
 enum PaymentStatus {
+  // ── Standard Razorpay States (preferred) ──────────────────────────────────
+  CREATED              // Razorpay order created, awaiting checkout
+  AUTHORIZED           // Payment authorized but not yet captured
+  CAPTURED             // Payment successfully captured (use this — not SUCCESS/PAID)
+  FAILED               // Payment failed at gateway
+  CANCELLED            // Payment cancelled by customer or system
+  // ── Legacy/backward-compat values (kept for historical orders) ────────────
   PENDING
   PROCESSING
-  AUTHORIZED
   SUCCESS
   PAID
-  FAILED
+  // ── COD States ────────────────────────────────────────────────────────────
   COD_PENDING
   COD_COLLECTED
+  // ── Refund States ─────────────────────────────────────────────────────────
   PARTIALLY_REFUNDED
   REFUND_PENDING
   REFUND_PROCESSING
   REFUNDED
   REFUND_FAILED
+  // ── Special ───────────────────────────────────────────────────────────────
+  RECONCILIATION_REQUIRED
+}
+
+// ─── NEW: Reconciliation Status Enum ──────────────────────────────────────────
+// Tracks whether a payment reconciliation action is required for an order.
+// CB-RCN-{YEAR}-{6HEX} records reference this.
+enum ReconciliationStatus {
+  NOT_REQUIRED         // No reconciliation needed (payment completed normally)
+  PENDING              // Pending Razorpay verification
+  AUTO_RECONCILED      // Automatically reconciled via webhook/API
+  MANUALLY_RECONCILED  // Admin manually reviewed and confirmed
+  AMOUNT_MISMATCH      // Razorpay amount != Campus Basket expected amount
+  PAYMENT_NOT_FOUND    // Razorpay cannot find payment for this order
+  CUSTOMER_DEBIT_REVIEW // Customer reports debit but system shows failed
 }
 
 enum RefundStatus {
@@ -479,11 +501,13 @@ model Order {
   provider            ServiceProvider?     @relation(fields: [providerId], references: [id])
   deliveryBoyId       String?
   deliveryBoy         DeliveryBoy?         @relation(fields: [deliveryBoyId], references: [id])
-  status              OrderStatus          @default(PENDING_PAYMENT)
-  paymentMethod       PaymentMethod        @default(RAZORPAY)
-  paymentStatus       PaymentStatus        @default(PENDING)
-  refundStatus        RefundStatus         @default(NOT_APPLICABLE)
-  settlementStatus    SettlementStatus     @default(NOT_ELIGIBLE)
+  status                OrderStatus            @default(PENDING_PAYMENT)
+  paymentMethod         PaymentMethod          @default(RAZORPAY)
+  paymentStatus         PaymentStatus          @default(PENDING)
+  refundStatus          RefundStatus           @default(NOT_APPLICABLE)
+  settlementStatus      SettlementStatus       @default(NOT_ELIGIBLE)
+  // ── Reconciliation tracking (CB-RCN-{YEAR}-{6HEX}) ──────────────────────
+  reconciliationStatus  ReconciliationStatus   @default(NOT_REQUIRED)
   totalAmount         Decimal              @db.Decimal(10, 2)
   subtotal            Decimal              @db.Decimal(10, 2)
   deliveryFee         Decimal              @default(0.00) @db.Decimal(10, 2)
@@ -535,6 +559,7 @@ model Order {
   @@index([status])
   @@index([paymentStatus])
   @@index([refundStatus])
+  @@index([reconciliationStatus])
   @@index([settlementStatus])
   @@index([createdAt])
 }
@@ -737,29 +762,44 @@ model LaundryStatusHistory {
 }
 
 model Payment {
-  id                String               @id @default(cuid())
-  orderId           String?              @unique
-  order             Order?               @relation(fields: [orderId], references: [id])
-  laundryOrderId    String?              @unique
-  laundryOrder      LaundryOrder?        @relation(fields: [laundryOrderId], references: [id])
-  studentId         String
-  amount            Decimal              @db.Decimal(10, 2)
-  currency          String               @default("INR")
-  status            PaymentStatus        @default(PENDING)
-  paymentMethod     PaymentMethod        @default(RAZORPAY)
-  razorpayOrderId   String?              @unique
-  razorpayPaymentId String?              @unique
-  razorpaySignature String?              @db.Text
-  cashCollectedBy   String?
-  cashCollectedAt   DateTime?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  id                   String                @id @default(cuid())
+  // ── CB Standard ID (CB-PAY-{YEAR}-{6HEX}) ───────────────────────────────
+  paymentNumber        String?               @unique // e.g. CB-PAY-2026-A1B2C3
+  orderId              String?               @unique
+  order                Order?                @relation(fields: [orderId], references: [id])
+  laundryOrderId       String?               @unique
+  laundryOrder         LaundryOrder?         @relation(fields: [laundryOrderId], references: [id])
+  studentId            String
+  amount               Decimal               @db.Decimal(10, 2)
+  currency             String                @default("INR")
+  status               PaymentStatus         @default(PENDING)
+  paymentMethod        PaymentMethod         @default(RAZORPAY)
+  // ── Razorpay Gateway Fields ──────────────────────────────────────────────
+  razorpayOrderId      String?               @unique
+  razorpayPaymentId    String?               @unique
+  razorpaySignature    String?               @db.Text
+  razorpayEventId      String?               // Last processed webhook event ID
+  capturedAt           DateTime?             // When Razorpay confirmed capture
+  failureReason        String?               @db.Text // Razorpay failure description
+  attemptNumber        Int                   @default(1) // Payment attempt count
+  // ── Reconciliation ───────────────────────────────────────────────────────
+  reconciliationStatus ReconciliationStatus  @default(NOT_REQUIRED)
+  reconciledAt         DateTime?
+  reconciledBy         String?               // System or Admin user ID
+  // ── COD Fields ───────────────────────────────────────────────────────────
+  cashCollectedBy      String?
+  cashCollectedAt      DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
-  transactions      PaymentTransaction[]
-  refunds           Refund[]
+  transactions         PaymentTransaction[]
+  refunds              Refund[]
+  reconciliationLogs   PaymentReconciliationLog[]
 
   @@index([razorpayOrderId])
   @@index([razorpayPaymentId])
+  @@index([reconciliationStatus])
+  @@index([paymentNumber])
 }
 
 model PaymentTransaction {
@@ -774,6 +814,66 @@ model PaymentTransaction {
   createdAt     DateTime @default(now())
 
   @@index([transactionId])
+  @@index([paymentId])
+  @@index([eventType])
+}
+
+// ─── NEW: Razorpay Webhook Audit Log ─────────────────────────────────────────
+// Stores every incoming Razorpay webhook for idempotency and traceability.
+// ID format: CB-WHK-{YEAR}-{6HEX}
+model RazorpayWebhookLog {
+  id              String   @id @default(cuid())
+  webhookLogId    String   @unique // CB-WHK-{YEAR}-{6HEX}
+  eventId         String   @unique // x-razorpay-event-id header (idempotency key)
+  eventType       String   // payment.captured, payment.failed, order.paid, etc.
+  razorpayOrderId String?
+  razorpayPaymentId String?
+  relatedOrderId  String?  // Campus Basket Order.id (resolved from razorpayOrderId)
+  receivedAt      DateTime @default(now())
+  processedAt     DateTime?
+  processingStatus String  @default("RECEIVED") // RECEIVED | PROCESSED | FAILED | IGNORED_DUPLICATE
+  failureReason   String?  @db.Text
+  retryCount      Int      @default(0)
+  rawPayload      String   @db.Text // Full JSON payload (never deleted)
+  signatureValid  Boolean  @default(true)
+
+  @@index([eventId])
+  @@index([razorpayOrderId])
+  @@index([relatedOrderId])
+  @@index([processingStatus])
+  @@index([receivedAt])
+}
+
+// ─── NEW: Payment Reconciliation Audit Log ────────────────────────────────────
+// Records every auto/manual reconciliation action for full auditability.
+// ID format: CB-RCN-{YEAR}-{6HEX}
+model PaymentReconciliationLog {
+  id                    String   @id @default(cuid())
+  reconciliationLogId   String   @unique // CB-RCN-{YEAR}-{6HEX}
+  paymentId             String
+  payment               Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  orderId               String?
+  razorpayOrderId       String?
+  razorpayPaymentId     String?
+  action                String   // AUTO_RECONCILE | MANUAL_RECONCILE | RECHECK | AMOUNT_MISMATCH_DETECTED | MARK_RESOLVED
+  previousPaymentStatus String?
+  newPaymentStatus      String?
+  previousOrderStatus   String?
+  newOrderStatus        String?
+  previousReconStatus   String?
+  newReconStatus        String?
+  expectedAmount        Decimal? @db.Decimal(10, 2)
+  receivedAmount        Decimal? @db.Decimal(10, 2)
+  amountMatch           Boolean  @default(true)
+  performedBy           String   @default("SYSTEM") // SYSTEM | Admin user ID
+  adminNote             String?  @db.Text
+  webhookEventId        String?
+  createdAt             DateTime @default(now())
+
+  @@index([paymentId])
+  @@index([orderId])
+  @@index([action])
+  @@index([createdAt])
 }
 
 model RefundAccount {

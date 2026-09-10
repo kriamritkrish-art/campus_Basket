@@ -20,6 +20,8 @@ import imageRoutes from './routes/imageRoutes';
 import campusRoutes from './routes/campusRoutes';
 import returnRoutes from './routes/returnRoutes';
 import { apiGlobalLimiter } from './middleware/rateLimiter';
+import { PaymentReconciliationService } from './services/payment/PaymentReconciliationService';
+
 
 const app = express();
 
@@ -128,6 +130,26 @@ app.listen(PORT, async () => {
   console.info(` Environment: ${env.NODE_ENV}`);
   console.info(`================================================================`);
   await connectDatabase();
+
+  // Optional: Automatic Payment Reconciliation Background Job
+  // Scans PENDING_PAYMENT online orders every 5 minutes and auto-reconciles
+  // captured Razorpay payments (handles missed webhooks / failed frontend callbacks).
+  // Enable with: ENABLE_RECONCILIATION_JOB=true in .env
+  if (process.env.ENABLE_RECONCILIATION_JOB === 'true') {
+    const RECONCILIATION_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+    console.info(` [ReconciliationJob] Auto-reconciliation job ENABLED (every 5 min)`);
+    setInterval(async () => {
+      try {
+        await PaymentReconciliationService.runPeriodicReconciliation();
+      } catch (err) {
+        console.error('[ReconciliationJob] Unexpected error in reconciliation cycle:', err);
+      }
+    }, RECONCILIATION_INTERVAL_MS);
+    // Run once on startup after a short delay
+    setTimeout(() => PaymentReconciliationService.runPeriodicReconciliation(), 10000);
+  } else {
+    console.info(` [ReconciliationJob] Auto-reconciliation job DISABLED (set ENABLE_RECONCILIATION_JOB=true to enable)`);
+  }
 });
 
 export default app;

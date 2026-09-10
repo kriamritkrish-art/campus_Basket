@@ -57,6 +57,13 @@ router.get('/payments/gross-volume', AdminPaymentController.getGrossVolumeBreakd
 router.get('/payments/gross-volume/pdf', AdminPaymentController.downloadGrossVolumePdf);
 router.get('/payments/gross-volume/csv', AdminPaymentController.downloadGrossVolumeCsv);
 
+// Razorpay Payment Reconciliation Management
+router.get('/payments/reconciliation-queue', AdminPaymentController.getReconciliationQueue);
+router.post('/payments/recheck-payment', AdminPaymentController.recheckRazorpayPayment);
+router.post('/payments/mark-reconciled', AdminPaymentController.markReconciled);
+router.get('/payments/attempt-history/:orderId', AdminPaymentController.getPaymentAttemptHistory);
+router.get('/payments/webhook-logs', AdminPaymentController.getWebhookLogs);
+
 // 2. Commerce: Products & Inventory
 router.get('/products', AdminController.getAllProducts);
 router.get('/products/pending', AdminController.getPendingProducts);
