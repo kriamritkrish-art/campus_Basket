@@ -438,7 +438,7 @@ export default function AdminPaymentsPage() {
         })
       });
       if (res.success) {
-        showToast(res.message || `Successfully reconciled ${res.reconciledCount} eligible orders for ${bulkReconcileRunner.name}!`);
+        showToast(res.message || `Successfully reconciled ${res.reconciledCount} eligible orders for ${bulkReconcileRunner?.name || bulkReconcileRunner?.deliveryBoyName || 'Runner'}!`);
         setShowBulkReconcileModal(false);
         setBulkReconcileRunner(null);
         setBulkReconcileNotes('');
@@ -469,7 +469,9 @@ export default function AdminPaymentsPage() {
   const filteredCodRunners = useMemo(() => {
     return codDeliveryBoys.filter((r) => {
       const q = codSearchQuery.trim().toLowerCase();
-      const matchesSearch = !q || (r.name || '').toLowerCase().includes(q) || (r.phone || '').toLowerCase().includes(q);
+      const runnerName = (r?.name || r?.deliveryBoyName || r?.fullName || '').toLowerCase();
+      const runnerPhone = (r?.phone || r?.contactPhone || '').toLowerCase();
+      const matchesSearch = !q || runnerName.includes(q) || runnerPhone.includes(q);
       const matchesStatus = codReconciliationStatusFilter === 'ALL' || r.status === codReconciliationStatusFilter;
       const matchesRunner = codRunnerFilter === 'ALL' || r.deliveryBoyId === codRunnerFilter;
       return matchesSearch && matchesStatus && matchesRunner;
@@ -1514,7 +1516,7 @@ export default function AdminPaymentsPage() {
                     <option value="ALL">All Delivery Runners</option>
                     {codDeliveryBoys.map((r) => (
                       <option key={r.deliveryBoyId} value={r.deliveryBoyId}>
-                        {r.name}
+                        {r?.name || r?.deliveryBoyName || r?.fullName || 'Campus Runner'}
                       </option>
                     ))}
                   </select>
@@ -1557,17 +1559,19 @@ export default function AdminPaymentsPage() {
                         const hasMismatch = runner.differenceRequiringAttention !== 0 || runner.difference < 0;
                         const isFullyReconciled = runner.pendingOrdersCount === 0 && runner.codOrdersCount > 0;
                         const isReady = runner.eligibleOrdersCount > 0;
+                        const runnerDisplayName = runner?.name || runner?.deliveryBoyName || runner?.fullName || 'Campus Runner';
+                        const runnerContactPhone = runner?.phone || runner?.contactPhone || 'Campus Runner';
 
                         return (
                           <tr key={runner.deliveryBoyId} className="hover:bg-indigo-50/30 transition-colors">
                             <td className="py-3.5 px-4 font-semibold text-gray-900">
                               <div className="flex items-center gap-2.5">
                                 <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-xs shrink-0">
-                                  {runner.name.charAt(0)}
+                                  {runnerDisplayName.charAt(0).toUpperCase()}
                                 </div>
                                 <div>
-                                  <div className="font-bold text-gray-900">{runner.name}</div>
-                                  <div className="text-[11px] text-gray-400 font-mono">{runner.phone || 'Campus Runner'}</div>
+                                  <div className="font-bold text-gray-900">{runnerDisplayName}</div>
+                                  <div className="text-[11px] text-gray-400 font-mono">{runnerContactPhone}</div>
                                 </div>
                               </div>
                             </td>
@@ -1667,13 +1671,13 @@ export default function AdminPaymentsPage() {
                     </button>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h2 className="text-xl font-black text-gray-900">{selectedCodRunner.name}</h2>
+                        <h2 className="text-xl font-black text-gray-900">{selectedCodRunner?.name || selectedCodRunner?.deliveryBoyName || selectedCodRunner?.fullName || 'Campus Runner'}</h2>
                         <span className="px-2.5 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full text-[11px] font-bold">
                           Campus Delivery Partner
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 font-mono mt-0.5">
-                        Phone: {selectedCodRunner.phone || 'N/A'} • ID: {selectedCodRunner.deliveryBoyId}
+                        Phone: {selectedCodRunner?.phone || selectedCodRunner?.contactPhone || 'N/A'} • ID: {selectedCodRunner?.deliveryBoyId}
                       </p>
                     </div>
                   </div>
@@ -2242,8 +2246,8 @@ export default function AdminPaymentsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Assigned Runner</span>
-                    <span className="font-extrabold text-sm text-gray-900 block mt-0.5">{bulkReconcileRunner.name}</span>
-                    <span className="text-[11px] text-gray-500 font-mono">{bulkReconcileRunner.phone || 'Campus Delivery Boy'}</span>
+                    <span className="font-extrabold text-sm text-gray-900 block mt-0.5">{bulkReconcileRunner?.name || bulkReconcileRunner?.deliveryBoyName || bulkReconcileRunner?.fullName || 'Campus Delivery Boy'}</span>
+                    <span className="text-[11px] text-gray-500 font-mono">{bulkReconcileRunner?.phone || bulkReconcileRunner?.contactPhone || 'Campus Delivery Boy'}</span>
                   </div>
                   <span className="px-2 py-1 bg-emerald-100 text-emerald-800 rounded-lg text-[10px] font-bold">
                     Zero Shortfall Verified

@@ -383,7 +383,9 @@ export class AdminPaymentController {
       for (const boy of activeRunners) {
         runnerMap.set(boy.id, {
           deliveryBoyId: boy.id,
+          name: boy.fullName || 'Campus Runner',
           deliveryBoyName: boy.fullName || 'Campus Runner',
+          phone: boy.mobileNumber || boy.phone || boy.user?.phone || '+91 98765 43220',
           contactPhone: boy.mobileNumber || boy.phone || boy.user?.phone || '+91 98765 43220',
           vehicleType: boy.vehicleType || 'Bicycle',
           codOrdersCount: 0,
@@ -483,7 +485,9 @@ export class AdminPaymentController {
         if (!runnerMap.has(assignedRunnerId)) {
           runnerMap.set(assignedRunnerId, {
             deliveryBoyId: assignedRunnerId,
+            name: runnerName,
             deliveryBoyName: runnerName,
+            phone: runnerPhone,
             contactPhone: runnerPhone,
             vehicleType: runner?.vehicleType || 'Bicycle',
             codOrdersCount: 0,
