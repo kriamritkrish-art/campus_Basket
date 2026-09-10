@@ -1331,9 +1331,9 @@ export default function OrderPaymentSettlementLedgerPage() {
           {/* Desktop & Tablet Table */}
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full border-collapse text-left text-xs">
-              {/* Sticky Header */}
-              <thead>
-                <tr className="bg-[#0F172A] text-white border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider select-none sticky top-16 z-10">
+              {/* Table Header */}
+              <thead className="bg-[#0F172A] text-white">
+                <tr className="border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider select-none">
                   <th className="py-3 px-3.5 whitespace-nowrap">ORDER DATE</th>
                   <th className="py-3 px-3.5 whitespace-nowrap">ORDER ID</th>
                   <th className="py-3 px-3.5 whitespace-nowrap">STUDENT</th>
