@@ -213,7 +213,12 @@ export default function OrderFinancialDetailsModal({ order: initialOrder, orderI
         {/* Footer */}
         <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex items-center justify-between">
           <span className="text-xs text-slate-500 font-mono">
-            Date: {order.orderDate || order.date ? new Date(order.orderDate || order.date).toLocaleDateString('en-IN') : 'Today'}
+            Date: {(() => {
+              const rawDate = order.orderDate || order.date || order.createdAt;
+              if (!rawDate) return 'N/A';
+              const d = new Date(rawDate);
+              return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+            })()}
           </span>
           <button
             onClick={onClose}
