@@ -37,7 +37,12 @@ import {
   Send,
   Building,
   Check,
-  ExternalLink
+  ExternalLink,
+  AlertCircle,
+  MessageSquare,
+  LifeBuoy,
+  Search,
+  Sparkles
 } from 'lucide-react';
 
 type DashboardTab =
@@ -119,12 +124,32 @@ function DashboardContent() {
     }
   ]);
 
-  // Support State
+  // Support & Complaints Tracking State
   const [supportOrderSelect, setSupportOrderSelect] = useState<string>('');
   const [supportCategory, setSupportCategory] = useState('Order hasn\'t arrived');
   const [supportMessage, setSupportMessage] = useState('');
   const [supportSubmitting, setSupportSubmitting] = useState(false);
   const [supportSuccess, setSupportSuccess] = useState<string | null>(null);
+
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [loadingTickets, setLoadingTickets] = useState(false);
+  const [supportSubTab, setSupportSubTab] = useState<'TRACK' | 'NEW'>('TRACK');
+  const [ticketFilter, setTicketFilter] = useState<'ALL' | 'ACTIVE' | 'RESOLVED'>('ALL');
+  const [selectedTicketModal, setSelectedTicketModal] = useState<any | null>(null);
+
+  const loadTickets = async () => {
+    setLoadingTickets(true);
+    try {
+      const res = await apiRequest('/api/campus/support/tickets');
+      if (res?.success && Array.isArray(res.tickets)) {
+        setTickets(res.tickets);
+      }
+    } catch (err) {
+      console.warn('Failed to load tickets:', err);
+    } finally {
+      setLoadingTickets(false);
+    }
+  };
 
   // Active Order
   const activeOrder = orders.find((o) =>
@@ -136,12 +161,18 @@ function DashboardContent() {
     const tabFromUrl = searchParams.get('tab') as DashboardTab;
     if (tabFromUrl) {
       setActiveTab(tabFromUrl);
+      if (tabFromUrl === 'support') {
+        loadTickets();
+      }
     }
   }, [searchParams]);
 
   // Handle Tab Switch
   const handleTabChange = (tab: DashboardTab) => {
     setActiveTab(tab);
+    if (tab === 'support') {
+      loadTickets();
+    }
     router.replace(`/dashboard?tab=${tab}`, { scroll: false });
   };
 
@@ -212,6 +243,7 @@ function DashboardContent() {
       }
       loadOrders();
       loadWishlist();
+      loadTickets();
     }
   }, [isAuthenticated, isLoading, role, router]);
 
@@ -318,11 +350,17 @@ function DashboardContent() {
         setSupportSuccess('Support ticket registered! Campus support team will contact you.');
         setSupportMessage('');
         showToast('Support ticket created.');
+        await loadTickets();
+        setSupportSubTab('TRACK');
       } else {
         setSupportSuccess('Support request logged. We are reviewing your issue.');
+        await loadTickets();
+        setSupportSubTab('TRACK');
       }
     } catch {
       setSupportSuccess('Support ticket submitted.');
+      await loadTickets();
+      setSupportSubTab('TRACK');
     } finally {
       setSupportSubmitting(false);
     }
@@ -604,7 +642,14 @@ function DashboardContent() {
               }`}
             >
               <HelpCircle className="w-4 h-4" />
-              <span>Help &amp; Support</span>
+              <span>Help &amp; Complaints</span>
+              {tickets.length > 0 && (
+                <span className={`ml-0.5 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full ${
+                  activeTab === 'support' ? 'bg-white text-[#4F9D2F]' : 'bg-rose-100 text-rose-700'
+                }`}>
+                  {tickets.filter((t: any) => t.status !== 'RESOLVED' && t.status !== 'CLOSED').length || tickets.length}
+                </span>
+              )}
             </button>
 
             <button
@@ -1498,84 +1543,453 @@ function DashboardContent() {
           </div>
         )}
 
-        {/* TAB: HELP & SUPPORT (Requirement 19) */}
+        {/* TAB: HELP & SUPPORT / COMPLAINT TRACKING */}
         {activeTab === 'support' && (
           <div className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-200 shadow-sm space-y-6">
-            <div>
-              <h2 className="text-lg font-black text-gray-900">Help &amp; Support</h2>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Reach campus helpdesk for delivery issues, missing items, or refunds.
-              </p>
+            {/* Header with Sub-tabs and Refresh */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg sm:text-xl font-black text-gray-900">Campus Helpdesk &amp; Complaints</h2>
+                  <span className="text-[10px] font-extrabold bg-sky-50 text-sky-800 border border-sky-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                    <LifeBuoy className="w-3 h-3" /> Live Tracking
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Track real-time resolution status and official desk responses across all your campus orders.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex bg-gray-100 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setSupportSubTab('TRACK')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      supportSubTab === 'TRACK'
+                        ? 'bg-white text-gray-900 shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Track Complaints</span>
+                    {tickets.length > 0 && (
+                      <span className="ml-1 text-[10px] px-1.5 py-0.2 bg-[#4F9D2F] text-white rounded-full font-black">
+                        {tickets.length}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSupportSubTab('NEW')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      supportSubTab === 'NEW'
+                        ? 'bg-[#4F9D2F] text-white shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>File Complaint</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={loadTickets}
+                  disabled={loadingTickets}
+                  title="Refresh Status"
+                  className="p-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-gray-600 transition cursor-pointer"
+                >
+                  <RotateCw className={`w-4 h-4 ${loadingTickets ? 'animate-spin text-[#4F9D2F]' : ''}`} />
+                </button>
+              </div>
             </div>
 
-            <form onSubmit={handleSupportSubmit} className="space-y-4 max-w-xl">
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
-                  Attach Order (Optional)
-                </label>
-                <select
-                  value={supportOrderSelect}
-                  onChange={(e) => setSupportOrderSelect(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-900 font-bold focus:outline-none focus:border-[#84c225]"
-                >
-                  <option value="">-- General Query (No Order Attached) --</option>
-                  {orders.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      Order #{o.orderNumber} (₹{o.totalAmount})
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* SUB-VIEW 1: TRACK COMPLAINTS */}
+            {supportSubTab === 'TRACK' && (
+              <div className="space-y-6">
+                {/* Filter Pills */}
+                {tickets.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setTicketFilter('ALL')}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-xl transition ${
+                        ticketFilter === 'ALL'
+                          ? 'bg-gray-900 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      All Tickets ({tickets.length})
+                    </button>
+                    <button
+                      onClick={() => setTicketFilter('ACTIVE')}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-xl transition ${
+                        ticketFilter === 'ACTIVE'
+                          ? 'bg-amber-600 text-white'
+                          : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+                      }`}
+                    >
+                      Active / Reviewing ({tickets.filter((t: any) => t.status === 'OPEN' || t.status === 'IN_PROGRESS').length})
+                    </button>
+                    <button
+                      onClick={() => setTicketFilter('RESOLVED')}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-xl transition ${
+                        ticketFilter === 'RESOLVED'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                      }`}
+                    >
+                      Resolved ({tickets.filter((t: any) => t.status === 'RESOLVED' || t.status === 'CLOSED').length})
+                    </button>
+                  </div>
+                )}
 
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
-                  Issue Category
-                </label>
-                <select
-                  value={supportCategory}
-                  onChange={(e) => setSupportCategory(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-900 font-bold focus:outline-none focus:border-[#84c225]"
-                >
-                  <option value="Order hasn't arrived">Order hasn't arrived</option>
-                  <option value="Missing item">Missing item</option>
-                  <option value="Wrong item">Wrong item</option>
-                  <option value="Damaged item">Damaged item</option>
-                  <option value="Payment issue">Payment issue</option>
-                  <option value="Refund issue">Refund issue</option>
-                  <option value="Other issue">Other issue</option>
-                </select>
-              </div>
+                {/* Loading State */}
+                {loadingTickets ? (
+                  <div className="p-12 text-center space-y-3">
+                    <div className="w-8 h-8 border-3 border-[#4F9D2F] border-t-transparent rounded-full animate-spin mx-auto" />
+                    <p className="text-xs font-bold text-gray-500">Syncing complaints with campus helpdesk...</p>
+                  </div>
+                ) : tickets.length === 0 ? (
+                  /* Empty State */
+                  <div className="p-12 text-center space-y-3 border-2 border-dashed border-gray-200 rounded-3xl">
+                    <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+                      <ShieldCheck className="w-7 h-7" />
+                    </div>
+                    <h3 className="text-base font-black text-gray-900">No Complaints Registered</h3>
+                    <p className="text-xs text-gray-500 max-w-md mx-auto leading-relaxed">
+                      All your deliveries and orders are running smoothly! If you face any difficulty with laundry, delayed food, damaged items, or refunds, submit a ticket anytime.
+                    </p>
+                    <button
+                      onClick={() => setSupportSubTab('NEW')}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#4F9D2F] hover:bg-[#3d7c24] text-white text-xs font-bold rounded-xl shadow-xs transition"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Raise Your First Complaint</span>
+                    </button>
+                  </div>
+                ) : (
+                  /* Ticket List */
+                  <div className="space-y-4">
+                    {tickets
+                      .filter((t: any) => {
+                        if (ticketFilter === 'ACTIVE') return t.status === 'OPEN' || t.status === 'IN_PROGRESS';
+                        if (ticketFilter === 'RESOLVED') return t.status === 'RESOLVED' || t.status === 'CLOSED';
+                        return true;
+                      })
+                      .map((ticket: any) => {
+                        const isOpen = ticket.status === 'OPEN';
+                        const isInProgress = ticket.status === 'IN_PROGRESS';
+                        const isResolved = ticket.status === 'RESOLVED';
+                        const isClosed = ticket.status === 'CLOSED';
 
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">
-                  Description
-                </label>
-                <textarea
-                  rows={4}
-                  required
-                  value={supportMessage}
-                  onChange={(e) => setSupportMessage(e.target.value)}
-                  placeholder="Describe the issue with your delivery or account..."
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-xs text-gray-900 focus:outline-none focus:border-[#84c225]"
-                />
-              </div>
+                        return (
+                          <div
+                            key={ticket.id}
+                            className="p-5 sm:p-6 rounded-2xl border border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm transition-all space-y-4"
+                          >
+                            {/* Card Top Row */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-mono text-xs font-black text-gray-900 bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200 flex items-center gap-1.5">
+                                  #{ticket.ticketNumber}
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(ticket.ticketNumber);
+                                      showToast(`Ticket #${ticket.ticketNumber} copied!`);
+                                    }}
+                                    className="text-gray-400 hover:text-gray-700 cursor-pointer"
+                                    title="Copy Ticket ID"
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                  </button>
+                                </span>
 
-              {supportSuccess && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  {supportSuccess}
+                                {/* Status Pill */}
+                                <span
+                                  className={`px-3 py-0.5 rounded-full text-xs font-black flex items-center gap-1.5 border ${
+                                    isResolved
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                      : isInProgress
+                                      ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                      : isClosed
+                                      ? 'bg-slate-100 text-slate-700 border-slate-300'
+                                      : 'bg-amber-50 text-amber-800 border-amber-200'
+                                  }`}
+                                >
+                                  {isResolved && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                                  {isInProgress && <RotateCw className="w-3.5 h-3.5 text-blue-600 animate-spin" />}
+                                  {isOpen && <Clock className="w-3.5 h-3.5 text-amber-600" />}
+                                  {isClosed && <Check className="w-3.5 h-3.5 text-slate-600" />}
+                                  <span>
+                                    {isResolved
+                                      ? 'Resolved & Closed'
+                                      : isInProgress
+                                      ? 'Under Investigation'
+                                      : isClosed
+                                      ? 'Closed'
+                                      : 'Queued / Desk Assigned'}
+                                  </span>
+                                </span>
+
+                                {/* Category Tag */}
+                                <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-700 uppercase tracking-wide">
+                                  {ticket.category?.replace(/_/g, ' ') || 'GENERAL'}
+                                </span>
+
+                                {/* Priority Tag */}
+                                <span
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                                    ticket.priority === 'URGENT'
+                                      ? 'bg-rose-100 text-rose-800'
+                                      : ticket.priority === 'HIGH'
+                                      ? 'bg-orange-100 text-orange-800'
+                                      : 'bg-gray-100 text-gray-700'
+                                  }`}
+                                >
+                                  {ticket.priority}
+                                </span>
+                              </div>
+
+                              <div className="text-[11px] text-gray-500 font-medium">
+                                Filed: {new Date(ticket.createdAt).toLocaleDateString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Attached Order Snapshot Banner (if linked) */}
+                            {ticket.order && (
+                              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-[#4F9D2F] shrink-0 font-bold">
+                                    <ShoppingBag className="w-4 h-4" />
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-mono font-extrabold text-slate-900">
+                                        Order #{ticket.order.orderNumber}
+                                      </span>
+                                      <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded font-bold text-[10px]">
+                                        {ticket.order.serviceType || 'FOOD'}
+                                      </span>
+                                      <span className="text-slate-500 font-semibold">
+                                        ₹{ticket.order.totalAmount}
+                                      </span>
+                                    </div>
+                                    <div className="text-[11px] text-slate-500 mt-0.5">
+                                      Order Status: <strong className="text-slate-800">{ticket.order.status}</strong>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <Link
+                                  href={`/orders/${ticket.order.id}/track?id=${ticket.order.id}`}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-bold transition shadow-2xs shrink-0 self-start sm:self-auto"
+                                >
+                                  <span>Track Order Live</span>
+                                  <ChevronRight className="w-3.5 h-3.5" />
+                                </Link>
+                              </div>
+                            )}
+
+                            {/* Student's Complaint Description */}
+                            <div className="space-y-1">
+                              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block">
+                                Student Complaint:
+                              </span>
+                              <div className="p-3.5 bg-amber-50/50 border border-amber-200/70 rounded-xl text-xs text-gray-800 leading-relaxed font-medium">
+                                "{ticket.description || ticket.message || ticket.subject || 'Support inquiry registered.'}"
+                              </div>
+                            </div>
+
+                            {/* 3-Step Visual Progress Stepper */}
+                            <div className="pt-2">
+                              <div className="flex items-center justify-between text-[11px] font-bold mb-2">
+                                <span className="text-emerald-700 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> 1. Complaint Registered
+                                </span>
+                                <span
+                                  className={`flex items-center gap-1 ${
+                                    isInProgress || isResolved || isClosed
+                                      ? 'text-blue-700'
+                                      : 'text-gray-400'
+                                  }`}
+                                >
+                                  {isInProgress && <RotateCw className="w-3.5 h-3.5 animate-spin" />}
+                                  {(isResolved || isClosed) && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                                  2. Desk Review &amp; Coordination
+                                </span>
+                                <span
+                                  className={`flex items-center gap-1 ${
+                                    isResolved || isClosed ? 'text-emerald-700' : 'text-gray-400'
+                                  }`}
+                                >
+                                  {(isResolved || isClosed) && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                                  3. Resolution Statement
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-500 ${
+                                    isResolved || isClosed
+                                      ? 'w-full bg-emerald-500'
+                                      : isInProgress
+                                      ? 'w-2/3 bg-blue-500'
+                                      : 'w-1/3 bg-amber-500'
+                                  }`}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Official Helpdesk Response & Resolution Box */}
+                            <div className="pt-1">
+                              {ticket.adminResponse ? (
+                                <div className="p-4 rounded-xl bg-emerald-50/90 border-2 border-emerald-300 text-emerald-950 space-y-1.5 shadow-xs">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5 text-xs font-black text-emerald-900">
+                                      <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                                      <span>Official Helpdesk Resolution &amp; Response:</span>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                                      Verified Desk Reply
+                                    </span>
+                                  </div>
+                                  <p className="text-xs font-bold leading-relaxed text-emerald-900 whitespace-pre-wrap">
+                                    {ticket.adminResponse}
+                                  </p>
+                                  {ticket.updatedAt && (
+                                    <div className="text-[10px] text-emerald-700/80 pt-1 border-t border-emerald-200">
+                                      Response logged: {new Date(ticket.updatedAt).toLocaleDateString('en-IN', {
+                                        day: '2-digit',
+                                        month: 'short',
+                                        year: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200 text-blue-900 flex items-start gap-2.5 text-xs">
+                                  <LifeBuoy className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                                  <div>
+                                    <strong className="font-extrabold text-blue-950 block">
+                                      Campus Operations Desk is reviewing this ticket.
+                                    </strong>
+                                    <span className="text-blue-800 text-[11px] leading-relaxed">
+                                      Our coordinators are actively contacting the delivery runner and service provider. The official resolution will appear right here.
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SUB-VIEW 2: FILE NEW COMPLAINT FORM */}
+            {supportSubTab === 'NEW' && (
+              <form onSubmit={handleSupportSubmit} className="space-y-4 max-w-xl">
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-900 space-y-1">
+                  <strong className="font-extrabold flex items-center gap-1.5 text-emerald-950">
+                    <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                    Campus Basket Student Protection
+                  </strong>
+                  <p className="text-[11px] text-emerald-800">
+                    Every complaint is logged with an immutable Ticket ID and routed directly to campus admin coordinators for prompt resolution.
+                  </p>
                 </div>
-              )}
 
-              <button
-                type="submit"
-                disabled={supportSubmitting}
-                className="px-6 py-2.5 bg-[#689f38] hover:bg-[#5b8c30] text-white text-xs font-extrabold rounded-xl shadow-sm transition-all flex items-center gap-2"
-              >
-                <Send className="w-3.5 h-3.5" />
-                {supportSubmitting ? 'Submitting...' : 'Submit Support Ticket'}
-              </button>
-            </form>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Attach Order (Optional)
+                  </label>
+                  <select
+                    value={supportOrderSelect}
+                    onChange={(e) => setSupportOrderSelect(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-900 font-bold focus:outline-none focus:border-[#4F9D2F]"
+                  >
+                    <option value="">-- General Campus Inquiry (No Order Attached) --</option>
+                    {orders.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        Order #{o.orderNumber} ({o.serviceType || 'Food'}, ₹{o.totalAmount}) — Status: {o.status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Issue Category
+                  </label>
+                  <select
+                    value={supportCategory}
+                    onChange={(e) => setSupportCategory(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-900 font-bold focus:outline-none focus:border-[#4F9D2F]"
+                  >
+                    <option value="Order hasn't arrived">Order hasn't arrived / Runner delayed</option>
+                    <option value="Missing item">Missing item from delivery</option>
+                    <option value="Wrong item">Wrong item delivered</option>
+                    <option value="Damaged item">Damaged or spoiled item</option>
+                    <option value="Laundry grievance">Laundry wash / missing clothes / press issue</option>
+                    <option value="Payment issue">Payment issue / double deduction</option>
+                    <option value="Refund issue">Refund delayed / not credited</option>
+                    <option value="Other issue">Other campus service issue</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Complaint Details &amp; Description
+                  </label>
+                  <textarea
+                    rows={4}
+                    required
+                    value={supportMessage}
+                    onChange={(e) => setSupportMessage(e.target.value)}
+                    placeholder="Describe the issue clearly with your order, delivery runner, or refund..."
+                    className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-xs text-gray-900 focus:outline-none focus:border-[#4F9D2F]"
+                  />
+                </div>
+
+                {supportSuccess && (
+                  <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    {supportSuccess}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    type="submit"
+                    disabled={supportSubmitting}
+                    className="px-6 py-2.5 bg-[#4F9D2F] hover:bg-[#3d7c24] text-white text-xs font-extrabold rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    {supportSubmitting ? 'Registering Ticket...' : 'Submit Support Ticket'}
+                  </button>
+
+                  {tickets.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSupportSubTab('TRACK')}
+                      className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                    >
+                      Cancel &amp; View My Complaints
+                    </button>
+                  )}
+                </div>
+              </form>
+            )}
           </div>
         )}
 

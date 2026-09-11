@@ -908,12 +908,14 @@ export class AdminFinanceController {
         deliveryBoySummary: runnerList,
         deliveryBoys: runnerList,
         detailedOrders: filteredDetailed,
+        collections: filteredDetailed,
         data: {
           summaryCards,
           providerSummary: providerList,
           deliveryBoySummary: runnerList,
           deliveryBoys: runnerList,
-          detailedOrders: filteredDetailed
+          detailedOrders: filteredDetailed,
+          collections: filteredDetailed
         }
       });
     } catch (err) {

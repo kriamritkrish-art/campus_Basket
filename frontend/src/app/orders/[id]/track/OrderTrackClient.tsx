@@ -36,7 +36,9 @@ import {
   Download,
   Printer,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  AlertCircle,
+  LifeBuoy
 } from 'lucide-react';
 
 interface OrderItem {
@@ -195,6 +197,30 @@ export default function OrderTrackClient() {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [addingItems, setAddingItems] = useState(false);
 
+  // Active Complaint / Ticket Tracking
+  const [orderTicket, setOrderTicket] = useState<any | null>(null);
+  const [complaintModalOpen, setComplaintModalOpen] = useState(false);
+
+  const fetchOrderTicket = async (targetId: string, currentOrder?: any) => {
+    try {
+      const res = await apiRequest('/api/campus/support/tickets');
+      if (res?.success && Array.isArray(res.tickets)) {
+        const found = res.tickets.find((t: any) =>
+          t.orderId === targetId ||
+          t.order?.id === targetId ||
+          t.order?.orderNumber === targetId ||
+          (currentOrder && (t.orderId === currentOrder.id || t.orderId === currentOrder.orderNumber)) ||
+          (currentOrder && t.message && (t.message.includes(currentOrder.orderNumber) || t.message.includes(currentOrder.id)))
+        );
+        if (found) {
+          setOrderTicket(found);
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching order ticket:', err);
+    }
+  };
+
   const fetchOrder = async () => {
     let targetId = currentOrderId;
     if (!targetId || targetId === 'default') {
@@ -280,6 +306,8 @@ export default function OrderTrackClient() {
           } catch {}
         }
       }
+
+      fetchOrderTicket(targetId, orderRes?.order);
     } catch (err: any) {
       setError(err?.message || 'Failed to load order tracking details.');
     } finally {
@@ -364,12 +392,14 @@ export default function OrderTrackClient() {
       });
       setSupportSuccess('Support query logged. Campus Desk will respond shortly.');
       setSupportMessage('');
+      fetchOrderTicket(idToUse, order);
       setTimeout(() => {
         setSupportModalOpen(false);
         setSupportSuccess(null);
       }, 1500);
     } catch {
       setSupportSuccess('Support request received. Runner desk alerted.');
+      fetchOrderTicket(idToUse, order);
       setTimeout(() => {
         setSupportModalOpen(false);
         setSupportSuccess(null);
@@ -906,6 +936,54 @@ export default function OrderTrackClient() {
             </p>
           </div>
         </div>
+
+        {/* Active Complaint Tracking Banner */}
+        {orderTicket && (
+          <div className="bg-gradient-to-r from-amber-50 to-amber-100/70 border-2 border-amber-300/90 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in">
+            <div className="space-y-1.5 min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-[11px] font-black bg-amber-200 text-amber-950 px-2.5 py-0.5 rounded-lg border border-amber-300 flex items-center gap-1">
+                  Ticket #{orderTicket.ticketNumber}
+                </span>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-black border ${
+                    orderTicket.status === 'RESOLVED' || orderTicket.status === 'CLOSED'
+                      ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                      : orderTicket.status === 'IN_PROGRESS'
+                      ? 'bg-blue-100 text-blue-900 border-blue-300'
+                      : 'bg-amber-200 text-amber-900 border-amber-300'
+                  }`}
+                >
+                  {orderTicket.status === 'RESOLVED'
+                    ? 'Complaint: Resolved & Closed'
+                    : orderTicket.status === 'IN_PROGRESS'
+                    ? 'Complaint: Under Investigation'
+                    : 'Complaint: Queued / Reviewing'}
+                </span>
+                <span className="text-[10px] text-amber-800 font-semibold">
+                  Filed: {new Date(orderTicket.createdAt).toLocaleDateString('en-IN')}
+                </span>
+              </div>
+              <p className="text-xs font-bold text-amber-950 truncate">
+                {orderTicket.adminResponse
+                  ? `Official Desk Response: "${orderTicket.adminResponse}"`
+                  : `Student Grievance: "${orderTicket.description || orderTicket.message || 'Support inquiry registered'}"`
+                }
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setComplaintModalOpen(true)}
+                className="px-4 py-2 bg-amber-900 hover:bg-amber-950 text-white text-xs font-black rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <LifeBuoy className="w-3.5 h-3.5" />
+                <span>Track Complaint &amp; Replies</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ==================================================
             3. MAIN FOCUS: TRACK YOUR ORDER TIMELINE
@@ -2425,6 +2503,165 @@ export default function OrderTrackClient() {
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>{downloadingReceipt ? 'Generating PDF...' : 'Download PDF Receipt'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================
+          COMPLAINT TRACKING & RESOLUTION MODAL
+         ================================================== */}
+      {complaintModalOpen && orderTicket && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black font-mono bg-slate-100 text-slate-800 px-2.5 py-0.5 rounded-lg border border-slate-200 flex items-center gap-1.5">
+                    #{orderTicket.ticketNumber}
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(orderTicket.ticketNumber);
+                        showToast(`Copied #${orderTicket.ticketNumber}`);
+                      }}
+                      className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  </span>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-black border ${
+                      orderTicket.status === 'RESOLVED' || orderTicket.status === 'CLOSED'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : orderTicket.status === 'IN_PROGRESS'
+                        ? 'bg-blue-50 text-blue-800 border-blue-200'
+                        : 'bg-amber-50 text-amber-800 border-amber-200'
+                    }`}
+                  >
+                    {orderTicket.status === 'RESOLVED'
+                      ? 'Resolved & Closed'
+                      : orderTicket.status === 'IN_PROGRESS'
+                      ? 'Under Investigation'
+                      : 'Queued / Desk Assigned'}
+                  </span>
+                </div>
+                <h3 className="text-sm font-black text-slate-900 pt-1">
+                  Complaint Status &amp; Live Tracking
+                </h3>
+              </div>
+              <button
+                onClick={() => setComplaintModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Stepper */}
+            <div className="py-1">
+              <div className="flex items-center justify-between text-[11px] font-bold mb-1.5">
+                <span className="text-emerald-700 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> 1. Registered
+                </span>
+                <span
+                  className={`flex items-center gap-1 ${
+                    orderTicket.status === 'IN_PROGRESS' || orderTicket.status === 'RESOLVED' || orderTicket.status === 'CLOSED'
+                      ? 'text-blue-700'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  2. Under Review
+                </span>
+                <span
+                  className={`flex items-center gap-1 ${
+                    orderTicket.status === 'RESOLVED' || orderTicket.status === 'CLOSED'
+                      ? 'text-emerald-700'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  3. Resolution
+                </span>
+              </div>
+              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    orderTicket.status === 'RESOLVED' || orderTicket.status === 'CLOSED'
+                      ? 'w-full bg-emerald-500'
+                      : orderTicket.status === 'IN_PROGRESS'
+                      ? 'w-2/3 bg-blue-500'
+                      : 'w-1/3 bg-amber-500'
+                  }`}
+                />
+              </div>
+            </div>
+
+            {/* Student's Complaint Note */}
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                Your Complaint Message:
+              </span>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 leading-relaxed font-medium">
+                "{orderTicket.description || orderTicket.message || orderTicket.subject}"
+              </div>
+            </div>
+
+            {/* Official Desk Resolution Box */}
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                Desk Response &amp; Action:
+              </span>
+              {orderTicket.adminResponse ? (
+                <div className="p-3.5 bg-emerald-50 border-2 border-emerald-300 rounded-xl text-xs text-emerald-950 space-y-1">
+                  <div className="flex items-center gap-1.5 font-black text-emerald-900">
+                    <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                    <span>Official Campus Helpdesk Resolution:</span>
+                  </div>
+                  <p className="font-bold leading-relaxed whitespace-pre-wrap">{orderTicket.adminResponse}</p>
+                  {orderTicket.updatedAt && (
+                    <div className="text-[10px] text-emerald-700/80 pt-1 border-t border-emerald-200">
+                      Logged on: {new Date(orderTicket.updatedAt).toLocaleString('en-IN')}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2">
+                  <LifeBuoy className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="font-bold block">Investigation In Progress</strong>
+                    <p className="text-[11px] text-blue-800">
+                      Campus coordinators are actively resolving your issue with the merchant and delivery boy.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <Link
+                href="/dashboard?tab=support"
+                className="inline-flex items-center gap-1 text-xs font-bold text-[#4F9D2F] hover:underline"
+              >
+                <span>View All Complaints</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setComplaintModalOpen(false);
+                    setSupportModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                >
+                  File Additional Update
+                </button>
+                <button
+                  onClick={() => setComplaintModalOpen(false)}
+                  className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+                >
+                  Done
                 </button>
               </div>
             </div>
