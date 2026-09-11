@@ -81,7 +81,7 @@ export class DeliveryController {
       ]);
 
       const paymentType = (deliveryBoy as any).paymentType || 'PER_DELIVERY';
-      const perDeliveryRate = Number((deliveryBoy as any).perDeliveryRate) || 10.00;
+      const perDeliveryRate = Number((deliveryBoy as any).perDeliveryRate) || 0;
       const monthlySalary = Number((deliveryBoy as any).monthlySalary) || 0;
       const walletBalance = Number((deliveryBoy as any).walletBalance) || 0;
 
@@ -174,7 +174,7 @@ export class DeliveryController {
           monthEarnings,
           totalEarnings,
           avgPerDelivery: paymentType === 'PER_DELIVERY' ? perDeliveryRate : 0,
-          dailyTarget: 10,
+          dailyTarget: 0,
           payoutAccount: payoutAccount ? {
             accountType: payoutAccount.accountType,
             accountHolderName: payoutAccount.accountHolderName,
@@ -262,20 +262,20 @@ export class DeliveryController {
       });
 
       const formattedReturns = uniqueAvailableReturns.map((r: any) => {
-        const studentName = r.studentName || r.order?.student?.fullName || 'Campus Student';
-        const studentPhone = r.studentPhone || r.order?.student?.mobileNumber || '+91 98765 43210';
+        const studentName = r.studentName || r.order?.student?.fullName || '';
+        const studentPhone = r.studentPhone || r.order?.student?.mobileNumber || '';
         const studentHall = r.hallName || r.order?.hallName || 'Campus Hostel';
         const studentRoom = r.roomNumber || r.order?.roomNumber || 'Room';
         const studentAddress = `${studentHall} • Room ${studentRoom}`;
-        const providerName = r.order?.provider?.fullName || 'Campus Store & Return Counter';
-        const providerAddress = r.order?.provider?.fullName ? `${r.order.provider.fullName} • Store Desk` : 'Campus Mart Desk';
+        const providerName = r.order?.provider?.fullName || '';
+        const providerAddress = r.order?.provider?.fullName ? `${r.order.provider.fullName} • Store Desk` : '';
         const productVal = Number(r.itemAmount || r.refundAmount || r.order?.totalAmount || 0);
 
         return {
           id: r.id,
           returnRequestId: r.id,
           orderId: r.orderId,
-          orderNumber: `#${r.order?.orderNumber || r.orderId}`,
+          orderNumber: r.order?.orderNumber ? `#${r.order.orderNumber}` : '',
           isReturnPickup: true,
           studentName,
           studentPhone,
@@ -291,10 +291,10 @@ export class DeliveryController {
           productPrice: productVal,
           totalAmount: productVal,
           itemsCount: r.order?.items?.length || 1,
-          items: r.order?.items?.map((i: any) => `${i.quantity}x ${i.productName}`) || ['Return Parcel'],
-          itemsSummary: r.order?.items?.map((i: any) => `${i.quantity}x ${i.productName}`).join(', ') || 'Return Parcel',
+          items: r.order?.items?.map((i: any) => `${i.quantity}x ${i.productName}`) || [],
+          itemsSummary: r.order?.items?.map((i: any) => `${i.quantity}x ${i.productName}`).join(', ') || '',
           urgency: 'NORMAL',
-          timeAgo: 'Just now',
+          timeAgo: '',
           status: 'APPROVED',
           reasonType: r.reasonType,
           specialInstructions: `Return Pickup. Collect item from ${studentName} at ${studentAddress}. Ask for 6-digit handover OTP. Deliver to ${providerAddress}.`
@@ -304,28 +304,28 @@ export class DeliveryController {
       const formatted = orders.map((o) => {
         const itemsSummary = o.items.map((i) => `${i.quantity}x ${i.productName}`).join(', ');
         const studentAddress = `${o.hallName} • Room ${o.roomNumber}`;
-        const providerAddress = o.provider?.fullName ? `${o.provider.fullName} • Dispatch Counter` : 'Campus Food Court & Store';
+        const providerAddress = o.provider?.fullName ? `${o.provider.fullName} • Dispatch Counter` : '';
         const productVal = Number(o.totalAmount || 0);
         return {
           id: o.id,
           orderNumber: `#${o.orderNumber}`,
-          studentName: o.student?.fullName || 'Campus Student',
-          studentPhone: o.student?.mobileNumber || '+91 98765 43210',
+          studentName: o.student?.fullName || '',
+          studentPhone: o.student?.mobileNumber || '',
           studentAddress,
-          providerName: o.provider?.fullName || 'Campus Store',
+          providerName: o.provider?.fullName || '',
           providerAddress,
           pickupLocation: providerAddress,
           destination: studentAddress,
           distance: '0.9 km',
           eta: '10–12 min',
-          earning: Math.max(30, Number(o.deliveryFee) || 35),
+          earning: Number(o.deliveryFee) || 0,
           productPrice: productVal,
           totalAmount: productVal,
           itemsCount: o.items.length,
           items: o.items.map((i) => `${i.quantity}x ${i.productName}`),
           itemsSummary,
           urgency: 'NORMAL',
-          timeAgo: 'Just now',
+          timeAgo: '',
           status: o.status,
           specialInstructions: o.specialInstructions || 'Deliver to student room door.'
         };
@@ -653,40 +653,40 @@ export class DeliveryController {
 
       const formatted = orders.map((o) => {
         const studentAddress = `${o.hallName} • Room ${o.roomNumber}`;
-        const providerAddress = o.provider?.fullName || 'Campus Food Court & Store';
+        const providerAddress = o.provider?.fullName || '';
         const productVal = Number(o.totalAmount || 0);
         return {
           id: o.id,
           orderNumber: `#${o.orderNumber}`,
-          studentName: o.student?.fullName || 'Campus Student',
-          studentPhone: o.student?.mobileNumber || '+91 98765 43210',
+          studentName: o.student?.fullName || '',
+          studentPhone: o.student?.mobileNumber || '',
           studentAddress,
           providerName: providerAddress,
           providerAddress,
           pickupLocation: providerAddress,
-          pickupStation: 'Express Dispatch Station #1',
+          pickupStation: providerAddress,
           destination: studentAddress,
-          distance: '0.8 km',
-          eta: '8 min',
-          earning: Math.max(30, Number(o.deliveryFee) || 35),
+          distance: '',
+          eta: '',
+          earning: Number(o.deliveryFee) || 0,
           productPrice: productVal,
           totalAmount: productVal,
           status: o.status,
           items: o.items.map((i) => `${i.quantity}x ${i.productName}`),
           isOtpVerified: false,
           acceptedAt: new Date(o.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          specialInstructions: o.specialInstructions || 'Call student upon hostel entry.'
+          specialInstructions: o.specialInstructions || ''
         };
       });
 
       const returnTasks = uniqueActiveReturns.map((r: any) => {
-        const studentName = r.studentName || r.order?.student?.fullName || 'Campus Student';
-        const studentPhone = r.studentPhone || r.order?.student?.mobileNumber || '+91 98765 43210';
-        const studentHall = r.hallName || r.order?.hallName || 'Campus Hostel';
-        const studentRoom = r.roomNumber || r.order?.roomNumber || 'Room';
+        const studentName = r.studentName || r.order?.student?.fullName || '';
+        const studentPhone = r.studentPhone || r.order?.student?.mobileNumber || '';
+        const studentHall = r.hallName || r.order?.hallName || '';
+        const studentRoom = r.roomNumber || r.order?.roomNumber || '';
         const studentAddress = `${studentHall} • Room ${studentRoom}`;
-        const providerName = r.order?.provider?.fullName || 'Campus Vendor / Return Desk';
-        const providerAddress = r.order?.provider?.fullName ? `${r.order.provider.fullName} • Return Collection Counter` : 'Campus Vendor Return Desk';
+        const providerName = r.order?.provider?.fullName || '';
+        const providerAddress = r.order?.provider?.fullName ? `${r.order.provider.fullName} • Return Collection Counter` : '';
         const productVal = Number(r.itemAmount || r.refundAmount || r.order?.totalAmount || 0);
 
         return {
@@ -694,7 +694,7 @@ export class DeliveryController {
           returnRequestId: r.id,
           orderId: r.orderId,
           isReturnPickup: true,
-          orderNumber: `#${r.order?.orderNumber || r.orderId}`,
+          orderNumber: r.order?.orderNumber ? `#${r.order.orderNumber}` : '',
           studentName,
           studentPhone,
           studentAddress,
@@ -703,9 +703,9 @@ export class DeliveryController {
           pickupLocation: studentAddress,
           pickupStation: 'Student Hostel Doorstep Pickup',
           destination: providerAddress,
-          distance: '0.5 km',
-          eta: '5 min',
-          earning: Number(r.deliveryBoyPayout) || 15.00,
+          distance: '',
+          eta: '',
+          earning: Number(r.deliveryBoyPayout) || 0,
           productPrice: productVal,
           totalAmount: productVal,
           status: 'PICKUP_ASSIGNED',
@@ -753,7 +753,7 @@ export class DeliveryController {
       });
 
       const paymentType = (deliveryBoy as any).paymentType || 'PER_DELIVERY';
-      const perDeliveryRate = Number((deliveryBoy as any).perDeliveryRate) || 10.00;
+      const perDeliveryRate = Number((deliveryBoy as any).perDeliveryRate) || 0;
 
       const earnings = await prisma.deliveryBoyEarning.findMany({
         where: { deliveryBoyId: deliveryBoy.id }
@@ -766,7 +766,7 @@ export class DeliveryController {
         return {
           id: o.id,
           orderNumber: `#${o.orderNumber}`,
-          pickupLocation: o.provider?.fullName || 'Campus Store & Kitchen',
+          pickupLocation: o.provider?.fullName || '',
           destination: `${o.hallName}, Room ${o.roomNumber}`,
           date: new Date(o.deliveredAt || o.updatedAt).toLocaleString('en-IN', {
             day: 'numeric',
@@ -937,7 +937,7 @@ export class DeliveryController {
       }
 
       const paymentType = (deliveryBoy as any).paymentType || 'PER_DELIVERY';
-      const perDeliveryRate = Number((deliveryBoy as any).perDeliveryRate) || 10.00;
+      const perDeliveryRate = Number((deliveryBoy as any).perDeliveryRate) || 0;
       const earningAmount = paymentType === 'PER_DELIVERY' ? perDeliveryRate : 0;
       const now = new Date();
 
@@ -1074,7 +1074,7 @@ export class DeliveryController {
       }
 
       const paymentType = (deliveryBoy as any).paymentType || 'PER_DELIVERY';
-      const perDeliveryRate = Number((deliveryBoy as any).perDeliveryRate) || 10.00;
+      const perDeliveryRate = Number((deliveryBoy as any).perDeliveryRate) || 0;
       const monthlySalary = Number((deliveryBoy as any).monthlySalary) || 0;
       const walletBalance = Number((deliveryBoy as any).walletBalance) || 0;
 
@@ -1107,7 +1107,7 @@ export class DeliveryController {
         earnings: earnings.map((e) => ({
           id: e.id,
           orderId: e.orderId,
-          orderNumber: e.order?.orderNumber ? `#${e.order.orderNumber}` : (e.description?.match(/#([A-Z0-9-]+)/)?.[0] || 'ADJUSTMENT'),
+          orderNumber: e.order?.orderNumber ? `#${e.order.orderNumber}` : '',
           amount: Number(e.amount),
           paymentType: e.paymentType,
           earningType: e.earningType,
@@ -1465,7 +1465,7 @@ export class DeliveryController {
           orderId: ord.id,
           orderNumber: ord.orderNumber,
           student: ord.student?.fullName || 'Student',
-          provider: ord.provider?.fullName || 'Campus Store',
+          provider: ord.provider?.fullName || '',
           providerId: ord.providerId,
           orderAmount: orderAmt,
           codAmount: orderAmt,
@@ -1578,7 +1578,7 @@ export class DeliveryController {
           orderId: ord.id,
           orderNumber: ord.orderNumber,
           date: ord.createdAt,
-          provider: ord.provider?.fullName || 'Campus Store',
+          provider: ord.provider?.fullName || '',
           paymentMode: isCod ? 'COD' : 'ONLINE',
           orderAmount: Number(ord.totalAmount) || 0,
           codAmount: codAmt,

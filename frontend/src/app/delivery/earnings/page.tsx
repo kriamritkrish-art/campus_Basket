@@ -92,8 +92,8 @@ export default function DeliveryEarningsPage() {
     fetchEarningsData();
   }, []);
 
-  const perDeliveryRate = backendStats?.perDeliveryRate !== undefined ? backendStats.perDeliveryRate : (todayStats.perDeliveryRate || 10);
-  const monthlySalary = backendStats?.monthlySalary !== undefined ? backendStats.monthlySalary : (todayStats.monthlySalary || 15000);
+  const perDeliveryRate = backendStats?.perDeliveryRate ?? todayStats.perDeliveryRate ?? 0;
+  const monthlySalary = backendStats?.monthlySalary ?? todayStats.monthlySalary ?? 0;
   const availableBalance = todayStats.walletBalance || 0;
   const totalSettled = todayStats.totalSettled || 0;
   const pendingAmount = todayStats.pendingWithdrawals || 0;

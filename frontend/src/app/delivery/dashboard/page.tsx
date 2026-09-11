@@ -345,7 +345,7 @@ export default function DeliveryDashboardPage() {
               </div>
               <div>
                 <div className="text-3xl font-black text-gray-900 tracking-tight">
-                  ₹{(todayStats.monthlySalary || 15000).toLocaleString('en-IN')}
+                  ₹{(todayStats.monthlySalary || 0).toLocaleString('en-IN')}
                 </div>
                 <p className="text-xs text-emerald-700 mt-1 font-semibold">Fixed Contract Salary</p>
               </div>
@@ -430,7 +430,7 @@ export default function DeliveryDashboardPage() {
               </div>
               <div>
                 <div className="text-3xl font-black text-gray-900 tracking-tight">
-                  ₹{todayStats.perDeliveryRate || 10}
+                  ₹{todayStats.perDeliveryRate || 0}
                 </div>
                 <p className="text-xs text-amber-700 mt-1 font-semibold">Per completed order</p>
               </div>
@@ -446,7 +446,7 @@ export default function DeliveryDashboardPage() {
               </div>
               <div>
                 <div className="text-3xl font-black text-gray-900 tracking-tight">
-                  ₹{(todayStats.totalEarnings !== undefined ? todayStats.totalEarnings : todayStats.walletBalance || 1250).toLocaleString('en-IN')}
+                  ₹{(todayStats.totalEarnings ?? 0).toLocaleString('en-IN')}
                 </div>
                 <p className="text-xs text-blue-600 mt-1 font-semibold">Available in wallet</p>
               </div>
