@@ -8,14 +8,8 @@ import { Phone, Mail, MapPin, ShieldCheck, Heart, Zap, Building2, School } from 
 export function Footer() {
   const pathname = usePathname();
 
-  // Hide footer only on portal backoffices and checkout flow
-  const isPortalOrCheckout =
-    pathname?.startsWith('/admin') ||
-    pathname?.startsWith('/provider') ||
-    pathname?.startsWith('/delivery') ||
-    pathname === '/checkout';
-
-  if (isPortalOrCheckout) {
+  // Only visible on the landing page (home) and nowhere else
+  if (pathname !== '/' && pathname !== '') {
     return null;
   }
 
