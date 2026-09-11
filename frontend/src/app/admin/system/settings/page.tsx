@@ -218,7 +218,7 @@ export default function AdminSettingsPage() {
     try {
       setDownloadingPdf(true);
       setStatusFeedback(null);
-      const token = typeof window !== 'undefined' ? (localStorage.getItem('nit_token') || localStorage.getItem('token')) : null;
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token') || localStorage.getItem('token')) : null;
       const base = getApiBase();
       const res = await fetch(`${base}/api/admin/settings/governance-pdf`, {
         headers: {

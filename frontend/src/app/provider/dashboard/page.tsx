@@ -532,7 +532,7 @@ export default function ProviderDashboardPage() {
         formData.append('image', productImageFile);
       }
 
-      const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token')) : null;
       const apiBase = (process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000').trim().replace(/\/+$/, '');
       const res = await fetch(`${apiBase}/api/provider/products`, {
         method: 'POST',
@@ -612,7 +612,7 @@ export default function ProviderDashboardPage() {
 
   // CSV Export Trigger
   const handleExportCsv = (type: 'orders' | 'customers' | 'products' | 'sales') => {
-    const token = localStorage.getItem('nit_token');
+    const token = localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token');
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
     let downloadUrl = `${backendUrl}/api/provider/export?type=${type}&token=${token}`;
     if (demoMode) {

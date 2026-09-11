@@ -40,7 +40,7 @@ export default function AdminReportsPage() {
     setStatusMsg(null);
 
     try {
-      const token = localStorage.getItem('nit_token');
+      const token = localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token');
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 
       const res = await fetch(`${backendUrl}/api/admin/reports/generate`, {
@@ -74,7 +74,7 @@ export default function AdminReportsPage() {
   };
 
   const handleDownloadCsv = (type: string) => {
-    const token = localStorage.getItem('nit_token');
+    const token = localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token');
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
     window.open(`${backendUrl}/api/admin/reports/export-csv?type=${type}&token=${token}`, '_blank');
   };

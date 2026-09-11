@@ -498,7 +498,7 @@ export default function AdminOrdersPage() {
   };
 
   const handleExportCsv = () => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : '';
+    const token = typeof window !== 'undefined' ? (localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token')) : '';
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
     window.open(`${backendUrl}/api/admin/reports/export-csv?type=orders&token=${token}`, '_blank');
   };

@@ -291,7 +291,7 @@ export function ProductFormModal({
     };
 
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token')) : null;
       const apiBase = getApiBase();
       const endpoint = initialProduct
         ? `${apiBase}/api/admin/products/${initialProduct.id}`

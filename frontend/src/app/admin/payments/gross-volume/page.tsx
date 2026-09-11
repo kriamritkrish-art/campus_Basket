@@ -426,7 +426,7 @@ export default function OrderPaymentSettlementLedgerPage() {
     setExportingPdf(true);
     try {
       const base = getApiBase();
-      const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token')) : null;
       const params = new URLSearchParams();
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);

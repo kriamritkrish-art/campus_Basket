@@ -145,7 +145,7 @@ const LAUNDRY_SERVICES_LIST = [
 
 export default function HomePage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const { addItem, showToast } = useCart();
 
   const [activeCategory, setActiveCategory] = useState<CategoryKey>('all');
@@ -158,7 +158,7 @@ export default function HomePage() {
   const studentName =
     user?.student?.fullName?.split(' ')[0] ||
     user?.email?.split('@')[0] ||
-    'Sourav';
+    'Student';
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -166,6 +166,16 @@ export default function HomePage() {
     if (hour < 17) return 'Good afternoon';
     return 'Good evening';
   };
+
+  useEffect(() => {
+    if (isLoading || !user) return;
+
+    if (user.role === 'ADMIN') router.replace('/admin/dashboard');
+    else if (user.role === 'SERVICE_PROVIDER') router.replace('/provider/dashboard');
+    else if (user.role === 'DELIVERY_BOY') router.replace('/delivery/dashboard');
+  }, [isLoading, router, user]);
+
+  if (!isLoading && user && user.role !== 'STUDENT') return null;
 
   useEffect(() => {
     async function loadCatalog() {

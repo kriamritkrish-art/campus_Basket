@@ -203,7 +203,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   const handleExportCsv = () => {
-    const token = localStorage.getItem('nit_token');
+    const token = localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token');
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
     window.open(`${backendUrl}/api/admin/reports/export-csv?type=orders&token=${token}`, '_blank');
   };

@@ -14,7 +14,7 @@ export function ReceiptModal({ isOpen, onClose, order }: ReceiptModalProps) {
 
   const handleDownloadPdf = async () => {
     try {
-      const token = localStorage.getItem('nit_token');
+      const token = localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token');
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
       const res = await fetch(`${backendUrl}/api/admin/orders/${order.id}/receipt`, {
         headers: { Authorization: `Bearer ${token}` }

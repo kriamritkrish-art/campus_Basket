@@ -29,7 +29,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const refreshUser = async () => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
+    const token = typeof window !== 'undefined'
+      ? (localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token'))
+      : null;
     if (!token) {
       setUser(null);
       setIsLoading(false);
@@ -41,12 +43,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.success && res.user) {
         setUser(res.user);
         if (typeof window !== 'undefined' && res.user.role) {
-          localStorage.setItem('nit_role', res.user.role);
+          const storage = res.user.role === 'STUDENT' ? localStorage : sessionStorage;
+          storage.setItem('nit_role', res.user.role);
+          if (res.user.role !== 'STUDENT' && localStorage.getItem('nit_token')) {
+            storage.setItem('nit_token', localStorage.getItem('nit_token') as string);
+            localStorage.removeItem('nit_token');
+            localStorage.removeItem('nit_role');
+          }
         }
       } else {
         if (typeof window !== 'undefined') {
           localStorage.removeItem('nit_token');
           localStorage.removeItem('nit_role');
+          sessionStorage.removeItem('nit_token');
+          sessionStorage.removeItem('nit_role');
         }
         setUser(null);
       }
@@ -54,6 +64,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('nit_token');
         localStorage.removeItem('nit_role');
+        sessionStorage.removeItem('nit_token');
+        sessionStorage.removeItem('nit_role');
       }
       setUser(null);
     } finally {
@@ -67,10 +79,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = (token: string, newUser: User) => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('nit_token', token);
+      const storage = newUser?.role === 'STUDENT' ? localStorage : sessionStorage;
+      const otherStorage = newUser?.role === 'STUDENT' ? sessionStorage : localStorage;
+      storage.setItem('nit_token', token);
       if (newUser?.role) {
-        localStorage.setItem('nit_role', newUser.role);
+        storage.setItem('nit_role', newUser.role);
       }
+      otherStorage.removeItem('nit_token');
+      otherStorage.removeItem('nit_role');
     }
     setUser(newUser);
   };
@@ -84,6 +100,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('nit_token');
       localStorage.removeItem('nit_role');
+      sessionStorage.removeItem('nit_token');
+      sessionStorage.removeItem('nit_role');
     }
     setUser(null);
     window.location.href = '/login';

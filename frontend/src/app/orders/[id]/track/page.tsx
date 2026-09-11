@@ -339,7 +339,7 @@ export default function OrderTrackPage() {
     setDownloadingReceipt(true);
     try {
       const base = getApiBase();
-      const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token')) : null;
       const res = await fetch(`${base}/api/orders/${order.id}/receipt`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: 'include'
