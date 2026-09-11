@@ -527,39 +527,56 @@ export class AdminPaymentController {
    */
   public static async reconcileCod(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { collectionId, reconciliationStatus, notes, amountCollected, actualCash } = req.body;
+      const { collectionId, orderId, collectionStatus, reconciliationStatus, notes, amountCollected, actualCash, cashCollected } = req.body;
       const adminUserId = (req as any).user?.id || (req as any).user?.userId || 'admin_user';
 
-      if (!collectionId) {
+      const targetId = collectionId || orderId;
+      if (!targetId) {
         res.status(400).json({ success: false, message: 'Collection ID or Order ID is required' });
         return;
       }
 
-      const cleanColId = String(collectionId).trim();
-      let existing = await (prisma as any).cODCollection.findUnique({
-        where: { id: cleanColId }
+      const cleanColId = String(targetId).trim();
+      const directOrderId = cleanColId.replace(/^cod_/, '');
+
+      let existing = await (prisma as any).cODCollection.findFirst({
+        where: {
+          OR: [
+            { id: cleanColId },
+            { id: `cod_${cleanColId}` },
+            { orderId: cleanColId },
+            { orderId: directOrderId },
+            { collectionNumber: cleanColId }
+          ]
+        }
       });
 
-      let order: any = null;
-      if (existing) {
-        order = await (prisma as any).order.findUnique({
-          where: { id: existing.orderId }
+      let order = await (prisma as any).order.findFirst({
+        where: {
+          OR: [
+            { id: cleanColId },
+            { id: directOrderId },
+            { orderNumber: cleanColId },
+            { orderNumber: directOrderId }
+          ]
+        }
+      });
+
+      if (!existing && order) {
+        existing = await (prisma as any).cODCollection.findFirst({
+          where: { orderId: order.id }
         });
-      } else {
-        const directOrderId = cleanColId.replace(/^cod_/, '');
+      }
+
+      if (!order && existing) {
         order = await (prisma as any).order.findFirst({
           where: {
             OR: [
-              { id: directOrderId },
-              { orderNumber: directOrderId }
+              { id: existing.orderId },
+              { orderNumber: existing.orderId }
             ]
           }
         });
-        if (order) {
-          existing = await (prisma as any).cODCollection.findUnique({
-            where: { orderId: order.id }
-          });
-        }
       }
 
       if (!order && !existing) {
@@ -573,7 +590,7 @@ export class AdminPaymentController {
       const expectedAmount = CodReconciliationService.round(Math.max(0, orderTotal - onlinePaid));
 
       // Resolve cash collected input
-      const rawInput = actualCash !== undefined ? actualCash : amountCollected;
+      const rawInput = actualCash !== undefined ? actualCash : (cashCollected !== undefined ? cashCollected : amountCollected);
       const colAmt = rawInput !== undefined && rawInput !== null ? Number(rawInput) : expectedAmount;
 
       if (isNaN(colAmt) || colAmt < 0) {
@@ -585,7 +602,9 @@ export class AdminPaymentController {
       const diffAmt = CodReconciliationService.round(expectedAmount - colAmt);
 
       let derivedCollectionStatus: 'PENDING' | 'COLLECTED' | 'PARTIALLY_COLLECTED' | 'NOT_APPLICABLE' = 'PENDING';
-      if (expectedAmount === 0) {
+      if (collectionStatus) {
+        derivedCollectionStatus = collectionStatus;
+      } else if (expectedAmount === 0) {
         derivedCollectionStatus = 'NOT_APPLICABLE';
       } else if (colAmt >= expectedAmount) {
         derivedCollectionStatus = 'COLLECTED';
@@ -654,11 +673,14 @@ export class AdminPaymentController {
         });
       }
 
-      // Synchronize Order paymentStatus if fully collected
-      if (targetOrderId && derivedCollectionStatus === 'COLLECTED') {
+      // Synchronize Order paymentStatus & settlementStatus if fully collected or reconciled
+      if (targetOrderId && (derivedCollectionStatus === 'COLLECTED' || derivedReconciliationStatus === 'RECONCILED')) {
         await (prisma as any).order.update({
           where: { id: targetOrderId },
-          data: { paymentStatus: 'COD_COLLECTED' }
+          data: {
+            paymentStatus: 'COD_COLLECTED',
+            settlementStatus: 'ELIGIBLE'
+          }
         }).catch(() => {});
       }
 
@@ -741,7 +763,10 @@ export class AdminPaymentController {
         (prisma as any).deliveryBoy.findMany().catch(() => [])
       ]);
 
-      const runner = deliveryBoys.find((d: any) => d.id === deliveryBoyId);
+      const runner = deliveryBoys.find((d: any) => d.id === deliveryBoyId || d.userId === deliveryBoyId);
+      const runnerId = runner?.id || deliveryBoyId;
+      const runnerUserId = runner?.userId;
+      const runnerPhone = runner?.mobileNumber || runner?.phone;
       const runnerName = runner?.fullName || 'Campus Delivery Partner';
 
       // Strictly real customer orders belonging to this delivery boy
@@ -749,7 +774,9 @@ export class AdminPaymentController {
         if (!CodReconciliationService.isRealOrder(o)) return false;
         const codEntry = codList.find((c: any) => c.orderId === o.id || c.orderId === o.orderNumber);
         const assignedId = o.deliveryBoyId || codEntry?.deliveryBoyId || null;
-        return assignedId === deliveryBoyId;
+        if (assignedId && (assignedId === runnerId || assignedId === runnerUserId || assignedId === deliveryBoyId)) return true;
+        if (runnerPhone && (o.deliveryBoy?.mobileNumber === runnerPhone || codEntry?.deliveryBoyPhone === runnerPhone)) return true;
+        return false;
       });
 
       // Filter by provider if specified
@@ -889,7 +916,10 @@ export class AdminPaymentController {
 
         await (prisma as any).order.update({
           where: { id: order.id },
-          data: { paymentStatus: 'COD_COLLECTED' }
+          data: {
+            paymentStatus: 'COD_COLLECTED',
+            settlementStatus: 'ELIGIBLE'
+          }
         });
 
         await LedgerService.recordEntry({

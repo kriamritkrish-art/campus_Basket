@@ -141,10 +141,14 @@ export class CodReconciliationService {
     // COD Eligibility: Must be delivered, not cancelled, COD Due > 0, and not a pickup/return order
     const isEligibleOrder = isDelivered && !isCancelled && codAmountDue > 0 && orderType === 'CUSTOMER_ORDER';
 
-    // Delivery Boy resolution - strictly by deliveryBoyId
+    // Delivery Boy resolution - strictly by deliveryBoyId or userId or runner phone
     const assignedDeliveryBoyId = order.deliveryBoyId || codEntry?.deliveryBoyId || null;
     const runner = assignedDeliveryBoyId
-      ? deliveryBoys.find((d: any) => d.id === assignedDeliveryBoyId)
+      ? deliveryBoys.find((d: any) =>
+          d.id === assignedDeliveryBoyId ||
+          d.userId === assignedDeliveryBoyId ||
+          (d.mobileNumber && (order.deliveryBoyPhone === d.mobileNumber || codEntry?.deliveryBoyPhone === d.mobileNumber))
+        )
       : null;
     const runnerName = runner?.fullName || (assignedDeliveryBoyId ? 'Campus Delivery Partner' : 'Unassigned Runner');
     const runnerPhone = runner?.mobileNumber || runner?.phone || (runner as any)?.user?.phone || null;
@@ -159,11 +163,11 @@ export class CodReconciliationService {
       : null;
     const parsedCollected = rawCollected !== null && rawCollected !== undefined ? Number(rawCollected) : null;
     
-    // If an explicit collection entry exists, use its number; otherwise 0
+    // If an explicit collection entry exists, use its number; otherwise if delivered COD, default to codAmountDue
     let cashCollected = 0;
     if (parsedCollected !== null && !isNaN(parsedCollected)) {
       cashCollected = this.round(parsedCollected);
-    } else if (codEntry?.collectionStatus === 'COLLECTED') {
+    } else if (codEntry?.collectionStatus === 'COLLECTED' || (isDelivered && codAmountDue > 0)) {
       cashCollected = codAmountDue;
     } else {
       cashCollected = 0;
@@ -212,11 +216,9 @@ export class CodReconciliationService {
       }
     }
 
-    // Is Eligible For Reconcile action (delivered, has collectible COD, balanced difference === 0, cashCollected > 0, not already reconciled, not a mismatch)
+    // Is Eligible For Reconcile action (delivered, has collectible COD, not already reconciled, not a mismatch)
     const isEligibleForReconcile =
       isEligibleOrder &&
-      difference === 0 &&
-      cashCollected > 0 &&
       reconciliationStatus !== 'RECONCILED' &&
       reconciliationStatus !== 'MISMATCH';
 
@@ -286,8 +288,15 @@ export class CodReconciliationService {
     orders: NormalizedCodOrder[]
   ): DeliveryBoyCodSummary {
     const boyId = deliveryBoy.id;
-    // Strictly filter orders assigned to this delivery boy
-    const boyOrders = orders.filter((o) => o.deliveryBoyId === boyId);
+    const boyUserId = deliveryBoy.userId;
+    const boyPhone = deliveryBoy.mobileNumber || deliveryBoy.phone;
+
+    // Filter orders assigned to this delivery boy (matching id, userId, or runnerPhone)
+    const boyOrders = orders.filter((o) => {
+      if (o.deliveryBoyId && (o.deliveryBoyId === boyId || o.deliveryBoyId === boyUserId)) return true;
+      if (boyPhone && o.runnerPhone && o.runnerPhone.replace(/\D/g, '') === String(boyPhone).replace(/\D/g, '')) return true;
+      return false;
+    });
 
     // Only count customer orders eligible for COD (delivered with COD due > 0)
     const eligibleDeliveredOrders = boyOrders.filter((o) => o.isDelivered && o.codAmountDue > 0 && o.orderType === 'CUSTOMER_ORDER');
@@ -308,7 +317,7 @@ export class CodReconciliationService {
       status = 'MISMATCH';
     } else if (eligibleDeliveredOrders.some((o) => o.reconciliationStatus === 'PARTIALLY_RECONCILED')) {
       status = 'PARTIALLY_RECONCILED';
-    } else if (eligibleOrdersCount > 0 && cashCollected > 0 && difference === 0) {
+    } else if (eligibleOrdersCount > 0) {
       status = 'READY TO RECONCILE';
     } else {
       status = 'PENDING';

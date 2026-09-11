@@ -514,4 +514,171 @@ describe('Campus Basket - Complete Delivery Boy COD Reconciliation Test Suite', 
     // Excess collected
     expect(5810 - 6000).toBe(-190);
   });
+
+  // -------------------------------------------------------------
+  // 18. RUNNER PROFILE & COD RECONCILIATION INTEGRATION
+  // -------------------------------------------------------------
+  it('Scenario 18: AdminPaymentController.getCodReconciliation returns Sourav Senapati runners with eligible delivered orders', async () => {
+    const { AdminPaymentController } = await import('../backend/src/controllers/adminPaymentController');
+    const { prisma } = await import('../backend/src/config/database');
+
+    // Reset test orders to pending state for test isolation
+    for (const ordId of ['ord_cod_sourav_101', 'ord_cod_sourav_102', 'ord_cod_sourav_103', 'ord_cod_sourav_104', 'ord_cod_sourav_105']) {
+      await (prisma as any).order.update({
+        where: { id: ordId },
+        data: { paymentStatus: 'COD_PENDING', settlementStatus: 'PENDING' }
+      }).catch(() => {});
+      await (prisma as any).cODCollection.update({
+        where: { id: `cod_${ordId}` },
+        data: { reconciliationStatus: 'PENDING', collectionStatus: 'COLLECTED', difference: 0 }
+      }).catch(() => {});
+    }
+
+    const req: any = { query: {} };
+    let responseData: any = null;
+    const res: any = {
+      status(code: number) { this.statusCode = code; return this; },
+      json(data: any) { responseData = data; return this; }
+    };
+    const next = (err: any) => { throw err; };
+
+    await AdminPaymentController.getCodReconciliation(req, res, next);
+
+    expect(responseData).toBeDefined();
+    expect(responseData.success).toBe(true);
+    expect(Array.isArray(responseData.deliveryBoys)).toBe(true);
+
+    // Find Sourav Senapati runner 1 (phone: 8972495205)
+    const runner1 = responseData.deliveryBoys.find((b: any) =>
+      b.deliveryBoyId === 'db_boy_sourav_1' || b.phone === '8972495205'
+    );
+    expect(runner1).toBeDefined();
+    expect(runner1.codOrdersCount).toBeGreaterThanOrEqual(3);
+    expect(runner1.expectedAmount).toBeGreaterThan(0);
+    expect(runner1.eligibleOrdersCount).toBeGreaterThanOrEqual(3);
+    expect(runner1.status).toBe('READY TO RECONCILE');
+
+    // Find Sourav Senapati runner 2 (phone: 8388086844)
+    const runner2 = responseData.deliveryBoys.find((b: any) =>
+      b.deliveryBoyId === 'db_boy_sourav_2' || b.phone === '8388086844'
+    );
+    expect(runner2).toBeDefined();
+    expect(runner2.codOrdersCount).toBeGreaterThanOrEqual(2);
+    expect(runner2.expectedAmount).toBeGreaterThan(0);
+    expect(runner2.eligibleOrdersCount).toBeGreaterThanOrEqual(2);
+    expect(runner2.status).toBe('READY TO RECONCILE');
+  });
+
+  // -------------------------------------------------------------
+  // 19. ADMIN BULK RECONCILE ALL ELIGIBLE & BACKEND STATUS MUTATION
+  // -------------------------------------------------------------
+  it('Scenario 19: Admin bulk reconciles eligible orders for Sourav Senapati (8972495205) and backend status updates to RECONCILED', async () => {
+    const { AdminPaymentController } = await import('../backend/src/controllers/adminPaymentController');
+    const { prisma } = await import('../backend/src/config/database');
+
+    // 1. Trigger bulk reconciliation for db_boy_sourav_1
+    const bulkReq: any = {
+      body: {
+        deliveryBoyId: 'db_boy_sourav_1',
+        notes: 'Verified and reconciled by Admin'
+      },
+      user: { id: 'admin_sourav', fullName: 'Sourav Senapati (Admin)' }
+    };
+    let bulkResult: any = null;
+    const bulkRes: any = {
+      status(code: number) { this.statusCode = code; return this; },
+      json(data: any) { bulkResult = data; return this; }
+    };
+    const next = (err: any) => { throw err; };
+
+    await AdminPaymentController.bulkReconcileDeliveryBoyCod(bulkReq, bulkRes, next);
+
+    expect(bulkResult).toBeDefined();
+    expect(bulkResult.success).toBe(true);
+    expect(bulkResult.reconciledCount).toBeGreaterThanOrEqual(3);
+
+    // 2. Verify backend order status changed in database
+    const order1 = await (prisma as any).order.findFirst({ where: { orderNumber: 'NIT-ORD-9101' } });
+    expect(order1).toBeDefined();
+    expect(order1.paymentStatus).toBe('COD_COLLECTED');
+    expect(order1.settlementStatus).toBe('ELIGIBLE');
+
+    // 3. Verify backend cODCollection status changed in database
+    const cod1 = await (prisma as any).cODCollection.findFirst({ where: { orderId: order1.id } });
+    expect(cod1).toBeDefined();
+    expect(cod1.reconciliationStatus).toBe('RECONCILED');
+    expect(cod1.collectionStatus).toBe('COLLECTED');
+    expect(cod1.difference).toBe(0);
+
+    // 4. Re-query getCodReconciliation: runner1 status MUST now be RECONCILED with 0 pending
+    const getReq: any = { query: {} };
+    let freshData: any = null;
+    const getRes: any = {
+      status(code: number) { this.statusCode = code; return this; },
+      json(data: any) { freshData = data; return this; }
+    };
+
+    await AdminPaymentController.getCodReconciliation(getReq, getRes, next);
+    const updatedRunner1 = freshData.deliveryBoys.find((b: any) =>
+      b.deliveryBoyId === 'db_boy_sourav_1' || b.phone === '8972495205'
+    );
+
+    expect(updatedRunner1).toBeDefined();
+    expect(updatedRunner1.pendingOrdersCount).toBe(0);
+    expect(updatedRunner1.reconciledOrdersCount).toBeGreaterThanOrEqual(3);
+    expect(updatedRunner1.status).toBe('RECONCILED');
+  });
+
+  // -------------------------------------------------------------
+  // 20. INDIVIDUAL ORDER AUDIT / RECONCILE
+  // -------------------------------------------------------------
+  it('Scenario 20: Admin audits and reconciles single COD collection', async () => {
+    const { AdminPaymentController } = await import('../backend/src/controllers/adminPaymentController');
+    const { prisma } = await import('../backend/src/config/database');
+
+    const req: any = {
+      body: {
+        orderId: 'ord_cod_sourav_104',
+        amountCollected: 450,
+        collectionStatus: 'COLLECTED',
+        reconciliationStatus: 'RECONCILED',
+        notes: 'Doorstep cash audited by finance admin'
+      },
+      user: { id: 'admin_sourav', fullName: 'Sourav Senapati' }
+    };
+    let resData: any = null;
+    const res: any = {
+      status(code: number) { this.statusCode = code; return this; },
+      json(data: any) { resData = data; return this; }
+    };
+    const next = (err: any) => { throw err; };
+
+    await AdminPaymentController.reconcileCod(req, res, next);
+    expect(resData.success).toBe(true);
+
+    const ord = await (prisma as any).order.findFirst({ where: { id: 'ord_cod_sourav_104' } });
+    expect(ord.paymentStatus).toBe('COD_COLLECTED');
+    expect(ord.settlementStatus).toBe('ELIGIBLE');
+
+    const col = await (prisma as any).cODCollection.findFirst({ where: { orderId: 'ord_cod_sourav_104' } });
+    expect(col.reconciliationStatus).toBe('RECONCILED');
+    expect(col.collectionStatus).toBe('COLLECTED');
+  });
+
+  afterAll(async () => {
+    const { prisma } = await import('../backend/src/config/database');
+    const resetOrders = ['ord_cod_sourav_101', 'ord_cod_sourav_102', 'ord_cod_sourav_103', 'ord_cod_sourav_104', 'ord_cod_sourav_105'];
+    for (const id of resetOrders) {
+      await (prisma as any).order.update({
+        where: { id },
+        data: { paymentStatus: 'COD_PENDING', settlementStatus: 'PENDING' }
+      });
+      await (prisma as any).cODCollection.update({
+        where: { orderId: id },
+        data: { collectionStatus: 'COLLECTED', reconciliationStatus: 'PENDING', difference: 0 }
+      });
+    }
+  });
 });
+
+

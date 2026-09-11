@@ -41,6 +41,8 @@ const persistentOrders: any[] = loadSavedOrders(fallbackOrders);
 const persistentReturnRequests: any[] = loadSavedReturnRequests(fallbackReturnRequests);
 const persistentSettlements: any[] = loadSavedList('mock_settlements.json', fallbackSettlements);
 const persistentCodCollections: any[] = loadSavedList('mock_cod_collections.json', fallbackCodCollections);
+const fallbackDeliveryBoysList = fallbackUsers.filter((u: any) => u.deliveryBoy).map((u: any) => u.deliveryBoy);
+const persistentDeliveryBoys: any[] = loadSavedList('mock_delivery_boys.json', fallbackDeliveryBoysList);
 const persistentDeliveryBoyEarnings: any[] = loadSavedList('mock_delivery_earnings.json', fallbackDeliveryBoyEarnings);
 const persistentLedger: any[] = loadSavedList('mock_financial_ledger.json', fallbackFinancialLedger);
 const persistentLaundryJobs: any[] = loadSavedList('mock_laundry_jobs.json', fallbackLaundryJobs);
@@ -476,67 +478,97 @@ const fallbackHandlers: Record<string, any> = {
     findUnique: async (args: any) => {
       const userId = args?.where?.userId || args?.where?.OR?.find((o: any) => o.userId)?.userId;
       const id = args?.where?.id || args?.where?.OR?.find((o: any) => o.id)?.id;
-      const user = fallbackUsers.find((u: any) => u.deliveryBoy && ((userId && (u.deliveryBoy.userId === userId || u.id === userId)) || (id && u.deliveryBoy.id === id)));
-      if (!user?.deliveryBoy) return null;
-      const dbEarnings = fallbackDeliveryBoyEarnings.filter((e) => e.deliveryBoyId === user.deliveryBoy.id);
-      const payoutAccount = fallbackDeliveryBoyPayoutAccounts.find((p) => p.deliveryBoyId === user.deliveryBoy.id) || null;
-      const withdrawals = fallbackDeliveryBoyWithdrawals.filter((w) => w.deliveryBoyId === user.deliveryBoy.id);
+      const boy = persistentDeliveryBoys.find((d: any) => (userId && (d.userId === userId || d.id === userId)) || (id && d.id === id)) ||
+        fallbackUsers.find((u: any) => u.deliveryBoy && ((userId && (u.deliveryBoy.userId === userId || u.id === userId)) || (id && u.deliveryBoy.id === id)))?.deliveryBoy;
+      if (!boy) return null;
+      const user = fallbackUsers.find((u: any) => u.id === boy.userId || u.deliveryBoy?.id === boy.id);
+      const dbEarnings = fallbackDeliveryBoyEarnings.filter((e) => e.deliveryBoyId === boy.id);
+      const payoutAccount = fallbackDeliveryBoyPayoutAccounts.find((p) => p.deliveryBoyId === boy.id) || null;
+      const withdrawals = fallbackDeliveryBoyWithdrawals.filter((w) => w.deliveryBoyId === boy.id);
       return JSON.parse(JSON.stringify({
-        ...user.deliveryBoy,
-        totalSettled: Number(user.deliveryBoy.totalSettled) || 0.00,
+        ...boy,
+        totalSettled: Number(boy.totalSettled) || 0.00,
         payoutAccount,
         withdrawals,
         earnings: dbEarnings,
-        user: { id: user.id, email: user.email, username: user.username, role: user.role, isActive: user.isActive }
+        user: {
+          id: user?.id || boy.userId,
+          email: user?.email || `${boy.fullName.toLowerCase().replace(/\s+/g, '')}@campusbasket.in`,
+          username: user?.username || boy.fullName,
+          role: user?.role || 'DELIVERY_BOY',
+          isActive: user?.isActive ?? boy.activeStatus ?? true
+        }
       }));
     },
     findFirst: async (args?: any) => {
       const userId = args?.where?.userId || args?.where?.OR?.find((o: any) => o.userId)?.userId;
       const id = args?.where?.id || args?.where?.OR?.find((o: any) => o.id)?.id;
-      const user = fallbackUsers.find((u: any) => {
+      const boy = persistentDeliveryBoys.find((d: any) => {
+        if (!userId && !id) return true;
+        return (userId && (d.userId === userId || d.id === userId)) || (id && d.id === id);
+      }) || fallbackUsers.find((u: any) => {
         if (!u.deliveryBoy) return false;
         if (!userId && !id) return true;
         return (userId && (u.deliveryBoy.userId === userId || u.id === userId)) || (id && u.deliveryBoy.id === id);
-      });
-      if (!user?.deliveryBoy) return null;
-      const dbEarnings = fallbackDeliveryBoyEarnings.filter((e) => e.deliveryBoyId === user.deliveryBoy.id);
-      const payoutAccount = fallbackDeliveryBoyPayoutAccounts.find((p) => p.deliveryBoyId === user.deliveryBoy.id) || null;
-      const withdrawals = fallbackDeliveryBoyWithdrawals.filter((w) => w.deliveryBoyId === user.deliveryBoy.id);
+      })?.deliveryBoy;
+      if (!boy) return null;
+      const user = fallbackUsers.find((u: any) => u.id === boy.userId || u.deliveryBoy?.id === boy.id);
+      const dbEarnings = fallbackDeliveryBoyEarnings.filter((e) => e.deliveryBoyId === boy.id);
+      const payoutAccount = fallbackDeliveryBoyPayoutAccounts.find((p) => p.deliveryBoyId === boy.id) || null;
+      const withdrawals = fallbackDeliveryBoyWithdrawals.filter((w) => w.deliveryBoyId === boy.id);
       return JSON.parse(JSON.stringify({
-        ...user.deliveryBoy,
-        totalSettled: Number(user.deliveryBoy.totalSettled) || 0.00,
+        ...boy,
+        totalSettled: Number(boy.totalSettled) || 0.00,
         payoutAccount,
         withdrawals,
         earnings: dbEarnings,
-        user: { id: user.id, email: user.email, username: user.username, role: user.role, isActive: user.isActive }
+        user: {
+          id: user?.id || boy.userId,
+          email: user?.email || `${boy.fullName.toLowerCase().replace(/\s+/g, '')}@campusbasket.in`,
+          username: user?.username || boy.fullName,
+          role: user?.role || 'DELIVERY_BOY',
+          isActive: user?.isActive ?? boy.activeStatus ?? true
+        }
       }));
     },
-    findMany: async () =>
-      fallbackUsers
-        .filter((u: any) => u.deliveryBoy)
-        .map((u: any) => {
-          const dbEarnings = fallbackDeliveryBoyEarnings.filter((e) => e.deliveryBoyId === u.deliveryBoy.id);
-          const orders = fallbackOrders.filter((o) => o.deliveryBoyId === u.deliveryBoy.id);
-          const payoutAccount = fallbackDeliveryBoyPayoutAccounts.find((p) => p.deliveryBoyId === u.deliveryBoy.id) || null;
-          const withdrawals = fallbackDeliveryBoyWithdrawals.filter((w) => w.deliveryBoyId === u.deliveryBoy.id);
-          return {
-            ...u.deliveryBoy,
-            totalSettled: Number(u.deliveryBoy.totalSettled) || 0.00,
-            payoutAccount,
-            withdrawals,
-            orders,
-            laundryOrders: [],
-            earnings: dbEarnings,
-            user: { id: u.id, email: u.email, username: u.username, role: u.role, isActive: u.isActive }
-          };
-        }),
-    count: async () => fallbackUsers.filter((u: any) => u.deliveryBoy).length,
+    findMany: async () => {
+      // Sync any missing from fallbackUsers into persistentDeliveryBoys
+      for (const u of fallbackUsers) {
+        if (u.deliveryBoy && !persistentDeliveryBoys.some((d: any) => d.id === u.deliveryBoy.id)) {
+          persistentDeliveryBoys.push(u.deliveryBoy);
+        }
+      }
+      return persistentDeliveryBoys.map((boy: any) => {
+        const user = fallbackUsers.find((u: any) => u.id === boy.userId || u.deliveryBoy?.id === boy.id);
+        const dbEarnings = fallbackDeliveryBoyEarnings.filter((e) => e.deliveryBoyId === boy.id);
+        const orders = persistentOrders.filter((o) => o.deliveryBoyId === boy.id || o.deliveryBoyId === boy.userId);
+        const payoutAccount = fallbackDeliveryBoyPayoutAccounts.find((p) => p.deliveryBoyId === boy.id) || null;
+        const withdrawals = fallbackDeliveryBoyWithdrawals.filter((w) => w.deliveryBoyId === boy.id);
+        return {
+          ...boy,
+          totalSettled: Number(boy.totalSettled) || 0.00,
+          payoutAccount,
+          withdrawals,
+          orders,
+          laundryOrders: [],
+          earnings: dbEarnings,
+          user: {
+            id: user?.id || boy.userId,
+            email: user?.email || `${boy.fullName.toLowerCase().replace(/\s+/g, '')}@campusbasket.in`,
+            username: user?.username || boy.fullName,
+            role: user?.role || 'DELIVERY_BOY',
+            isActive: user?.isActive ?? boy.activeStatus ?? true
+          }
+        };
+      });
+    },
+    count: async () => persistentDeliveryBoys.length,
     create: async (args: any) => {
       const newDb = {
         id: args.data.id || `db_boy_${Date.now()}`,
-        userId: args.data.userId,
+        userId: args.data.userId || `user_db_${Date.now()}`,
         fullName: args.data.fullName,
-        mobileNumber: args.data.mobileNumber,
+        mobileNumber: args.data.mobileNumber || args.data.phone,
         vehicleType: args.data.vehicleType || 'Bicycle / Walk',
         activeStatus: args.data.activeStatus ?? true,
         currentZone: 'ALL',
@@ -549,10 +581,13 @@ const fallbackHandlers: Record<string, any> = {
         createdAt: new Date(),
         updatedAt: new Date()
       };
-      let user = fallbackUsers.find((u) => u.id === args.data.userId);
+      persistentDeliveryBoys.push(newDb);
+      saveList('mock_delivery_boys.json', persistentDeliveryBoys);
+
+      let user = fallbackUsers.find((u) => u.id === newDb.userId);
       if (!user) {
         user = {
-          id: args.data.userId || `user_${Date.now()}`,
+          id: newDb.userId,
           email: `${args.data.fullName?.toLowerCase().replace(/\s+/g, '') || 'runner'}@campusbasket.in`,
           username: args.data.fullName || 'runner',
           role: 'DELIVERY_BOY',
@@ -566,28 +601,39 @@ const fallbackHandlers: Record<string, any> = {
     },
     update: async (args: any) => {
       const id = args?.where?.id;
-      const user = fallbackUsers.find((u: any) => u.deliveryBoy && u.deliveryBoy.id === id);
-      if (user?.deliveryBoy) {
+      const boy = persistentDeliveryBoys.find((d: any) => d.id === id);
+      if (boy) {
         const updateData = { ...args.data };
         if (updateData.walletBalance && typeof updateData.walletBalance === 'object') {
           if (updateData.walletBalance.increment !== undefined) {
-            updateData.walletBalance = (Number(user.deliveryBoy.walletBalance) || 0) + Number(updateData.walletBalance.increment);
+            updateData.walletBalance = (Number(boy.walletBalance) || 0) + Number(updateData.walletBalance.increment);
           } else if (updateData.walletBalance.decrement !== undefined) {
-            updateData.walletBalance = (Number(user.deliveryBoy.walletBalance) || 0) - Number(updateData.walletBalance.decrement);
+            updateData.walletBalance = (Number(boy.walletBalance) || 0) - Number(updateData.walletBalance.decrement);
           }
         }
         if (updateData.totalSettled && typeof updateData.totalSettled === 'object') {
           if (updateData.totalSettled.increment !== undefined) {
-            updateData.totalSettled = (Number(user.deliveryBoy.totalSettled) || 0) + Number(updateData.totalSettled.increment);
+            updateData.totalSettled = (Number(boy.totalSettled) || 0) + Number(updateData.totalSettled.increment);
           }
         }
-        Object.assign(user.deliveryBoy, updateData);
-        return JSON.parse(JSON.stringify(user.deliveryBoy));
+        Object.assign(boy, updateData, { updatedAt: new Date() });
+        saveList('mock_delivery_boys.json', persistentDeliveryBoys);
+
+        const user = fallbackUsers.find((u: any) => u.deliveryBoy && u.deliveryBoy.id === id);
+        if (user?.deliveryBoy) {
+          Object.assign(user.deliveryBoy, updateData);
+        }
+        return JSON.parse(JSON.stringify(boy));
       }
       return args.data;
     },
     delete: async (args: any) => {
       const id = args?.where?.id;
+      const idx = persistentDeliveryBoys.findIndex((d: any) => d.id === id);
+      if (idx !== -1) {
+        persistentDeliveryBoys.splice(idx, 1);
+        saveList('mock_delivery_boys.json', persistentDeliveryBoys);
+      }
       const user = fallbackUsers.find((u: any) => u.deliveryBoy && u.deliveryBoy.id === id);
       if (user) {
         (user as any).deliveryBoy = null;
