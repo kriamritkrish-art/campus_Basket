@@ -559,7 +559,7 @@ const fallbackHandlers: Record<string, any> = {
           isActive: true,
           deliveryBoy: null
         } as any;
-        fallbackUsers.push(user);
+        fallbackUsers.push(user as any);
       }
       (user as any).deliveryBoy = newDb;
       return JSON.parse(JSON.stringify(newDb));

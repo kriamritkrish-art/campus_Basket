@@ -19,7 +19,8 @@ import {
   CreditCard,
   Banknote,
   Search,
-  X
+  X,
+  AlertCircle
 } from 'lucide-react';
 
 interface OrderItem {
@@ -509,10 +510,11 @@ export default function MyOrdersPage() {
 
                       <button
                         onClick={() => setSupportModalOrder(order)}
-                        className="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 text-xs font-semibold rounded-xl hover:bg-slate-50 transition cursor-pointer"
-                        title="Help with Order"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl border border-rose-200 transition cursor-pointer"
+                        title="Report Issue / File Complaint"
                       >
-                        <HelpCircle className="w-4 h-4" />
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        <span>Complaint</span>
                       </button>
 
                       <Link
