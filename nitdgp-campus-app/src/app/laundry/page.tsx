@@ -47,6 +47,14 @@ export default function LaundryPage() {
   const [selectedPhotoModal, setSelectedPhotoModal] = useState<any[] | null>(null);
   const [justBooked, setJustBooked] = useState(false);
   const [copiedOtp, setCopiedOtp] = useState<string | null>(null);
+  const [scannerModal, setScannerModal] = useState<{
+    isOpen: boolean;
+    provider: any;
+    orderNumber: string;
+    totalAmount: number;
+    codAmount: number;
+  } | null>(null);
+  const [copiedUpi, setCopiedUpi] = useState<boolean>(false);
 
   // Dynamic tariff from DB
   const [tariff, setTariff] = useState<any>({
@@ -337,6 +345,65 @@ export default function LaundryPage() {
                     </div>
                   </div>
 
+                  {/* Status Banner: Broadcast Pool vs Assigned Laundry Partner */}
+                  {ord.status === 'REQUESTED' ? (
+                    <div className="bg-amber-50/90 border border-amber-200/90 rounded-2xl p-3.5 flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Clock className="w-4 h-4 animate-pulse" />
+                      </div>
+                      <div className="flex-1 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-amber-900">Searching for Laundry Partner (Broadcast Pool)</span>
+                          <span className="px-2 py-0.2 rounded-full text-[9px] font-extrabold bg-amber-200 text-amber-900">
+                            Available to All Dhobis
+                          </span>
+                        </div>
+                        <p className="text-amber-800 mt-1 leading-relaxed text-[11px]">
+                          Your booking is live in the campus broadcast pool. Any active laundry partner can accept it. Once accepted, their details and <strong>Payment Scanner (QR Code)</strong> will appear here immediately.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-gradient-to-r from-emerald-50/80 via-white to-indigo-50/40 rounded-2xl border border-emerald-200/90 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-[#2e7d32] text-white flex items-center justify-center flex-shrink-0 shadow-xs">
+                          <QrCode className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-gray-900">
+                              Laundry Partner: {ord.provider?.name || ord.provider?.fullName || 'Campus Laundry Partner'}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-[#1b5e20] border border-emerald-200">
+                              Accepted &amp; Active ✓
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-gray-600 mt-1">
+                            {ord.paymentMethod === 'COD'
+                              ? `Pay ₹${ord.codAmount || ord.totalAmount} directly to partner via UPI Scanner or Cash (COD).`
+                              : `Fully paid online (₹${ord.onlinePaidAmount}). Partner is managing pickup and wash.`}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() =>
+                          setScannerModal({
+                            isOpen: true,
+                            provider: ord.provider,
+                            orderNumber: ord.orderNumber,
+                            totalAmount: ord.totalAmount || ord.finalPrice || ord.estimatedPrice,
+                            codAmount: ord.codAmount,
+                          })
+                        }
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#2e7d32] hover:bg-[#1b5e20] text-white text-xs font-bold shadow-xs transition cursor-pointer"
+                      >
+                        <QrCode className="w-4 h-4" />
+                        <span>View Scanner</span>
+                      </button>
+                    </div>
+                  )}
+
                   {/* 9-Stage Progress Timeline */}
                   <div className="py-2 overflow-x-auto">
                     <div className="flex items-center min-w-[550px] justify-between">
@@ -583,6 +650,119 @@ export default function LaundryPage() {
               <button
                 onClick={() => setSelectedPhotoModal(null)}
                 className="px-5 py-2 bg-gray-800 text-white rounded-xl text-xs font-semibold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Laundry Partner Payment Scanner Modal */}
+      {scannerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-200 flex flex-col space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#1b5e20] flex items-center justify-center shadow-2xs">
+                  <QrCode className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-gray-900">Laundry Partner Payment Scanner</h3>
+                  <p className="text-[10px] text-gray-500 font-mono">Order #{scannerModal.orderNumber}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setScannerModal(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Amount & Direct COD Notice */}
+            <div className="bg-emerald-50 rounded-2xl p-3.5 border border-emerald-200/80 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-emerald-800 block">Pay Directly to Partner</span>
+                <span className="text-2xl font-black text-[#1b5e20]">₹{scannerModal.totalAmount}</span>
+              </div>
+              <span className="px-2.5 py-1 rounded-full bg-white text-emerald-800 text-[10px] font-bold border border-emerald-200 shadow-2xs">
+                💵 Laundry COD
+              </span>
+            </div>
+
+            {/* Scanner Image (JPEG format provided by laundry partner) */}
+            <div className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-2xl border border-gray-200/80">
+              {scannerModal.provider?.paymentScanner?.qrImage ? (
+                <div className="w-56 h-56 rounded-2xl overflow-hidden border-2 border-dashed border-emerald-400 bg-white p-2 flex items-center justify-center shadow-xs">
+                  <img
+                    src={scannerModal.provider.paymentScanner.qrImage}
+                    alt="Laundry Payment QR Scanner"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="w-56 h-56 rounded-2xl border-2 border-dashed border-gray-300 bg-white p-4 flex flex-col items-center justify-center text-center space-y-2">
+                  <QrCode className="w-16 h-16 text-gray-300" />
+                  <p className="text-xs font-semibold text-gray-700">UPI Scanner Image Not Uploaded</p>
+                  <p className="text-[10px] text-gray-500">
+                    Laundry partner has not uploaded a JPEG scanner yet. You can pay via UPI ID below or directly in Cash.
+                  </p>
+                </div>
+              )}
+
+              {/* Payee Info & UPI ID */}
+              <div className="mt-3 text-center w-full">
+                <div className="text-xs font-bold text-gray-900">
+                  {scannerModal.provider?.paymentScanner?.accountName ||
+                    scannerModal.provider?.name ||
+                    scannerModal.provider?.fullName ||
+                    'Campus Laundry Partner'}
+                </div>
+                {scannerModal.provider?.paymentScanner?.upiId ? (
+                  <div className="mt-2 flex items-center justify-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-gray-200 shadow-2xs mx-auto max-w-xs">
+                    <span className="text-xs font-mono font-bold text-gray-800">
+                      {scannerModal.provider.paymentScanner.upiId}
+                    </span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(scannerModal.provider.paymentScanner.upiId);
+                        setCopiedUpi(true);
+                        setTimeout(() => setCopiedUpi(false), 2000);
+                      }}
+                      className="p-1 rounded-md text-[#2e7d32] hover:bg-[#e8f5e9] transition"
+                      title="Copy UPI ID"
+                    >
+                      {copiedUpi ? <Check className="w-3.5 h-3.5 text-[#2e7d32]" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-gray-500 mt-1">Cash on Doorstep Handover</div>
+                )}
+              </div>
+            </div>
+
+            {/* Direct COD Notice & Partner Instructions */}
+            <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 text-xs space-y-1.5">
+              <div className="font-bold text-slate-800 flex items-center gap-1.5 text-[11px]">
+                <Sparkles className="w-3.5 h-3.5 text-[#2e7d32]" />
+                <span>Payment Instructions &amp; Zero Record-Keeping:</span>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                {scannerModal.provider?.paymentScanner?.instructions ||
+                  'Scan with any UPI App (Google Pay, PhonePe, Paytm, BHIM) and pay directly to the dhobi. No receipt upload is needed.'}
+              </p>
+              <div className="text-[10px] text-emerald-800 font-semibold bg-emerald-50 rounded-lg p-2 border border-emerald-200/60">
+                ⚡ Note: Treated as Laundry COD. Pay directly to the partner. The dhobi will verify and record the collection on their dashboard during cloth handover.
+              </div>
+            </div>
+
+            {/* Done Action */}
+            <div className="pt-1">
+              <button
+                onClick={() => setScannerModal(null)}
+                className="w-full py-2.5 bg-gray-900 hover:bg-black text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
               >
                 Close
               </button>

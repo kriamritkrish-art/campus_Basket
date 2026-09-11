@@ -51,7 +51,9 @@ import {
   Bike,
   Menu,
   Building,
-  Zap
+  Zap,
+  QrCode,
+  Check
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -157,6 +159,16 @@ export default function ProviderDashboardPage() {
 
   // Laundry Jobs State (Doorstep dual-OTP feature preserved)
   const [laundryJobs, setLaundryJobs] = useState<any[]>([]);
+  const [availableLaundryJobs, setAvailableLaundryJobs] = useState<any[]>([]);
+  const [acceptingJobId, setAcceptingJobId] = useState<string | null>(null);
+  const [paymentScannerConfig, setPaymentScannerConfig] = useState<any>(null);
+  const [scannerSaving, setScannerSaving] = useState(false);
+  const [scannerForm, setScannerForm] = useState({
+    paymentQrImage: '',
+    paymentUpiId: '',
+    paymentAccountName: '',
+    paymentInstructions: ''
+  });
   const [selectedGarmentPhotos, setSelectedGarmentPhotos] = useState<{
     photos: any[];
     orderNumber: string;
@@ -481,10 +493,76 @@ export default function ProviderDashboardPage() {
   const loadLaundryJobs = async () => {
     try {
       const res = await apiRequest('/api/provider/dashboard');
-      if (res.success && res.laundryJobs) {
-        setLaundryJobs(res.laundryJobs);
+      if (res.success) {
+        if (res.laundryJobs) setLaundryJobs(res.laundryJobs);
+        if (res.availableLaundryJobs) setAvailableLaundryJobs(res.availableLaundryJobs);
+        if (res.paymentScanner) {
+          setPaymentScannerConfig(res.paymentScanner);
+          setScannerForm({
+            paymentQrImage: res.paymentScanner.paymentQrImage || '',
+            paymentUpiId: res.paymentScanner.paymentUpiId || '',
+            paymentAccountName: res.paymentScanner.paymentAccountName || '',
+            paymentInstructions: res.paymentScanner.paymentInstructions || ''
+          });
+        }
       }
     } catch (err) {}
+  };
+
+  const handleAcceptLaundryJob = async (jobId: string) => {
+    setAcceptingJobId(jobId);
+    try {
+      const res = await apiRequest(`/api/laundry/${jobId}/accept`, {
+        method: 'POST',
+      });
+      if (res.success) {
+        showToast('Laundry order accepted! You now have exclusive fulfillment control.');
+        await loadLaundryJobs();
+      } else {
+        alert(res.message || 'Failed to accept order. It may have been claimed by another laundry partner.');
+        await loadLaundryJobs();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error accepting laundry order');
+    } finally {
+      setAcceptingJobId(null);
+    }
+  };
+
+  const handleSavePaymentScanner = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setScannerSaving(true);
+    try {
+      const res = await apiRequest('/api/provider/payment-scanner', {
+        method: 'POST',
+        body: JSON.stringify(scannerForm),
+      });
+      if (res.success) {
+        showToast('Payment Scanner (JPEG) & UPI details saved successfully!');
+        setPaymentScannerConfig(res.data);
+      } else {
+        alert(res.message || 'Failed to save payment scanner');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error saving payment scanner');
+    } finally {
+      setScannerSaving(false);
+    }
+  };
+
+  const handleScannerFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file (JPEG or PNG).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      setScannerForm((prev) => ({ ...prev, paymentQrImage: result }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const refreshAll = (isDemo = demoMode) => {
@@ -937,7 +1015,11 @@ export default function ProviderDashboardPage() {
                       <Shirt className="w-4 h-4 text-indigo-400" />
                       Laundry Command Center
                     </span>
-                    {laundryActiveJobs.length > 0 ? (
+                    {availableLaundryJobs.length > 0 ? (
+                      <span className="bg-emerald-500 text-slate-950 font-black px-1.5 py-0.5 rounded-full text-[10px] animate-pulse">
+                        {availableLaundryJobs.length} new
+                      </span>
+                    ) : laundryActiveJobs.length > 0 ? (
                       <span className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded-full text-[10px]">
                         {laundryActiveJobs.length}
                       </span>
@@ -1235,7 +1317,11 @@ export default function ProviderDashboardPage() {
                   <Shirt className="w-4 h-4 text-indigo-400" />
                   Laundry Command Center
                 </span>
-                {laundryActiveJobs.length > 0 ? (
+                {availableLaundryJobs.length > 0 ? (
+                  <span className="bg-emerald-500 text-slate-950 font-black px-1.5 py-0.5 rounded-full text-[10px] animate-pulse">
+                    {availableLaundryJobs.length} new
+                  </span>
+                ) : laundryActiveJobs.length > 0 ? (
                   <span className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded-full text-[10px]">
                     {laundryActiveJobs.length}
                   </span>
@@ -3331,6 +3417,250 @@ export default function ProviderDashboardPage() {
                   <div className="text-lg font-black text-blue-900">₹{laundryCodCollected.toLocaleString('en-IN')}</div>
                 </div>
               </div>
+            </div>
+
+            {/* 1. Broadcast Pool: Available Incoming Student Orders */}
+            <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-slate-950 rounded-2xl p-5 text-white shadow-md border border-indigo-500/20 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </span>
+                    <h3 className="text-base font-black tracking-tight text-white flex items-center gap-2">
+                      Live Broadcast Pool: Available Student Bookings
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      {availableLaundryJobs.length} Open
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-1">
+                    Student orders waiting for pickup. Any laundry provider can claim an order; the first to accept gains exclusive fulfillment and direct COD payment collection.
+                  </p>
+                </div>
+                <button
+                  onClick={() => loadLaundryJobs()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition self-start sm:self-auto cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Refresh Pool</span>
+                </button>
+              </div>
+
+              {availableLaundryJobs.length === 0 ? (
+                <div className="py-8 text-center text-slate-400 bg-white/5 rounded-xl border border-white/5 space-y-2">
+                  <Shirt className="w-8 h-8 text-slate-500 mx-auto opacity-60" />
+                  <p className="text-xs font-semibold text-slate-300">Broadcast Pool is Empty</p>
+                  <p className="text-[11px] text-slate-400 max-w-md mx-auto">
+                    There are no unassigned student orders at the moment. As soon as a student schedules a booking, it will appear here immediately.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  {availableLaundryJobs.map((job: any) => (
+                    <div
+                      key={job.id}
+                      className="bg-white/10 hover:bg-white/[0.14] border border-white/15 rounded-xl p-4 transition flex flex-col justify-between gap-3 shadow-xs"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-bold text-emerald-400 text-xs">
+                            #{job.orderNumber}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">
+                            Open Request
+                          </span>
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-bold text-white">
+                            {job.student?.fullName || 'Campus Resident'}
+                          </div>
+                          <div className="text-xs text-slate-300 flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                            <span>{job.hallName}, Room {job.roomNumber}</span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                            <Clock className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                            <span>Scheduled: {job.preferredPickupTime}</span>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs">
+                          <span className="text-slate-300">
+                            {job.items && job.items.length > 0
+                              ? job.items.map((i: any) => `${i.quantity}x ${i.itemType}`).join(', ')
+                              : `${job.itemCount || 1} clothes`}
+                          </span>
+                          <span className="font-bold text-emerald-300 text-sm">
+                            ₹{job.totalAmount || job.finalPrice || job.estimatedPrice}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleAcceptLaundryJob(job.id)}
+                        disabled={acceptingJobId === job.id}
+                        className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer ${
+                          acceptingJobId === job.id
+                            ? 'bg-emerald-700/50 text-emerald-200 cursor-not-allowed'
+                            : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 active:scale-[0.98]'
+                        }`}
+                      >
+                        {acceptingJobId === job.id ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-slate-900/30 border-t-slate-900 rounded-full animate-spin" />
+                            <span>Claiming Order...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-slate-950" />
+                            <span>Accept Order &amp; Claim Fulfillment</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 2. Laundry Partner Payment Scanner (JPEG) & Direct COD UPI Settings */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <QrCode className="w-5 h-5 text-[#2e7d32]" />
+                    My Payment Scanner (JPEG) &amp; Direct COD Settings
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Upload your UPI QR code scanner image (JPEG format) and specify your payee details. Students will view this scanner directly to pay you.
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  <span>⚡ Laundry COD Direct Pay</span>
+                </div>
+              </div>
+
+              <form onSubmit={handleSavePaymentScanner} className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                {/* Left: QR Code Preview & File Upload */}
+                <div className="lg:col-span-4 flex flex-col items-center justify-center p-4 bg-slate-50 rounded-2xl border border-slate-200 text-center space-y-3">
+                  <div className="w-44 h-44 rounded-xl border-2 border-dashed border-slate-300 bg-white p-2 flex items-center justify-center shadow-2xs overflow-hidden">
+                    {scannerForm.paymentQrImage ? (
+                      <img
+                        src={scannerForm.paymentQrImage}
+                        alt="Provider QR Scanner"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="space-y-1 text-slate-400 p-2">
+                        <QrCode className="w-10 h-10 mx-auto opacity-50" />
+                        <span className="text-[11px] block font-medium">No Scanner Uploaded</span>
+                        <span className="text-[9px] block text-slate-400">Upload your GPay / PhonePe / Paytm QR</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="w-full space-y-1.5">
+                    <label className="block w-full cursor-pointer py-2 px-3 rounded-xl bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition shadow-2xs text-center">
+                      <span>{scannerForm.paymentQrImage ? 'Replace Scanner JPEG' : 'Upload Scanner (JPEG/PNG)'}</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/jpg"
+                        onChange={handleScannerFileUpload}
+                        className="hidden"
+                      />
+                    </label>
+                    {scannerForm.paymentQrImage && (
+                      <button
+                        type="button"
+                        onClick={() => setScannerForm((prev) => ({ ...prev, paymentQrImage: '' }))}
+                        className="text-[10px] text-red-500 hover:underline cursor-pointer"
+                      >
+                        Remove Image
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: UPI Details & Notes */}
+                <div className="lg:col-span-8 space-y-3.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Payee / Business Name
+                      </label>
+                      <input
+                        type="text"
+                        value={scannerForm.paymentAccountName}
+                        onChange={(e) => setScannerForm({ ...scannerForm, paymentAccountName: e.target.value })}
+                        placeholder="e.g. Express Laundry / Ramu Dhobi"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-indigo-600 font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        UPI ID (VPA)
+                      </label>
+                      <input
+                        type="text"
+                        value={scannerForm.paymentUpiId}
+                        onChange={(e) => setScannerForm({ ...scannerForm, paymentUpiId: e.target.value })}
+                        placeholder="e.g. 9876543210@paytm or laundry@okaxis"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-indigo-600 font-medium font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Payment Instructions for Student
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={scannerForm.paymentInstructions}
+                      onChange={(e) => setScannerForm({ ...scannerForm, paymentInstructions: e.target.value })}
+                      placeholder="e.g. Scan with Google Pay or PhonePe. Please add your room number in note."
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-indigo-600 font-medium resize-none"
+                    />
+                  </div>
+
+                  <div className="bg-amber-50/80 rounded-xl p-3 border border-amber-200/80 text-[11px] text-amber-900 space-y-1">
+                    <span className="font-bold flex items-center gap-1">
+                      <span>💡 COD Direct Payment Policy:</span>
+                    </span>
+                    <p className="leading-relaxed text-[10px] text-amber-800">
+                      Payment received via this scanner or cash goes directly to you. No need to upload receipts or wait for gateway settlements. You can verify and mark the cash/UPI payment collected on handover.
+                    </p>
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      disabled={scannerSaving}
+                      className={`px-5 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer ${
+                        scannerSaving
+                          ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                          : 'bg-[#2e7d32] hover:bg-[#1b5e20] text-white'
+                      }`}
+                    >
+                      {scannerSaving ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          <span>Saving Details...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Save Payment Scanner &amp; UPI</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </form>
             </div>
 
             <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm space-y-4">

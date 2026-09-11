@@ -142,9 +142,9 @@ export default function LaundryCheckoutPage() {
 
   // Financial Breakdown:
   // ONLINE: Student pays full totalOrderAmount now via Razorpay
-  // COD: Student pays serviceChargeAmount advance now via Razorpay; pays laundryBaseAmount in cash to provider on delivery
-  const payOnlineNow = paymentMethod === 'ONLINE' ? totalOrderAmount : serviceChargeAmount;
-  const payOnDelivery = paymentMethod === 'ONLINE' ? 0 : laundryBaseAmount;
+  // COD: Direct payment to laundry partner (cash or via provider's payment scanner). No advance gateway charge required.
+  const payOnlineNow = paymentMethod === 'ONLINE' ? totalOrderAmount : 0;
+  const payOnDelivery = paymentMethod === 'ONLINE' ? 0 : totalOrderAmount;
 
   // Format dates for pickup & return
   const pickupDateFormatted = draft?.pickupDate
@@ -828,13 +828,13 @@ export default function LaundryCheckoutPage() {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-bold text-gray-900 text-xs sm:text-sm">Cash on Delivery</span>
+                        <span className="font-bold text-gray-900 text-xs sm:text-sm">Pay Directly to Laundry Partner (COD / Scanner)</span>
                       </div>
                       <div className="text-[11px] font-semibold text-[#2e7d32] mt-0.5">
-                        ₹{serviceChargeAmount} advance online
+                        ₹0 advance required
                       </div>
                       <p className="text-[11px] text-gray-600 mt-0.5 leading-relaxed">
-                        ₹{laundryBaseAmount} payable to laundry provider on delivery.
+                        Pay ₹{totalOrderAmount} directly to dhobi in cash or scan their UPI QR code on acceptance.
                       </p>
                     </div>
                   </div>
@@ -866,14 +866,14 @@ export default function LaundryCheckoutPage() {
 
                 {paymentMethod === 'COD' && (
                   <div className="bg-amber-50 rounded-lg p-2.5 border border-amber-200 text-[11px] text-amber-900 space-y-0.5 mt-2">
-                    <div className="font-semibold">Payment split:</div>
+                    <div className="font-semibold">Laundry COD Payment:</div>
                     <div className="flex justify-between">
-                      <span>Pay online advance now:</span>
-                      <strong className="text-[#2e7d32]">₹{serviceChargeAmount}</strong>
+                      <span>Online advance:</span>
+                      <strong className="text-[#2e7d32]">₹0 (Free Booking)</strong>
                     </div>
                     <div className="flex justify-between">
-                      <span>Pay on delivery in cash:</span>
-                      <strong className="text-gray-900">₹{laundryBaseAmount}</strong>
+                      <span>Pay to Laundry Partner (Cash or Scanner):</span>
+                      <strong className="text-gray-900">₹{totalOrderAmount}</strong>
                     </div>
                   </div>
                 )}
@@ -892,12 +892,12 @@ export default function LaundryCheckoutPage() {
                 {isProcessing ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Connecting to Razorpay...</span>
+                    <span>Processing Booking...</span>
                   </>
                 ) : paymentMethod === 'ONLINE' ? (
                   <span>PAY ₹{payOnlineNow} &amp; CONFIRM BOOKING →</span>
                 ) : (
-                  <span>PAY ₹{payOnlineNow} ADVANCE &amp; CONFIRM BOOKING →</span>
+                  <span>CONFIRM LAUNDRY BOOKING (COD ₹{totalOrderAmount}) →</span>
                 )}
               </button>
 
