@@ -45,6 +45,25 @@ const persistentDeliveryBoyEarnings: any[] = loadSavedList('mock_delivery_earnin
 const persistentLedger: any[] = loadSavedList('mock_financial_ledger.json', fallbackFinancialLedger);
 const persistentLaundryJobs: any[] = loadSavedList('mock_laundry_jobs.json', fallbackLaundryJobs);
 const persistentLaundryConfigs: any[] = loadSavedList('mock_laundry_provider_configs.json', fallbackLaundryProviderConfigs);
+const persistentLaundryComplaints: any[] = loadSavedList('mock_laundry_complaints.json', [
+  {
+    id: 'cmp_101',
+    complaintNumber: 'CMP-2026-1001',
+    laundryOrderId: 'laundry_job_1',
+    studentId: 'stud_sourav',
+    studentName: 'Sourav Senapati',
+    category: 'Pickup Issue',
+    subject: 'Dhobi arrived 30 minutes late for pickup',
+    description: 'Scheduled pickup was for 10:00 AM but provider arrived around 10:45 AM. Otherwise clothes were collected properly.',
+    attachmentUrl: null,
+    status: 'IN_REVIEW',
+    adminResponse: 'We have warned the partner to maintain strict pickup time windows.',
+    assignedTo: 'Campus Laundry Manager',
+    resolvedAt: null,
+    createdAt: new Date(Date.now() - 3600 * 1000 * 24),
+    updatedAt: new Date(Date.now() - 3600 * 1000 * 12)
+  }
+]);
 const persistentProviderRequests: any[] = loadSavedList('mock_provider_requests.json', [
   {
     id: 'req_001',
@@ -329,7 +348,12 @@ const fallbackHandlers: Record<string, any> = {
         (mobileNumber && u.student.mobileNumber === mobileNumber) ||
         (registrationNumber && u.student.registrationNumber === registrationNumber)
       ));
-      return user?.student ? JSON.parse(JSON.stringify(user.student)) : null;
+      if (!user?.student) return null;
+      const s = JSON.parse(JSON.stringify(user.student));
+      if (args?.include?.user) {
+        s.user = { id: user.id, email: user.email, role: user.role };
+      }
+      return s;
     },
     findFirst: async (args: any) => {
       return fallbackHandlers.student.findUnique(args);
@@ -2459,6 +2483,94 @@ const fallbackHandlers: Record<string, any> = {
       return args.data;
     }
   },
+  laundryComplaint: {
+    findMany: async (args?: any) => {
+      let list = [...persistentLaundryComplaints];
+      if (args?.where?.laundryOrderId) list = list.filter(c => c.laundryOrderId === args.where.laundryOrderId);
+      if (args?.where?.studentId) list = list.filter(c => c.studentId === args.where.studentId);
+      if (args?.where?.status) list = list.filter(c => c.status === args.where.status);
+      return JSON.parse(JSON.stringify(list.map(c => {
+        const order = persistentOrders.find(o => o.id === c.laundryOrderId || o.orderNumber === c.laundryOrderId) || 
+                      persistentLaundryJobs.find(l => l.id === c.laundryOrderId || l.orderNumber === c.laundryOrderId);
+        const studentUser = fallbackUsers.find(u => u.student?.id === c.studentId || u.id === c.studentId);
+        return {
+          ...c,
+          laundryOrder: order || null,
+          student: studentUser?.student || null
+        };
+      })));
+    },
+    findFirst: async (args?: any) => {
+      const id = args?.where?.id;
+      const complaintNumber = args?.where?.complaintNumber;
+      const laundryOrderId = args?.where?.laundryOrderId;
+      const found = persistentLaundryComplaints.find(c => 
+        (id && c.id === id) || 
+        (complaintNumber && c.complaintNumber === complaintNumber) ||
+        (laundryOrderId && c.laundryOrderId === laundryOrderId)
+      );
+      if (!found) return null;
+      const order = persistentOrders.find(o => o.id === found.laundryOrderId || o.orderNumber === found.laundryOrderId) || 
+                    persistentLaundryJobs.find(l => l.id === found.laundryOrderId || l.orderNumber === found.laundryOrderId);
+      const studentUser = fallbackUsers.find(u => u.student?.id === found.studentId || u.id === found.studentId);
+      return JSON.parse(JSON.stringify({
+        ...found,
+        laundryOrder: order || null,
+        student: studentUser?.student || null
+      }));
+    },
+    findUnique: async (args: any) => {
+      const id = args?.where?.id;
+      const complaintNumber = args?.where?.complaintNumber;
+      const laundryOrderId = args?.where?.laundryOrderId;
+      const found = persistentLaundryComplaints.find(c => 
+        (id && c.id === id) || 
+        (complaintNumber && c.complaintNumber === complaintNumber) ||
+        (laundryOrderId && c.laundryOrderId === laundryOrderId)
+      );
+      if (!found) return null;
+      const order = persistentOrders.find(o => o.id === found.laundryOrderId || o.orderNumber === found.laundryOrderId) || 
+                    persistentLaundryJobs.find(l => l.id === found.laundryOrderId || l.orderNumber === found.laundryOrderId);
+      const studentUser = fallbackUsers.find(u => u.student?.id === found.studentId || u.id === found.studentId);
+      return JSON.parse(JSON.stringify({
+        ...found,
+        laundryOrder: order || null,
+        student: studentUser?.student || null
+      }));
+    },
+    create: async (args: any) => {
+      const num = `CMP-2026-${String(Math.floor(1000 + Math.random() * 9000))}`;
+      const newCmp = {
+        id: `cmp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        complaintNumber: args.data.complaintNumber || num,
+        status: args.data.status || 'OPEN',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        adminResponse: null,
+        assignedTo: null,
+        resolvedAt: null,
+        ...args.data
+      };
+      persistentLaundryComplaints.unshift(newCmp);
+      saveList('mock_laundry_complaints.json', persistentLaundryComplaints);
+      return JSON.parse(JSON.stringify(newCmp));
+    },
+    update: async (args: any) => {
+      const found = persistentLaundryComplaints.find(c => c.id === args.where.id || c.complaintNumber === args.where.complaintNumber);
+      if (found) {
+        Object.assign(found, args.data, { updatedAt: new Date() });
+        saveList('mock_laundry_complaints.json', persistentLaundryComplaints);
+        return JSON.parse(JSON.stringify(found));
+      }
+      return args.data;
+    },
+    count: async (args?: any) => {
+      if (args?.where?.status) {
+        return persistentLaundryComplaints.filter(c => c.status === args.where.status).length;
+      }
+      return persistentLaundryComplaints.length;
+    }
+  },
   produceOrderDetails: {
     findUnique: async (args: any) => fallbackProduceOrderDetails.find(p => p.orderId === args.where.orderId || p.id === args.where.id) || null,
     findFirst: async (args: any) => fallbackProduceOrderDetails.find(p => p.orderId === args.where.orderId) || null,
@@ -2536,6 +2648,20 @@ const fallbackHandlers: Record<string, any> = {
       }
       return args.data;
     }
+  },
+  receipt: {
+    create: async (args: any) => {
+      const newReceipt = {
+        id: `rcpt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...args.data
+      };
+      return newReceipt;
+    },
+    findFirst: async (args: any) => null,
+    findUnique: async (args: any) => null,
+    findMany: async (args: any) => []
   }
 };
 

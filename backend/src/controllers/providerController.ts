@@ -167,9 +167,8 @@ export class ProviderController {
             description: p.description,
             uploadedBy: p.uploadedBy
           })) || [],
-          pickupOtp: qr.pickupOtp || j.orderNumber.replace(/\D/g, '').slice(-6) || '123456',
-          pickupOtpStatus: pickupOtpRec?.isUsed ? 'VERIFIED' : (j.status === 'REQUESTED' ? 'PENDING' : 'VERIFIED'),
-          deliveryOtpStatus: deliveryOtpRec?.isUsed ? 'VERIFIED' : (j.status === 'COMPLETED' ? 'VERIFIED' : 'PENDING'),
+          pickupOtpStatus: pickupOtpRec?.isUsed ? 'VERIFIED' : 'PENDING',
+          deliveryOtpStatus: deliveryOtpRec?.isUsed ? 'VERIFIED' : 'PENDING',
           createdAt: j.createdAt
         };
       };

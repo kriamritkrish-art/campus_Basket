@@ -23,13 +23,27 @@ import {
   Banknote,
   Search,
   Filter,
+  RefreshCw,
+  MapPin,
   X
 } from 'lucide-react';
 
 export default function AdminExpressLaundryPage() {
-  const [activeSubTab, setActiveSubTab] = useState<'ORDERS' | 'PRICING' | 'SETTINGS' | 'FINANCIALS'>('ORDERS');
+  const [activeSubTab, setActiveSubTab] = useState<'ORDERS' | 'PRICING' | 'SETTINGS' | 'FINANCIALS' | 'COMPLAINTS'>('ORDERS');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  // Complaints State
+  const [complaints, setComplaints] = useState<any[]>([]);
+  const [loadingComplaints, setLoadingComplaints] = useState(false);
+  const [complaintFilter, setComplaintFilter] = useState('ALL');
+  const [complaintSearch, setComplaintSearch] = useState('');
+  const [selectedComplaint, setSelectedComplaint] = useState<any | null>(null);
+  const [adminResponseInput, setAdminResponseInput] = useState('');
+  const [complaintStatusInput, setComplaintStatusInput] = useState('OPEN');
+  const [assignedToInput, setAssignedToInput] = useState('');
+  const [updatingComplaint, setUpdatingComplaint] = useState(false);
+  const [complaintUpdateSuccess, setComplaintUpdateSuccess] = useState<string | null>(null);
 
   // Status Override Modal
   const [overrideModal, setOverrideModal] = useState<{
@@ -109,8 +123,54 @@ export default function AdminExpressLaundryPage() {
     }
   };
 
+  const fetchComplaints = async () => {
+    setLoadingComplaints(true);
+    try {
+      const res = await apiRequest('/api/admin/services/laundry/complaints');
+      if (res.success && Array.isArray(res.complaints)) {
+        setComplaints(res.complaints);
+      }
+    } catch (err) {
+      console.warn('Error loading complaints:', err);
+    } finally {
+      setLoadingComplaints(false);
+    }
+  };
+
+  const handleUpdateComplaint = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedComplaint) return;
+    setUpdatingComplaint(true);
+    setComplaintUpdateSuccess(null);
+    try {
+      const res = await apiRequest(`/api/admin/services/laundry/complaints/${selectedComplaint.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: complaintStatusInput,
+          adminResponse: adminResponseInput,
+          assignedTo: assignedToInput || undefined
+        })
+      });
+      if (res.success) {
+        setComplaintUpdateSuccess('Complaint status and response saved successfully!');
+        fetchComplaints();
+        setTimeout(() => {
+          setSelectedComplaint(null);
+          setComplaintUpdateSuccess(null);
+        }, 1200);
+      } else {
+        alert(res.message || 'Failed to update complaint');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error updating complaint');
+    } finally {
+      setUpdatingComplaint(false);
+    }
+  };
+
   useEffect(() => {
     fetchLaundryData();
+    fetchComplaints();
   }, []);
 
   const stats = data?.stats || {};
@@ -330,6 +390,20 @@ export default function AdminExpressLaundryPage() {
         >
           <FileSpreadsheet className="w-3.5 h-3.5" />
           <span>Financial Overview</span>
+        </button>
+        <button
+          onClick={() => {
+            setActiveSubTab('COMPLAINTS');
+            fetchComplaints();
+          }}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            activeSubTab === 'COMPLAINTS'
+              ? 'bg-[#4F9D32] text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <AlertTriangle className="w-3.5 h-3.5" />
+          <span>Complaints ({complaints.length})</span>
         </button>
       </div>
 
@@ -811,6 +885,386 @@ export default function AdminExpressLaundryPage() {
                 ₹{(orders.filter((o: any) => o.paymentMethod === 'COD').reduce((s: number, o: any) => s + Number(o.codAmount || 0), 0)).toLocaleString('en-IN')}
               </span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-TAB 5: LAUNDRY COMPLAINTS & SUPPORT */}
+      {activeSubTab === 'COMPLAINTS' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden space-y-5 p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-[#17202A] flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <span>Student Laundry Complaints &amp; Support Hub</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Investigate student grievances &bull; Synchronized order address &bull; Real-time status resolution &bull; Linked to Laundry Order ID
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search complaint #, order, student..."
+                  value={complaintSearch}
+                  onChange={(e) => setComplaintSearch(e.target.value)}
+                  className="pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-[#4F9D32]"
+                />
+              </div>
+
+              <select
+                value={complaintFilter}
+                onChange={(e) => setComplaintFilter(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none"
+              >
+                <option value="ALL">All Complaints ({complaints.length})</option>
+                <option value="OPEN">Open</option>
+                <option value="IN_REVIEW">In Review</option>
+                <option value="IN_PROGRESS">In Progress</option>
+                <option value="RESOLVED">Resolved</option>
+                <option value="CLOSED">Closed</option>
+              </select>
+
+              <button
+                onClick={fetchComplaints}
+                className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition"
+                title="Refresh Complaints"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Counters */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+              <span className="text-[10px] text-slate-500 uppercase font-bold block">Total Grievances</span>
+              <span className="text-lg font-black text-slate-900">{complaints.length}</span>
+            </div>
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200">
+              <span className="text-[10px] text-amber-800 uppercase font-bold block">Open &amp; Pending</span>
+              <span className="text-lg font-black text-amber-900">
+                {complaints.filter((c: any) => c.status === 'OPEN').length}
+              </span>
+            </div>
+            <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200">
+              <span className="text-[10px] text-blue-800 uppercase font-bold block">In Investigation</span>
+              <span className="text-lg font-black text-blue-900">
+                {complaints.filter((c: any) => ['IN_REVIEW', 'IN_PROGRESS'].includes(c.status)).length}
+              </span>
+            </div>
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
+              <span className="text-[10px] text-emerald-800 uppercase font-bold block">Resolved &amp; Closed</span>
+              <span className="text-lg font-black text-emerald-900">
+                {complaints.filter((c: any) => ['RESOLVED', 'CLOSED'].includes(c.status)).length}
+              </span>
+            </div>
+          </div>
+
+          {/* Complaints Table */}
+          {loadingComplaints ? (
+            <div className="py-16 text-center text-slate-400">
+              <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <p className="text-xs">Loading student complaints...</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200 text-[10px]">
+                  <tr>
+                    <th className="py-3 px-3">Complaint #</th>
+                    <th className="py-3 px-3">Order ID</th>
+                    <th className="py-3 px-3">Student</th>
+                    <th className="py-3 px-3">Category</th>
+                    <th className="py-3 px-3">Subject</th>
+                    <th className="py-3 px-3">Date</th>
+                    <th className="py-3 px-3 text-center">Order Status</th>
+                    <th className="py-3 px-3 text-center">Complaint Status</th>
+                    <th className="py-3 px-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {complaints
+                    .filter((c: any) => {
+                      if (complaintFilter !== 'ALL' && c.status !== complaintFilter) return false;
+                      if (!complaintSearch) return true;
+                      const q = complaintSearch.toLowerCase();
+                      return (
+                        c.complaintNumber?.toLowerCase().includes(q) ||
+                        c.orderNumber?.toLowerCase().includes(q) ||
+                        c.laundryOrderId?.toLowerCase().includes(q) ||
+                        c.student?.fullName?.toLowerCase().includes(q) ||
+                        c.studentName?.toLowerCase().includes(q) ||
+                        c.category?.toLowerCase().includes(q) ||
+                        c.subject?.toLowerCase().includes(q)
+                      );
+                    })
+                    .map((cmp: any) => (
+                      <tr key={cmp.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3 px-3 font-mono font-bold text-slate-900">
+                          #{cmp.complaintNumber}
+                        </td>
+                        <td className="py-3 px-3 font-mono text-slate-700">
+                          #{cmp.orderNumber || cmp.laundryOrderId}
+                        </td>
+                        <td className="py-3 px-3 font-medium">
+                          <div className="font-bold text-slate-800">
+                            {cmp.student?.fullName || cmp.studentName || 'Student'}
+                          </div>
+                          {cmp.student?.rollNumber && (
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              {cmp.student.rollNumber}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200">
+                            {cmp.category}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 font-medium text-slate-800 max-w-[200px] truncate" title={cmp.subject}>
+                          {cmp.subject}
+                        </td>
+                        <td className="py-3 px-3 text-slate-500 whitespace-nowrap">
+                          {new Date(cmp.createdAt).toLocaleDateString('en-IN')}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                            {cmp.order?.status || 'Active'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide ${
+                              cmp.status === 'RESOLVED' || cmp.status === 'CLOSED'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : cmp.status === 'IN_REVIEW' || cmp.status === 'IN_PROGRESS'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {cmp.status.replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <button
+                            onClick={() => {
+                              setSelectedComplaint(cmp);
+                              setComplaintStatusInput(cmp.status);
+                              setAdminResponseInput(cmp.adminResponse || '');
+                              setAssignedToInput(cmp.assignedTo || 'Campus Laundry Desk');
+                              setComplaintUpdateSuccess(null);
+                            }}
+                            className="px-3 py-1 rounded-lg bg-[#4F9D32] hover:bg-[#3d7a27] text-white text-[11px] font-bold transition shadow-2xs cursor-pointer"
+                          >
+                            Review &amp; Resolve
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  {complaints.length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="py-12 text-center text-slate-400">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                        No laundry complaints reported. All systems operational.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Admin Complaint Review & Resolution Modal */}
+      {selectedComplaint && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 flex flex-col space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">
+                    Review Laundry Complaint #{selectedComplaint.complaintNumber}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Linked to Laundry Order #{selectedComplaint.orderNumber || selectedComplaint.laundryOrderId}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedComplaint(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {complaintUpdateSuccess && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <span>{complaintUpdateSuccess}</span>
+              </div>
+            )}
+
+            {/* Top Grid: Student Info & Order Info */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              {/* Student Information */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5">
+                <div className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">
+                  Student Information
+                </div>
+                <div className="font-bold text-slate-900 text-sm">
+                  {selectedComplaint.student?.fullName || selectedComplaint.studentName || 'Student'}
+                </div>
+                {selectedComplaint.student?.rollNumber && (
+                  <div className="text-slate-500 text-[11px]">
+                    Roll: <span className="font-mono font-bold text-slate-700">{selectedComplaint.student.rollNumber}</span>
+                  </div>
+                )}
+                {selectedComplaint.student?.mobileNumber && (
+                  <div className="text-slate-500 text-[11px]">
+                    📞 {selectedComplaint.student.mobileNumber}
+                  </div>
+                )}
+                {selectedComplaint.student?.collegeEmail && (
+                  <div className="text-slate-500 text-[11px]">
+                    ✉️ {selectedComplaint.student.collegeEmail}
+                  </div>
+                )}
+              </div>
+
+              {/* Order Information & Authoritative Address */}
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5">
+                <div className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">
+                  Laundry Order Snapshot
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-slate-900 text-sm">
+                    #{selectedComplaint.orderNumber || selectedComplaint.laundryOrderId}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">
+                    {selectedComplaint.order?.status || 'Active'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-600 flex items-start gap-1">
+                  <MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <span className="font-semibold text-slate-800">Room Address: </span>
+                    {selectedComplaint.order?.addressSnapshot || `${selectedComplaint.order?.hallName || 'Hostel'}, Room ${selectedComplaint.order?.roomNumber || 'N/A'}`}
+                  </div>
+                </div>
+                {selectedComplaint.order?.provider?.fullName && (
+                  <div className="text-[11px] text-slate-500">
+                    Dhobi: <span className="font-bold text-slate-700">{selectedComplaint.order.provider.fullName}</span>
+                  </div>
+                )}
+                <div className="text-[11px] text-slate-500">
+                  Value: ₹{selectedComplaint.order?.totalAmount || 0} ({selectedComplaint.order?.paymentMethod || 'COD'})
+                </div>
+              </div>
+            </div>
+
+            {/* Complaint Details */}
+            <div className="bg-amber-50/60 border border-amber-200/80 rounded-2xl p-4 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-200 text-amber-900">
+                  Category: {selectedComplaint.category}
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  Logged: {new Date(selectedComplaint.createdAt).toLocaleString('en-IN')}
+                </span>
+              </div>
+              <div className="font-bold text-slate-900 text-sm">
+                {selectedComplaint.subject}
+              </div>
+              <p className="text-slate-700 leading-relaxed bg-white p-3 rounded-xl border border-amber-100 whitespace-pre-wrap">
+                {selectedComplaint.description}
+              </p>
+              {selectedComplaint.attachmentUrl && (
+                <div className="pt-1">
+                  <a
+                    href={selectedComplaint.attachmentUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] text-indigo-600 font-bold hover:underline inline-flex items-center gap-1"
+                  >
+                    📎 View Student Photo / Attachment
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* Admin Action Form */}
+            <form onSubmit={handleUpdateComplaint} className="space-y-3 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Update Complaint Status <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={complaintStatusInput}
+                    onChange={(e) => setComplaintStatusInput(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-800 focus:outline-none focus:border-[#4F9D32]"
+                  >
+                    <option value="OPEN">Open (Awaiting Investigation)</option>
+                    <option value="IN_REVIEW">In Review (With Laundry Partner / Warden)</option>
+                    <option value="IN_PROGRESS">In Progress (Action Initiated)</option>
+                    <option value="RESOLVED">Resolved (Issue Addressed)</option>
+                    <option value="CLOSED">Closed (Ticket Completed)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Assigned Admin / Staff Desk
+                  </label>
+                  <input
+                    type="text"
+                    value={assignedToInput}
+                    onChange={(e) => setAssignedToInput(e.target.value)}
+                    placeholder="e.g. Chief Warden / Laundry Ops Lead"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#4F9D32]"
+                  />
+                </div>
+              </div>
+
+              <div className="text-xs space-y-1">
+                <label className="font-bold text-slate-700 block">
+                  Administrator Response (Visible to Student) <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Provide resolution details for the student. e.g. Partner has recovered the item and will redeliver today by 4 PM."
+                  value={adminResponseInput}
+                  onChange={(e) => setAdminResponseInput(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl p-3 text-xs focus:outline-none focus:border-[#4F9D32] resize-none"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setSelectedComplaint(null)}
+                  className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updatingComplaint}
+                  className="px-5 py-2 bg-[#4F9D32] hover:bg-[#3d7a27] disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer"
+                >
+                  {updatingComplaint ? 'Saving...' : 'Save & Update Complaint'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -58,6 +58,23 @@ export default function LaundryPage() {
   } | null>(null);
   const [copiedUpi, setCopiedUpi] = useState<boolean>(false);
 
+  // Laundry Complaint & Support System
+  const [complaintModal, setComplaintModal] = useState<{
+    isOpen: boolean;
+    laundryOrderId: string;
+    orderNumber: string;
+    category: string;
+    subject: string;
+    description: string;
+    attachmentUrl: string;
+  } | null>(null);
+  const [studentComplaints, setStudentComplaints] = useState<any[]>([]);
+  const [showComplaintsTracker, setShowComplaintsTracker] = useState(false);
+  const [loadingComplaints, setLoadingComplaints] = useState(false);
+  const [submittingComplaint, setSubmittingComplaint] = useState(false);
+  const [complaintSuccess, setComplaintSuccess] = useState<string | null>(null);
+  const [complaintError, setComplaintError] = useState<string | null>(null);
+
   // Dynamic tariff from DB
   const [tariff, setTariff] = useState<any>({
     heroTitle: 'Express Campus Laundry',
@@ -76,6 +93,54 @@ export default function LaundryPage() {
         setTariff(res.tariff);
       }
     } catch {}
+  };
+
+  const fetchComplaints = async () => {
+    if (!isAuthenticated) return;
+    setLoadingComplaints(true);
+    try {
+      const res = await apiRequest('/api/laundry/complaints');
+      if (res.success && Array.isArray(res.complaints)) {
+        setStudentComplaints(res.complaints);
+      }
+    } catch {} finally {
+      setLoadingComplaints(false);
+    }
+  };
+
+  const handleCreateComplaint = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!complaintModal) return;
+    setSubmittingComplaint(true);
+    setComplaintError(null);
+    setComplaintSuccess(null);
+    try {
+      const res = await apiRequest('/api/laundry/complaints', {
+        method: 'POST',
+        body: JSON.stringify({
+          laundryOrderId: complaintModal.laundryOrderId,
+          category: complaintModal.category,
+          subject: complaintModal.subject,
+          description: complaintModal.description,
+          attachmentUrl: complaintModal.attachmentUrl || undefined
+        })
+      });
+      if (res.success) {
+        setComplaintSuccess(res.message || 'Complaint registered successfully!');
+        fetchComplaints();
+        setTimeout(() => {
+          setComplaintModal(null);
+          setComplaintSuccess(null);
+          setShowComplaintsTracker(true);
+        }, 1200);
+      } else {
+        setComplaintError(res.message || 'Failed to register complaint.');
+      }
+    } catch (err: any) {
+      setComplaintError(err.message || 'Network error while submitting complaint.');
+    } finally {
+      setSubmittingComplaint(false);
+    }
   };
 
   const fetchStudentLaundryOrders = async () => {
@@ -97,6 +162,7 @@ export default function LaundryPage() {
     fetchTariff();
     if (isAuthenticated) {
       fetchStudentLaundryOrders();
+      fetchComplaints();
     }
   }, [isAuthenticated]);
 
@@ -269,12 +335,24 @@ export default function LaundryPage() {
                 Live wash cycle stage tracking &bull; Verified doorstep return OTPs &bull; In-app security
               </p>
             </div>
-            <button
-              onClick={fetchStudentLaundryOrders}
-              className="inline-flex items-center gap-1 text-xs text-[#2e7d32] font-semibold hover:underline"
-            >
-              <RefreshCw className="w-3.5 h-3.5" /> Refresh
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setShowComplaintsTracker(true);
+                  fetchComplaints();
+                }}
+                className="inline-flex items-center gap-1.5 text-xs text-amber-900 font-bold bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-xl border border-amber-200 transition cursor-pointer"
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-amber-700" />
+                <span>My Complaints ({studentComplaints.length})</span>
+              </button>
+              <button
+                onClick={fetchStudentLaundryOrders}
+                className="inline-flex items-center gap-1 text-xs text-[#2e7d32] font-semibold hover:underline cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Refresh
+              </button>
+            </div>
           </div>
 
           {loadingOrders ? (
@@ -490,12 +568,14 @@ export default function LaundryPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-black text-2xl text-[#1b5e20] tracking-widest">
-                            {isPickupOtpVisible ? (ord.pickupOtp || '482916') : '------'}
+                            {['CLOTHES_COLLECTED', 'WASHING', 'IRONING', 'READY', 'DELIVERY_SCHEDULED', 'COMPLETED'].includes(ord.status)
+                              ? '------'
+                              : (ord.pickupOtp || '------')}
                           </span>
-                          {isPickupOtpVisible && (
+                          {ord.pickupOtp && !['CLOTHES_COLLECTED', 'WASHING', 'IRONING', 'READY', 'DELIVERY_SCHEDULED', 'COMPLETED'].includes(ord.status) && (
                             <button
-                              onClick={() => copyToClipboard(ord.pickupOtp || '482916', `pickup_${ord.id}`)}
-                              className="p-1.5 rounded-lg bg-white/80 hover:bg-white text-[#2e7d32] border border-[#dcedc8] transition shadow-xs flex items-center gap-1 text-[10px] font-bold"
+                              onClick={() => copyToClipboard(ord.pickupOtp, `pickup_${ord.id}`)}
+                              className="p-1.5 rounded-lg bg-white/80 hover:bg-white text-[#2e7d32] border border-[#dcedc8] transition shadow-xs flex items-center gap-1 text-[10px] font-bold cursor-pointer"
                               title="Copy Pickup OTP"
                             >
                               {copiedOtp === `pickup_${ord.id}` ? (
@@ -513,29 +593,29 @@ export default function LaundryPage() {
                           className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${
                             ['CLOTHES_COLLECTED', 'WASHING', 'IRONING', 'READY', 'DELIVERY_SCHEDULED', 'COMPLETED'].includes(ord.status)
                               ? 'bg-emerald-100 text-emerald-800'
-                              : isPickupOtpVisible
+                              : ord.pickupOtp
                               ? 'bg-amber-100 text-amber-800'
                               : 'bg-slate-200 text-slate-600'
                           }`}
                         >
                           {['CLOTHES_COLLECTED', 'WASHING', 'IRONING', 'READY', 'DELIVERY_SCHEDULED', 'COMPLETED'].includes(ord.status)
                             ? 'Verified ✓'
-                            : isPickupOtpVisible
+                            : ord.pickupOtp
                             ? 'Active • Share with Dhobi'
-                            : 'Pending Provider Acceptance'}
+                            : 'Pending Generation'}
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-500">
-                        {isPickupOtpVisible
-                          ? 'Share this 6-digit OTP only with laundry personnel when handing over your clothes.'
-                          : 'Deferred generation: will display the moment provider accepts your booking.'}
+                        {['CLOTHES_COLLECTED', 'WASHING', 'IRONING', 'READY', 'DELIVERY_SCHEDULED', 'COMPLETED'].includes(ord.status)
+                          ? 'Pickup verified by dhobi. Clothes collected from your room.'
+                          : 'Share this 6-digit OTP only with laundry personnel when handing over your clothes.'}
                       </p>
                     </div>
 
                     {/* Stage 2: Return Delivery OTP */}
                     <div
                       className={`rounded-2xl p-4 space-y-1.5 border transition ${
-                        isDeliveryOtpVisible
+                        (ord.deliveryOtp || ord.returnOtp) && ord.status !== 'COMPLETED'
                           ? 'bg-purple-50/90 border-purple-200'
                           : 'bg-slate-50 border-slate-200 opacity-70'
                       }`}
@@ -546,12 +626,14 @@ export default function LaundryPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-black text-2xl text-purple-900 tracking-widest">
-                            {isDeliveryOtpVisible ? (ord.returnOtp || '739104') : '------'}
+                            {ord.status === 'COMPLETED'
+                              ? '------'
+                              : (ord.deliveryOtp || ord.returnOtp || '------')}
                           </span>
-                          {isDeliveryOtpVisible && (
+                          {(ord.deliveryOtp || ord.returnOtp) && ord.status !== 'COMPLETED' && (
                             <button
-                              onClick={() => copyToClipboard(ord.returnOtp || '739104', `return_${ord.id}`)}
-                              className="p-1.5 rounded-lg bg-white/80 hover:bg-white text-purple-700 border border-purple-200 transition shadow-xs flex items-center gap-1 text-[10px] font-bold"
+                              onClick={() => copyToClipboard(ord.deliveryOtp || ord.returnOtp, `return_${ord.id}`)}
+                              className="p-1.5 rounded-lg bg-white/80 hover:bg-white text-purple-700 border border-purple-200 transition shadow-xs flex items-center gap-1 text-[10px] font-bold cursor-pointer"
                               title="Copy Return OTP"
                             >
                               {copiedOtp === `return_${ord.id}` ? (
@@ -569,28 +651,30 @@ export default function LaundryPage() {
                           className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${
                             ord.status === 'COMPLETED'
                               ? 'bg-emerald-100 text-emerald-800'
-                              : isDeliveryOtpVisible
+                              : (ord.deliveryOtp || ord.returnOtp)
                               ? 'bg-purple-200 text-purple-800'
                               : 'bg-slate-200 text-slate-500'
                           }`}
                         >
                           {ord.status === 'COMPLETED'
                             ? 'Delivered ✓'
-                            : isDeliveryOtpVisible
-                            ? 'Share at Door'
-                            : 'Generated upon Ready/Out for Delivery'}
+                            : (ord.deliveryOtp || ord.returnOtp)
+                            ? 'Active • Share at Door'
+                            : 'Generated when Ready for Return'}
                         </span>
                       </div>
                       <p className="text-[10px] text-purple-900/80 font-medium">
-                        {isDeliveryOtpVisible
+                        {ord.status === 'COMPLETED'
+                          ? 'Clean clothes handed over and delivery OTP verified.'
+                          : (ord.deliveryOtp || ord.returnOtp)
                           ? 'Share this code with laundry personnel when clean clothes are delivered to your room.'
-                          : 'Deferred generation: will appear when clothes are washed, ironed & dispatched.'}
+                          : 'Authoritative code: will appear when clothes are washed, ironed & ready for delivery.'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Items Summary & Photos */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs pt-1 border-t border-gray-100">
+                  {/* Items Summary & Actions */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs pt-2 border-t border-gray-100">
                     <div className="text-slate-700">
                       <span className="font-semibold text-gray-900">Garments: </span>
                       {ord.items && ord.items.length > 0
@@ -598,15 +682,37 @@ export default function LaundryPage() {
                         : `${ord.itemCount || 1} clothes`}
                     </div>
 
-                    {ord.photos && ord.photos.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      {ord.photos && ord.photos.length > 0 && (
+                        <button
+                          onClick={() => setSelectedPhotoModal(ord.photos)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 font-bold text-[11px] border border-indigo-200 hover:bg-indigo-100 transition cursor-pointer"
+                        >
+                          <Camera className="w-3.5 h-3.5" />
+                          <span>{ord.photos.length} Clothes Photos</span>
+                        </button>
+                      )}
+
                       <button
-                        onClick={() => setSelectedPhotoModal(ord.photos)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50 text-indigo-700 font-bold text-[11px] border border-indigo-200 hover:bg-indigo-100 transition"
+                        onClick={() => {
+                          setComplaintModal({
+                            isOpen: true,
+                            laundryOrderId: ord.id,
+                            orderNumber: ord.orderNumber,
+                            category: 'Pickup Issue',
+                            subject: '',
+                            description: '',
+                            attachmentUrl: ''
+                          });
+                          setComplaintSuccess(null);
+                          setComplaintError(null);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-900 font-bold text-[11px] border border-amber-200 hover:bg-amber-100 transition cursor-pointer"
                       >
-                        <Camera className="w-3.5 h-3.5" />
-                        <span>{ord.photos.length} Clothes Photos</span>
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Complaint / Support</span>
                       </button>
-                    )}
+                    </div>
                   </div>
                 </div>
               );
@@ -779,6 +885,272 @@ export default function LaundryPage() {
           </div>
         </div>
       )}
+
+      {/* Laundry Complaint Submission Modal */}
+      {complaintModal && complaintModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-gray-200 flex flex-col space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
+                  <AlertCircle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-gray-900">Raise Laundry Complaint / Support</h3>
+                  <p className="text-[11px] text-slate-500">Linked to Laundry Order #{complaintModal.orderNumber}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setComplaintModal(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {complaintSuccess && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <span>{complaintSuccess}</span>
+              </div>
+            )}
+
+            {complaintError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                <span>{complaintError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateComplaint} className="space-y-3.5">
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                  Laundry Order ID
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  value={`#${complaintModal.orderNumber}`}
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-700 cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                  Complaint Category *
+                </label>
+                <select
+                  value={complaintModal.category}
+                  onChange={(e) => setComplaintModal({ ...complaintModal, category: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-amber-500"
+                  required
+                >
+                  <option value="Pickup Issue">Pickup Issue (Delay / No Show)</option>
+                  <option value="Delivery Issue">Delivery Issue (Delay / Incomplete Return)</option>
+                  <option value="Wrong / Missing Garment">Wrong / Missing Garment</option>
+                  <option value="Damaged Garment">Damaged Garment / Tear</option>
+                  <option value="Quality Issue">Quality Issue / Stains not cleaned</option>
+                  <option value="Delay">Unscheduled Delay</option>
+                  <option value="Payment Issue">Payment / Billing Issue</option>
+                  <option value="Refund Issue">Refund Request</option>
+                  <option value="OTP Issue">OTP Verification Issue</option>
+                  <option value="Address Issue">Address / Room Handover Issue</option>
+                  <option value="Other">Other Query</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                  Subject / Summary *
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 1 Shirt missing from delivered packet"
+                  value={complaintModal.subject}
+                  onChange={(e) => setComplaintModal({ ...complaintModal, subject: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-amber-500"
+                  required
+                  minLength={3}
+                  maxLength={200}
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                  Detailed Description *
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="Please describe the issue clearly (garment color, description, what happened)..."
+                  value={complaintModal.description}
+                  onChange={(e) => setComplaintModal({ ...complaintModal, description: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-amber-500"
+                  required
+                  minLength={10}
+                  maxLength={2000}
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 uppercase block mb-1">
+                  Optional Photo / Proof URL
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://drive.google.com/... or image link (optional)"
+                  value={complaintModal.attachmentUrl}
+                  onChange={(e) => setComplaintModal({ ...complaintModal, attachmentUrl: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setComplaintModal(null)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingComplaint}
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition shadow-xs disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                >
+                  {submittingComplaint ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Submitting...</span>
+                    </>
+                  ) : (
+                    <span>Submit Complaint</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Laundry Complaints Tracking Modal */}
+      {showComplaintsTracker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-gray-200 flex flex-col space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
+                  <AlertCircle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-gray-900">My Laundry Complaints &amp; Support</h3>
+                  <p className="text-[11px] text-slate-500">Track resolution status and administrator responses</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowComplaintsTracker(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {loadingComplaints ? (
+              <div className="py-12 text-center text-slate-400">
+                <div className="w-6 h-6 border-2 border-amber-600/30 border-t-amber-600 rounded-full animate-spin mx-auto mb-2" />
+                <p className="text-xs">Loading your complaints...</p>
+              </div>
+            ) : studentComplaints.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 space-y-2">
+                <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
+                <h4 className="text-sm font-bold text-slate-700">No Complaints Found</h4>
+                <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                  You have not submitted any complaints. If you experience any problem with a laundry order, click &quot;Complaint / Support&quot; on the order card.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {studentComplaints.map((cmp: any) => (
+                  <div
+                    key={cmp.id}
+                    className="p-4 rounded-2xl border border-slate-200/90 bg-slate-50/50 hover:bg-white hover:border-slate-300 transition space-y-2.5 text-xs"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/60 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-slate-900">
+                          #{cmp.complaintNumber}
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          &bull; Order #{cmp.laundryOrder?.orderNumber || cmp.laundryOrderId}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                            cmp.status === 'RESOLVED' || cmp.status === 'CLOSED'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : cmp.status === 'IN_REVIEW' || cmp.status === 'IN_PROGRESS'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {cmp.status.replace(/_/g, ' ')}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(cmp.createdAt).toLocaleDateString('en-IN')}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-slate-900 text-xs">
+                        {cmp.subject}
+                      </div>
+                      <div className="text-[11px] font-semibold text-amber-800 mt-0.5">
+                        Category: {cmp.category}
+                      </div>
+                      <p className="text-slate-600 text-[11px] mt-1 leading-relaxed bg-white p-2.5 rounded-xl border border-slate-100">
+                        {cmp.description}
+                      </p>
+                    </div>
+
+                    {/* Admin Response Section */}
+                    {cmp.adminResponse ? (
+                      <div className="p-3 bg-emerald-50/90 border border-emerald-200 rounded-xl text-xs space-y-1">
+                        <div className="font-bold text-emerald-900 flex items-center gap-1 text-[11px]">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>Admin Response:</span>
+                        </div>
+                        <p className="text-emerald-800 text-[11px] leading-relaxed">
+                          {cmp.adminResponse}
+                        </p>
+                        {cmp.resolvedAt && (
+                          <div className="text-[10px] text-emerald-700 font-medium">
+                            Resolved on {new Date(cmp.resolvedAt).toLocaleDateString('en-IN')}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-slate-400 italic">
+                        Awaiting administrator review. Your complaint is currently being investigated.
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setShowComplaintsTracker(false)}
+                className="px-5 py-2 bg-gray-900 hover:bg-black text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

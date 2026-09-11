@@ -263,6 +263,7 @@ model Student {
   couponUsages       CouponUsage[]
   receipts           Receipt[]
   refundAccounts     RefundAccount[]
+  laundryComplaints  LaundryComplaint[]
 
   @@index([rollNumber])
   @@index([registrationNumber])
@@ -696,6 +697,7 @@ model LaundryOrder {
   payment             Payment?
   receipt             Receipt?
   codCollection       LaundryCodCollection?
+  complaints          LaundryComplaint[]
 
   @@index([orderNumber])
   @@index([trackingNumber])
@@ -761,6 +763,30 @@ model LaundryStatusHistory {
   createdAt      DateTime       @default(now())
 
   @@index([laundryOrderId])
+}
+
+model LaundryComplaint {
+  id              String        @id @default(cuid())
+  complaintNumber String        @unique // e.g. CMP-2026-0001
+  laundryOrderId  String
+  laundryOrder    LaundryOrder  @relation(fields: [laundryOrderId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentName     String?
+  category        String        // Pickup Issue, Delivery Issue, Wrong / Missing Garment, Damaged Garment, Quality Issue, Delay, Payment Issue, Refund Issue, OTP Issue, Address Issue, Other
+  subject         String
+  description     String        @db.Text
+  attachmentUrl   String?       @db.Text
+  status          String        @default("OPEN") // OPEN, IN_REVIEW, IN_PROGRESS, RESOLVED, CLOSED
+  adminResponse   String?       @db.Text
+  assignedTo      String?
+  resolvedAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([laundryOrderId])
+  @@index([studentId])
+  @@index([status])
 }
 
 model Payment {

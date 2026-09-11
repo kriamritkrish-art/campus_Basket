@@ -123,6 +123,8 @@ router.get('/financial-summary', AdminController.getFinancialSummary);
 router.get('/services/food', AdminServicesController.getFoodAndMeals);
 router.get('/services/fruits', AdminServicesController.getFreshFruits);
 router.get('/services/laundry', AdminServicesController.getExpressLaundry);
+router.get('/services/laundry/complaints', AdminServicesController.getLaundryComplaints);
+router.patch('/services/laundry/complaints/:id', AdminServicesController.updateLaundryComplaint);
 router.patch('/services/laundry/:id/status', AdminServicesController.updateLaundryStatus);
 router.patch('/services/laundry/:id/assign-delivery', AdminServicesController.assignLaundryDelivery);
 router.get('/services/essentials', AdminServicesController.getStationeryAndEssentials);

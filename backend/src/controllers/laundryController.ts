@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
-import { laundryOrderSchema, verifyLaundryOtpSchema, laundryConditionSchema } from '../validators/orderValidators';
+import { laundryOrderSchema, verifyLaundryOtpSchema, laundryConditionSchema, createLaundryComplaintSchema } from '../validators/orderValidators';
 import { generateLaundryOrderNumber } from '../utils/crypto';
 import { LaundryPricingService } from '../services/laundry/LaundryPricingService';
 import { LaundryOtpService } from '../services/laundry/LaundryOtpService';
@@ -92,6 +92,8 @@ export class LaundryController {
       const orderHallName = data.hallName?.trim() || student.hall?.name || (student as any).hallName || 'Campus Hostel';
       const orderRoomNumber = data.roomNumber?.trim() || student.roomNumber || '101';
 
+      let rawPickupOtp = '';
+
       // 3. Create Laundry Order in single transaction (providerId: null for broadcast pool)
       const newLaundryOrder = await prisma.$transaction(async (tx) => {
         const order = await tx.laundryOrder.create({
@@ -146,6 +148,19 @@ export class LaundryController {
           }
         });
 
+        // 3a. Generate single authoritative 6-digit Pickup OTP stored against this exact Laundry Order ID
+        const pickupOtpData = laundryOtpService.generateOtp(order.id, 'PICKUP');
+        rawPickupOtp = pickupOtpData.plainOtp;
+        await tx.laundryOtp.create({
+          data: {
+            laundryOrderId: order.id,
+            otpType: 'PICKUP',
+            otpHash: pickupOtpData.otpHash,
+            encryptedOtp: pickupOtpData.encryptedOtp,
+            expiresAt: pickupOtpData.expiresAt
+          }
+        });
+
         // Update student profile with latest room and hall if provided
         try {
           await tx.student.update({
@@ -181,7 +196,7 @@ export class LaundryController {
         orderType: 'LAUNDRY',
         student: {
           name: student.fullName,
-          email: student.user.email,
+          email: student.user?.email || (student as any).collegeEmail || 'student@nitdgp.ac.in',
           rollNumber: student.rollNumber || 'STUDENT',
           hall: orderHallName,
           room: orderRoomNumber
@@ -246,7 +261,7 @@ export class LaundryController {
             notes: {
               orderNumber,
               laundryOrderId: newLaundryOrder.id,
-              studentEmail: student.user.email,
+              studentEmail: student.user?.email || (student as any).collegeEmail || 'student@nitdgp.ac.in',
               paymentMethod: data.paymentMethod,
               paymentPurpose: isCod ? 'LAUNDRY_COD_ADVANCE_SERVICE_CHARGE' : 'LAUNDRY_FULL_PAYMENT'
             }
@@ -276,26 +291,28 @@ export class LaundryController {
         }
       }
 
-      // NOTE: NO EMAIL OTP SENT. Deferred OTP workflow active.
+      const orderPayload = {
+        id: newLaundryOrder.id,
+        orderNumber: newLaundryOrder.orderNumber,
+        trackingNumber: newLaundryOrder.trackingNumber,
+        status: newLaundryOrder.status,
+        pickupOtp: rawPickupOtp,
+        laundryBaseAmount: pricing.laundryBaseAmount,
+        serviceChargeAmount: pricing.serviceChargeAmount,
+        totalAmount: pricing.totalAmount,
+        onlinePaidAmount: onlinePaidAmount,
+        codAmount: codAmount,
+        paymentMethod: newLaundryOrder.paymentMethod,
+        paymentStatus: newLaundryOrder.paymentStatus
+      };
 
       res.status(201).json({
         success: true,
         message: isCod
           ? `Laundry order placed successfully! It is now available for laundry partners to accept.`
           : `Laundry booking created! Please complete payment of ₹${pricing.totalAmount} via Razorpay.`,
-        laundryOrder: {
-          id: newLaundryOrder.id,
-          orderNumber: newLaundryOrder.orderNumber,
-          trackingNumber: newLaundryOrder.trackingNumber,
-          status: newLaundryOrder.status,
-          laundryBaseAmount: pricing.laundryBaseAmount,
-          serviceChargeAmount: pricing.serviceChargeAmount,
-          totalAmount: pricing.totalAmount,
-          onlinePaidAmount: onlinePaidAmount,
-          codAmount: codAmount,
-          paymentMethod: newLaundryOrder.paymentMethod,
-          paymentStatus: newLaundryOrder.paymentStatus
-        },
+        order: orderPayload,
+        laundryOrder: orderPayload,
         razorpay: razorpayData
       });
     } catch (err) {
@@ -424,34 +441,36 @@ export class LaundryController {
     const pickupRecord = otps.find((o: any) => o.otpType === 'PICKUP');
     const deliveryRecord = otps.find((o: any) => o.otpType === 'DELIVERY');
 
-    // Contextual Pickup OTP logic:
-    // Show only when provider accepted / scheduled, before collection
+    // Authoritative Single Pickup OTP logic:
+    // Show real 6-digit OTP to student as soon as generated, until it is verified/used
     let pickupOtp: string | null = null;
     let pickupVerified = false;
     let pickupMessage: string | null = null;
 
-    if (['ACCEPTED', 'PICKUP_SCHEDULED'].includes(status) && pickupRecord && !pickupRecord.isUsed) {
+    if (pickupRecord?.isUsed || ['CLOTHES_COLLECTED', 'IN_LAUNDRY', 'WASHING', 'DRYING', 'IRONING', 'READY', 'DELIVERY_SCHEDULED', 'COMPLETED'].includes(status)) {
+      pickupVerified = true;
+      pickupMessage = 'Pickup OTP verified upon cloth collection.';
+    } else if (pickupRecord && !pickupRecord.isUsed) {
       pickupOtp = pickupRecord.encryptedOtp 
         ? laundryOtpService.decryptForStudent(pickupRecord.encryptedOtp) 
         : null;
-      pickupMessage = 'Share this OTP with the laundry provider when they collect your laundry.';
-    } else if (['CLOTHES_COLLECTED', 'IN_LAUNDRY', 'WASHING', 'DRYING', 'IRONING', 'READY', 'DELIVERY_SCHEDULED', 'COMPLETED'].includes(status)) {
-      pickupVerified = true;
+      pickupMessage = 'Share this 6-digit OTP with the laundry partner when they arrive to collect your clothes.';
     }
 
-    // Contextual Delivery OTP logic:
+    // Authoritative Delivery/Return OTP logic:
     // Show only when clean clothes ready / out for delivery, before completion
     let deliveryOtp: string | null = null;
     let deliveryVerified = false;
     let deliveryMessage: string | null = null;
 
-    if (['READY', 'DELIVERY_SCHEDULED'].includes(status) && deliveryRecord && !deliveryRecord.isUsed) {
+    if (deliveryRecord?.isUsed || status === 'COMPLETED') {
+      deliveryVerified = true;
+      deliveryMessage = 'Return OTP verified upon clean clothes delivery.';
+    } else if (deliveryRecord && !deliveryRecord.isUsed) {
       deliveryOtp = deliveryRecord.encryptedOtp 
         ? laundryOtpService.decryptForStudent(deliveryRecord.encryptedOtp) 
         : null;
-      deliveryMessage = 'Share this OTP with the laundry provider when your laundry is returned.';
-    } else if (status === 'COMPLETED') {
-      deliveryVerified = true;
+      deliveryMessage = 'Share this 6-digit OTP with the laundry partner when your clean clothes are returned.';
     }
 
     const baseAmount = Number(order.laundryBaseAmount || (order.finalPrice || order.estimatedPrice || 0) * 0.95);
@@ -475,9 +494,11 @@ export class LaundryController {
       orderNumber: order.orderNumber,
       trackingNumber: order.trackingNumber,
       status: order.status,
+      providerId: order.providerId || null,
       hallName: order.hallName,
       hallNumber: order.hallNumber,
       roomNumber: order.roomNumber,
+      addressSnapshot: `${order.hallName}${order.hallNumber ? ` (${order.hallNumber})` : ''}, Room ${order.roomNumber}`,
       pickupDate: order.pickupDate,
       preferredPickupTime: order.preferredPickupTime,
       preferredReturnTime: order.preferredReturnTime,
@@ -496,12 +517,14 @@ export class LaundryController {
       paymentStatus: order.paymentStatus,
       settlementStatus: order.settlementStatus,
       refundStatus: order.refundStatus,
-      // OTP Security
+      // OTP Security & Synchronization
       pickupOtp,
       pickupVerified,
       pickupMessage,
       deliveryOtp,
+      returnOtp: deliveryOtp,
       deliveryVerified,
+      returnVerified: deliveryVerified,
       deliveryMessage,
       // Related collections
       items: order.items || [],
@@ -639,7 +662,11 @@ export class LaundryController {
 
       const pickupOtpRecord = order.otps.find((o) => o.otpType === 'PICKUP');
       if (!pickupOtpRecord) {
-        res.status(400).json({ success: false, message: 'Pickup OTP not generated yet. Provider must accept order first.' });
+        res.status(400).json({ success: false, message: 'Pickup OTP not found for this laundry order.' });
+        return;
+      }
+      if (pickupOtpRecord.isUsed) {
+        res.status(400).json({ success: false, message: 'Pickup OTP has already been verified and cannot be reused.' });
         return;
       }
 
@@ -692,7 +719,11 @@ export class LaundryController {
 
       res.status(200).json({
         success: true,
-        message: 'Pickup OTP verified successfully! Laundry collected.'
+        message: 'Pickup OTP verified successfully! Laundry collected.',
+        order: {
+          id: order.id,
+          status: 'CLOTHES_COLLECTED'
+        }
       });
     } catch (err) {
       next(err);
@@ -728,6 +759,10 @@ export class LaundryController {
       const deliveryOtpRecord = order.otps.find((o) => o.otpType === 'DELIVERY');
       if (!deliveryOtpRecord) {
         res.status(400).json({ success: false, message: 'Delivery OTP not generated yet. Laundry must be marked ready/out for delivery first.' });
+        return;
+      }
+      if (deliveryOtpRecord.isUsed) {
+        res.status(400).json({ success: false, message: 'Delivery OTP has already been verified and cannot be reused.' });
         return;
       }
 
@@ -783,7 +818,11 @@ export class LaundryController {
 
       res.status(200).json({
         success: true,
-        message: 'Delivery OTP verified successfully! Order completed & provider settlement eligible.'
+        message: 'Delivery OTP verified successfully! Order completed & provider settlement eligible.',
+        order: {
+          id: order.id,
+          status: 'COMPLETED'
+        }
       });
     } catch (err) {
       next(err);
@@ -932,7 +971,11 @@ export class LaundryController {
 
       res.status(200).json({
         success: true,
-        message: `Status updated to ${status}`
+        message: `Status updated to ${status}`,
+        order: {
+          id: order.id,
+          status
+        }
       });
     } catch (err) {
       next(err);
@@ -1127,4 +1170,99 @@ export class LaundryController {
       next(err);
     }
   }
+
+  /**
+   * Raise a Complaint for an existing Laundry Order (Student action)
+   * Linked directly to the exact Laundry Order ID.
+   * Does NOT alter the laundry order status automatically.
+   */
+  public static async createComplaint(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const studentId = req.user?.studentId;
+      if (!studentId) {
+        res.status(401).json({ success: false, message: 'Only registered students can submit laundry complaints.' });
+        return;
+      }
+      const data = createLaundryComplaintSchema.parse(req.body);
+
+      // Verify exact laundry order exists
+      const order = await prisma.laundryOrder.findUnique({
+        where: { id: data.laundryOrderId },
+        include: { student: true }
+      });
+      if (!order) {
+        res.status(404).json({ success: false, message: 'Laundry order not found.' });
+        return;
+      }
+
+      // Check ownership
+      if (order.studentId !== studentId && req.user?.role !== 'ADMIN') {
+        res.status(403).json({ success: false, message: 'Access denied: You can only raise complaints for your own laundry orders.' });
+        return;
+      }
+
+      const studentName = order.student?.fullName || (req.user as any)?.fullName || (req.user as any)?.name || 'Student';
+      const complaintNumber = `CMP-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+
+      const complaint = await (prisma as any).laundryComplaint.create({
+        data: {
+          complaintNumber,
+          laundryOrderId: order.id,
+          studentId,
+          studentName,
+          category: data.category,
+          subject: data.subject,
+          description: data.description,
+          attachmentUrl: data.attachmentUrl || null,
+          status: 'OPEN'
+        }
+      });
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'LAUNDRY_COMPLAINT_CREATED',
+        entity: 'LaundryComplaint',
+        entityId: complaint.id,
+        newValue: { complaintNumber, laundryOrderId: order.id, category: data.category, subject: data.subject },
+        ipAddress: req.ip
+      });
+
+      res.status(201).json({
+        success: true,
+        message: `Complaint #${complaintNumber} registered successfully for Laundry Order #${order.orderNumber}.`,
+        complaint
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get complaints raised by the logged-in student for laundry orders
+   */
+  public static async getStudentComplaints(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const studentId = req.user?.studentId;
+      if (!studentId) {
+        res.status(401).json({ success: false, message: 'Unauthorized' });
+        return;
+      }
+
+      const complaints = await (prisma as any).laundryComplaint.findMany({
+        where: { studentId },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      res.status(200).json({
+        success: true,
+        complaints: complaints.map((c: any) => ({
+          ...c,
+          order: c.laundryOrder || c.order || null
+        }))
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
 }
+

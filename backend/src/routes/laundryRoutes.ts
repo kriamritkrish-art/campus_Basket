@@ -32,4 +32,8 @@ router.post('/:id/collect-cod', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), Laundr
 router.post('/:id/cod-collect', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.markCodCollected);
 router.post('/orders/:id/collect-cod', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.markCodCollected);
 
+// Laundry Complaints & Support
+router.post('/complaints', rbacGuard(['STUDENT', 'ADMIN']), LaundryController.createComplaint);
+router.get('/complaints', rbacGuard(['STUDENT', 'ADMIN']), LaundryController.getStudentComplaints);
+
 export default router;

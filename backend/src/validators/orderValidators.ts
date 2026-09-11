@@ -80,3 +80,18 @@ export const createSupportTicketSchema = z.object({
   message: z.string().min(10, 'Message must be at least 10 characters').max(2000),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).default('MEDIUM')
 });
+
+export const createLaundryComplaintSchema = z.object({
+  laundryOrderId: z.string().min(1, 'Laundry Order ID is required'),
+  category: z.string().min(1, 'Complaint category is required'),
+  subject: z.string().min(3, 'Subject must be at least 3 characters').max(200),
+  description: z.string().min(10, 'Description must be at least 10 characters').max(2000),
+  attachmentUrl: z.string().optional()
+});
+
+export const updateLaundryComplaintSchema = z.object({
+  status: z.enum(['OPEN', 'IN_REVIEW', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']).optional(),
+  adminResponse: z.string().optional(),
+  assignedTo: z.string().optional()
+});
+

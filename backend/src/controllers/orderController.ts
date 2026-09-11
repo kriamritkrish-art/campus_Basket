@@ -885,9 +885,12 @@ export class OrderController {
               deliveryBoy: laundryOrder.deliveryBoy || null,
               provider: laundryOrder.provider || null,
               student: laundryOrder.student || null,
-              deliveryOtp: laundryOrder.status === 'COMPLETED' ? null : (deliveryOtp || pickupOtp),
+              deliveryOtp: laundryOrder.status === 'COMPLETED' ? null : deliveryOtp,
+              returnOtp: laundryOrder.status === 'COMPLETED' ? null : deliveryOtp,
               deliveryOtpVerified: deliveryRecord?.isUsed || laundryOrder.status === 'COMPLETED',
+              returnOtpVerified: deliveryRecord?.isUsed || laundryOrder.status === 'COMPLETED',
               pickupOtp: pickupOtp,
+              pickupOtpVerified: pickupRecord?.isUsed || false,
               isLaundry: true
             }
           });

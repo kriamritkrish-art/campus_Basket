@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
 import { fallbackLaundryServices } from '../services/fallbackData';
+import { updateLaundryComplaintSchema } from '../validators/orderValidators';
+import { AuditService } from '../services/audit/AuditService';
 
 export class AdminServicesController {
   /**
@@ -129,6 +131,7 @@ export class AdminServicesController {
             student: true,
             items: true,
             provider: true,
+            otps: true,
             deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true } }
           },
           orderBy: { createdAt: 'desc' }
@@ -164,28 +167,47 @@ export class AdminServicesController {
         },
         serviceCatalog: fallbackLaundryServices,
         deliveryBoys,
-        orders: laundryOrders.map((l: any) => ({
-          id: l.id,
-          orderNumber: l.orderNumber,
-          studentName: l.student?.fullName || 'Student',
-          rollNumber: l.student?.rollNumber || '',
-          hallName: l.hallName || l.pickupHallId || 'Hall 11',
-          roomNumber: l.roomNumber || l.pickupRoom || 'B-304',
-          serviceType: l.serviceType || 'Wash & Steam Iron',
-          status: l.status,
-          estimatedPrice: Number(l.estimatedPrice),
-          finalPrice: l.finalPrice ? Number(l.finalPrice) : Number(l.estimatedPrice),
-          pickupDate: l.pickupDate,
-          preferredPickupTime: l.preferredPickupTime,
-          preferredReturnTime: l.preferredReturnTime,
-          itemsCount: l.items?.length || l.totalClothesCount || 1,
-          pickupOtpStatus: l.pickupOtpStatus || (l.status === 'REQUESTED' ? 'PENDING' : 'VERIFIED'),
-          deliveryOtpStatus: l.deliveryOtpStatus || (l.status === 'COMPLETED' ? 'VERIFIED' : 'PENDING'),
-          deliveryBoyId: l.deliveryBoyId || null,
-          deliveryBoyName: l.deliveryBoy?.fullName || 'Self-Fulfillment (Laundry Vendor)',
-          deliveryBoyMobile: l.deliveryBoy?.mobileNumber || null,
-          createdAt: l.createdAt
-        }))
+        orders: laundryOrders.map((l: any) => {
+          const pickupOtpRec = l.otps?.find((o: any) => o.otpType === 'PICKUP');
+          const deliveryOtpRec = l.otps?.find((o: any) => o.otpType === 'DELIVERY');
+          return {
+            id: l.id,
+            orderNumber: l.orderNumber,
+            trackingNumber: l.trackingNumber,
+            studentName: l.student?.fullName || 'Student',
+            studentMobile: l.student?.mobileNumber || '',
+            studentEmail: l.student?.collegeEmail || '',
+            rollNumber: l.student?.rollNumber || '',
+            hallName: l.hallName || 'Campus Hostel',
+            hallNumber: l.hallNumber || '',
+            roomNumber: l.roomNumber || '101',
+            addressSnapshot: `${l.hallName}${l.hallNumber ? ` (${l.hallNumber})` : ''}, Room ${l.roomNumber}`,
+            serviceType: l.serviceType || 'Wash & Steam Iron',
+            status: l.status,
+            estimatedPrice: Number(l.estimatedPrice),
+            finalPrice: l.finalPrice ? Number(l.finalPrice) : Number(l.estimatedPrice),
+            laundryBaseAmount: Number(l.laundryBaseAmount || 0),
+            serviceChargeAmount: Number(l.serviceChargeAmount || 0),
+            totalAmount: Number(l.totalAmount || l.finalPrice || l.estimatedPrice || 0),
+            onlinePaidAmount: Number(l.onlinePaidAmount || 0),
+            codAmount: Number(l.codAmount || 0),
+            paymentMethod: l.paymentMethod || 'COD',
+            paymentStatus: l.paymentStatus || 'PENDING',
+            pickupDate: l.pickupDate,
+            preferredPickupTime: l.preferredPickupTime,
+            preferredReturnTime: l.preferredReturnTime,
+            specialInstructions: l.specialInstructions || '',
+            items: l.items || [],
+            itemsCount: l.items?.length || l.totalClothesCount || 1,
+            pickupOtpStatus: pickupOtpRec?.isUsed ? 'VERIFIED' : 'PENDING',
+            deliveryOtpStatus: deliveryOtpRec?.isUsed ? 'VERIFIED' : 'PENDING',
+            provider: l.provider ? { id: l.provider.id, fullName: l.provider.fullName, mobileNumber: l.provider.mobileNumber } : null,
+            deliveryBoyId: l.deliveryBoyId || null,
+            deliveryBoyName: l.deliveryBoy?.fullName || 'Self-Fulfillment (Laundry Vendor)',
+            deliveryBoyMobile: l.deliveryBoy?.mobileNumber || null,
+            createdAt: l.createdAt
+          };
+        })
       });
     } catch (err) {
       next(err);
@@ -280,6 +302,145 @@ export class AdminServicesController {
           discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
           primaryImage: p.images?.find((i: any) => i.isPrimary)?.googleDriveUrl || p.images?.[0]?.googleDriveUrl || null
         }))
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get all laundry complaints for Admin Dashboard
+   */
+  public static async getLaundryComplaints(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const complaints = await (prisma as any).laundryComplaint.findMany({
+        orderBy: { createdAt: 'desc' }
+      });
+
+      // Enrich complaints with student & laundry order details
+      const enriched = await Promise.all(
+        complaints.map(async (c: any) => {
+          let order = null;
+          if (c.laundryOrderId) {
+            order = await prisma.laundryOrder.findUnique({
+              where: { id: c.laundryOrderId },
+              include: { student: true, provider: true, items: true, otps: true }
+            });
+          }
+          return {
+            id: c.id,
+            complaintNumber: c.complaintNumber,
+            laundryOrderId: c.laundryOrderId,
+            orderNumber: order?.orderNumber || c.laundryOrderId,
+            category: c.category,
+            subject: c.subject,
+            description: c.description,
+            attachmentUrl: c.attachmentUrl || null,
+            status: c.status,
+            adminResponse: c.adminResponse || null,
+            assignedTo: c.assignedTo || null,
+            resolvedAt: c.resolvedAt || null,
+            createdAt: c.createdAt,
+            updatedAt: c.updatedAt,
+            studentName: c.studentName || order?.student?.fullName || 'Student',
+            student: {
+              id: c.studentId,
+              fullName: c.studentName || order?.student?.fullName || 'Student',
+              rollNumber: order?.student?.rollNumber || '',
+              mobileNumber: order?.student?.mobileNumber || '',
+              collegeEmail: order?.student?.collegeEmail || ''
+            },
+            order: order ? {
+              id: order.id,
+              orderNumber: order.orderNumber,
+              status: order.status,
+              hallName: order.hallName,
+              roomNumber: order.roomNumber,
+              addressSnapshot: `${order.hallName}${order.hallNumber ? ` (${order.hallNumber})` : ''}, Room ${order.roomNumber}`,
+              totalAmount: Number(order.totalAmount || order.finalPrice || order.estimatedPrice || 0),
+              laundryBaseAmount: Number(order.laundryBaseAmount || 0),
+              serviceChargeAmount: Number(order.serviceChargeAmount || 0),
+              paymentMethod: order.paymentMethod,
+              paymentStatus: order.paymentStatus,
+              preferredPickupTime: order.preferredPickupTime,
+              preferredReturnTime: order.preferredReturnTime,
+              items: order.items || [],
+              provider: order.provider ? { fullName: order.provider.fullName, mobileNumber: order.provider.mobileNumber } : null,
+              createdAt: order.createdAt
+            } : null,
+            laundryOrder: order ? {
+              id: order.id,
+              orderNumber: order.orderNumber,
+              status: order.status,
+              hallName: order.hallName,
+              roomNumber: order.roomNumber,
+              addressSnapshot: `${order.hallName}${order.hallNumber ? ` (${order.hallNumber})` : ''}, Room ${order.roomNumber}`,
+              totalAmount: Number(order.totalAmount || order.finalPrice || order.estimatedPrice || 0),
+              laundryBaseAmount: Number(order.laundryBaseAmount || 0),
+              serviceChargeAmount: Number(order.serviceChargeAmount || 0),
+              paymentMethod: order.paymentMethod,
+              paymentStatus: order.paymentStatus,
+              preferredPickupTime: order.preferredPickupTime,
+              preferredReturnTime: order.preferredReturnTime,
+              items: order.items || [],
+              provider: order.provider ? { fullName: order.provider.fullName, mobileNumber: order.provider.mobileNumber } : null,
+              createdAt: order.createdAt
+            } : null
+          };
+        })
+      );
+
+      res.status(200).json({
+        success: true,
+        complaints: enriched
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Update a Laundry Complaint (Admin action)
+   * Update status, admin response, assignment. Does NOT change laundry order status.
+   */
+  public static async updateLaundryComplaint(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const data = updateLaundryComplaintSchema.parse(req.body);
+
+      const existing = await (prisma as any).laundryComplaint.findUnique({
+        where: { id }
+      });
+      if (!existing) {
+        res.status(404).json({ success: false, message: 'Complaint not found.' });
+        return;
+      }
+
+      const isResolving = data.status === 'RESOLVED' || data.status === 'CLOSED';
+      const updated = await (prisma as any).laundryComplaint.update({
+        where: { id },
+        data: {
+          ...(data.status ? { status: data.status } : {}),
+          ...(data.adminResponse !== undefined ? { adminResponse: data.adminResponse } : {}),
+          ...(data.assignedTo !== undefined ? { assignedTo: data.assignedTo } : {}),
+          ...(isResolving ? { resolvedAt: new Date() } : {})
+        }
+      });
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'LAUNDRY_COMPLAINT_UPDATED',
+        entity: 'LaundryComplaint',
+        entityId: id,
+        oldValue: { status: existing.status, adminResponse: existing.adminResponse },
+        newValue: { status: updated.status, adminResponse: updated.adminResponse },
+        ipAddress: req.ip
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Complaint updated successfully.',
+        complaint: updated
       });
     } catch (err) {
       next(err);
