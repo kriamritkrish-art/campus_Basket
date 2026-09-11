@@ -81,12 +81,12 @@ export class LaundryController {
         paymentMethod: data.paymentMethod
       });
 
-      // 2. Fetch default or active laundry provider
-      const laundryProvider = await prisma.serviceProvider.findFirst({
-        where: { serviceCategory: 'LAUNDRY', activeStatus: true }
-      });
+      // 2. Open broadcast pool: newly created order is available to all active laundry providers
+      const isCod = data.paymentMethod === 'COD';
+      const onlinePaidAmount = isCod ? 0 : pricing.onlinePaidAmount;
+      const codAmount = isCod ? pricing.totalAmount : pricing.codAmount;
 
-      // 3. Create Laundry Order in single transaction
+      // 3. Create Laundry Order in single transaction (providerId: null for broadcast pool)
       const newLaundryOrder = await prisma.$transaction(async (tx) => {
         const order = await tx.laundryOrder.create({
           data: {
@@ -94,7 +94,7 @@ export class LaundryController {
             trackingNumber,
             qrCodeData,
             studentId,
-            providerId: laundryProvider?.id || null,
+            providerId: null, // Broadcast pool: available to all active laundry providers to accept
             deliveryBoyId: null,
             status: 'REQUESTED',
             estimatedPrice: pricing.totalAmount,
@@ -102,12 +102,12 @@ export class LaundryController {
             laundryBaseAmount: pricing.laundryBaseAmount,
             serviceChargeAmount: pricing.serviceChargeAmount,
             totalAmount: pricing.totalAmount,
-            onlinePaidAmount: pricing.onlinePaidAmount,
-            codAmount: pricing.codAmount,
+            onlinePaidAmount: onlinePaidAmount,
+            codAmount: codAmount,
             codCollectedAmount: 0,
-            codStatus: data.paymentMethod === 'COD' ? 'PENDING' : 'NOT_APPLICABLE',
+            codStatus: isCod ? 'PENDING' : 'NOT_APPLICABLE',
             paymentMethod: data.paymentMethod,
-            paymentStatus: data.paymentMethod === 'ONLINE' ? 'PAID' : 'PARTIALLY_PAID',
+            paymentStatus: isCod ? 'PENDING' : (data.paymentMethod === 'ONLINE' ? 'PAID' : 'PARTIALLY_PAID'),
             settlementStatus: 'NOT_ELIGIBLE',
             refundStatus: 'NOT_APPLICABLE',
             serviceChargeRefundable: true,
@@ -132,7 +132,9 @@ export class LaundryController {
                 previousStatus: null,
                 newStatus: 'REQUESTED',
                 changedBy: 'STUDENT',
-                notes: `Laundry booked. Payment: ${data.paymentMethod}. Online advance: ₹${pricing.onlinePaidAmount}, COD Due: ₹${pricing.codAmount}`
+                notes: isCod
+                  ? `Laundry booking placed in broadcast pool. Payment: COD (Direct to Laundry Partner / QR Scanner). Total Amount: ₹${pricing.totalAmount}`
+                  : `Laundry booked. Payment: ${data.paymentMethod}. Online advance: ₹${onlinePaidAmount}, COD Due: ₹${codAmount}`
               }
             }
           }
@@ -179,7 +181,7 @@ export class LaundryController {
         total: pricing.totalAmount,
         payment: {
           method: data.paymentMethod,
-          status: data.paymentMethod === 'ONLINE' ? 'Paid Online' : 'Service Charge Paid Online, Cash on Delivery Pending'
+          status: isCod ? 'Payment Direct to Laundry Partner (COD / Provider QR Scanner)' : 'Paid Online'
         }
       });
 
@@ -193,43 +195,43 @@ export class LaundryController {
         }
       });
 
-      // 5. Append payment to Financial Ledger
-      try {
-        await LedgerService.recordEntry({
-          orderId: newLaundryOrder.id,
-          entryType: 'ORDER_PAYMENT',
-          debitAccount: data.paymentMethod === 'ONLINE' ? 'RAZORPAY_GATEWAY' : 'STUDENT_ONLINE_PAYMENT',
-          creditAccount: 'CAMPUS_ESCROW',
-          amount: pricing.onlinePaidAmount,
-          description: data.paymentMethod === 'COD' 
-            ? `Advance service charge collected online for laundry order ${orderNumber}`
-            : `Full online payment collected for laundry order ${orderNumber}`,
-          metadata: {
-            orderNumber,
-            paymentMethod: data.paymentMethod,
-            laundryBaseAmount: pricing.laundryBaseAmount,
-            serviceChargeAmount: pricing.serviceChargeAmount,
-            onlinePaidAmount: pricing.onlinePaidAmount,
-            codAmount: pricing.codAmount
-          }
-        });
-      } catch (err) {
-        console.warn('Failed to append laundry order to Financial Ledger:', err);
+      // 5. Append payment to Financial Ledger if online payment occurred
+      if (onlinePaidAmount > 0) {
+        try {
+          await LedgerService.recordEntry({
+            orderId: newLaundryOrder.id,
+            entryType: 'ORDER_PAYMENT',
+            debitAccount: data.paymentMethod === 'ONLINE' ? 'RAZORPAY_GATEWAY' : 'STUDENT_ONLINE_PAYMENT',
+            creditAccount: 'CAMPUS_ESCROW',
+            amount: onlinePaidAmount,
+            description: `Full online payment collected for laundry order ${orderNumber}`,
+            metadata: {
+              orderNumber,
+              paymentMethod: data.paymentMethod,
+              laundryBaseAmount: pricing.laundryBaseAmount,
+              serviceChargeAmount: pricing.serviceChargeAmount,
+              onlinePaidAmount,
+              codAmount
+            }
+          });
+        } catch (err) {
+          console.warn('Failed to append laundry order to Financial Ledger:', err);
+        }
       }
 
-      // 6. Initialize Razorpay Order for online payable portion (Full amount for ONLINE, Service Charge advance for COD)
+      // 6. Initialize Razorpay Order for online payable portion (only if ONLINE payment method)
       let razorpayData = null;
-      if (pricing.onlinePaidAmount > 0) {
+      if (!isCod && onlinePaidAmount > 0) {
         try {
           const rzpOrder = await razorpayService.createRazorpayOrder({
-            amountInRupees: pricing.onlinePaidAmount,
+            amountInRupees: onlinePaidAmount,
             receiptId: orderNumber,
             notes: {
               orderNumber,
               laundryOrderId: newLaundryOrder.id,
               studentEmail: student.user.email,
               paymentMethod: data.paymentMethod,
-              paymentPurpose: data.paymentMethod === 'COD' ? 'LAUNDRY_SERVICE_CHARGE_ADVANCE' : 'LAUNDRY_FULL_PAYMENT'
+              paymentPurpose: 'LAUNDRY_FULL_PAYMENT'
             }
           });
 
@@ -237,7 +239,7 @@ export class LaundryController {
             data: {
               laundryOrderId: newLaundryOrder.id,
               studentId,
-              amount: pricing.onlinePaidAmount,
+              amount: onlinePaidAmount,
               paymentMethod: 'RAZORPAY',
               status: 'PENDING',
               razorpayOrderId: rzpOrder.id
@@ -249,8 +251,8 @@ export class LaundryController {
             amount: rzpOrder.amount, // in paise
             currency: rzpOrder.currency || 'INR',
             razorpayOrderId: rzpOrder.id,
-            payableAmount: pricing.onlinePaidAmount,
-            paymentPurpose: data.paymentMethod === 'COD' ? 'LAUNDRY_SERVICE_CHARGE_ADVANCE' : 'LAUNDRY_FULL_PAYMENT'
+            payableAmount: onlinePaidAmount,
+            paymentPurpose: 'LAUNDRY_FULL_PAYMENT'
           };
         } catch (err) {
           console.warn('Failed to create Razorpay order for laundry booking:', err);
@@ -261,8 +263,8 @@ export class LaundryController {
 
       res.status(201).json({
         success: true,
-        message: data.paymentMethod === 'COD'
-          ? `Laundry booking created! Please complete payment of ₹${pricing.serviceChargeAmount} service charge online via Razorpay.`
+        message: isCod
+          ? `Laundry order placed successfully! It is now available for laundry partners to accept.`
           : `Laundry booking created! Please complete payment of ₹${pricing.totalAmount} via Razorpay.`,
         laundryOrder: {
           id: newLaundryOrder.id,
@@ -272,8 +274,8 @@ export class LaundryController {
           laundryBaseAmount: pricing.laundryBaseAmount,
           serviceChargeAmount: pricing.serviceChargeAmount,
           totalAmount: pricing.totalAmount,
-          onlinePaidAmount: pricing.onlinePaidAmount,
-          codAmount: pricing.codAmount,
+          onlinePaidAmount: onlinePaidAmount,
+          codAmount: codAmount,
           paymentMethod: newLaundryOrder.paymentMethod,
           paymentStatus: newLaundryOrder.paymentStatus
         },
@@ -285,9 +287,120 @@ export class LaundryController {
   }
 
   /**
-   * Helper to format student order with contextual OTP based on stage
+   * Laundry Provider accepts an unassigned order from broadcast pool.
+   * First to accept claims exclusive control over the order.
    */
-  private static formatOrderForStudent(order: any) {
+  public static async acceptOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const userRole = req.user?.role;
+      let providerId = req.user?.providerId;
+
+      if (!providerId && req.user?.userId) {
+        const prov = await prisma.serviceProvider.findUnique({ where: { userId: req.user.userId } });
+        if (prov) providerId = prov.id;
+      }
+
+      if (!providerId && userRole !== 'ADMIN') {
+        res.status(403).json({ success: false, message: 'Only registered laundry service providers can accept orders.' });
+        return;
+      }
+
+      const order = await prisma.laundryOrder.findUnique({
+        where: { id },
+        include: { otps: true }
+      });
+
+      if (!order) {
+        res.status(404).json({ success: false, message: 'Laundry order not found.' });
+        return;
+      }
+
+      // Check if already claimed by another provider
+      if (order.status !== 'REQUESTED' || (order.providerId && order.providerId !== providerId)) {
+        res.status(400).json({
+          success: false,
+          message: 'This laundry order has already been accepted by another laundry partner.'
+        });
+        return;
+      }
+
+      // Resolve provider info
+      const provider = providerId ? await prisma.serviceProvider.findUnique({
+        where: { id: providerId },
+        include: { laundryConfig: true }
+      }) : null;
+      const providerName = provider?.fullName || 'Campus Laundry Partner';
+
+      // Generate deferred Pickup OTP upon acceptance
+      const existingPickup = order.otps?.find((o: any) => o.otpType === 'PICKUP');
+      if (!existingPickup) {
+        const pickupOtpData = laundryOtpService.generateOtp(order.id, 'PICKUP');
+        await prisma.laundryOtp.create({
+          data: {
+            laundryOrderId: order.id,
+            otpType: 'PICKUP',
+            otpHash: pickupOtpData.otpHash,
+            encryptedOtp: pickupOtpData.encryptedOtp,
+            expiresAt: pickupOtpData.expiresAt
+          }
+        });
+      }
+
+      const updated = await prisma.laundryOrder.update({
+        where: { id },
+        data: {
+          providerId: providerId || order.providerId,
+          status: 'ACCEPTED',
+          pickupOtpGeneratedAt: new Date(),
+          statusHistory: {
+            create: {
+              previousStatus: order.status,
+              newStatus: 'ACCEPTED',
+              changedBy: providerName,
+              notes: `Order accepted by laundry partner: ${providerName}. Pickup OTP generated.`
+            }
+          }
+        },
+        include: {
+          items: true,
+          photos: true,
+          otps: true,
+          statusHistory: true,
+          provider: true
+        }
+      });
+
+      let cfg = null;
+      if (updated.providerId) {
+        cfg = await (prisma as any).laundryProviderConfig.findFirst({
+          where: { providerId: updated.providerId }
+        });
+      }
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'LAUNDRY_ORDER_ACCEPTED',
+        entity: 'LaundryOrder',
+        entityId: order.id,
+        newValue: { providerId, providerName, status: 'ACCEPTED' },
+        ipAddress: req.ip
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `Order #${order.orderNumber} successfully accepted! You now control this order.`,
+        order: LaundryController.formatOrderForStudent(updated, cfg)
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Helper to format student order with contextual OTP and provider payment scanner
+   */
+  private static formatOrderForStudent(order: any, providerConfig?: any) {
     const status = order.status;
     const otps: any[] = order.otps || [];
 
@@ -328,6 +441,18 @@ export class LaundryController {
     const serviceCharge = Number(order.serviceChargeAmount || (order.finalPrice || order.estimatedPrice || 0) * 0.05);
     const total = Number(order.totalAmount || order.finalPrice || order.estimatedPrice || 0);
 
+    // Build provider payment scanner details
+    let paymentScanner = null;
+    if (order.provider) {
+      const cfg = providerConfig || order.provider.laundryConfig;
+      paymentScanner = {
+        qrImage: cfg?.paymentQrImage || null,
+        upiId: cfg?.paymentUpiId || null,
+        accountName: cfg?.paymentAccountName || order.provider.fullName || 'Campus Laundry Partner',
+        instructions: cfg?.paymentInstructions || 'Scan this QR code using Google Pay, PhonePe, Paytm, or BHIM to pay laundry partner directly, or pay cash on collection/delivery.'
+      };
+    }
+
     return {
       id: order.id,
       orderNumber: order.orderNumber,
@@ -346,8 +471,8 @@ export class LaundryController {
       laundryBaseAmount: baseAmount,
       serviceChargeAmount: serviceCharge,
       totalAmount: total,
-      onlinePaidAmount: Number(order.onlinePaidAmount || (order.paymentMethod === 'ONLINE' ? total : serviceCharge)),
-      codAmount: Number(order.codAmount || (order.paymentMethod === 'COD' ? baseAmount : 0)),
+      onlinePaidAmount: Number(order.onlinePaidAmount || (order.paymentMethod === 'ONLINE' ? total : 0)),
+      codAmount: Number(order.codAmount || (order.paymentMethod === 'COD' ? total : 0)),
       codCollectedAmount: Number(order.codCollectedAmount || 0),
       codStatus: order.codStatus,
       paymentMethod: order.paymentMethod,
@@ -366,12 +491,17 @@ export class LaundryController {
       photos: order.photos || [],
       statusHistory: order.statusHistory || [],
       receipt: order.receipt || null,
-      provider: order.provider ? { fullName: order.provider.fullName, mobileNumber: order.provider.mobileNumber } : null
+      provider: order.provider ? {
+        id: order.provider.id,
+        fullName: order.provider.fullName,
+        mobileNumber: order.provider.mobileNumber,
+        paymentScanner
+      } : null
     };
   }
 
   /**
-   * Get student's laundry orders with contextual OTP and clear financial separation
+   * Get student's laundry orders with contextual OTP, provider scanner, and financial separation
    */
   public static async getStudentLaundryOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -384,14 +514,21 @@ export class LaundryController {
           photos: true,
           receipt: true,
           otps: true,
-          provider: { select: { fullName: true, mobileNumber: true } }
+          provider: true
         },
         orderBy: { createdAt: 'desc' }
       });
 
+      // Pre-fetch laundry configs for assigned providers to attach payment scanner
+      const providerIds = Array.from(new Set(orders.map((o) => o.providerId).filter(Boolean))) as string[];
+      const configs = await Promise.all(
+        providerIds.map((pid) => (prisma as any).laundryProviderConfig.findFirst({ where: { providerId: pid } }))
+      );
+      const configMap = new Map(configs.filter(Boolean).map((c: any) => [c.providerId, c]));
+
       res.status(200).json({
         success: true,
-        orders: orders.map((o) => LaundryController.formatOrderForStudent(o))
+        orders: orders.map((o) => LaundryController.formatOrderForStudent(o, configMap.get(o.providerId)))
       });
     } catch (err) {
       next(err);
@@ -399,7 +536,7 @@ export class LaundryController {
   }
 
   /**
-   * Get single order detail
+   * Get single order detail with provider payment scanner
    */
   public static async getOrderDetail(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -413,7 +550,7 @@ export class LaundryController {
           receipt: true,
           otps: true,
           codCollection: true,
-          provider: { select: { fullName: true, mobileNumber: true } }
+          provider: true
         }
       });
 
@@ -422,13 +559,38 @@ export class LaundryController {
         return;
       }
 
+      let config = null;
+      if (order.providerId) {
+        config = await (prisma as any).laundryProviderConfig.findFirst({
+          where: { providerId: order.providerId }
+        });
+      }
+
       res.status(200).json({
         success: true,
-        order: LaundryController.formatOrderForStudent(order)
+        order: LaundryController.formatOrderForStudent(order, config)
       });
     } catch (err) {
       next(err);
     }
+  }
+
+  /**
+   * Helper to ensure only the assigned provider (or ADMIN) controls the order
+   */
+  private static async verifyProviderOrderControl(order: any, req: Request): Promise<boolean> {
+    if (req.user?.role === 'ADMIN') return true;
+    if (req.user?.role === 'SERVICE_PROVIDER') {
+      let callerProvId = req.user?.providerId;
+      if (!callerProvId && req.user?.userId) {
+        const prov = await prisma.serviceProvider.findUnique({ where: { userId: req.user.userId } });
+        if (prov) callerProvId = prov.id;
+      }
+      if (order.providerId && callerProvId && order.providerId !== callerProvId) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -449,6 +611,12 @@ export class LaundryController {
 
       if (!order) {
         res.status(404).json({ success: false, message: 'Laundry order not found' });
+        return;
+      }
+
+      // Check exclusive provider control
+      if (!await LaundryController.verifyProviderOrderControl(order, req)) {
+        res.status(403).json({ success: false, message: 'Access denied: This laundry order is controlled by another laundry partner.' });
         return;
       }
 
@@ -531,6 +699,12 @@ export class LaundryController {
 
       if (!order) {
         res.status(404).json({ success: false, message: 'Laundry order not found' });
+        return;
+      }
+
+      // Check exclusive provider control
+      if (!await LaundryController.verifyProviderOrderControl(order, req)) {
+        res.status(403).json({ success: false, message: 'Access denied: This laundry order is controlled by another laundry partner.' });
         return;
       }
 
@@ -623,6 +797,12 @@ export class LaundryController {
 
       if (!order) {
         res.status(404).json({ success: false, message: 'Laundry order not found' });
+        return;
+      }
+
+      // Check exclusive provider control
+      if (!await LaundryController.verifyProviderOrderControl(order, req)) {
+        res.status(403).json({ success: false, message: 'Access denied: This laundry order is controlled by another laundry partner.' });
         return;
       }
 
@@ -751,6 +931,17 @@ export class LaundryController {
       const { collectedAmount, notes } = req.body;
       const providerId = req.user?.providerId || req.user?.userId || 'PROVIDER';
 
+      const order = await prisma.laundryOrder.findUnique({ where: { id } });
+      if (!order) {
+        res.status(404).json({ success: false, message: 'Laundry order not found' });
+        return;
+      }
+
+      if (!await LaundryController.verifyProviderOrderControl(order, req)) {
+        res.status(403).json({ success: false, message: 'Access denied: This laundry order is controlled by another laundry partner.' });
+        return;
+      }
+
       const result = await LaundryCodService.recordCollection({
         laundryOrderId: id,
         providerId,
@@ -778,6 +969,17 @@ export class LaundryController {
     try {
       const { id } = req.params;
       const data = laundryConditionSchema.parse(req.body);
+
+      const order = await prisma.laundryOrder.findUnique({ where: { id } });
+      if (!order) {
+        res.status(404).json({ success: false, message: 'Laundry order not found' });
+        return;
+      }
+
+      if (!await LaundryController.verifyProviderOrderControl(order, req)) {
+        res.status(403).json({ success: false, message: 'Access denied: This laundry order is controlled by another laundry partner.' });
+        return;
+      }
 
       const formattedNotes = [
         data.conditionNote,

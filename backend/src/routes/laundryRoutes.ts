@@ -18,6 +18,8 @@ router.get('/orders/:id', LaundryController.getOrderDetail);
 router.post('/orders/:id/cancel', LaundryController.cancelOrder);
 
 // Provider and student actions (OTP verification & status)
+router.post('/:id/accept', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.acceptOrder);
+router.post('/orders/:id/accept', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.acceptOrder);
 router.post('/:id/verify-pickup', rbacGuard(['ADMIN', 'SERVICE_PROVIDER', 'STUDENT']), LaundryController.verifyPickupOtp);
 router.post('/:id/verify-pickup-otp', rbacGuard(['ADMIN', 'SERVICE_PROVIDER', 'STUDENT']), LaundryController.verifyPickupOtp);
 router.post('/:id/verify-delivery', rbacGuard(['ADMIN', 'SERVICE_PROVIDER']), LaundryController.verifyDeliveryOtp);

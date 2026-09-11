@@ -33,6 +33,8 @@ router.get('/settlement-account', ProviderController.getSettlementAccount);
 router.post('/settlement-account', ProviderController.saveSettlementAccount);
 router.get('/laundry-config', ProviderController.getLaundryConfig);
 router.post('/laundry-config', ProviderController.saveLaundryConfig);
+router.get('/payment-scanner', ProviderController.getPaymentScanner);
+router.post('/payment-scanner', ProviderController.savePaymentScanner);
 router.get('/products', ProviderController.getProducts);
 router.post('/products', upload.single('image'), ProviderController.createProduct);
 router.patch('/products/:id', ProviderController.updateProduct);

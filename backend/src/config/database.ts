@@ -43,6 +43,8 @@ const persistentSettlements: any[] = loadSavedList('mock_settlements.json', fall
 const persistentCodCollections: any[] = loadSavedList('mock_cod_collections.json', fallbackCodCollections);
 const persistentDeliveryBoyEarnings: any[] = loadSavedList('mock_delivery_earnings.json', fallbackDeliveryBoyEarnings);
 const persistentLedger: any[] = loadSavedList('mock_financial_ledger.json', fallbackFinancialLedger);
+const persistentLaundryJobs: any[] = loadSavedList('mock_laundry_jobs.json', fallbackLaundryJobs);
+const persistentLaundryConfigs: any[] = loadSavedList('mock_laundry_provider_configs.json', fallbackLaundryProviderConfigs);
 const persistentProviderRequests: any[] = loadSavedList('mock_provider_requests.json', [
   {
     id: 'req_001',
@@ -1433,11 +1435,42 @@ const fallbackHandlers: Record<string, any> = {
     }
   },
   laundryOrder: {
-    count: async () => fallbackLaundryJobs.length,
+    count: async (args?: any) => {
+      let jobs = [...persistentLaundryJobs];
+      if (args?.where?.status) {
+        if (args.where.status.in && Array.isArray(args.where.status.in)) {
+          jobs = jobs.filter(j => args.where.status.in.includes(j.status));
+        } else if (typeof args.where.status === 'string') {
+          jobs = jobs.filter(j => j.status === args.where.status);
+        }
+      }
+      if (args?.where?.providerId !== undefined) {
+        jobs = jobs.filter(j => j.providerId === args.where.providerId);
+      }
+      return jobs.length;
+    },
     findMany: async (args?: any) => {
-      let jobs = [...fallbackLaundryJobs];
+      let jobs = [...persistentLaundryJobs];
       if (args?.where?.studentId) jobs = jobs.filter(j => j.studentId === args.where.studentId);
-      if (args?.where?.providerId) jobs = jobs.filter(j => j.providerId === args.where.providerId);
+      if (args?.where?.providerId !== undefined) {
+        if (args.where.providerId === null) {
+          jobs = jobs.filter(j => !j.providerId);
+        } else {
+          jobs = jobs.filter(j => j.providerId === args.where.providerId);
+        }
+      }
+      if (args?.where?.OR && Array.isArray(args.where.OR)) {
+        jobs = jobs.filter(j => {
+          return args.where.OR.some((cond: any) => {
+            if (cond.providerId !== undefined) {
+              if (cond.providerId === null) return !j.providerId;
+              return j.providerId === cond.providerId;
+            }
+            if (cond.status !== undefined) return j.status === cond.status;
+            return true;
+          });
+        });
+      }
       if (args?.where?.status) {
         if (args.where.status.in && Array.isArray(args.where.status.in)) {
           jobs = jobs.filter(j => args.where.status.in.includes(j.status));
@@ -1458,15 +1491,21 @@ const fallbackHandlers: Record<string, any> = {
         codStatus: j.codStatus || (j.paymentMethod === 'COD' ? (j.status === 'COMPLETED' ? 'COLLECTED' : 'PENDING') : 'NOT_APPLICABLE'),
         paymentMethod: j.paymentMethod || 'COD',
         paymentStatus: j.paymentStatus || 'PAID',
-        settlementStatus: j.settlementStatus || (j.status === 'COMPLETED' ? 'ELIGIBLE' : 'NOT_ELIGIBLE'),
         refundStatus: j.refundStatus || 'NOT_APPLICABLE',
-        codCollection: fallbackLaundryCodCollections.find(c => c.laundryOrderId === j.id) || null
+        otps: Array.from(new Map([...fallbackLaundryOtps.filter((o: any) => o.laundryOrderId === j.id), ...(j.otps || [])].map((o: any) => [o.id || o.otpType, o])).values()),
+        codCollection: fallbackLaundryCodCollections.find(c => c.laundryOrderId === j.id) || null,
+        provider: j.providerId ? (fallbackUsers.find((u: any) => u.provider?.id === j.providerId)?.provider || {
+          id: j.providerId,
+          fullName: 'Campus Express Laundry Hub',
+          mobileNumber: '+91 98765 12345',
+          serviceCategory: 'LAUNDRY'
+        }) : null
       }))));
     },
     findUnique: async (args: any) => {
       const id = args?.where?.id;
       const orderNumber = args?.where?.orderNumber;
-      const j = fallbackLaundryJobs.find((item) => (id && item.id === id) || (orderNumber && item.orderNumber === orderNumber)) as any;
+      const j = persistentLaundryJobs.find((item) => (id && item.id === id) || (orderNumber && item.orderNumber === orderNumber)) as any;
       if (!j) return null;
       return JSON.parse(JSON.stringify({
         ...j,
@@ -1483,9 +1522,15 @@ const fallbackHandlers: Record<string, any> = {
         refundStatus: j.refundStatus || 'NOT_APPLICABLE',
         items: j.items || [],
         photos: j.photos || [],
-        otps: j.otps || [],
+        otps: Array.from(new Map([...fallbackLaundryOtps.filter((o: any) => o.laundryOrderId === j.id), ...(j.otps || [])].map((o: any) => [o.id || o.otpType, o])).values()),
         statusHistory: j.statusHistory || [],
-        codCollection: fallbackLaundryCodCollections.find(c => c.laundryOrderId === j.id) || null
+        codCollection: fallbackLaundryCodCollections.find(c => c.laundryOrderId === j.id) || null,
+        provider: j.providerId ? (fallbackUsers.find((u: any) => u.provider?.id === j.providerId)?.provider || {
+          id: j.providerId,
+          fullName: 'Campus Express Laundry Hub',
+          mobileNumber: '+91 98765 12345',
+          serviceCategory: 'LAUNDRY'
+        }) : null
       }));
     },
     create: async (args: any) => {
@@ -1503,7 +1548,7 @@ const fallbackHandlers: Record<string, any> = {
         trackingNumber: args.data.trackingNumber || `TRK-${orderId}`,
         qrCodeData: args.data.qrCodeData || '{}',
         studentId: args.data.studentId,
-        providerId: args.data.providerId || 'prov_laundry',
+        providerId: args.data.providerId !== undefined ? args.data.providerId : null,
         deliveryBoyId: args.data.deliveryBoyId || null,
         status: args.data.status || 'REQUESTED',
         estimatedPrice: totalAmount,
@@ -1547,11 +1592,12 @@ const fallbackHandlers: Record<string, any> = {
         createdAt: new Date(),
         updatedAt: new Date()
       };
-      fallbackLaundryJobs.unshift(newJob as any);
+      persistentLaundryJobs.unshift(newJob as any);
+      saveList('mock_laundry_jobs.json', persistentLaundryJobs);
       return JSON.parse(JSON.stringify(newJob));
     },
     update: async (args: any) => {
-      const job = fallbackLaundryJobs.find((j) => j.id === args.where.id || j.orderNumber === args.where.orderNumber) as any;
+      const job = persistentLaundryJobs.find((j) => j.id === args.where.id || j.orderNumber === args.where.orderNumber) as any;
       if (job) {
         Object.assign(job, args.data);
         if (args.data.statusHistory?.create) {
@@ -1559,6 +1605,7 @@ const fallbackHandlers: Record<string, any> = {
           job.statusHistory.push({ id: `lh_${Date.now()}`, ...args.data.statusHistory.create, createdAt: new Date() });
         }
         job.updatedAt = new Date();
+        saveList('mock_laundry_jobs.json', persistentLaundryJobs);
         return JSON.parse(JSON.stringify(job));
       }
       return args.data;
@@ -2296,30 +2343,40 @@ const fallbackHandlers: Record<string, any> = {
     }
   },
   laundryProviderConfig: {
-    findUnique: async (args: any) => fallbackLaundryProviderConfigs.find(l => l.providerId === args.where.providerId || l.id === args.where.id) || null,
-    findFirst: async (args: any) => fallbackLaundryProviderConfigs.find(l => l.providerId === args.where.providerId) || null,
+    findUnique: async (args: any) => {
+      const found = persistentLaundryConfigs.find(l => l.providerId === args.where.providerId || l.id === args.where.id);
+      return found ? JSON.parse(JSON.stringify(found)) : null;
+    },
+    findFirst: async (args: any) => {
+      const found = persistentLaundryConfigs.find(l => l.providerId === args.where.providerId);
+      return found ? JSON.parse(JSON.stringify(found)) : null;
+    },
     create: async (args: any) => {
       const c = { id: `lpc_${Date.now()}`, createdAt: new Date(), updatedAt: new Date(), ...args.data };
-      fallbackLaundryProviderConfigs.push(c);
-      return c;
+      persistentLaundryConfigs.push(c);
+      saveList('mock_laundry_provider_configs.json', persistentLaundryConfigs);
+      return JSON.parse(JSON.stringify(c));
     },
     update: async (args: any) => {
-      const c = fallbackLaundryProviderConfigs.find(l => l.providerId === args.where.providerId || l.id === args.where.id);
+      const c = persistentLaundryConfigs.find(l => l.providerId === args.where.providerId || l.id === args.where.id);
       if (c) {
         Object.assign(c, args.data, { updatedAt: new Date() });
-        return c;
+        saveList('mock_laundry_provider_configs.json', persistentLaundryConfigs);
+        return JSON.parse(JSON.stringify(c));
       }
       return args.data;
     },
     upsert: async (args: any) => {
-      const existing = fallbackLaundryProviderConfigs.find(l => l.providerId === args.where.providerId);
+      const existing = persistentLaundryConfigs.find(l => l.providerId === args.where.providerId);
       if (existing) {
         Object.assign(existing, args.update, { updatedAt: new Date() });
-        return existing;
+        saveList('mock_laundry_provider_configs.json', persistentLaundryConfigs);
+        return JSON.parse(JSON.stringify(existing));
       }
       const created = { id: `lpc_${Date.now()}`, createdAt: new Date(), updatedAt: new Date(), ...args.create };
-      fallbackLaundryProviderConfigs.push(created);
-      return created;
+      persistentLaundryConfigs.push(created);
+      saveList('mock_laundry_provider_configs.json', persistentLaundryConfigs);
+      return JSON.parse(JSON.stringify(created));
     }
   },
   foodOrderDetails: {

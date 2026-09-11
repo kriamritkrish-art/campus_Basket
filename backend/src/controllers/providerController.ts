@@ -66,7 +66,7 @@ export class ProviderController {
         (provider.serviceCategory.toLowerCase().includes('laundry') ||
          provider.serviceCategory === 'LAUNDRY');
 
-      const [products, orders, laundryJobs] = await Promise.all([
+      const [products, orders, laundryJobs, availableLaundryJobs, laundryConfig] = await Promise.all([
         prisma.product.findMany({
           where: { providerId },
           include: { category: true, images: true, inventory: true },
@@ -93,7 +93,27 @@ export class ProviderController {
               },
               orderBy: { createdAt: 'desc' }
             })
-          : Promise.resolve([])
+          : Promise.resolve([]),
+        isLaundryProvider
+          ? prisma.laundryOrder.findMany({
+              where: {
+                status: 'REQUESTED',
+                providerId: null
+              },
+              include: {
+                student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
+                items: true,
+                photos: true,
+                otps: true
+              },
+              orderBy: { createdAt: 'desc' }
+            })
+          : Promise.resolve([]),
+        isLaundryProvider
+          ? (prisma as any).laundryProviderConfig.findFirst({
+              where: { providerId }
+            })
+          : Promise.resolve(null)
       ]);
 
       const deliveredOrders = orders.filter((o) => o.status === 'DELIVERED');
@@ -105,7 +125,7 @@ export class ProviderController {
         .filter((o) => new Date(o.createdAt) >= monthStart)
         .reduce((sum, o) => sum + Number(o.totalAmount), 0);
 
-      const formattedLaundryJobs = laundryJobs.map((j) => {
+      const formatJob = (j: any, isAvailablePool = false) => {
         let qr: any = {};
         try { qr = JSON.parse(j.qrCodeData || '{}'); } catch {}
         const pickupOtpRec = j.otps?.find((o: any) => o.otpType === 'PICKUP');
@@ -124,6 +144,14 @@ export class ProviderController {
           specialInstructions: j.specialInstructions,
           estimatedPrice: Number(j.estimatedPrice),
           finalPrice: j.finalPrice ? Number(j.finalPrice) : Number(j.estimatedPrice),
+          laundryBaseAmount: Number(j.laundryBaseAmount || (j.finalPrice || j.estimatedPrice || 0) * 0.95),
+          serviceChargeAmount: Number(j.serviceChargeAmount || (j.finalPrice || j.estimatedPrice || 0) * 0.05),
+          totalAmount: Number(j.totalAmount || j.finalPrice || j.estimatedPrice || 0),
+          onlinePaidAmount: Number(j.onlinePaidAmount || 0),
+          codAmount: Number(j.codAmount || j.totalAmount || 0),
+          codStatus: j.codStatus || 'PENDING',
+          paymentMethod: j.paymentMethod || 'COD',
+          isAvailablePool,
           student: j.student,
           deliveryBoy: j.deliveryBoy,
           items: j.items,
@@ -140,7 +168,10 @@ export class ProviderController {
           deliveryOtpStatus: deliveryOtpRec?.isUsed ? 'VERIFIED' : (j.status === 'COMPLETED' ? 'VERIFIED' : 'PENDING'),
           createdAt: j.createdAt
         };
-      });
+      };
+
+      const formattedLaundryJobs = laundryJobs.map((j) => formatJob(j, false));
+      const formattedAvailableJobs = availableLaundryJobs.map((j) => formatJob(j, true));
 
       res.status(200).json({
         success: true,
@@ -167,13 +198,21 @@ export class ProviderController {
           totalSales,
           todaySales,
           monthlySales,
-          activeLaundryCount: laundryJobs.filter((l) => l.status !== 'COMPLETED' && l.status !== 'CANCELLED').length
+          activeLaundryCount: laundryJobs.filter((l) => l.status !== 'COMPLETED' && l.status !== 'CANCELLED').length,
+          availableLaundryCount: availableLaundryJobs.length
         },
         recentOrders: orders.slice(0, 10).map((o) => ({
           ...o,
           totalAmount: Number(o.totalAmount)
         })),
-        laundryJobs: formattedLaundryJobs
+        laundryJobs: formattedLaundryJobs,
+        availableLaundryJobs: formattedAvailableJobs,
+        paymentScanner: laundryConfig ? {
+          qrImage: laundryConfig.paymentQrImage || null,
+          upiId: laundryConfig.paymentUpiId || null,
+          accountName: laundryConfig.paymentAccountName || provider.fullName,
+          instructions: laundryConfig.paymentInstructions || 'Scan this QR code using Google Pay, PhonePe, Paytm, or BHIM to pay directly to the laundry partner, or pay cash on collection/delivery.'
+        } : null
       });
     } catch (err) {
       next(err);
@@ -1466,6 +1505,86 @@ export class ProviderController {
         success: true,
         message: 'Laundry rate card and operations configuration saved.',
         data: config
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get Provider's Payment Scanner and Direct QR details
+   */
+  public static async getPaymentScanner(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const providerId = await resolveProviderId(req);
+      if (!providerId) {
+        res.status(403).json({ success: false, message: 'Provider profile required' });
+        return;
+      }
+
+      const provider = await prisma.serviceProvider.findUnique({ where: { id: providerId } });
+      const config = await (prisma as any).laundryProviderConfig.findFirst({
+        where: { providerId }
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          providerId,
+          providerName: provider?.fullName || '',
+          paymentQrImage: config?.paymentQrImage || null,
+          paymentUpiId: config?.paymentUpiId || null,
+          paymentAccountName: config?.paymentAccountName || provider?.fullName || '',
+          paymentInstructions: config?.paymentInstructions || 'Scan this QR code using Google Pay, PhonePe, Paytm, or BHIM to pay directly to the laundry partner, or pay cash on collection/delivery.'
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Save Provider's Payment Scanner (JPEG format image) and details
+   */
+  public static async savePaymentScanner(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const providerId = await resolveProviderId(req);
+      if (!providerId) {
+        res.status(403).json({ success: false, message: 'Provider profile required' });
+        return;
+      }
+
+      const { paymentQrImage, paymentUpiId, paymentAccountName, paymentInstructions } = req.body;
+
+      const provider = await prisma.serviceProvider.findUnique({ where: { id: providerId } });
+
+      const config = await (prisma as any).laundryProviderConfig.upsert({
+        where: { providerId },
+        update: {
+          paymentQrImage: paymentQrImage !== undefined ? paymentQrImage : undefined,
+          paymentUpiId: paymentUpiId !== undefined ? paymentUpiId : undefined,
+          paymentAccountName: paymentAccountName !== undefined ? paymentAccountName : provider?.fullName,
+          paymentInstructions: paymentInstructions !== undefined ? paymentInstructions : undefined,
+          updatedAt: new Date()
+        },
+        create: {
+          providerId,
+          paymentQrImage: paymentQrImage || null,
+          paymentUpiId: paymentUpiId || null,
+          paymentAccountName: paymentAccountName || provider?.fullName || '',
+          paymentInstructions: paymentInstructions || 'Scan this QR code using Google Pay, PhonePe, Paytm, or BHIM to pay directly to the laundry partner, or pay cash on collection/delivery.'
+        }
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Payment scanner and details saved successfully!',
+        data: {
+          paymentQrImage: config.paymentQrImage,
+          paymentUpiId: config.paymentUpiId,
+          paymentAccountName: config.paymentAccountName,
+          paymentInstructions: config.paymentInstructions
+        }
       });
     } catch (err) {
       next(err);
