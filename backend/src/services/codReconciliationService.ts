@@ -155,17 +155,25 @@ export class CodReconciliationService {
     // COD Eligibility: Must be delivered, not cancelled, COD Due > 0, and not a pickup/return order
     const isEligibleOrder = isDelivered && !isCancelled && codAmountDue > 0 && orderType === 'CUSTOMER_ORDER';
 
-    // Delivery Boy resolution - strictly by deliveryBoyId or userId or runner phone
-    const assignedDeliveryBoyId = order.deliveryBoyId || codEntry?.deliveryBoyId || null;
-    const runner = assignedDeliveryBoyId
-      ? deliveryBoys.find((d: any) =>
-          d.id === assignedDeliveryBoyId ||
-          d.userId === assignedDeliveryBoyId ||
-          (d.mobileNumber && (order.deliveryBoyPhone === d.mobileNumber || codEntry?.deliveryBoyPhone === d.mobileNumber))
-        )
-      : null;
-    const runnerName = runner?.fullName || (assignedDeliveryBoyId ? 'Campus Delivery Partner' : 'Unassigned Runner');
-    const runnerPhone = runner?.mobileNumber || runner?.phone || (runner as any)?.user?.phone || null;
+    // Delivery Boy resolution - robust multi-attribute matching (ID, user ID, phone, name)
+    const assignedDeliveryBoyId = order.deliveryBoyId || codEntry?.deliveryBoyId || order.deliveryBoy?.id || null;
+    const orderRunnerPhone = order.deliveryBoyPhone || order.deliveryBoy?.mobileNumber || order.deliveryBoy?.phone || codEntry?.deliveryBoyPhone || null;
+    const cleanOrderPhone = orderRunnerPhone ? String(orderRunnerPhone).replace(/\D/g, '') : '';
+    const orderRunnerName = order.deliveryBoy?.fullName || order.deliveryBoy?.name || null;
+
+    const runner = deliveryBoys.find((d: any) => {
+      if (assignedDeliveryBoyId && (d.id === assignedDeliveryBoyId || d.userId === assignedDeliveryBoyId)) return true;
+      const dPhone = String(d.mobileNumber || d.phone || d.user?.phone || d.user?.mobileNumber || '').replace(/\D/g, '');
+      if (cleanOrderPhone && dPhone && (dPhone === cleanOrderPhone || dPhone.endsWith(cleanOrderPhone) || cleanOrderPhone.endsWith(dPhone))) return true;
+      if (assignedDeliveryBoyId && d.id && (assignedDeliveryBoyId.includes(d.id) || d.id.includes(assignedDeliveryBoyId))) return true;
+      if (orderRunnerName && d.fullName && orderRunnerName.trim().toLowerCase() === d.fullName.trim().toLowerCase()) {
+        if (!cleanOrderPhone || !dPhone || cleanOrderPhone === dPhone) return true;
+      }
+      return false;
+    });
+
+    const runnerName = runner?.fullName || orderRunnerName || (assignedDeliveryBoyId ? 'Campus Delivery Partner' : 'Unassigned Runner');
+    const runnerPhone = runner?.mobileNumber || runner?.phone || (runner as any)?.user?.phone || orderRunnerPhone || null;
 
     // Provider resolution
     const prov = providers.find((p: any) => p.id === order.providerId) || order.provider;
@@ -301,14 +309,35 @@ export class CodReconciliationService {
     deliveryBoy: any,
     orders: NormalizedCodOrder[]
   ): DeliveryBoyCodSummary {
-    const boyId = deliveryBoy.id;
-    const boyUserId = deliveryBoy.userId;
-    const boyPhone = deliveryBoy.mobileNumber || deliveryBoy.phone;
+    const boyId = String(deliveryBoy.id || '');
+    const boyUserId = String(deliveryBoy.userId || '');
+    const boyPhone = deliveryBoy.mobileNumber || deliveryBoy.phone || deliveryBoy.user?.phone;
+    const cleanBoyPhone = boyPhone ? String(boyPhone).replace(/\D/g, '') : '';
+    const boyName = String(deliveryBoy.fullName || deliveryBoy.name || '').trim().toLowerCase();
 
-    // Filter orders assigned to this delivery boy (matching id, userId, or runnerPhone)
+    // Filter orders assigned to this delivery boy (matching id, userId, phone, or runner name)
     const boyOrders = orders.filter((o) => {
+      // 1. Match by DeliveryBoy ID or User ID
       if (o.deliveryBoyId && (o.deliveryBoyId === boyId || o.deliveryBoyId === boyUserId)) return true;
-      if (boyPhone && o.runnerPhone && o.runnerPhone.replace(/\D/g, '') === String(boyPhone).replace(/\D/g, '')) return true;
+      if (o.deliveryBoy && (o.deliveryBoy.id === boyId || (o.deliveryBoy as any).userId === boyUserId)) return true;
+
+      // 2. Match by normalized phone number
+      const oPhone = String(o.runnerPhone || o.deliveryBoy?.mobileNumber || (o.deliveryBoy as any)?.phone || '').replace(/\D/g, '');
+      if (cleanBoyPhone && oPhone && (cleanBoyPhone === oPhone || cleanBoyPhone.endsWith(oPhone) || oPhone.endsWith(cleanBoyPhone))) {
+        return true;
+      }
+
+      // 3. Match by ID substring (e.g. db_boy_sourav_1 vs sourav_1)
+      if (o.deliveryBoyId && boyId && (o.deliveryBoyId.includes(boyId) || boyId.includes(o.deliveryBoyId))) {
+        return true;
+      }
+
+      // 4. Match by Runner Full Name if phone does not conflict
+      const oName = String(o.runnerName || o.deliveryBoy?.fullName || '').trim().toLowerCase();
+      if (boyName && oName && boyName === oName && boyName !== 'campus delivery partner' && boyName !== 'unassigned runner') {
+        if (!cleanBoyPhone || !oPhone || cleanBoyPhone === oPhone) return true;
+      }
+
       return false;
     });
 

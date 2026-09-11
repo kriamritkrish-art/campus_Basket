@@ -453,12 +453,17 @@ export class AdminPaymentController {
         runnerMap.set(boy.id, summary);
       }
 
-      // If an order has a deliveryBoyId not in deliveryBoys list, include that runner only if they have collectible COD orders
+      // If an order has a deliveryBoyId not in deliveryBoys list, include that runner only if not already attributed and has collectible COD orders
       for (const row of codRows) {
+        const alreadyClaimed = Array.from(runnerMap.values()).some((summary) =>
+          summary.orders.some((o: any) => o.orderId === row.orderId || o.orderNumber === row.orderNumber)
+        );
+        if (alreadyClaimed) continue;
+
         if (row.deliveryBoyId && !runnerMap.has(row.deliveryBoyId)) {
           const pseudoRunner = {
             id: row.deliveryBoyId,
-            fullName: row.runnerName,
+            fullName: row.runnerName !== 'Campus Delivery Partner' ? row.runnerName : `Runner (${row.deliveryBoyId})`,
             mobileNumber: row.runnerPhone || '+91 98765 43220',
             vehicleType: 'Bicycle'
           };
