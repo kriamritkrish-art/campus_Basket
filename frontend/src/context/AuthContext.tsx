@@ -100,8 +100,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('nit_token');
       localStorage.removeItem('nit_role');
+      localStorage.removeItem('nit_cart_items');
+      localStorage.removeItem('nit_applied_coupon');
       sessionStorage.removeItem('nit_token');
       sessionStorage.removeItem('nit_role');
+      sessionStorage.removeItem('nit_cart_items');
+      sessionStorage.removeItem('nit_applied_coupon');
+      window.dispatchEvent(new Event('campus_basket_logout'));
     }
     setUser(null);
     window.location.href = '/login';

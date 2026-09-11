@@ -674,13 +674,23 @@ export default function AdminPaymentsPage() {
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg border text-sm flex items-center gap-2 ${
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg border text-sm flex items-center justify-between gap-3 ${
           toastMessage.type === 'success'
             ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
             : 'bg-red-50 border-red-200 text-red-800'
         }`}>
-          {toastMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4 text-red-600" />}
-          <span className="font-medium">{toastMessage.text}</span>
+          <div className="flex items-center gap-2">
+            {toastMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />}
+            <span className="font-medium">{toastMessage.text}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="p-1 rounded-md text-gray-400 hover:text-gray-700 hover:bg-black/5 transition-colors cursor-pointer shrink-0"
+            aria-label="Dismiss notification"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 

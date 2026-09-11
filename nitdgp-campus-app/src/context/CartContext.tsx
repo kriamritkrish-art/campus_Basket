@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CartItem, Product } from '../types';
 import { apiRequest } from '../lib/api';
+import { X } from 'lucide-react';
 
 interface CartContextType {
   items: CartItem[];
@@ -74,6 +75,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     localStorage.setItem('nit_cart_items', JSON.stringify(items));
   }, [items]);
+
+  // Clear cart when user logs out
+  useEffect(() => {
+    const handleLogout = () => {
+      setItems([]);
+      setAppliedCoupon(null);
+      setDiscountAmount(0);
+      try {
+        localStorage.removeItem('nit_cart_items');
+        localStorage.removeItem('nit_applied_coupon');
+      } catch {}
+    };
+    window.addEventListener('campus_basket_logout', handleLogout);
+    return () => window.removeEventListener('campus_basket_logout', handleLogout);
+  }, []);
 
   const subtotal = items.reduce((sum, i) => sum + i.itemTotal, 0);
   const deliveryFee = subtotal > 250 || subtotal === 0 ? 0 : 15;
@@ -201,11 +217,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     >
       {children}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 bg-[#212121] text-white px-4 py-3 rounded-xl shadow-2xl border border-gray-700 animate-in fade-in slide-in-from-bottom-5 duration-200">
-          <div className="w-5 h-5 rounded-full bg-[#689f38] text-white flex items-center justify-center font-bold text-xs shrink-0">
+        <div className="fixed bottom-20 md:bottom-24 right-4 sm:right-6 z-50 flex items-center gap-3 bg-[#1e293b]/95 backdrop-blur-md text-white pl-4 pr-3 py-3 rounded-2xl shadow-2xl border border-slate-700/80 animate-in fade-in slide-in-from-bottom-4 duration-200 max-w-sm">
+          <div className="w-5 h-5 rounded-full bg-[#4F9D2F] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
             ✓
           </div>
-          <span className="text-xs font-semibold">{toastMessage}</span>
+          <span className="text-xs font-semibold text-slate-100 flex-1 leading-tight">{toastMessage}</span>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/60 transition-colors cursor-pointer shrink-0"
+            aria-label="Dismiss notification"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
     </CartContext.Provider>

@@ -155,6 +155,7 @@ export default function HomePage() {
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedSubfilter, setSelectedSubfilter] = useState('all');
   const [activeOrder, setActiveOrder] = useState<any>(null);
+  const [pastOrders, setPastOrders] = useState<any[]>([]);
 
   const studentName =
     user?.student?.fullName?.split(' ')[0] ||
@@ -202,12 +203,13 @@ export default function HomePage() {
     }
   }, []);
 
-  // Fetch active order for the student if logged in
+  // Fetch orders for the student if logged in
   useEffect(() => {
     if (user) {
       apiRequest('/api/orders')
         .then((res) => {
           if (res.success && Array.isArray(res.orders)) {
+            setPastOrders(res.orders);
             const active = res.orders.find((o: any) =>
               ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'].includes(o.status)
             );
@@ -215,6 +217,9 @@ export default function HomePage() {
           }
         })
         .catch(() => {});
+    } else {
+      setPastOrders([]);
+      setActiveOrder(null);
     }
   }, [user]);
 
@@ -358,10 +363,51 @@ export default function HomePage() {
     }
   };
 
-  // Specific student favorites for "Order Again" section
+  // Specific student favorites for "Order Again" section based on customer's actual past orders
   const orderAgainItems = useMemo(() => {
-    return products.slice(0, 3);
-  }, [products]);
+    if (!user || !pastOrders || pastOrders.length === 0) {
+      return [];
+    }
+
+    const seenProductIds = new Set<string>();
+    const orderedList: any[] = [];
+
+    for (const order of pastOrders) {
+      if (Array.isArray(order.items)) {
+        for (const item of order.items) {
+          const prodId = item.productId || item.product?.id;
+          if (prodId && !seenProductIds.has(prodId)) {
+            seenProductIds.add(prodId);
+            const matched = products.find((p) => p.id === prodId);
+            if (matched) {
+              orderedList.push(matched);
+            } else if (item.product) {
+              orderedList.push({
+                ...item.product,
+                price: Number(item.unitPrice || item.product.price || 0),
+                discountPrice: Number(item.unitPrice || item.product.discountPrice || item.product.price || 0)
+              });
+            } else {
+              orderedList.push({
+                id: prodId,
+                name: item.productName || item.name || 'Campus Item',
+                price: Number(item.unitPrice || 0),
+                discountPrice: Number(item.unitPrice || 0),
+                stock: 20,
+                isAvailable: true,
+                primaryImage: item.image || null,
+                categoryId: 'cat_food'
+              });
+            }
+          }
+          if (orderedList.length >= 6) break;
+        }
+      }
+      if (orderedList.length >= 6) break;
+    }
+
+    return orderedList;
+  }, [user, pastOrders, products]);
 
   // Smart pick recommendation item
   const smartPickItem = useMemo(() => {
@@ -640,13 +686,15 @@ export default function HomePage() {
                 <span>📦</span>
                 <span>Track Order</span>
               </Link>
-              <a
-                href="#order-again"
-                className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
-              >
-                <span>🔄</span>
-                <span>Order Again</span>
-              </a>
+              {orderAgainItems.length > 0 && (
+                <a
+                  href="#order-again"
+                  className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
+                >
+                  <span>🔄</span>
+                  <span>Order Again</span>
+                </a>
+              )}
             </div>
           </div>
         </section>
@@ -654,56 +702,58 @@ export default function HomePage() {
         {/* ==================================================== */}
         {/* 5. PERSONALIZED SECTION: ORDER AGAIN                 */}
         {/* ==================================================== */}
-        <section id="order-again" className="space-y-3 w-full min-w-0">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm sm:text-base font-black uppercase tracking-wider text-[#172033]">
-                Order Again
-              </h2>
-              <p className="text-xs text-gray-500">Your recent campus favorites</p>
+        {orderAgainItems.length > 0 && (
+          <section id="order-again" className="space-y-3 w-full min-w-0">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm sm:text-base font-black uppercase tracking-wider text-[#172033]">
+                  Order Again
+                </h2>
+                <p className="text-xs text-gray-500">Your recent campus favorites</p>
+              </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
-            {orderAgainItems.map((prod) => (
-              <div
-                key={prod.id}
-                className="bg-white border border-[#E5E7EB] rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-xs hover:border-gray-300 transition-colors w-full min-w-0"
-              >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-12 h-12 bg-[#F7F8F6] rounded-xl flex items-center justify-center p-1 shrink-0 overflow-hidden">
-                    <img
-                      src={prod.primaryImage || prod.images?.[0]?.googleDriveUrl}
-                      alt={prod.name}
-                      className="max-h-full max-w-full object-contain"
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-bold text-xs sm:text-sm text-[#172033] truncate">
-                      {prod.name}
-                    </h3>
-                    <div className="text-[11px] text-gray-500 flex items-center gap-1.5 mt-0.5">
-                      <span className="font-black text-[#172033]">₹{prod.discountPrice || prod.price}</span>
-                      <span>•</span>
-                      <span>10–15 min</span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+              {orderAgainItems.map((prod) => (
+                <div
+                  key={prod.id}
+                  className="bg-white border border-[#E5E7EB] rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-xs hover:border-gray-300 transition-colors w-full min-w-0"
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-12 h-12 bg-[#F7F8F6] rounded-xl flex items-center justify-center p-1 shrink-0 overflow-hidden">
+                      <img
+                        src={prod.primaryImage || prod.images?.[0]?.googleDriveUrl || prod.images?.[0]?.url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=120'}
+                        alt={prod.name}
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-bold text-xs sm:text-sm text-[#172033] truncate">
+                        {prod.name}
+                      </h3>
+                      <div className="text-[11px] text-gray-500 flex items-center gap-1.5 mt-0.5">
+                        <span className="font-black text-[#172033]">₹{prod.discountPrice || prod.price}</span>
+                        <span>•</span>
+                        <span>10–15 min</span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    addItem(prod, 1);
-                    showToast(`✓ Added to basket: ${prod.name}`);
-                  }}
-                  className="px-3 py-1.5 rounded-lg border border-[#4F9D2F] text-[#4F9D2F] hover:bg-[#4F9D2F] hover:text-white font-bold text-xs transition-colors shrink-0 shadow-2xs cursor-pointer"
-                >
-                  Add Again
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      addItem(prod, 1);
+                      showToast(`✓ Added to basket: ${prod.name}`);
+                    }}
+                    className="px-3 py-1.5 rounded-lg border border-[#4F9D2F] text-[#4F9D2F] hover:bg-[#4F9D2F] hover:text-white font-bold text-xs transition-colors shrink-0 shadow-2xs cursor-pointer"
+                  >
+                    Add Again
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* ==================================================== */}
         {/* 6. SMART PICK RECOMMENDATION                         */}
