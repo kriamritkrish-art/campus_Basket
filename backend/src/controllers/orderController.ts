@@ -10,9 +10,12 @@ import { RefundService } from '../services/financial/RefundService';
 import { ReceiptPdfService } from '../services/pdf/ReceiptPdfService';
 import { env } from '../config/environment';
 
+import { LaundryOtpService } from '../services/laundry/LaundryOtpService';
+
 const razorpayService = new RazorpayService();
 const emailService = new EmailService();
 const receiptService = new ReceiptService();
+const laundryOtpService = new LaundryOtpService();
 
 async function resolveStudentProfile(user?: any) {
   if (!user) return null;
@@ -725,9 +728,41 @@ export class OrderController {
       const student = await resolveStudentProfile(req.user);
       const studentId = student?.id || req.user?.studentId;
 
+      let searchId = (id || '').trim();
+
+      // If id is 'default' (e.g. from static export default route), find the student's latest order
+      if ((!searchId || searchId === 'default') && (studentId || req.user?.userId)) {
+        const latestOrder = await prisma.order.findFirst({
+          where: studentId ? { studentId } : { student: { userId: req.user?.userId } },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true }
+        });
+        if (latestOrder) {
+          searchId = latestOrder.id;
+        } else {
+          // Check laundry orders as fallback
+          const latestLaundry = await prisma.laundryOrder.findFirst({
+            where: studentId ? { studentId } : { student: { userId: req.user?.userId } },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true }
+          });
+          if (latestLaundry) {
+            searchId = latestLaundry.id;
+          }
+        }
+      }
+
+      const cleanId = searchId.replace(/^#+/, '').trim();
+
       const order = await prisma.order.findFirst({
         where: {
-          OR: [{ id }, { orderNumber: id }]
+          OR: [
+            { id: searchId },
+            { id: cleanId },
+            { orderNumber: searchId },
+            { orderNumber: cleanId },
+            { orderNumber: `#${cleanId}` }
+          ]
         },
         include: {
           items: {
@@ -740,7 +775,7 @@ export class OrderController {
           statusHistory: { orderBy: { createdAt: 'asc' } },
           payment: true,
           receipt: true,
-          student: { select: { fullName: true, rollNumber: true, collegeEmail: true } },
+          student: { select: { id: true, userId: true, fullName: true, rollNumber: true, collegeEmail: true } },
           provider: { select: { id: true, fullName: true, mobileNumber: true, serviceCategory: true } },
           deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } },
           produceDetails: true,
@@ -750,19 +785,130 @@ export class OrderController {
         }
       });
 
+      // If not found in standard product orders, check laundry orders table
       if (!order) {
+        const laundryOrder = await prisma.laundryOrder.findFirst({
+          where: {
+            OR: [
+              { id: searchId },
+              { id: cleanId },
+              { orderNumber: searchId },
+              { orderNumber: cleanId },
+              { orderNumber: `#${cleanId}` },
+              { trackingNumber: searchId },
+              { trackingNumber: cleanId }
+            ]
+          },
+          include: {
+            items: true,
+            otps: true,
+            statusHistory: { orderBy: { createdAt: 'asc' } },
+            payment: true,
+            receipt: true,
+            student: { select: { id: true, userId: true, fullName: true, rollNumber: true, collegeEmail: true } },
+            provider: { select: { id: true, fullName: true, mobileNumber: true, serviceCategory: true } },
+            deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } }
+          }
+        });
+
+        if (laundryOrder) {
+          // Privacy check for laundry order
+          if (req.user?.role === 'STUDENT') {
+            const isLaundryOwner =
+              (studentId && laundryOrder.studentId === studentId) ||
+              (req.user?.userId && laundryOrder.student?.userId === req.user.userId) ||
+              (req.user?.email && laundryOrder.student?.collegeEmail === req.user.email);
+
+            if (!isLaundryOwner) {
+              res.status(403).json({ success: false, message: 'Access denied to this order' });
+              return;
+            }
+          }
+
+          const isAccepted = ['ACCEPTED', 'PICKUP_SCHEDULED', 'CLOTHES_COLLECTED', 'IN_LAUNDRY', 'WASHING', 'DRYING', 'IRONING', 'READY', 'DELIVERY_SCHEDULED', 'COMPLETED'].includes(laundryOrder.status);
+          const otps: any[] = laundryOrder.otps || [];
+          const pickupRecord = otps.find((o: any) => o.otpType === 'PICKUP');
+          const deliveryRecord = otps.find((o: any) => o.otpType === 'DELIVERY');
+
+          let pickupOtp: string | null = null;
+          if (pickupRecord?.encryptedOtp) {
+            try {
+              pickupOtp = laundryOtpService.decryptForStudent(pickupRecord.encryptedOtp);
+            } catch {}
+          }
+
+          let deliveryOtp: string | null = null;
+          if (deliveryRecord?.encryptedOtp) {
+            try {
+              deliveryOtp = laundryOtpService.decryptForStudent(deliveryRecord.encryptedOtp);
+            } catch {}
+          }
+
+          let trackStatus: string = laundryOrder.status;
+          if (laundryOrder.status === 'REQUESTED') trackStatus = 'PENDING';
+          else if (['WASHING', 'DRYING', 'IRONING', 'IN_LAUNDRY', 'CLOTHES_COLLECTED'].includes(laundryOrder.status)) trackStatus = 'PREPARING';
+          else if (laundryOrder.status === 'DELIVERY_SCHEDULED') trackStatus = 'OUT_FOR_DELIVERY';
+
+          res.status(200).json({
+            success: true,
+            order: {
+              id: laundryOrder.id,
+              orderNumber: laundryOrder.orderNumber,
+              trackingNumber: laundryOrder.trackingNumber,
+              serviceType: 'LAUNDRY',
+              status: trackStatus,
+              providerAccepted: isAccepted,
+              totalAmount: Number(laundryOrder.totalAmount),
+              subtotal: Number(laundryOrder.laundryBaseAmount),
+              deliveryFee: Number(laundryOrder.serviceChargeAmount),
+              discountAmount: 0,
+              paymentMethod: laundryOrder.paymentMethod,
+              paymentStatus: laundryOrder.paymentStatus,
+              advancePaidAmount: Number(laundryOrder.onlinePaidAmount || 0),
+              refundAmount: 0,
+              refundStatus: laundryOrder.refundStatus,
+              hallName: laundryOrder.hallName,
+              roomNumber: laundryOrder.roomNumber,
+              specialInstructions: laundryOrder.specialInstructions || '',
+              createdAt: laundryOrder.createdAt,
+              isAccepted,
+              isModifiable: laundryOrder.status === 'REQUESTED',
+              canCancel: ['REQUESTED', 'ACCEPTED'].includes(laundryOrder.status),
+              items: (laundryOrder.items || []).map((i) => ({
+                id: i.id,
+                productName: `${i.itemType || 'Laundry Item'}${i.conditionNote ? ` (${i.conditionNote})` : ''}`,
+                quantity: i.quantity,
+                unitPrice: Number(i.unitPrice || 0),
+                totalPrice: Number(i.unitPrice || 0) * (i.quantity || 1)
+              })),
+              statusHistory: laundryOrder.statusHistory,
+              deliveryBoy: laundryOrder.deliveryBoy || null,
+              provider: laundryOrder.provider || null,
+              student: laundryOrder.student || null,
+              deliveryOtp: laundryOrder.status === 'COMPLETED' ? null : (deliveryOtp || pickupOtp),
+              deliveryOtpVerified: deliveryRecord?.isUsed || laundryOrder.status === 'COMPLETED',
+              pickupOtp: pickupOtp,
+              isLaundry: true
+            }
+          });
+          return;
+        }
+
         res.status(404).json({ success: false, message: 'Order not found' });
         return;
       }
 
       // Privacy check: Students can only view their own orders
-      if (
-        req.user?.role === 'STUDENT' &&
-        order.studentId !== studentId &&
-        (order as any).student?.userId !== req.user?.userId
-      ) {
-        res.status(403).json({ success: false, message: 'Access denied to this order' });
-        return;
+      if (req.user?.role === 'STUDENT') {
+        const isStudentOwner =
+          (studentId && order.studentId === studentId) ||
+          (req.user?.userId && (order as any).student?.userId === req.user.userId) ||
+          (req.user?.email && (order as any).student?.collegeEmail === req.user.email);
+
+        if (!isStudentOwner) {
+          res.status(403).json({ success: false, message: 'Access denied to this order' });
+          return;
+        }
       }
 
       // For authenticated student: display real 6-digit customer delivery OTP until delivered
@@ -796,7 +942,6 @@ export class OrderController {
       }).catch(() => null);
 
       // Include returnRequest if exists
-      const cleanId = id.replace(/^#+/, '').trim();
       const cleanOrderNumber = (order.orderNumber || '').replace(/^#+/, '').trim();
       const returnReq = await (prisma as any).returnRequest.findFirst({
         where: {
@@ -804,7 +949,7 @@ export class OrderController {
             { orderId: order.id },
             { orderId: order.orderNumber },
             { orderId: cleanOrderNumber },
-            { orderId: id },
+            { orderId: searchId },
             { orderId: cleanId },
             { orderId: `#${cleanId}` }
           ]

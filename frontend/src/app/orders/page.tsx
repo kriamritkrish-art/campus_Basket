@@ -516,7 +516,12 @@ export default function MyOrdersPage() {
                       </button>
 
                       <Link
-                        href={`/orders/${order.id}/track`}
+                        href={`/orders/${order.id}/track?id=${order.id}`}
+                        onClick={() => {
+                          if (typeof window !== 'undefined') {
+                            localStorage.setItem('cb_active_order_id', order.id);
+                          }
+                        }}
                         className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[#4F9D2F] hover:bg-[#3d7c24] text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer"
                       >
                         <span>Track Order</span>

@@ -449,7 +449,12 @@ function DashboardContent() {
             </div>
 
             <Link
-              href={`/orders/${activeOrder.id}/track`}
+              href={`/orders/${activeOrder.id}/track?id=${activeOrder.id}`}
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('cb_active_order_id', activeOrder.id);
+                }
+              }}
               className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-[#689f38] hover:bg-[#5b8c30] text-white text-xs font-extrabold rounded-xl shadow-md transition-all active:scale-95 shrink-0"
             >
               <span>Track Order</span>
@@ -745,7 +750,12 @@ function DashboardContent() {
                         </div>
 
                         <Link
-                          href={`/orders/${order.id}/track`}
+                          href={`/orders/${order.id}/track?id=${order.id}`}
+                          onClick={() => {
+                            if (typeof window !== 'undefined') {
+                              localStorage.setItem('cb_active_order_id', order.id);
+                            }
+                          }}
                           className="inline-flex items-center gap-1.5 px-5 py-2 bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-extrabold rounded-xl shadow-sm transition-all active:scale-95"
                         >
                           <Truck className="w-3.5 h-3.5" />
@@ -911,7 +921,12 @@ function DashboardContent() {
                     </p>
                   </div>
                   <Link
-                    href={`/orders/${activeOrder.id}/track`}
+                    href={`/orders/${activeOrder.id}/track?id=${activeOrder.id}`}
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        localStorage.setItem('cb_active_order_id', activeOrder.id);
+                      }
+                    }}
                     className="px-5 py-2.5 bg-[#689f38] hover:bg-[#5b8c30] text-white text-xs font-extrabold rounded-xl shadow-md transition-all flex items-center gap-2"
                   >
                     <span>Full Tracking Page</span>
@@ -1088,7 +1103,7 @@ function DashboardContent() {
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
                             Related Order:{' '}
-                            <Link href={`/orders/${order.id}/track`} className="font-mono text-[#4F9D2F] font-bold hover:underline">
+                            <Link href={`/orders/${order.id}/track?id=${order.id}`} className="font-mono text-[#4F9D2F] font-bold hover:underline">
                               #{order.orderNumber}
                             </Link>
                           </div>
@@ -1114,7 +1129,7 @@ function DashboardContent() {
                             Date: {new Date(order.createdAt).toLocaleDateString()}
                           </span>
                           <Link
-                            href={`/orders/${order.id}/track`}
+                            href={`/orders/${order.id}/track?id=${order.id}`}
                             className="text-[11px] font-bold text-[#4F9D2F] hover:underline shrink-0"
                           >
                             Track Order &rarr;
@@ -1683,7 +1698,12 @@ function DashboardContent() {
                   Reorder
                 </button>
                 <Link
-                  href={`/orders/${selectedOrder.id}/track`}
+                  href={`/orders/${selectedOrder.id}/track?id=${selectedOrder.id}`}
+                  onClick={() => {
+                    if (typeof window !== 'undefined') {
+                      localStorage.setItem('cb_active_order_id', selectedOrder.id);
+                    }
+                  }}
                   className="flex-1 py-2.5 bg-[#f1f8e9] hover:bg-[#e8f5e9] text-[#2e7d32] border border-[#dcedc8] text-xs font-bold rounded-xl transition-colors text-center"
                 >
                   Track Order

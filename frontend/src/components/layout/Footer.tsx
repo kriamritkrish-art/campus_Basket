@@ -3,13 +3,19 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Phone, Mail, MapPin, ShieldCheck, Heart, Zap } from 'lucide-react';
+import { Phone, Mail, MapPin, ShieldCheck, Heart, Zap, Building2, School } from 'lucide-react';
 
 export function Footer() {
   const pathname = usePathname();
 
-  // The institutional marketplace footer only displays on the landing page (home)
-  if (pathname !== '/') {
+  // Hide footer only on portal backoffices and checkout flow
+  const isPortalOrCheckout =
+    pathname?.startsWith('/admin') ||
+    pathname?.startsWith('/provider') ||
+    pathname?.startsWith('/delivery') ||
+    pathname === '/checkout';
+
+  if (isPortalOrCheckout) {
     return null;
   }
 
@@ -17,7 +23,7 @@ export function Footer() {
     <footer className="bg-white border-t border-gray-200 text-gray-600 text-xs mt-auto w-full max-w-full overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 w-full min-w-0">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          {/* Col 1: Institutional Info */}
+          {/* Col 1: Institutional & College Info */}
           <div className="space-y-3">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-[#4F9D2F] flex items-center justify-center font-extrabold text-white text-xs shadow-xs">
@@ -28,15 +34,15 @@ export function Footer() {
                   campus<span className="text-[#4F9D2F]">basket</span>
                 </div>
                 <div className="text-[9.5px] font-semibold text-gray-400 uppercase mt-0.5">
-                  Campus Marketplace & Services
+                  NIT Durgapur Marketplace
                 </div>
               </div>
             </div>
             <p className="text-xs leading-relaxed text-gray-500">
-              Campus Basket dedicated student marketplace. Fast campus delivery across all residence halls in 10–15 minutes.
+              Official campus delivery marketplace for <strong className="text-gray-700 font-semibold">National Institute of Technology Durgapur (NIT Durgapur)</strong>. Delivering food, fruits, stationery, and dual-OTP laundry across all 14 residence halls in 10–15 minutes.
             </p>
             <div className="flex items-center gap-1.5 text-xs text-[#36751F] font-bold">
-              <ShieldCheck className="w-4 h-4 text-[#4F9D2F]" /> Verified Campus Marketplace Platform
+              <ShieldCheck className="w-4 h-4 text-[#4F9D2F]" /> Verified NIT Durgapur Platform
             </div>
           </div>
 
@@ -67,7 +73,7 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link href="/laundry/book" className="text-[#689f38] font-bold hover:underline transition-colors">
+                <Link href="/laundry" className="text-[#689f38] font-bold hover:underline transition-colors">
                   Book Doorstep Laundry
                 </Link>
               </li>
@@ -113,16 +119,16 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Col 4: Campus Helpdesk Contact */}
+          {/* Col 4: Campus & College Helpdesk Contact */}
           <div>
             <h4 className="text-gray-900 font-extrabold text-xs tracking-wider uppercase mb-4">
-              Campus Helpdesk
+              NIT Durgapur Helpdesk
             </h4>
             <div className="space-y-2.5 text-xs text-gray-600">
               <div className="flex items-start gap-2">
                 <MapPin className="w-4 h-4 text-[#689f38] mt-0.5 shrink-0" />
                 <span>
-                  Student Activity Centre (SAC), Campus Marketplace Operations, Student Services Cell
+                  Student Activity Centre (SAC), National Institute of Technology Durgapur, Mahatma Gandhi Avenue, Durgapur, West Bengal 713209
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -142,9 +148,9 @@ export function Footer() {
         </div>
 
         <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between text-xs text-gray-500 gap-4">
-          <p>&copy; {new Date().getFullYear()} Campus Basket Marketplace. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} Campus Basket — National Institute of Technology Durgapur.</p>
           <p className="flex items-center gap-1 font-medium">
-            Designed for the <strong className="text-gray-800">Campus Student Community</strong>
+            Designed for the <strong className="text-gray-800">NIT Durgapur Student Community</strong>
           </p>
         </div>
       </div>

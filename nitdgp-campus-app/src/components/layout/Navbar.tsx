@@ -64,14 +64,51 @@ export function Navbar() {
   // Check for active orders for the student
   useEffect(() => {
     if (isAuthenticated && (!role || role === 'STUDENT')) {
+      const ACTIVE_STATUSES = [
+        'PENDING',
+        'PENDING_PAYMENT',
+        'CONFIRMED',
+        'ACCEPTED',
+        'PREPARING',
+        'PACKED',
+        'READY',
+        'READY_FOR_PICKUP',
+        'DELIVERY_ASSIGNED',
+        'PICKED_UP',
+        'IN_TRANSIT',
+        'OUT_FOR_DELIVERY',
+        'REQUESTED',
+        'CLOTHES_COLLECTED',
+        'WASHING',
+        'IRONING',
+        'DELIVERY_SCHEDULED'
+      ];
+
       apiRequest('/api/orders')
         .then((res) => {
           if (res.success && Array.isArray(res.orders)) {
             const active = res.orders.find((o: any) =>
-              ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'].includes(o.status)
+              ACTIVE_STATUSES.includes(o.status)
             );
-            setActiveOrder(active || null);
+            if (active) {
+              setActiveOrder(active);
+              return;
+            }
           }
+
+          // Also check for active laundry bookings
+          apiRequest('/api/laundry/orders')
+            .then((lndRes) => {
+              if (lndRes?.success && Array.isArray(lndRes.orders)) {
+                const activeLnd = lndRes.orders.find((o: any) =>
+                  !['COMPLETED', 'CANCELLED'].includes(o.status)
+                );
+                setActiveOrder(activeLnd || null);
+              } else {
+                setActiveOrder(null);
+              }
+            })
+            .catch(() => setActiveOrder(null));
         })
         .catch(() => {});
     }
@@ -218,7 +255,7 @@ export function Navbar() {
                       {activeOrder && (
                         <div className="p-1">
                           <Link
-                            href={`/orders/${activeOrder.id}/track`}
+                            href={`/orders/${activeOrder.id}/track?id=${activeOrder.id}`}
                             onClick={() => setProfileDropdownOpen(false)}
                             className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#EEF7E9] text-xs font-bold text-[#36751F] border border-[#dcedc8]"
                           >
@@ -347,7 +384,7 @@ export function Navbar() {
                   Orders
                 </Link>
                 <Link
-                  href={activeOrder ? `/orders/${activeOrder.id}/track` : '/dashboard?tab=orders'}
+                  href={activeOrder ? `/orders/${activeOrder.id}/track?id=${activeOrder.id}` : '/orders/track'}
                   className="text-gray-600 hover:text-[#172033] transition-colors py-1 flex items-center gap-1"
                 >
                   <span>Track Order</span>
@@ -412,7 +449,7 @@ export function Navbar() {
                 My Orders
               </Link>
               <Link
-                href={activeOrder ? `/orders/${activeOrder.id}/track` : '/dashboard?tab=orders'}
+                href={activeOrder ? `/orders/${activeOrder.id}/track?id=${activeOrder.id}` : '/orders/track'}
                 onClick={() => setMobileMenuOpen(false)}
                 className="block p-2 rounded-lg hover:bg-gray-50 text-[#4F9D2F]"
               >

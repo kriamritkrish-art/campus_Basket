@@ -332,8 +332,11 @@ export default function CheckoutPage() {
                 if (verifyRes.success) {
                   clearCart();
                   setOrderConfirmed(order);
+                  if (typeof window !== 'undefined' && order?.id) {
+                    localStorage.setItem('cb_active_order_id', order.id);
+                  }
                   setTimeout(() => {
-                    router.push(`/orders/${order.id}/track?placed=true`);
+                    router.push(`/orders/${order.id}/track?id=${order.id}&placed=true`);
                   }, 1200);
                 } else {
                   setError('Advance payment verification failed. Please contact campus support.');
@@ -381,8 +384,11 @@ export default function CheckoutPage() {
         // Direct COD (no advance required)
         clearCart();
         setOrderConfirmed(order);
+        if (typeof window !== 'undefined' && order?.id) {
+          localStorage.setItem('cb_active_order_id', order.id);
+        }
         setTimeout(() => {
-          router.push(`/orders/${order.id}/track?placed=true`);
+          router.push(`/orders/${order.id}/track?id=${order.id}&placed=true`);
         }, 1200);
         return;
       }
@@ -433,8 +439,11 @@ export default function CheckoutPage() {
               if (verifyRes.success) {
                 clearCart();
                 setOrderConfirmed(order);
+                if (typeof window !== 'undefined' && order?.id) {
+                  localStorage.setItem('cb_active_order_id', order.id);
+                }
                 setTimeout(() => {
-                  router.push(`/orders/${order.id}/track?placed=true`);
+                  router.push(`/orders/${order.id}/track?id=${order.id}&placed=true`);
                 }, 1200);
               } else {
                 setError('Payment verification failed. Please contact campus support.');
