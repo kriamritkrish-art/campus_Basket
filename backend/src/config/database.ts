@@ -78,7 +78,7 @@ const persistentProviderRequests: any[] = loadSavedList('mock_provider_requests.
     relatedOrderIds: ['ord_101', 'ord_105']
   }
 ]);
-
+const persistentSupportTickets: any[] = loadSavedList('mock_support_tickets.json', fallbackSupportTickets);
 
 function enrichFallbackReturn(r: any): any {
   if (!r) return null;
@@ -490,10 +490,14 @@ const fallbackHandlers: Record<string, any> = {
         user: { id: user.id, email: user.email, username: user.username, role: user.role, isActive: user.isActive }
       }));
     },
-    findFirst: async (args: any) => {
+    findFirst: async (args?: any) => {
       const userId = args?.where?.userId || args?.where?.OR?.find((o: any) => o.userId)?.userId;
       const id = args?.where?.id || args?.where?.OR?.find((o: any) => o.id)?.id;
-      const user = fallbackUsers.find((u: any) => u.deliveryBoy && ((userId && (u.deliveryBoy.userId === userId || u.id === userId)) || (id && u.deliveryBoy.id === id)));
+      const user = fallbackUsers.find((u: any) => {
+        if (!u.deliveryBoy) return false;
+        if (!userId && !id) return true;
+        return (userId && (u.deliveryBoy.userId === userId || u.id === userId)) || (id && u.deliveryBoy.id === id);
+      });
       if (!user?.deliveryBoy) return null;
       const dbEarnings = fallbackDeliveryBoyEarnings.filter((e) => e.deliveryBoyId === user.deliveryBoy.id);
       const payoutAccount = fallbackDeliveryBoyPayoutAccounts.find((p) => p.deliveryBoyId === user.deliveryBoy.id) || null;
@@ -529,7 +533,7 @@ const fallbackHandlers: Record<string, any> = {
     count: async () => fallbackUsers.filter((u: any) => u.deliveryBoy).length,
     create: async (args: any) => {
       const newDb = {
-        id: `db_boy_${Date.now()}`,
+        id: args.data.id || `db_boy_${Date.now()}`,
         userId: args.data.userId,
         fullName: args.data.fullName,
         mobileNumber: args.data.mobileNumber,
@@ -545,8 +549,19 @@ const fallbackHandlers: Record<string, any> = {
         createdAt: new Date(),
         updatedAt: new Date()
       };
-      const user = fallbackUsers.find((u) => u.id === args.data.userId);
-      if (user) (user as any).deliveryBoy = newDb;
+      let user = fallbackUsers.find((u) => u.id === args.data.userId);
+      if (!user) {
+        user = {
+          id: args.data.userId || `user_${Date.now()}`,
+          email: `${args.data.fullName?.toLowerCase().replace(/\s+/g, '') || 'runner'}@campusbasket.in`,
+          username: args.data.fullName || 'runner',
+          role: 'DELIVERY_BOY',
+          isActive: true,
+          deliveryBoy: null
+        } as any;
+        fallbackUsers.push(user);
+      }
+      (user as any).deliveryBoy = newDb;
       return JSON.parse(JSON.stringify(newDb));
     },
     update: async (args: any) => {
@@ -1739,19 +1754,39 @@ const fallbackHandlers: Record<string, any> = {
   supportTicket: {
     count: async (args: any) => {
       if (args?.where?.status) {
-        return fallbackSupportTickets.filter((t) => t.status === args.where.status).length;
+        return persistentSupportTickets.filter((t) => t.status === args.where.status).length;
       }
-      return fallbackSupportTickets.length;
+      return persistentSupportTickets.length;
     },
-    findMany: async () => JSON.parse(JSON.stringify(fallbackSupportTickets)),
+    findMany: async (args?: any) => {
+      let list = [...persistentSupportTickets];
+      if (args?.where?.studentId) list = list.filter(t => t.studentId === args.where.studentId);
+      if (args?.where?.status) list = list.filter(t => t.status === args.where.status);
+      return JSON.parse(JSON.stringify(list));
+    },
     findUnique: async (args: any) => {
       const id = args?.where?.id;
-      return fallbackSupportTickets.find((t) => t.id === id) || null;
+      return persistentSupportTickets.find((t) => t.id === id) || null;
+    },
+    create: async (args: any) => {
+      const newTkt = {
+        id: `tkt_${Date.now()}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...args.data
+      };
+      persistentSupportTickets.unshift(newTkt);
+      saveList('mock_support_tickets.json', persistentSupportTickets);
+      return newTkt;
     },
     update: async (args: any) => {
-      const t = fallbackSupportTickets.find((item) => item.id === args.where.id);
-      if (t) Object.assign(t, args.data);
-      return t || args.data;
+      const t = persistentSupportTickets.find((item) => item.id === args.where.id);
+      if (t) {
+        Object.assign(t, args.data, { updatedAt: new Date() });
+        saveList('mock_support_tickets.json', persistentSupportTickets);
+        return JSON.parse(JSON.stringify(t));
+      }
+      return args.data;
     }
   },
   auditLog: {

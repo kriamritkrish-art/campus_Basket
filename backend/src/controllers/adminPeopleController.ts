@@ -6,6 +6,7 @@ import {
   createServiceProviderSchema,
   createDeliveryBoySchema
 } from '../validators/authValidators';
+import { fallbackUsers } from '../services/fallbackData';
 
 export class AdminPeopleController {
   /**
@@ -1108,8 +1109,48 @@ export class AdminPeopleController {
    */
   public static async getSupportTickets(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const tickets = await prisma.supportTicket.findMany({
+      const rawTickets = await prisma.supportTicket.findMany({
         orderBy: { createdAt: 'desc' }
+      });
+
+      const tickets = (rawTickets || []).map((t: any) => {
+        const studentUser: any = fallbackUsers.find((u: any) => u.student?.id === t.studentId || u.id === t.studentId);
+        const student = t.student || studentUser?.student;
+        const name = student?.fullName || studentUser?.fullName || t.user?.name || 'Campus Student';
+        const email = student?.collegeEmail || studentUser?.email || t.user?.email || 'student@nitdgp.ac.in';
+        const phone = student?.mobileNumber || studentUser?.mobileNumber || t.user?.phone || '+91 98765 43210';
+        const hallName = student?.hall?.name || student?.hallName || t.user?.hall?.name || 'Campus Hostel';
+        const roomNumber = student?.roomNumber || t.user?.roomNumber || '101';
+
+        const subject = t.subject || (t.message ? (t.message.length > 60 ? t.message.slice(0, 60) + '...' : t.message) : `${t.category || 'General'} Support Ticket`);
+        const description = t.description || t.message || '';
+
+        return {
+          id: t.id,
+          ticketNumber: t.ticketNumber || `TKT-${String(t.id).slice(0, 8)}`,
+          userId: t.studentId || t.userId || 'stud_demo',
+          category: t.category || 'GENERAL',
+          subject,
+          description,
+          message: t.message || description,
+          priority: t.priority || 'MEDIUM',
+          status: t.status || 'OPEN',
+          adminResponse: t.adminResponse || null,
+          createdAt: t.createdAt || new Date().toISOString(),
+          updatedAt: t.updatedAt || new Date().toISOString(),
+          user: {
+            name,
+            email,
+            phone,
+            hall: { name: hallName },
+            roomNumber
+          },
+          student: student || {
+            fullName: name,
+            collegeEmail: email,
+            mobileNumber: phone
+          }
+        };
       });
 
       res.status(200).json({ success: true, tickets });

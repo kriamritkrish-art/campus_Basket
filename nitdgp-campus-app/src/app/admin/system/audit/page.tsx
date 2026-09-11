@@ -42,12 +42,37 @@ export default function AdminAuditLogsPage() {
   const [actionFilter, setActionFilter] = useState('ALL');
   const [selectedLog, setSelectedLog] = useState<AuditLogItem | null>(null);
 
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr || !mounted) return 'Just now';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return 'Recently';
+      return d.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    } catch {
+      return 'Recently';
+    }
+  };
+
   const fetchLogs = async () => {
     try {
       setLoading(true);
       const res = await apiRequest('/api/admin/audit-logs');
-      if (res.success && res.logs) {
+      if (res.success && Array.isArray(res.logs)) {
         setLogs(res.logs);
+      } else if (Array.isArray(res)) {
+        setLogs(res);
       }
     } catch (err: any) {
       console.error('Failed to load audit logs', err);
@@ -65,26 +90,29 @@ export default function AdminAuditLogsPage() {
     const adminEmail = log.user?.email || log.userId || '';
     const action = log.action || '';
     const entity = log.entity || '';
+    const entityId = log.entityId || '';
 
+    const q = searchQuery.toLowerCase();
     const matchesSearch =
-      adminEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      action.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      entity.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (log.entityId || '').toLowerCase().includes(searchQuery.toLowerCase());
+      adminEmail.toLowerCase().includes(q) ||
+      action.toLowerCase().includes(q) ||
+      entity.toLowerCase().includes(q) ||
+      entityId.toLowerCase().includes(q);
 
     const matchesAction = actionFilter === 'ALL' || log.action === actionFilter;
 
     return matchesSearch && matchesAction;
   });
 
-  const getActionColor = (action: string) => {
-    if (action.includes('REFUND') || action.includes('DELETE') || action.includes('CANCEL')) {
+  const getActionColor = (action?: string) => {
+    const act = (action || '').toUpperCase();
+    if (act.includes('REFUND') || act.includes('DELETE') || act.includes('CANCEL')) {
       return 'bg-rose-50 text-rose-700 border-rose-200';
     }
-    if (action.includes('UPDATE') || action.includes('STATUS') || action.includes('SETTING')) {
+    if (act.includes('UPDATE') || act.includes('STATUS') || act.includes('SETTING')) {
       return 'bg-amber-50 text-amber-700 border-amber-200';
     }
-    if (action.includes('CREATE') || action.includes('ADD')) {
+    if (act.includes('CREATE') || act.includes('ADD')) {
       return 'bg-emerald-50 text-[#347A27] border-emerald-200';
     }
     return 'bg-blue-50 text-blue-700 border-blue-200';
@@ -212,13 +240,7 @@ export default function AdminAuditLogsPage() {
                     <td className="px-5 py-3.5 whitespace-nowrap text-slate-500 font-mono text-[11px]">
                       <div className="flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {new Date(log.createdAt).toLocaleDateString('en-IN', {
-                          day: '2-digit',
-                          month: 'short',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit'
-                        })}
+                        {formatDate(log.createdAt)}
                       </div>
                     </td>
 
@@ -303,7 +325,7 @@ export default function AdminAuditLogsPage() {
                 <div><strong className="text-[#17202A]">Log ID:</strong> {selectedLog.id}</div>
                 <div><strong className="text-[#17202A]">Target ID:</strong> {selectedLog.entityId || 'N/A'}</div>
                 <div><strong className="text-[#17202A]">Operator:</strong> {selectedLog.user?.email || selectedLog.userId}</div>
-                <div><strong className="text-[#17202A]">Timestamp:</strong> {new Date(selectedLog.createdAt).toISOString()}</div>
+                <div><strong className="text-[#17202A]">Timestamp:</strong> {formatDate(selectedLog.createdAt)}</div>
               </div>
 
               {selectedLog.oldValue && (

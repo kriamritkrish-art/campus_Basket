@@ -23,25 +23,33 @@ import { apiRequest } from '@/lib/api';
 interface SupportTicket {
   id: string;
   ticketNumber?: string;
-  userId: string;
+  userId?: string;
+  studentId?: string;
   user?: {
-    name: string;
-    email: string;
+    name?: string;
+    email?: string;
     phone?: string;
-    hall?: { name: string };
+    hall?: { name?: string };
     roomNumber?: string;
   };
-  category: string;
-  subject: string;
-  description: string;
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
-  adminResponse?: string;
-  createdAt: string;
-  updatedAt: string;
+  student?: {
+    fullName?: string;
+    collegeEmail?: string;
+    mobileNumber?: string;
+  };
+  category?: string;
+  subject?: string;
+  description?: string;
+  message?: string;
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  status?: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+  adminResponse?: string | null;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
 }
 
 export default function AdminSupportTicketsPage() {
+  const [mounted, setMounted] = useState(false);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,24 +65,30 @@ export default function AdminSupportTicketsPage() {
     try {
       setLoading(true);
       const res = await apiRequest('/api/admin/support/tickets');
-      if (res.success && res.tickets) {
+      if (res && res.success && Array.isArray(res.tickets)) {
         setTickets(res.tickets);
+      } else if (Array.isArray(res)) {
+        setTickets(res);
+      } else {
+        setTickets([]);
       }
     } catch (err: any) {
       console.error('Failed to load tickets', err);
+      setTickets([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    setMounted(true);
     fetchTickets();
   }, []);
 
   const openTicketDetail = (ticket: SupportTicket) => {
     setSelectedTicket(ticket);
     setResponseText(ticket.adminResponse || '');
-    setNewStatus(ticket.status);
+    setNewStatus(ticket.status || 'RESOLVED');
     setFeedbackMsg(null);
   };
 
@@ -94,7 +108,7 @@ export default function AdminSupportTicketsPage() {
         })
       });
 
-      if (res.success) {
+      if (res && res.success) {
         setFeedbackMsg({ type: 'success', text: 'Ticket updated and student notified' });
         const updatedList = tickets.map((t) =>
           t.id === selectedTicket.id
@@ -107,37 +121,66 @@ export default function AdminSupportTicketsPage() {
           status: newStatus,
           adminResponse: responseText
         });
+      } else {
+        setFeedbackMsg({ type: 'error', text: res?.message || 'Failed to update ticket' });
       }
     } catch (err: any) {
-      setFeedbackMsg({ type: 'error', text: err.message || 'Failed to update ticket' });
+      setFeedbackMsg({ type: 'error', text: err?.message || 'Failed to update ticket' });
     } finally {
       setSavingResponse(false);
     }
   };
 
+  const formatDate = (dateValue?: string | Date) => {
+    if (!dateValue) return 'Recently';
+    try {
+      const d = new Date(dateValue);
+      if (isNaN(d.getTime())) return 'Recently';
+      return d.toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return 'Recently';
+    }
+  };
+
   // Metrics
-  const totalCount = tickets.length;
-  const openCount = tickets.filter((t) => t.status === 'OPEN' || t.status === 'IN_PROGRESS').length;
-  const urgentCount = tickets.filter((t) => t.priority === 'URGENT' || t.priority === 'HIGH').length;
-  const resolvedCount = tickets.filter((t) => t.status === 'RESOLVED' || t.status === 'CLOSED').length;
+  const totalCount = Array.isArray(tickets) ? tickets.length : 0;
+  const openCount = Array.isArray(tickets) ? tickets.filter((t) => t && (t.status === 'OPEN' || t.status === 'IN_PROGRESS')).length : 0;
+  const urgentCount = Array.isArray(tickets) ? tickets.filter((t) => t && (t.priority === 'URGENT' || t.priority === 'HIGH')).length : 0;
+  const resolvedCount = Array.isArray(tickets) ? tickets.filter((t) => t && (t.status === 'RESOLVED' || t.status === 'CLOSED')).length : 0;
   const resolutionRate = totalCount > 0 ? Math.round((resolvedCount / totalCount) * 100) : 100;
 
   // Filtered tickets
-  const filteredTickets = tickets.filter((ticket) => {
-    const matchesSearch =
-      ticket.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ticket.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (ticket.user?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (ticket.user?.email || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (ticket.ticketNumber || ticket.id).toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredTickets = (Array.isArray(tickets) ? tickets : []).filter((ticket) => {
+    if (!ticket) return false;
+    const q = (searchQuery || '').toLowerCase().trim();
+    const subject = (ticket.subject || ticket.message || '').toLowerCase();
+    const desc = (ticket.description || ticket.message || '').toLowerCase();
+    const userName = (ticket.user?.name || ticket.student?.fullName || '').toLowerCase();
+    const userEmail = (ticket.user?.email || ticket.student?.collegeEmail || '').toLowerCase();
+    const tNum = (ticket.ticketNumber || ticket.id || '').toLowerCase();
+    const category = (ticket.category || '').toLowerCase();
 
-    const matchesStatus = statusFilter === 'ALL' || ticket.status === statusFilter;
-    const matchesPriority = priorityFilter === 'ALL' || ticket.priority === priorityFilter;
+    const matchesSearch =
+      !q ||
+      subject.includes(q) ||
+      desc.includes(q) ||
+      userName.includes(q) ||
+      userEmail.includes(q) ||
+      tNum.includes(q) ||
+      category.includes(q);
+
+    const matchesStatus = statusFilter === 'ALL' || (ticket.status || 'OPEN') === statusFilter;
+    const matchesPriority = priorityFilter === 'ALL' || (ticket.priority || 'MEDIUM') === priorityFilter;
 
     return matchesSearch && matchesStatus && matchesPriority;
   });
 
-  const getPriorityBadge = (priority: string) => {
+  const getPriorityBadge = (priority?: string) => {
     switch (priority) {
       case 'URGENT':
         return 'bg-rose-50 text-rose-700 border-rose-200';
@@ -150,7 +193,7 @@ export default function AdminSupportTicketsPage() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status?: string) => {
     switch (status) {
       case 'OPEN':
         return 'bg-amber-50 text-amber-700 border-amber-200';
@@ -303,75 +346,79 @@ export default function AdminSupportTicketsPage() {
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {filteredTickets.map((ticket) => (
-              <div
-                key={ticket.id}
-                onClick={() => openTicketDetail(ticket)}
-                className="p-4 sm:p-5 hover:bg-slate-50 transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
-              >
-                <div className="space-y-1.5 flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-mono font-bold text-slate-700">
-                      {ticket.ticketNumber || `#${ticket.id.slice(0, 8)}`}
-                    </span>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getPriorityBadge(
-                        ticket.priority
-                      )}`}
-                    >
-                      {ticket.priority}
-                    </span>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusBadge(
-                        ticket.status
-                      )}`}
-                    >
-                      {ticket.status.replace('_', ' ')}
-                    </span>
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                      {ticket.category}
-                    </span>
+            {filteredTickets.map((ticket) => {
+              const displaySubject = ticket.subject || ticket.message || 'Support Request';
+              const displayDesc = ticket.description || ticket.message || 'No description provided';
+              const displayStatus = (ticket.status || 'OPEN').replace('_', ' ');
+              const studentName = ticket.user?.name || ticket.student?.fullName || 'Campus Student';
+              const hallName = ticket.user?.hall?.name || 'Campus Hostel';
+              const ticketIdDisplay = ticket.ticketNumber || (ticket.id ? `#${String(ticket.id).slice(0, 8)}` : '#TICKET');
+
+              return (
+                <div
+                  key={ticket.id || Math.random().toString()}
+                  onClick={() => openTicketDetail(ticket)}
+                  className="p-4 sm:p-5 hover:bg-slate-50 transition cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
+                >
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-mono font-bold text-slate-700">
+                        {ticketIdDisplay}
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getPriorityBadge(
+                          ticket.priority
+                        )}`}
+                      >
+                        {ticket.priority || 'MEDIUM'}
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusBadge(
+                          ticket.status
+                        )}`}
+                      >
+                        {displayStatus}
+                      </span>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                        {ticket.category || 'GENERAL'}
+                      </span>
+                    </div>
+
+                    <h4 className="text-sm font-semibold text-[#17202A] truncate group-hover:text-[#4F9D32] transition">
+                      {displaySubject}
+                    </h4>
+                    <p className="text-xs text-slate-500 line-clamp-1">{displayDesc}</p>
+
+                    <div className="flex items-center gap-4 text-[11px] text-slate-400 pt-1">
+                      <span className="flex items-center gap-1">
+                        <User className="w-3 h-3 text-slate-400" />
+                        {studentName}
+                      </span>
+                      {hallName && (
+                        <span className="flex items-center gap-1">
+                          <Building className="w-3 h-3 text-slate-400" />
+                          {hallName}
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1" suppressHydrationWarning>
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        {mounted ? formatDate(ticket.createdAt) : 'Recently'}
+                      </span>
+                    </div>
                   </div>
 
-                  <h4 className="text-sm font-semibold text-[#17202A] truncate group-hover:text-[#4F9D32] transition">
-                    {ticket.subject}
-                  </h4>
-                  <p className="text-xs text-slate-500 line-clamp-1">{ticket.description}</p>
-
-                  <div className="flex items-center gap-4 text-[11px] text-slate-400 pt-1">
-                    <span className="flex items-center gap-1">
-                      <User className="w-3 h-3 text-slate-400" />
-                      {ticket.user?.name || 'Student Account'}
-                    </span>
-                    {ticket.user?.hall?.name && (
-                      <span className="flex items-center gap-1">
-                        <Building className="w-3 h-3 text-slate-400" />
-                        {ticket.user.hall.name}
+                  <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                    {ticket.adminResponse && (
+                      <span className="text-[11px] text-[#347A27] flex items-center gap-1 font-semibold">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Replied
                       </span>
                     )}
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-slate-400" />
-                      {new Date(ticket.createdAt).toLocaleDateString('en-IN', {
-                        day: 'numeric',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </span>
+                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#17202A] transition" />
                   </div>
                 </div>
-
-                <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
-                  {ticket.adminResponse && (
-                    <span className="text-[11px] text-[#347A27] flex items-center gap-1 font-semibold">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Replied
-                    </span>
-                  )}
-                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#17202A] transition" />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -385,17 +432,19 @@ export default function AdminSupportTicketsPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-mono font-bold text-slate-600">
-                    {selectedTicket.ticketNumber || `#${selectedTicket.id}`}
+                    {selectedTicket.ticketNumber || (selectedTicket.id ? `#${String(selectedTicket.id).slice(0, 8)}` : '#TICKET')}
                   </span>
                   <span
                     className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getPriorityBadge(
                       selectedTicket.priority
                     )}`}
                   >
-                    {selectedTicket.priority}
+                    {selectedTicket.priority || 'MEDIUM'}
                   </span>
                 </div>
-                <h3 className="text-lg font-bold text-[#17202A] mt-1">{selectedTicket.subject}</h3>
+                <h3 className="text-lg font-bold text-[#17202A] mt-1">
+                  {selectedTicket.subject || selectedTicket.message || 'Support Ticket'}
+                </h3>
               </div>
               <button
                 onClick={() => setSelectedTicket(null)}
@@ -412,24 +461,28 @@ export default function AdminSupportTicketsPage() {
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4 text-blue-600" />
                   <span className="text-slate-500">Student:</span>
-                  <span className="font-semibold text-[#17202A]">{selectedTicket.user?.name || 'Registered Student'}</span>
+                  <span className="font-semibold text-[#17202A]">
+                    {selectedTicket.user?.name || selectedTicket.student?.fullName || 'Campus Student'}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Mail className="w-4 h-4 text-amber-600" />
                   <span className="text-slate-500">Email:</span>
-                  <span className="font-semibold text-[#17202A]">{selectedTicket.user?.email || 'N/A'}</span>
+                  <span className="font-semibold text-[#17202A]">
+                    {selectedTicket.user?.email || selectedTicket.student?.collegeEmail || 'student@nitdgp.ac.in'}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Building className="w-4 h-4 text-purple-600" />
                   <span className="text-slate-500">Residence Hall:</span>
                   <span className="font-semibold text-[#17202A]">
-                    {selectedTicket.user?.hall?.name || 'Campus Residence Hall'} (Room: {selectedTicket.user?.roomNumber || 'Assigned'})
+                    {selectedTicket.user?.hall?.name || 'Campus Hostel'} (Room: {selectedTicket.user?.roomNumber || 'Assigned'})
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Tag className="w-4 h-4 text-[#4F9D32]" />
                   <span className="text-slate-500">Category:</span>
-                  <span className="font-semibold text-[#17202A]">{selectedTicket.category}</span>
+                  <span className="font-semibold text-[#17202A]">{selectedTicket.category || 'GENERAL'}</span>
                 </div>
               </div>
 
@@ -439,7 +492,7 @@ export default function AdminSupportTicketsPage() {
                   Grievance Description
                 </label>
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
-                  {selectedTicket.description}
+                  {selectedTicket.description || selectedTicket.message || 'No description provided'}
                 </div>
               </div>
 

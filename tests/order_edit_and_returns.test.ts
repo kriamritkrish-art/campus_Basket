@@ -356,7 +356,20 @@ describe('Order Edit (Add Products) & Return Management with Runner OTP Pickup',
         }
       });
 
-      const deliveryBoy = await prisma.deliveryBoy.findFirst();
+      let deliveryBoy = await prisma.deliveryBoy.findFirst();
+      if (!deliveryBoy) {
+        deliveryBoy = await prisma.deliveryBoy.create({
+          data: {
+            id: 'runner_test_001',
+            fullName: 'Test Runner',
+            mobileNumber: '+919999999999',
+            userId: 'user_runner_1',
+            status: 'AVAILABLE',
+            isAvailable: true,
+            walletBalance: 100
+          }
+        });
+      }
       expect(deliveryBoy).toBeDefined();
 
       let statusCode = 200;
@@ -392,7 +405,20 @@ describe('Order Edit (Add Products) & Return Management with Runner OTP Pickup',
   // -------------------------------------------------------------
   describe('Delivery Runner Return Pickup OTP Verification & Commission', () => {
     it('verifies 6-digit OTP, credits runner wallet with per-delivery payout, and completes refund', async () => {
-      const deliveryBoy = await prisma.deliveryBoy.findFirst();
+      let deliveryBoy = await prisma.deliveryBoy.findFirst();
+      if (!deliveryBoy) {
+        deliveryBoy = await prisma.deliveryBoy.create({
+          data: {
+            id: 'runner_test_001',
+            fullName: 'Test Runner',
+            mobileNumber: '+919999999999',
+            userId: 'user_runner_1',
+            status: 'AVAILABLE',
+            isAvailable: true,
+            walletBalance: 100
+          }
+        });
+      }
       const initialWallet = Number(deliveryBoy.walletBalance) || 0;
 
       const order = await prisma.order.create({
