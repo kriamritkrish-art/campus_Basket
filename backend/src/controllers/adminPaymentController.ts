@@ -253,8 +253,23 @@ export class AdminPaymentController {
     try {
       const { providerId, status } = req.query;
       let settlements = await (prisma as any).settlement.findMany({
+        include: {
+          provider: {
+            include: {
+              settlementAccount: true
+            }
+          }
+        },
         orderBy: { createdAt: 'desc' }
+      }).catch(async () => {
+        return (prisma as any).settlement.findMany({ orderBy: { createdAt: 'desc' } });
       });
+
+      const [requests, accounts, providers] = await Promise.all([
+        (prisma as any).providerSettlementRequest?.findMany().catch(() => []) || [],
+        (prisma as any).providerSettlementAccount?.findMany().catch(() => []) || [],
+        (prisma as any).serviceProvider?.findMany().catch(() => []) || []
+      ]);
 
       if (providerId && providerId !== 'ALL') {
         settlements = settlements.filter((s: any) => s.providerId === providerId);
@@ -263,10 +278,46 @@ export class AdminPaymentController {
         settlements = settlements.filter((s: any) => s.status === status);
       }
 
+      const enriched = settlements.map((s: any) => {
+        const prov = providers.find((p: any) => p.id === s.providerId) || s.provider;
+        const provAcc = s.provider?.settlementAccount || accounts.find((a: any) => a.providerId === s.providerId);
+        const reqItem = requests.find((r: any) => r.providerId === s.providerId);
+
+        let accountDetails: any = null;
+        if (reqItem?.accountDetails) {
+          try {
+            accountDetails = typeof reqItem.accountDetails === 'string' ? JSON.parse(reqItem.accountDetails) : reqItem.accountDetails;
+          } catch {}
+        }
+        if (!accountDetails && provAcc) {
+          accountDetails = {
+            accountType: provAcc.upiId && !provAcc.accountNumber ? 'UPI' : 'BANK',
+            accountHolderName: provAcc.accountHolderName,
+            bankName: provAcc.bankName,
+            accountNumber: provAcc.accountNumber,
+            maskedAccountNumber: provAcc.maskedAccountNumber || provAcc.accountNumber,
+            ifscCode: provAcc.ifscCode,
+            upiId: provAcc.upiId
+          };
+        }
+
+        return {
+          ...s,
+          provider: {
+            id: s.providerId,
+            fullName: prov?.fullName || 'Campus Provider',
+            mobileNumber: prov?.mobileNumber || 'N/A',
+            settlementAccount: provAcc || null
+          },
+          accountDetails,
+          providerAccount: provAcc || null
+        };
+      });
+
       res.status(200).json({
         success: true,
-        count: settlements.length,
-        data: settlements
+        count: enriched.length,
+        data: enriched
       });
     } catch (err) {
       next(err);

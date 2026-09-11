@@ -231,6 +231,7 @@ export default function ProviderDashboardPage() {
   // Provider Settlement Requests & Ledger History
   const [providerSettlementsData, setProviderSettlementsData] = useState<any>(null);
   const [requestSettlementModalOpen, setRequestSettlementModalOpen] = useState(false);
+  const [editAccountInSettlementModal, setEditAccountInSettlementModal] = useState(false);
   const [settlementRequestNotes, setSettlementRequestNotes] = useState('');
   const [submittingSettlementRequest, setSubmittingSettlementRequest] = useState(false);
   const [selectedFinancialOrderId, setSelectedFinancialOrderId] = useState<string | null>(null);
@@ -248,15 +249,35 @@ export default function ProviderDashboardPage() {
     e.preventDefault();
     setSubmittingSettlementRequest(true);
     try {
+      const accountDetailsPayload = settlementForm.accountType === 'UPI' ? {
+        accountType: 'UPI',
+        accountHolderName: settlementForm.accountHolderName || 'Campus Partner',
+        upiId: settlementForm.upiId
+      } : {
+        accountType: 'BANK',
+        accountHolderName: settlementForm.accountHolderName || 'Campus Partner',
+        bankName: settlementForm.bankName,
+        accountNumber: settlementForm.accountNumber,
+        ifscCode: settlementForm.ifscCode
+      };
+
+      const hasValidAccount = settlementForm.accountType === 'UPI'
+        ? !!settlementForm.upiId
+        : (!!settlementForm.accountNumber && !!settlementForm.ifscCode);
+
       const res = await apiRequest('/api/provider/settlements/request', {
         method: 'POST',
-        body: JSON.stringify({ notes: settlementRequestNotes })
+        body: JSON.stringify({
+          notes: settlementRequestNotes,
+          accountDetails: hasValidAccount ? accountDetailsPayload : undefined
+        })
       });
       if (res?.success) {
         showToast('Settlement payout request submitted to Central Treasury');
         setRequestSettlementModalOpen(false);
         setSettlementRequestNotes('');
-        await Promise.all([loadProviderSettlements(), loadAnalytics()]);
+        setEditAccountInSettlementModal(false);
+        await Promise.all([loadProviderSettlements(), loadAnalytics(), loadSettlementAccount()]);
       } else {
         alert(res?.message || 'Failed to submit settlement request');
       }
@@ -4750,23 +4771,132 @@ export default function ProviderDashboardPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">
-                  Payout Destination Account
-                </label>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 font-mono text-[11px] text-slate-700">
-                  {settlementAccount ? (
-                    settlementAccount.accountType === 'UPI' ? (
-                      <div>UPI VPA: <strong>{settlementAccount.upiIdMasked}</strong></div>
-                    ) : (
-                      <div>Bank A/C: <strong>{settlementAccount.accountNumberMasked}</strong> ({settlementAccount.bankName})</div>
-                    )
-                  ) : (
-                    <span className="text-amber-700 font-sans">
-                      ⚠️ No payout account linked yet. Central Treasury will prompt for account details.
-                    </span>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700 block">
+                    Payout Destination Account
+                  </label>
+                  {settlementAccount && !editAccountInSettlementModal && (
+                    <button
+                      type="button"
+                      onClick={() => setEditAccountInSettlementModal(true)}
+                      className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+                    >
+                      Change / Edit Account
+                    </button>
+                  )}
+                  {editAccountInSettlementModal && settlementAccount && (
+                    <button
+                      type="button"
+                      onClick={() => setEditAccountInSettlementModal(false)}
+                      className="text-[11px] text-slate-500 hover:text-slate-800 font-medium cursor-pointer"
+                    >
+                      Cancel Edit
+                    </button>
                   )}
                 </div>
+
+                {(!settlementAccount || editAccountInSettlementModal) ? (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5 animate-in fade-in duration-150">
+                    <div className="flex rounded-lg bg-slate-200/70 p-0.5 text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setSettlementForm(prev => ({ ...prev, accountType: 'BANK' }))}
+                        className={`flex-1 py-1 rounded-md transition-all cursor-pointer ${
+                          settlementForm.accountType === 'BANK' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-600'
+                        }`}
+                      >
+                        Bank Account (NEFT/IMPS)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSettlementForm(prev => ({ ...prev, accountType: 'UPI' }))}
+                        className={`flex-1 py-1 rounded-md transition-all cursor-pointer ${
+                          settlementForm.accountType === 'UPI' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-600'
+                        }`}
+                      >
+                        UPI ID (VPA)
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-0.5">Beneficiary / Account Holder Name</label>
+                      <input
+                        type="text"
+                        value={settlementForm.accountHolderName}
+                        onChange={(e) => setSettlementForm(prev => ({ ...prev, accountHolderName: e.target.value }))}
+                        placeholder="Name as registered with bank / UPI"
+                        className="w-full p-2 text-xs rounded-lg border border-slate-200 bg-white text-gray-900"
+                      />
+                    </div>
+
+                    {settlementForm.accountType === 'UPI' ? (
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-0.5">UPI ID (e.g. mobile@upi / vendor@okhdfcbank)</label>
+                        <input
+                          type="text"
+                          value={settlementForm.upiId}
+                          onChange={(e) => setSettlementForm(prev => ({ ...prev, upiId: e.target.value }))}
+                          placeholder="vendor@bank"
+                          className="w-full p-2 text-xs rounded-lg border border-slate-200 bg-white font-mono text-gray-900"
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 mb-0.5">Bank Name</label>
+                          <input
+                            type="text"
+                            value={settlementForm.bankName}
+                            onChange={(e) => setSettlementForm(prev => ({ ...prev, bankName: e.target.value }))}
+                            placeholder="e.g. State Bank of India"
+                            className="w-full p-2 text-xs rounded-lg border border-slate-200 bg-white text-gray-900"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-0.5">Account Number</label>
+                            <input
+                              type="text"
+                              value={settlementForm.accountNumber}
+                              onChange={(e) => setSettlementForm(prev => ({ ...prev, accountNumber: e.target.value }))}
+                              placeholder="Account number"
+                              className="w-full p-2 text-xs rounded-lg border border-slate-200 bg-white font-mono text-gray-900"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-0.5">IFSC Code</label>
+                            <input
+                              type="text"
+                              value={settlementForm.ifscCode}
+                              onChange={(e) => setSettlementForm(prev => ({ ...prev, ifscCode: e.target.value.toUpperCase() }))}
+                              placeholder="SBIN0001234"
+                              className="w-full p-2 text-xs rounded-lg border border-slate-200 bg-white font-mono uppercase text-gray-900"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <p className="text-[10px] text-slate-500 italic">
+                      This payout account will be saved to your verified profile and visible to Treasury Admin during disbursement.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 font-mono text-[11px] text-slate-700">
+                    <div className="text-slate-900 font-bold mb-1 font-sans flex items-center justify-between">
+                      <span>{settlementAccount.accountType === 'UPI' ? 'UPI Destination' : (settlementAccount.bankName || 'Bank Account')}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono">Linked & Verified</span>
+                    </div>
+                    {settlementAccount.accountType === 'UPI' ? (
+                      <div>UPI VPA: <strong>{settlementAccount.upiId || settlementAccount.upiIdMasked}</strong></div>
+                    ) : (
+                      <div>
+                        <div>A/C: <strong>{settlementAccount.accountNumber || settlementAccount.accountNumberMasked}</strong></div>
+                        <div className="text-slate-500 font-sans text-[10px]">IFSC: {settlementAccount.ifscCode} • Beneficiary: {settlementAccount.accountHolderName}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>

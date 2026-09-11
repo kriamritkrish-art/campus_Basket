@@ -41,7 +41,8 @@ import {
   Phone,
   Calendar,
   BadgeCheck,
-  History
+  History,
+  Building
 } from 'lucide-react';
 
 type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'REFUNDS' | 'SETTLEMENTS' | 'RUNNER_SETTLEMENTS' | 'COD' | 'LEDGER';
@@ -1193,6 +1194,7 @@ export default function AdminPaymentsPage() {
                 <tr>
                   <th className="py-3 px-3">Batch Number</th>
                   <th className="py-3 px-3">Provider</th>
+                  <th className="py-3 px-3">Payout Account</th>
                   <th className="py-3 px-3">Gross Sales</th>
                   <th className="py-3 px-3">Discounts</th>
                   <th className="py-3 px-3">Refunds Deducted</th>
@@ -1203,14 +1205,28 @@ export default function AdminPaymentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {settlements.map((s) => (
+                {settlements.map((s: any) => (
                   <tr key={s.id} className="hover:bg-gray-50/80 transition-colors">
                     <td className="py-3 px-3 font-mono font-bold text-gray-900">{s.settlementNumber}</td>
                     <td className="py-3 px-3 font-medium text-gray-900">{s.provider?.fullName || 'Provider'}</td>
+                    <td className="py-3 px-3">
+                      {s.accountDetails ? (
+                        <div className="text-[11px] font-mono">
+                          <div className="font-bold text-gray-900">
+                            {s.accountDetails.accountType === 'UPI' ? `UPI: ${s.accountDetails.upiId}` : s.accountDetails.bankName}
+                          </div>
+                          <div className="text-gray-500">
+                            {s.accountDetails.accountType === 'UPI' ? s.accountDetails.accountHolderName : `${s.accountDetails.accountNumber} (${s.accountDetails.ifscCode})`}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 italic text-[11px]">Pending Account</span>
+                      )}
+                    </td>
                     <td className="py-3 px-3">₹{Number(s.grossSales).toFixed(2)}</td>
                     <td className="py-3 px-3 text-amber-600">-₹{Number(s.discountsTotal).toFixed(2)}</td>
                     <td className="py-3 px-3 text-red-600">-₹{Number(s.refundsDeducted).toFixed(2)}</td>
-                    <td className="py-3 px-3 text-purple-700 font-bold">-₹{Number(s.commissionDeducted).toFixed(2)}</td>
+                    <td className="py-3 px-3 text-purple-700 font-bold">-₹{Number(s.commissionDeducted || s.commissionAmount || 0).toFixed(2)}</td>
                     <td className="py-3 px-3 font-black text-[#4F9D2F] text-sm">₹{Number(s.netPayable).toFixed(2)}</td>
                     <td className="py-3 px-3">
                       <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
@@ -2719,6 +2735,89 @@ export default function AdminPaymentsPage() {
               <div>
                 <span className="text-gray-500">Net Payable Amount:</span>{' '}
                 <strong className="text-emerald-600 font-black text-base">₹{Number(selectedDisburseSettlement.netPayable).toFixed(2)}</strong>
+              </div>
+
+              {/* PROVIDER PAYOUT ACCOUNT DETAILS */}
+              <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between text-blue-900 font-bold">
+                  <span className="flex items-center gap-1.5">
+                    <Building className="w-4 h-4 text-blue-700" />
+                    Payout Destination Account
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-blue-200/70 font-mono font-bold text-blue-900">
+                    {selectedDisburseSettlement.accountDetails?.accountType === 'UPI' ? 'UPI VPA' : 'NEFT / IMPS'}
+                  </span>
+                </div>
+
+                {selectedDisburseSettlement.accountDetails ? (
+                  <div className="space-y-1.5 text-xs text-gray-800 bg-white p-2.5 rounded-lg border border-blue-100 font-mono">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 font-sans">Beneficiary:</span>
+                      <strong className="text-gray-900">{selectedDisburseSettlement.accountDetails.accountHolderName || selectedDisburseSettlement.provider?.fullName}</strong>
+                    </div>
+                    {selectedDisburseSettlement.accountDetails.accountType === 'UPI' || selectedDisburseSettlement.accountDetails.upiId ? (
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500 font-sans">UPI ID:</span>
+                        <div className="flex items-center gap-1.5">
+                          <strong className="text-indigo-900">{selectedDisburseSettlement.accountDetails.upiId}</strong>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(selectedDisburseSettlement.accountDetails.upiId);
+                              showToast('UPI ID copied to clipboard');
+                            }}
+                            className="text-blue-600 hover:text-blue-800 text-[10px] underline font-sans cursor-pointer"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 font-sans">Bank Name:</span>
+                          <strong>{selectedDisburseSettlement.accountDetails.bankName || 'Partner Bank'}</strong>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-500 font-sans">Account No:</span>
+                          <div className="flex items-center gap-1.5">
+                            <strong className="text-indigo-900">{selectedDisburseSettlement.accountDetails.accountNumber}</strong>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(selectedDisburseSettlement.accountDetails.accountNumber);
+                                showToast('Account number copied to clipboard');
+                              }}
+                              className="text-blue-600 hover:text-blue-800 text-[10px] underline font-sans cursor-pointer"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-500 font-sans">IFSC Code:</span>
+                          <div className="flex items-center gap-1.5">
+                            <strong className="text-indigo-900">{selectedDisburseSettlement.accountDetails.ifscCode}</strong>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(selectedDisburseSettlement.accountDetails.ifscCode);
+                                showToast('IFSC copied to clipboard');
+                              }}
+                              className="text-blue-600 hover:text-blue-800 text-[10px] underline font-sans cursor-pointer"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-2.5 bg-amber-50 text-amber-900 text-xs rounded-lg border border-amber-200">
+                    ⚠️ No specific bank snapshot attached. Defaulting to provider's verified business profile.
+                  </div>
+                )}
               </div>
 
               <div>

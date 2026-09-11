@@ -1561,13 +1561,7 @@ export class ProviderController {
         return;
       }
 
-      const { amount, notes } = req.body;
-      const requestedAmt = Number(amount) || 0;
-
-      if (requestedAmt <= 0) {
-        res.status(400).json({ success: false, message: 'Requested amount must be greater than 0.' });
-        return;
-      }
+      const { amount, notes, accountDetails } = req.body;
 
       const orders = await (prisma as any).order.findMany({
         where: { providerId }
@@ -1577,6 +1571,13 @@ export class ProviderController {
       const alreadySettled = orders.reduce((sum: number, o: any) => sum + (Number(o.providerSettledAmount) || 0), 0);
       const remainingPayable = Math.max(0, Math.round((totalPayable - alreadySettled) * 100) / 100);
 
+      const requestedAmt = Number(amount) > 0 ? Number(amount) : remainingPayable;
+
+      if (requestedAmt <= 0) {
+        res.status(400).json({ success: false, message: 'Requested amount must be greater than 0.' });
+        return;
+      }
+
       if (requestedAmt > remainingPayable && remainingPayable > 0) {
         res.status(400).json({
           success: false,
@@ -1584,6 +1585,53 @@ export class ProviderController {
         });
         return;
       }
+
+      // Upsert provider settlement account if passed
+      if (accountDetails && (accountDetails.accountNumber || accountDetails.upiId)) {
+        const masked = accountDetails.accountNumber
+          ? `${accountDetails.accountNumber.slice(0, 2)}••••${accountDetails.accountNumber.slice(-4)}`
+          : (accountDetails.upiId || 'UPI');
+
+        await (prisma as any).providerSettlementAccount.upsert({
+          where: { providerId },
+          update: {
+            accountHolderName: accountDetails.accountHolderName || 'Campus Partner',
+            bankName: accountDetails.bankName || (accountDetails.accountType === 'UPI' ? 'UPI Transfer' : 'Bank Account'),
+            accountNumber: accountDetails.accountNumber || '',
+            maskedAccountNumber: masked,
+            ifscCode: accountDetails.ifscCode || '',
+            upiId: accountDetails.upiId || null,
+            isVerified: true
+          },
+          create: {
+            providerId,
+            accountHolderName: accountDetails.accountHolderName || 'Campus Partner',
+            bankName: accountDetails.bankName || (accountDetails.accountType === 'UPI' ? 'UPI Transfer' : 'Bank Account'),
+            accountNumber: accountDetails.accountNumber || '',
+            maskedAccountNumber: masked,
+            ifscCode: accountDetails.ifscCode || '',
+            upiId: accountDetails.upiId || null,
+            isVerified: true
+          }
+        }).catch(() => {});
+      }
+
+      // Snapshot account details into request
+      const existingAcc = await (prisma as any).providerSettlementAccount.findUnique({
+        where: { providerId }
+      }).catch(() => null);
+
+      const resolvedAccountDetails = accountDetails
+        ? (typeof accountDetails === 'string' ? accountDetails : JSON.stringify(accountDetails))
+        : (existingAcc ? JSON.stringify({
+            accountType: existingAcc.upiId && !existingAcc.accountNumber ? 'UPI' : 'BANK',
+            accountHolderName: existingAcc.accountHolderName,
+            bankName: existingAcc.bankName,
+            accountNumber: existingAcc.accountNumber,
+            maskedAccountNumber: existingAcc.maskedAccountNumber || existingAcc.accountNumber,
+            ifscCode: existingAcc.ifscCode,
+            upiId: existingAcc.upiId
+          }) : null);
 
       const eligibleOrderIds = orders
         .filter((o: any) => (Number(o.providerPayable) || 0) > (Number(o.providerSettledAmount) || 0))
@@ -1597,6 +1645,7 @@ export class ProviderController {
           alreadySettled: alreadySettled,
           remainingPayable: remainingPayable,
           notes: notes || 'Settlement requested from Provider Dashboard',
+          accountDetails: resolvedAccountDetails,
           relatedOrderIds: eligibleOrderIds
         }
       });
