@@ -8,6 +8,7 @@ import { Product, Order } from '../types';
 import { FALLBACK_STORE_PRODUCTS } from '../lib/fallbackCatalog';
 import { ProductCard } from '../components/products/ProductCard';
 import { LaundryBookingDrawer } from '../components/laundry/LaundryBookingDrawer';
+import { Footer } from '../components/layout/Footer';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import {
@@ -1029,6 +1030,7 @@ export default function HomePage() {
         </section>
 
       </div>
+      <Footer />
     </div>
   );
 }

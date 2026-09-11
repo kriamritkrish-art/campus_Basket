@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { CampusBanner } from './CampusBanner';
 import { Navbar } from './Navbar';
-import { Footer } from './Footer';
 import { CartDrawer } from '../cart/CartDrawer';
 import { FloatingCartButton } from '../cart/FloatingCartButton';
 import { MobileBottomNav } from './MobileBottomNav';
@@ -35,11 +34,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <>
+    <div className="min-h-screen flex flex-col w-full">
       <CampusBanner />
       <Navbar />
       <main className="flex-1 pb-28 md:pb-16 w-full max-w-full overflow-x-hidden min-w-0">{children}</main>
-      <Footer />
       <CartDrawer />
       {/* Desktop floating cart in bottom right */}
       <div className="hidden md:block">
@@ -52,6 +50,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         isOpen={isCategoryDrawerOpen}
         onClose={() => setIsCategoryDrawerOpen(false)}
       />
-    </>
+    </div>
   );
 }

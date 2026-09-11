@@ -8,13 +8,13 @@ import { Phone, Mail, MapPin, ShieldCheck, Heart, Zap, Building2, School } from 
 export function Footer() {
   const pathname = usePathname();
 
-  // Only visible on the landing page (home) and nowhere else
-  if (pathname !== '/' && pathname !== '') {
+  // Safeguard: Only visible on the landing page (home) and nowhere else
+  if (pathname && pathname !== '/' && pathname !== '') {
     return null;
   }
 
   return (
-    <footer className="bg-white border-t border-gray-200 text-gray-600 text-xs mt-auto w-full max-w-full overflow-hidden">
+    <footer className="bg-white border-t border-gray-200 text-gray-600 text-xs mt-12 w-full max-w-full overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 w-full min-w-0">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Col 1: Institutional & College Info */}
