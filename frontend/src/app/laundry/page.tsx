@@ -53,6 +53,8 @@ export default function LaundryPage() {
     orderNumber: string;
     totalAmount: number;
     codAmount: number;
+    laundryBaseAmount?: number;
+    serviceChargeAmount?: number;
   } | null>(null);
   const [copiedUpi, setCopiedUpi] = useState<boolean>(false);
 
@@ -394,6 +396,8 @@ export default function LaundryPage() {
                             orderNumber: ord.orderNumber,
                             totalAmount: ord.totalAmount || ord.finalPrice || ord.estimatedPrice,
                             codAmount: ord.codAmount,
+                            laundryBaseAmount: ord.laundryBaseAmount,
+                            serviceChargeAmount: ord.serviceChargeAmount,
                           })
                         }
                         className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#2e7d32] hover:bg-[#1b5e20] text-white text-xs font-bold shadow-xs transition cursor-pointer"
@@ -685,7 +689,12 @@ export default function LaundryPage() {
             <div className="bg-emerald-50 rounded-2xl p-3.5 border border-emerald-200/80 flex items-center justify-between">
               <div>
                 <span className="text-[10px] uppercase font-bold text-emerald-800 block">Pay Directly to Partner</span>
-                <span className="text-2xl font-black text-[#1b5e20]">₹{scannerModal.totalAmount}</span>
+                <span className="text-2xl font-black text-[#1b5e20]">
+                  ₹{scannerModal.codAmount !== undefined && scannerModal.codAmount !== null ? scannerModal.codAmount : (scannerModal.laundryBaseAmount || scannerModal.totalAmount)}
+                </span>
+                <span className="text-[10px] text-emerald-700 block">
+                  (₹{scannerModal.serviceChargeAmount || 0} advance paid online)
+                </span>
               </div>
               <span className="px-2.5 py-1 rounded-full bg-white text-emerald-800 text-[10px] font-bold border border-emerald-200 shadow-2xs">
                 💵 Laundry COD

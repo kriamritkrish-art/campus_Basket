@@ -23,8 +23,8 @@ describe('Laundry Broadcast Pool, Order Acceptance & Payment Scanner Workflow', 
         laundryBaseAmount: 140,
         serviceChargeAmount: 10,
         totalAmount: 150,
-        onlinePaidAmount: 0,
-        codAmount: 150,
+        onlinePaidAmount: 10,
+        codAmount: 140,
         paymentMethod: 'COD',
         paymentStatus: 'PENDING',
         hallName: 'Hall 11',
@@ -41,6 +41,10 @@ describe('Laundry Broadcast Pool, Order Acceptance & Payment Scanner Workflow', 
     expect(order.id).toBeDefined();
     expect(order.providerId).toBeNull();
     expect(order.status).toBe('REQUESTED');
+    expect(order.onlinePaidAmount).toBe(10);
+    expect(order.codAmount).toBe(140);
+    expect(order.hallName).toBe('Hall 11');
+    expect(order.roomNumber).toBe('204');
     createdOrderId = order.id;
   });
 
@@ -200,5 +204,35 @@ describe('Laundry Broadcast Pool, Order Acceptance & Payment Scanner Workflow', 
     expect(responseData.order.provider.paymentScanner).toBeDefined();
     expect(responseData.order.provider.paymentScanner.paymentUpiId || responseData.order.provider.paymentScanner.upiId).toBe('laundry.partner@oksbi');
     expect(responseData.order.provider.paymentScanner.qrImage).toContain('data:image/jpeg;base64');
+  });
+
+  it('7. Verifies order formatting keeps student address (hall & room) and COD onlinePaidAmount vs codAmount', async () => {
+    const req: any = {
+      params: { id: createdOrderId },
+      user: { role: 'STUDENT', studentId: 'std_test_pool' }
+    };
+
+    let statusCode = 0;
+    let responseData: any = null;
+    const res: any = {
+      status: (code: number) => {
+        statusCode = code;
+        return {
+          json: (data: any) => {
+            responseData = data;
+          }
+        };
+      }
+    };
+    const next = (err: any) => { throw err; };
+
+    await LaundryController.getOrderDetail(req, res, next);
+
+    expect(statusCode).toBe(200);
+    expect(responseData.success).toBe(true);
+    expect(responseData.order.hallName).toBe('Hall 11');
+    expect(responseData.order.roomNumber).toBe('204');
+    expect(responseData.order.onlinePaidAmount).toBe(10); // Mandatory advance platform fee
+    expect(responseData.order.codAmount).toBe(140); // Remaining base amount due to dhobi
   });
 });

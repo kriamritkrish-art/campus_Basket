@@ -371,6 +371,16 @@ const fallbackHandlers: Record<string, any> = {
         user.student = newStudent as any;
       }
       return JSON.parse(JSON.stringify(newStudent));
+    },
+    update: async (args: any) => {
+      const id = args?.where?.id;
+      const userId = args?.where?.userId;
+      const user = fallbackUsers.find((u: any) => u.student && ((id && u.student.id === id) || (userId && u.student.userId === userId)));
+      if (user?.student && args.data) {
+        Object.assign(user.student, args.data, { updatedAt: new Date() });
+        return JSON.parse(JSON.stringify(user.student));
+      }
+      return args?.data || null;
     }
   },
   serviceProvider: {
@@ -1480,33 +1490,68 @@ const fallbackHandlers: Record<string, any> = {
       }
       if (args?.where?.paymentStatus) jobs = jobs.filter(j => j.paymentStatus === args.where.paymentStatus);
       if (args?.where?.settlementStatus) jobs = jobs.filter(j => j.settlementStatus === args.where.settlementStatus);
-      return JSON.parse(JSON.stringify(jobs.map(j => ({
-        ...j,
-        laundryBaseAmount: j.laundryBaseAmount !== undefined ? j.laundryBaseAmount : (j.finalPrice || j.estimatedPrice || 0) * 0.95,
-        serviceChargeAmount: j.serviceChargeAmount !== undefined ? j.serviceChargeAmount : (j.finalPrice || j.estimatedPrice || 0) * 0.05,
-        totalAmount: j.totalAmount || j.finalPrice || j.estimatedPrice || 0,
-        onlinePaidAmount: j.onlinePaidAmount !== undefined ? j.onlinePaidAmount : (j.paymentMethod === 'ONLINE' ? j.totalAmount : j.serviceChargeAmount),
-        codAmount: j.codAmount !== undefined ? j.codAmount : (j.paymentMethod === 'COD' ? j.laundryBaseAmount : 0),
-        codCollectedAmount: j.codCollectedAmount || 0,
-        codStatus: j.codStatus || (j.paymentMethod === 'COD' ? (j.status === 'COMPLETED' ? 'COLLECTED' : 'PENDING') : 'NOT_APPLICABLE'),
-        paymentMethod: j.paymentMethod || 'COD',
-        paymentStatus: j.paymentStatus || 'PAID',
-        refundStatus: j.refundStatus || 'NOT_APPLICABLE',
-        otps: Array.from(new Map([...fallbackLaundryOtps.filter((o: any) => o.laundryOrderId === j.id), ...(j.otps || [])].map((o: any) => [o.id || o.otpType, o])).values()),
-        codCollection: fallbackLaundryCodCollections.find(c => c.laundryOrderId === j.id) || null,
-        provider: j.providerId ? (fallbackUsers.find((u: any) => u.provider?.id === j.providerId)?.provider || {
-          id: j.providerId,
-          fullName: 'Campus Express Laundry Hub',
-          mobileNumber: '+91 98765 12345',
-          serviceCategory: 'LAUNDRY'
-        }) : null
-      }))));
+      return JSON.parse(JSON.stringify(jobs.map(j => {
+        const studentUser = fallbackUsers.find((u: any) => u.student?.id === j.studentId);
+        const studentObj = studentUser?.student ? {
+          id: studentUser.student.id,
+          fullName: studentUser.student.fullName || 'Campus Student',
+          mobileNumber: studentUser.student.mobileNumber || '+91 98765 43210',
+          roomNumber: j.roomNumber || studentUser.student.roomNumber || '101',
+          hallName: j.hallName || studentUser.student.hall?.name || 'Campus Hostel',
+          hall: studentUser.student.hall || { name: j.hallName || 'Campus Hostel' }
+        } : {
+          id: j.studentId,
+          fullName: 'Campus Student',
+          mobileNumber: '+91 98765 43210',
+          roomNumber: j.roomNumber || '101',
+          hallName: j.hallName || 'Campus Hostel',
+          hall: { name: j.hallName || 'Campus Hostel' }
+        };
+        return {
+          ...j,
+          laundryBaseAmount: j.laundryBaseAmount !== undefined ? j.laundryBaseAmount : (j.finalPrice || j.estimatedPrice || 0) * 0.95,
+          serviceChargeAmount: j.serviceChargeAmount !== undefined ? j.serviceChargeAmount : (j.finalPrice || j.estimatedPrice || 0) * 0.05,
+          totalAmount: j.totalAmount || j.finalPrice || j.estimatedPrice || 0,
+          onlinePaidAmount: j.onlinePaidAmount !== undefined ? j.onlinePaidAmount : (j.paymentMethod === 'ONLINE' ? j.totalAmount : j.serviceChargeAmount),
+          codAmount: j.codAmount !== undefined ? j.codAmount : (j.paymentMethod === 'COD' ? j.laundryBaseAmount : 0),
+          codCollectedAmount: j.codCollectedAmount || 0,
+          codStatus: j.codStatus || (j.paymentMethod === 'COD' ? (j.status === 'COMPLETED' ? 'COLLECTED' : 'PENDING') : 'NOT_APPLICABLE'),
+          paymentMethod: j.paymentMethod || 'COD',
+          paymentStatus: j.paymentStatus || 'PAID',
+          refundStatus: j.refundStatus || 'NOT_APPLICABLE',
+          student: studentObj,
+          otps: Array.from(new Map([...fallbackLaundryOtps.filter((o: any) => o.laundryOrderId === j.id), ...(j.otps || [])].map((o: any) => [o.id || o.otpType, o])).values()),
+          codCollection: fallbackLaundryCodCollections.find(c => c.laundryOrderId === j.id) || null,
+          provider: j.providerId ? (fallbackUsers.find((u: any) => u.provider?.id === j.providerId)?.provider || {
+            id: j.providerId,
+            fullName: 'Campus Express Laundry Hub',
+            mobileNumber: '+91 98765 12345',
+            serviceCategory: 'LAUNDRY'
+          }) : null
+        };
+      })));
     },
     findUnique: async (args: any) => {
       const id = args?.where?.id;
       const orderNumber = args?.where?.orderNumber;
       const j = persistentLaundryJobs.find((item) => (id && item.id === id) || (orderNumber && item.orderNumber === orderNumber)) as any;
       if (!j) return null;
+      const studentUser = fallbackUsers.find((u: any) => u.student?.id === j.studentId);
+      const studentObj = studentUser?.student ? {
+        id: studentUser.student.id,
+        fullName: studentUser.student.fullName || 'Campus Student',
+        mobileNumber: studentUser.student.mobileNumber || '+91 98765 43210',
+        roomNumber: j.roomNumber || studentUser.student.roomNumber || '101',
+        hallName: j.hallName || studentUser.student.hall?.name || 'Campus Hostel',
+        hall: studentUser.student.hall || { name: j.hallName || 'Campus Hostel' }
+      } : {
+        id: j.studentId,
+        fullName: 'Campus Student',
+        mobileNumber: '+91 98765 43210',
+        roomNumber: j.roomNumber || '101',
+        hallName: j.hallName || 'Campus Hostel',
+        hall: { name: j.hallName || 'Campus Hostel' }
+      };
       return JSON.parse(JSON.stringify({
         ...j,
         laundryBaseAmount: j.laundryBaseAmount !== undefined ? j.laundryBaseAmount : (j.finalPrice || j.estimatedPrice || 0) * 0.95,
@@ -1520,6 +1565,7 @@ const fallbackHandlers: Record<string, any> = {
         paymentStatus: j.paymentStatus || 'PAID',
         settlementStatus: j.settlementStatus || (j.status === 'COMPLETED' ? 'ELIGIBLE' : 'NOT_ELIGIBLE'),
         refundStatus: j.refundStatus || 'NOT_APPLICABLE',
+        student: studentObj,
         items: j.items || [],
         photos: j.photos || [],
         otps: Array.from(new Map([...fallbackLaundryOtps.filter((o: any) => o.laundryOrderId === j.id), ...(j.otps || [])].map((o: any) => [o.id || o.otpType, o])).values()),
@@ -1556,8 +1602,8 @@ const fallbackHandlers: Record<string, any> = {
         laundryBaseAmount: baseAmount,
         serviceChargeAmount: scAmount,
         totalAmount,
-        onlinePaidAmount: args.data.onlinePaidAmount !== undefined ? Number(args.data.onlinePaidAmount) : 0,
-        codAmount: args.data.codAmount !== undefined ? Number(args.data.codAmount) : 0,
+        onlinePaidAmount: args.data.onlinePaidAmount !== undefined ? Number(args.data.onlinePaidAmount) : (args.data.paymentMethod === 'ONLINE' ? totalAmount : scAmount),
+        codAmount: args.data.codAmount !== undefined ? Number(args.data.codAmount) : (args.data.paymentMethod === 'COD' ? baseAmount : 0),
         codCollectedAmount: 0,
         codStatus: args.data.codStatus || (args.data.paymentMethod === 'COD' ? 'PENDING' : 'NOT_APPLICABLE'),
         paymentMethod: args.data.paymentMethod || 'COD',

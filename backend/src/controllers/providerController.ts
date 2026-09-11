@@ -85,7 +85,7 @@ export class ProviderController {
           ? prisma.laundryOrder.findMany({
               where: { providerId },
               include: {
-                student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
+                student: { select: { fullName: true, mobileNumber: true, roomNumber: true, hall: { select: { name: true } } } },
                 items: true,
                 photos: true,
                 otps: true,
@@ -101,7 +101,7 @@ export class ProviderController {
                 providerId: null
               },
               include: {
-                student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
+                student: { select: { fullName: true, mobileNumber: true, roomNumber: true, hall: { select: { name: true } } } },
                 items: true,
                 photos: true,
                 otps: true
@@ -144,15 +144,19 @@ export class ProviderController {
           specialInstructions: j.specialInstructions,
           estimatedPrice: Number(j.estimatedPrice),
           finalPrice: j.finalPrice ? Number(j.finalPrice) : Number(j.estimatedPrice),
-          laundryBaseAmount: Number(j.laundryBaseAmount || (j.finalPrice || j.estimatedPrice || 0) * 0.95),
-          serviceChargeAmount: Number(j.serviceChargeAmount || (j.finalPrice || j.estimatedPrice || 0) * 0.05),
+          laundryBaseAmount: Number(j.laundryBaseAmount !== undefined && j.laundryBaseAmount !== null ? j.laundryBaseAmount : (j.finalPrice || j.estimatedPrice || 0) * 0.95),
+          serviceChargeAmount: Number(j.serviceChargeAmount !== undefined && j.serviceChargeAmount !== null ? j.serviceChargeAmount : (j.finalPrice || j.estimatedPrice || 0) * 0.05),
           totalAmount: Number(j.totalAmount || j.finalPrice || j.estimatedPrice || 0),
-          onlinePaidAmount: Number(j.onlinePaidAmount || 0),
-          codAmount: Number(j.codAmount || j.totalAmount || 0),
+          onlinePaidAmount: Number(j.onlinePaidAmount !== undefined && j.onlinePaidAmount !== null ? j.onlinePaidAmount : (j.paymentMethod === 'ONLINE' ? (j.totalAmount || j.finalPrice || j.estimatedPrice || 0) : (j.serviceChargeAmount || 0))),
+          codAmount: Number(j.codAmount !== undefined && j.codAmount !== null ? j.codAmount : (j.paymentMethod === 'COD' ? (j.laundryBaseAmount || 0) : 0)),
           codStatus: j.codStatus || 'PENDING',
           paymentMethod: j.paymentMethod || 'COD',
           isAvailablePool,
-          student: j.student,
+          student: j.student ? {
+            ...j.student,
+            hallName: j.hallName || j.student.hall?.name || (j.student as any).hallName || 'Campus Hostel',
+            roomNumber: j.roomNumber || j.student.roomNumber || '101'
+          } : null,
           deliveryBoy: j.deliveryBoy,
           items: j.items,
           itemsSummary: j.items?.map((i: any) => `${i.quantity}x ${i.itemType}`).join(', ') || 'Laundry Items',

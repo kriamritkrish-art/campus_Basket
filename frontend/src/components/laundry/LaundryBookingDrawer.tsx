@@ -104,8 +104,13 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
   // Auto-fill from student profile
   useEffect(() => {
     if (user?.student) {
-      if (!hallName) setHallName(user.student.hall?.name || 'Hall 11');
-      if (!roomNumber) setRoomNumber(user.student.roomNumber || 'B-304');
+      const studentHall = user.student.hall?.name || (user.student as any).hallName;
+      if (studentHall && (!hallName || hallName === 'Hall 11')) {
+        setHallName(studentHall);
+      }
+      if (user.student.roomNumber && (!roomNumber || roomNumber === 'B-304' || roomNumber === '101')) {
+        setRoomNumber(user.student.roomNumber);
+      }
     }
   }, [user]);
 
@@ -147,13 +152,15 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
       .then((res) => {
         if (res.success && Array.isArray(res.halls) && res.halls.length > 0) {
           setHalls(res.halls);
-          if (!hallName) {
-            setHallName(res.halls[0].name);
-          }
+          setHallName((current) => {
+            if (current) return current;
+            const studentHall = user?.student?.hall?.name || (user?.student as any)?.hallName;
+            return studentHall || res.halls[0].name;
+          });
         }
       })
       .catch(() => {});
-  }, []);
+  }, [user]);
 
   const updateItemCount = (type: string, delta: number) => {
     setCounts((prev) => {
@@ -245,7 +252,7 @@ export function LaundryBookingDrawer({ onSuccess }: { onSuccess?: (order: any) =
     const draft = {
       counts,
       totalGarments,
-      hallName: hallName || user?.student?.hall?.name || 'Hall 11',
+      hallName: hallName || user?.student?.hall?.name || (user?.student as any)?.hallName || 'Campus Hostel',
       roomNumber: roomNumber || user?.student?.roomNumber || '101',
       pickupDate,
       pickupTime,

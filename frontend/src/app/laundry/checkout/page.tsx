@@ -87,6 +87,12 @@ export default function LaundryCheckoutPage() {
   // Confirmed Order state
   const [orderConfirmed, setOrderConfirmed] = useState<any | null>(null);
 
+  // Address editing state to guarantee student's real hostel hall & room are used
+  const [selectedHall, setSelectedHall] = useState('');
+  const [roomNo, setRoomNo] = useState('');
+  const [halls, setHalls] = useState<{ id: string; name: string }[]>([]);
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
+
   // Load draft from sessionStorage
   useEffect(() => {
     try {
@@ -97,12 +103,42 @@ export default function LaundryCheckoutPage() {
         if (parsed.paymentMethod) {
           setPaymentMethod(parsed.paymentMethod);
         }
+        if (parsed.hallName) {
+          setSelectedHall(parsed.hallName);
+        }
+        if (parsed.roomNumber) {
+          setRoomNo(parsed.roomNumber);
+        }
       }
     } catch (e) {
       console.warn('Could not parse laundry checkout draft', e);
     } finally {
       setLoadingDraft(false);
     }
+  }, []);
+
+  // Sync address from authenticated user if not present in draft
+  useEffect(() => {
+    if (user?.student) {
+      const studentHall = user.student.hall?.name || (user.student as any)?.hallName;
+      if (studentHall && !selectedHall) {
+        setSelectedHall(studentHall);
+      }
+      if (user.student.roomNumber && !roomNo) {
+        setRoomNo(user.student.roomNumber);
+      }
+    }
+  }, [user]);
+
+  // Fetch campus halls for selection
+  useEffect(() => {
+    apiRequest('/api/campus/halls')
+      .then((res) => {
+        if (res.success && Array.isArray(res.halls)) {
+          setHalls(res.halls);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Dynamically load Razorpay SDK
@@ -142,9 +178,10 @@ export default function LaundryCheckoutPage() {
 
   // Financial Breakdown:
   // ONLINE: Student pays full totalOrderAmount now via Razorpay
-  // COD: Direct payment to laundry partner (cash or via provider's payment scanner). No advance gateway charge required.
-  const payOnlineNow = paymentMethod === 'ONLINE' ? totalOrderAmount : 0;
-  const payOnDelivery = paymentMethod === 'ONLINE' ? 0 : totalOrderAmount;
+  // COD: Mandatory ₹1/garment advance platform handling fee paid online via Razorpay now.
+  // The remaining balance (laundryBaseAmount) is paid directly to dhobi on delivery/pickup (Cash or Provider QR Scanner).
+  const payOnlineNow = paymentMethod === 'ONLINE' ? totalOrderAmount : serviceChargeAmount;
+  const payOnDelivery = paymentMethod === 'ONLINE' ? 0 : laundryBaseAmount;
 
   // Format dates for pickup & return
   const pickupDateFormatted = draft?.pickupDate
@@ -175,9 +212,12 @@ export default function LaundryCheckoutPage() {
       quantity,
     }));
 
+    const finalHallName = selectedHall.trim() || draft.hallName || user?.student?.hall?.name || (user?.student as any)?.hallName || 'Campus Hostel';
+    const finalRoomNumber = roomNo.trim() || draft.roomNumber || user?.student?.roomNumber || '101';
+
     const orderPayload = {
-      hallName: draft.hallName || user?.student?.hall?.name || 'Hall 11',
-      roomNumber: draft.roomNumber || user?.student?.roomNumber || '101',
+      hallName: finalHallName,
+      roomNumber: finalRoomNumber,
       pickupDate: draft.pickupDate,
       preferredPickupTime: draft.pickupTime,
       preferredReturnTime: draft.returnTime,
@@ -652,17 +692,65 @@ export default function LaundryCheckoutPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                 {/* Location */}
-                <div className="bg-gray-50 rounded-lg p-3 border border-gray-100 space-y-1">
-                  <div className="flex items-center gap-1.5 text-gray-500 font-medium text-[11px]">
-                    <MapPin className="w-3.5 h-3.5 text-[#2e7d32]" />
-                    <span>Pickup Location</span>
+                <div className="bg-gray-50 rounded-lg p-3 border border-gray-100 space-y-1 relative">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-gray-500 font-medium text-[11px]">
+                      <MapPin className="w-3.5 h-3.5 text-[#2e7d32]" />
+                      <span>Pickup Location</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingAddress(!isEditingAddress)}
+                      className="text-[10px] font-bold text-[#2e7d32] hover:underline cursor-pointer"
+                    >
+                      {isEditingAddress ? 'Done' : 'Change'}
+                    </button>
                   </div>
-                  <div className="font-semibold text-gray-900">
-                    {draft.hallName || 'Gargi Hall'}
-                  </div>
-                  <div className="text-gray-500 text-[11px]">
-                    Room {draft.roomNumber || '101'}
-                  </div>
+                  {isEditingAddress ? (
+                    <div className="space-y-1.5 pt-1">
+                      <div>
+                        <label className="text-[10px] text-gray-500 block">Hostel Hall</label>
+                        {halls.length > 0 ? (
+                          <select
+                            value={selectedHall}
+                            onChange={(e) => setSelectedHall(e.target.value)}
+                            className="w-full text-xs font-semibold p-1 bg-white border border-gray-300 rounded focus:ring-1 focus:ring-[#2e7d32] text-gray-900"
+                          >
+                            {halls.map((h) => (
+                              <option key={h.id || h.name} value={h.name}>{h.name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            value={selectedHall}
+                            onChange={(e) => setSelectedHall(e.target.value)}
+                            placeholder="e.g. Hall 11"
+                            className="w-full text-xs font-semibold p-1 bg-white border border-gray-300 rounded text-gray-900"
+                          />
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 block">Room Number</label>
+                        <input
+                          type="text"
+                          value={roomNo}
+                          onChange={(e) => setRoomNo(e.target.value)}
+                          placeholder="e.g. 204"
+                          className="w-full text-xs font-semibold p-1 bg-white border border-gray-300 rounded text-gray-900"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="font-semibold text-gray-900">
+                        {selectedHall || draft.hallName || user?.student?.hall?.name || (user?.student as any)?.hallName || 'Campus Hostel'}
+                      </div>
+                      <div className="text-gray-500 text-[11px]">
+                        Room {roomNo || draft.roomNumber || user?.student?.roomNumber || '101'}
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* Pickup Slot */}
@@ -829,12 +917,13 @@ export default function LaundryCheckoutPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-bold text-gray-900 text-xs sm:text-sm">Pay Directly to Laundry Partner (COD / Scanner)</span>
+                        <span className="font-bold text-gray-900 text-xs sm:text-sm">₹{serviceChargeAmount} advance</span>
                       </div>
                       <div className="text-[11px] font-semibold text-[#2e7d32] mt-0.5">
-                        ₹0 advance required
+                        Mandatory ₹1/dress platform fee online advance
                       </div>
                       <p className="text-[11px] text-gray-600 mt-0.5 leading-relaxed">
-                        Pay ₹{totalOrderAmount} directly to dhobi in cash or scan their UPI QR code on acceptance.
+                        Pay ₹{serviceChargeAmount} advance online now. Balance ₹{laundryBaseAmount} is payable directly to dhobi on delivery (Cash or Provider QR Scanner).
                       </p>
                     </div>
                   </div>
@@ -866,14 +955,14 @@ export default function LaundryCheckoutPage() {
 
                 {paymentMethod === 'COD' && (
                   <div className="bg-amber-50 rounded-lg p-2.5 border border-amber-200 text-[11px] text-amber-900 space-y-0.5 mt-2">
-                    <div className="font-semibold">Laundry COD Payment:</div>
+                    <div className="font-semibold">Laundry COD Payment Breakdown:</div>
                     <div className="flex justify-between">
-                      <span>Online advance:</span>
-                      <strong className="text-[#2e7d32]">₹0 (Free Booking)</strong>
+                      <span>Online advance (Mandatory ₹1/dress fee):</span>
+                      <strong className="text-[#2e7d32]">₹{serviceChargeAmount}</strong>
                     </div>
                     <div className="flex justify-between">
-                      <span>Pay to Laundry Partner (Cash or Scanner):</span>
-                      <strong className="text-gray-900">₹{totalOrderAmount}</strong>
+                      <span>Pay to Dhobi on Delivery (Cash or Scanner):</span>
+                      <strong className="text-gray-900">₹{laundryBaseAmount}</strong>
                     </div>
                   </div>
                 )}
@@ -897,7 +986,7 @@ export default function LaundryCheckoutPage() {
                 ) : paymentMethod === 'ONLINE' ? (
                   <span>PAY ₹{payOnlineNow} &amp; CONFIRM BOOKING →</span>
                 ) : (
-                  <span>CONFIRM LAUNDRY BOOKING (COD ₹{totalOrderAmount}) →</span>
+                  <span>PAY ₹{payOnlineNow} (₹1/DRESS ADVANCE) &amp; CONFIRM BOOKING →</span>
                 )}
               </button>
 

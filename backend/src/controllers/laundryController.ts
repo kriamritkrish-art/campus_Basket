@@ -81,10 +81,16 @@ export class LaundryController {
         paymentMethod: data.paymentMethod
       });
 
-      // 2. Open broadcast pool: newly created order is available to all active laundry providers
+      // 2. Open broadcast pool & COD Mandatory Advance:
+      // For COD, ₹1 per garment platform service charge is mandatory online advance.
+      // The remaining laundryBaseAmount is COD balance payable directly to partner (Cash or Provider QR Scanner).
       const isCod = data.paymentMethod === 'COD';
-      const onlinePaidAmount = isCod ? 0 : pricing.onlinePaidAmount;
-      const codAmount = isCod ? pricing.totalAmount : pricing.codAmount;
+      const onlinePaidAmount = isCod ? pricing.serviceChargeAmount : pricing.onlinePaidAmount;
+      const codAmount = isCod ? pricing.laundryBaseAmount : pricing.codAmount;
+
+      // Ensure actual hall and room are captured and synced
+      const orderHallName = data.hallName?.trim() || student.hall?.name || (student as any).hallName || 'Campus Hostel';
+      const orderRoomNumber = data.roomNumber?.trim() || student.roomNumber || '101';
 
       // 3. Create Laundry Order in single transaction (providerId: null for broadcast pool)
       const newLaundryOrder = await prisma.$transaction(async (tx) => {
@@ -113,9 +119,9 @@ export class LaundryController {
             serviceChargeRefundable: true,
             priceSnapshotJson: JSON.stringify(pricing.snapshot),
             serviceConfigId: pricing.serviceConfigId || null,
-            hallName: data.hallName,
-            hallNumber: data.hallNumber || null,
-            roomNumber: data.roomNumber,
+            hallName: orderHallName,
+            hallNumber: data.hallNumber || student.hallNumber || null,
+            roomNumber: orderRoomNumber,
             pickupDate: new Date(data.pickupDate),
             preferredPickupTime: data.preferredPickupTime,
             preferredReturnTime: data.preferredReturnTime,
@@ -133,12 +139,23 @@ export class LaundryController {
                 newStatus: 'REQUESTED',
                 changedBy: 'STUDENT',
                 notes: isCod
-                  ? `Laundry booking placed in broadcast pool. Payment: COD (Direct to Laundry Partner / QR Scanner). Total Amount: ₹${pricing.totalAmount}`
-                  : `Laundry booked. Payment: ${data.paymentMethod}. Online advance: ₹${onlinePaidAmount}, COD Due: ₹${codAmount}`
+                  ? `Laundry booking placed in broadcast pool. Payment: COD. Mandatory advance service charge: ₹${onlinePaidAmount} (₹1/dress), COD Due to Partner: ₹${codAmount}`
+                  : `Laundry booked. Payment: ONLINE. Full online paid: ₹${onlinePaidAmount}, COD Due: ₹${codAmount}`
               }
             }
           }
         });
+
+        // Update student profile with latest room and hall if provided
+        try {
+          await tx.student.update({
+            where: { id: studentId },
+            data: {
+              roomNumber: orderRoomNumber,
+              ...(data.hallNumber ? { hallNumber: data.hallNumber } : {})
+            }
+          });
+        } catch {}
 
         // Save cloth photos if provided
         if (data.photos && data.photos.length > 0) {
@@ -166,8 +183,8 @@ export class LaundryController {
           name: student.fullName,
           email: student.user.email,
           rollNumber: student.rollNumber || 'STUDENT',
-          hall: student.hall?.name || data.hallName,
-          room: data.roomNumber
+          hall: orderHallName,
+          room: orderRoomNumber
         },
         items: pricing.itemsBreakdown.map((i) => ({
           name: `${i.itemType} (${pricing.serviceName})`,
@@ -219,9 +236,9 @@ export class LaundryController {
         }
       }
 
-      // 6. Initialize Razorpay Order for online payable portion (only if ONLINE payment method)
+      // 6. Initialize Razorpay Order for online payable portion (both full online and COD advance service charge)
       let razorpayData = null;
-      if (!isCod && onlinePaidAmount > 0) {
+      if (onlinePaidAmount > 0) {
         try {
           const rzpOrder = await razorpayService.createRazorpayOrder({
             amountInRupees: onlinePaidAmount,
@@ -231,7 +248,7 @@ export class LaundryController {
               laundryOrderId: newLaundryOrder.id,
               studentEmail: student.user.email,
               paymentMethod: data.paymentMethod,
-              paymentPurpose: 'LAUNDRY_FULL_PAYMENT'
+              paymentPurpose: isCod ? 'LAUNDRY_COD_ADVANCE_SERVICE_CHARGE' : 'LAUNDRY_FULL_PAYMENT'
             }
           });
 
@@ -471,8 +488,8 @@ export class LaundryController {
       laundryBaseAmount: baseAmount,
       serviceChargeAmount: serviceCharge,
       totalAmount: total,
-      onlinePaidAmount: Number(order.onlinePaidAmount || (order.paymentMethod === 'ONLINE' ? total : 0)),
-      codAmount: Number(order.codAmount || (order.paymentMethod === 'COD' ? total : 0)),
+      onlinePaidAmount: Number(order.onlinePaidAmount !== undefined && order.onlinePaidAmount !== null ? order.onlinePaidAmount : (order.paymentMethod === 'ONLINE' ? total : serviceCharge)),
+      codAmount: Number(order.codAmount !== undefined && order.codAmount !== null ? order.codAmount : (order.paymentMethod === 'COD' ? baseAmount : 0)),
       codCollectedAmount: Number(order.codCollectedAmount || 0),
       codStatus: order.codStatus,
       paymentMethod: order.paymentMethod,
