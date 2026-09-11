@@ -34,7 +34,14 @@ import {
   Users,
   ArrowLeft,
   ChevronRight,
-  Eye
+  Eye,
+  Package,
+  ClipboardList,
+  Truck,
+  Phone,
+  Calendar,
+  BadgeCheck,
+  History
 } from 'lucide-react';
 
 type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'REFUNDS' | 'SETTLEMENTS' | 'RUNNER_SETTLEMENTS' | 'COD' | 'LEDGER';
@@ -99,6 +106,20 @@ export default function AdminPaymentsPage() {
   const [codCollectionStatusFilter, setCodCollectionStatusFilter] = useState('ALL');
   const [codReconciliationStatusFilter, setCodReconciliationStatusFilter] = useState('ALL');
   const [codSearchQuery, setCodSearchQuery] = useState('');
+
+  // Delivery Boy Operational Orders State (Tab 2 - Operational Visibility Only)
+  const [runnerSubTab, setRunnerSubTab] = useState<'RECONCILIATION' | 'ALL_ORDERS'>('RECONCILIATION');
+  const [showAllRunnerOrdersView, setShowAllRunnerOrdersView] = useState(false);
+  const [operationalOrders, setOperationalOrders] = useState<any[]>([]);
+  const [loadingOperationalOrders, setLoadingOperationalOrders] = useState(false);
+  const [operationalRunnerFilter, setOperationalRunnerFilter] = useState('ALL');
+  const [operationalTypeFilter, setOperationalTypeFilter] = useState<'ALL' | 'DELIVERY' | 'PICKUP'>('ALL');
+  const [operationalPaymentFilter, setOperationalPaymentFilter] = useState('ALL');
+  const [operationalStatusFilter, setOperationalStatusFilter] = useState('ALL');
+  const [operationalProviderFilter, setOperationalProviderFilter] = useState('ALL');
+  const [operationalDateFilter, setOperationalDateFilter] = useState('ALL');
+  const [operationalSearchQuery, setOperationalSearchQuery] = useState('');
+  const [selectedOperationalOrder, setSelectedOperationalOrder] = useState<any>(null);
 
   // Financial Ledger State
   const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
@@ -237,6 +258,49 @@ export default function AdminPaymentsPage() {
     codRunnerFilter,
     codProviderFilter,
     codReconciliationStatusFilter
+  ]);
+
+  // Load Delivery Boy Operational Orders (Tab 2 - Operational Visibility Only)
+  const loadOperationalOrders = async (overrideRunnerId?: string) => {
+    setLoadingOperationalOrders(true);
+    try {
+      const runnerId = overrideRunnerId !== undefined
+        ? overrideRunnerId
+        : (selectedCodRunner?.deliveryBoyId || operationalRunnerFilter);
+      let q = `/api/admin/payments/delivery-boy-orders?deliveryBoyId=${runnerId || 'ALL'}`;
+      if (operationalTypeFilter !== 'ALL') q += `&orderType=${operationalTypeFilter}`;
+      if (operationalPaymentFilter !== 'ALL') q += `&paymentMethod=${operationalPaymentFilter}`;
+      if (operationalStatusFilter !== 'ALL') q += `&status=${encodeURIComponent(operationalStatusFilter)}`;
+      if (operationalProviderFilter !== 'ALL') q += `&providerId=${operationalProviderFilter}`;
+      if (operationalDateFilter !== 'ALL') q += `&dateRange=${operationalDateFilter}`;
+      if (operationalSearchQuery) q += `&search=${encodeURIComponent(operationalSearchQuery)}`;
+      const res = await apiRequest(q);
+      if (res.success) {
+        setOperationalOrders(res.orders || []);
+      }
+    } catch (e) {
+      console.warn('Failed to load delivery boy operational orders:', e);
+    } finally {
+      setLoadingOperationalOrders(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'COD' && (runnerSubTab === 'ALL_ORDERS' || showAllRunnerOrdersView)) {
+      loadOperationalOrders();
+    }
+  }, [
+    activeTab,
+    runnerSubTab,
+    showAllRunnerOrdersView,
+    selectedCodRunner,
+    operationalRunnerFilter,
+    operationalTypeFilter,
+    operationalPaymentFilter,
+    operationalStatusFilter,
+    operationalProviderFilter,
+    operationalDateFilter,
+    operationalSearchQuery
   ]);
 
   // Execute Refund Action
@@ -493,6 +557,76 @@ export default function AdminPaymentsPage() {
       return matchesSearch && matchesStatus && matchesCollectionStatus && matchesProvider;
     });
   }, [selectedCodRunner, codSearchQuery, codReconciliationStatusFilter, codCollectionStatusFilter, codProviderFilter]);
+
+  // Filtered Delivery Boy Operational Orders (Tab 2)
+  const filteredOperationalOrders = useMemo(() => {
+    return operationalOrders.filter((o: any) => {
+      // 1. Order Type
+      if (operationalTypeFilter !== 'ALL') {
+        if (operationalTypeFilter === 'DELIVERY') {
+          if (o.orderType !== 'DELIVERY' && !o.deliveryRunner) return false;
+        } else if (operationalTypeFilter === 'PICKUP') {
+          if (o.orderType !== 'PICKUP' && !o.pickupRunner) return false;
+        }
+      }
+
+      // 2. Payment Method
+      if (operationalPaymentFilter !== 'ALL') {
+        if (o.payment !== operationalPaymentFilter && o.paymentMethod !== operationalPaymentFilter) return false;
+      }
+
+      // 3. Order Status
+      if (operationalStatusFilter !== 'ALL') {
+        const s = String(operationalStatusFilter).toUpperCase();
+        const ordS = String(o.orderStatus || o.status).toUpperCase();
+        if (s === 'OUT FOR DELIVERY') {
+          if (!ordS.includes('OUT') && !ordS.includes('TRANSIT')) return false;
+        } else if (s === 'PICKUP') {
+          if (!ordS.includes('PICKUP') && !ordS.includes('PICKED')) return false;
+        } else if (s === 'ASSIGNED') {
+          if (!ordS.includes('ASSIGNED')) return false;
+        } else if (s === 'ACCEPTED') {
+          if (!ordS.includes('ACCEPTED')) return false;
+        } else if (s === 'DELIVERED') {
+          if (ordS !== 'DELIVERED') return false;
+        } else if (s === 'COMPLETED') {
+          if (ordS !== 'COMPLETED' && ordS !== 'DELIVERED') return false;
+        } else if (s === 'CANCELLED') {
+          if (!ordS.includes('CANCEL')) return false;
+        } else if (s === 'RETURNED') {
+          if (!ordS.includes('RETURN')) return false;
+        } else {
+          if (ordS !== s) return false;
+        }
+      }
+
+      // 4. Provider
+      if (operationalProviderFilter !== 'ALL') {
+        if (o.provider?.id !== operationalProviderFilter && o.providerId !== operationalProviderFilter) return false;
+      }
+
+      // 5. Search
+      if (operationalSearchQuery.trim()) {
+        const q = operationalSearchQuery.trim().toLowerCase();
+        const num = (o.orderNumber || '').toLowerCase();
+        const student = (o.student?.fullName || o.student?.name || '').toLowerCase();
+        const phone = (o.phone || o.student?.phone || o.student?.mobileNumber || '').toLowerCase();
+        const runner = (o.deliveryBoyName || o.deliveryBoy?.name || '').toLowerCase();
+        if (!num.includes(q) && !student.includes(q) && !phone.includes(q) && !runner.includes(q)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [
+    operationalOrders,
+    operationalTypeFilter,
+    operationalPaymentFilter,
+    operationalStatusFilter,
+    operationalProviderFilter,
+    operationalSearchQuery
+  ]);
 
   // Execute Status Override
   const handleStatusOverride = async () => {
@@ -1455,7 +1589,7 @@ export default function AdminPaymentsPage() {
           </div>
 
           {/* VIEW TOGGLE: LEVEL 1 (ALL RUNNERS) VS LEVEL 2 & 3 (SINGLE RUNNER DRILLDOWN) */}
-          {!selectedCodRunner ? (
+          {!selectedCodRunner && !showAllRunnerOrdersView ? (
             /* ======================================================== */
             /* LEVEL 1: ALL DELIVERY BOYS COD SUMMARY TABLE             */
             /* ======================================================== */
@@ -1471,6 +1605,19 @@ export default function AdminPaymentsPage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setSelectedCodRunner(null);
+                      setShowAllRunnerOrdersView(true);
+                      setRunnerSubTab('ALL_ORDERS');
+                      setOperationalRunnerFilter('ALL');
+                      loadOperationalOrders('ALL');
+                    }}
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-black flex items-center gap-1.5 transition-all shadow-xs hover:scale-[1.01] cursor-pointer"
+                  >
+                    <ClipboardList className="w-3.5 h-3.5" />
+                    VIEW ALL ORDERS
+                  </button>
                   <button
                     onClick={() => loadData()}
                     className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -1631,11 +1778,29 @@ export default function AdminPaymentsPage() {
                                   </button>
                                 )}
                                 <button
-                                  onClick={() => setSelectedCodRunner(runner)}
+                                  onClick={() => {
+                                    setSelectedCodRunner(runner);
+                                    setShowAllRunnerOrdersView(false);
+                                    setRunnerSubTab('RECONCILIATION');
+                                  }}
                                   className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer flex items-center gap-1"
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                   VIEW
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSelectedCodRunner(runner);
+                                    setShowAllRunnerOrdersView(false);
+                                    setRunnerSubTab('ALL_ORDERS');
+                                    setOperationalRunnerFilter(runner.deliveryBoyId);
+                                    loadOperationalOrders(runner.deliveryBoyId);
+                                  }}
+                                  className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                                  title="View all student orders handled by this runner"
+                                >
+                                  <Package className="w-3.5 h-3.5 text-indigo-600" />
+                                  ORDERS
                                 </button>
                               </div>
                             </td>
@@ -1663,7 +1828,11 @@ export default function AdminPaymentsPage() {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-4">
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={() => setSelectedCodRunner(null)}
+                      onClick={() => {
+                        setSelectedCodRunner(null);
+                        setShowAllRunnerOrdersView(false);
+                        setRunnerSubTab('RECONCILIATION');
+                      }}
                       className="p-2 border border-gray-200 hover:bg-gray-100 rounded-xl text-gray-600 transition-colors cursor-pointer"
                       title="Back to All Delivery Boys"
                     >
@@ -1671,79 +1840,180 @@ export default function AdminPaymentsPage() {
                     </button>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h2 className="text-xl font-black text-gray-900">{selectedCodRunner?.name || selectedCodRunner?.deliveryBoyName || selectedCodRunner?.fullName || 'Campus Runner'}</h2>
+                        <h2 className="text-xl font-black text-gray-900">
+                          {selectedCodRunner
+                            ? (selectedCodRunner?.name || selectedCodRunner?.deliveryBoyName || selectedCodRunner?.fullName || 'Campus Runner')
+                            : 'All Delivery Runners — Operational Student Orders'}
+                        </h2>
                         <span className="px-2.5 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full text-[11px] font-bold">
-                          Campus Delivery Partner
+                          {selectedCodRunner ? 'Campus Delivery Partner' : 'Operational Order View'}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 font-mono mt-0.5">
-                        Phone: {selectedCodRunner?.phone || selectedCodRunner?.contactPhone || 'N/A'} • ID: {selectedCodRunner?.deliveryBoyId}
+                        {selectedCodRunner
+                          ? `Phone: ${selectedCodRunner?.phone || selectedCodRunner?.contactPhone || 'N/A'} • ID: ${selectedCodRunner?.deliveryBoyId}`
+                          : 'Complete operational history of all delivery and pickup orders assigned across campus delivery partners.'}
                       </p>
                     </div>
                   </div>
 
                   {/* LEVEL 4 BULK RECONCILE ACTION BUTTON */}
                   <div className="flex items-center gap-3">
+                    {selectedCodRunner && runnerSubTab === 'RECONCILIATION' ? (
+                      <button
+                        onClick={() => {
+                          setBulkReconcileRunner(selectedCodRunner);
+                          setShowBulkReconcileModal(true);
+                        }}
+                        disabled={selectedCodRunner.eligibleOrdersCount === 0}
+                        className={`px-5 py-2.5 rounded-xl font-black text-xs shadow-sm flex items-center gap-2 transition-all cursor-pointer ${
+                          selectedCodRunner.eligibleOrdersCount > 0
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 hover:scale-[1.02]'
+                            : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                        }`}
+                      >
+                        <CheckCheck className="w-4 h-4" />
+                        RECONCILE ALL ELIGIBLE ({selectedCodRunner.eligibleOrdersCount})
+                      </button>
+                    ) : (
+                      <span className="px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 font-bold text-xs flex items-center gap-1.5">
+                        <ShieldAlert className="w-3.5 h-3.5 text-blue-600" />
+                        Operational View Only
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* DELIVERY BOY SUMMARY CARDS - STRICTLY ELIGIBLE DELIVERED COD ORDERS ONLY */}
+                {selectedCodRunner ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                    <div className="bg-gray-50/90 p-3.5 rounded-xl border border-gray-200">
+                      <span className="text-[10px] font-bold text-gray-500 uppercase block">COD Orders</span>
+                      <span className="text-lg font-black text-gray-900 mt-1 block">
+                        {selectedCodRunner.codOrdersCount}
+                      </span>
+                      <span className="text-[10px] text-gray-400 mt-0.5 block">Delivered COD</span>
+                    </div>
+
+                    <div className="bg-gray-50/90 p-3.5 rounded-xl border border-gray-200">
+                      <span className="text-[10px] font-bold text-gray-500 uppercase block">Expected Cash</span>
+                      <span className="text-lg font-black text-gray-900 mt-1 block">
+                        {formatCur(selectedCodRunner.expectedAmount)}
+                      </span>
+                      <span className="text-[10px] text-gray-400 mt-0.5 block">Invoice Total</span>
+                    </div>
+
+                    <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200">
+                      <span className="text-[10px] font-bold text-emerald-800 uppercase block">Cash Collected</span>
+                      <span className="text-lg font-black text-emerald-700 mt-1 block">
+                        {formatCur(selectedCodRunner.collectedAmount)}
+                      </span>
+                      <span className="text-[10px] text-emerald-600 mt-0.5 block">Vault Deposited</span>
+                    </div>
+
+                    <div className={`p-3.5 rounded-xl border ${
+                      selectedCodRunner.difference < 0 
+                        ? 'bg-red-50/60 border-red-200 text-red-900' 
+                        : 'bg-gray-50/90 border-gray-200 text-gray-900'
+                    }`}>
+                      <span className="text-[10px] font-bold text-gray-500 uppercase block">Difference</span>
+                      <span className={`text-lg font-black mt-1 block ${selectedCodRunner.difference < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                        {formatCur(selectedCodRunner.difference)}
+                      </span>
+                      <span className="text-[10px] text-gray-400 mt-0.5 block">
+                        {Number(selectedCodRunner.difference) === 0 ? '100% Balanced' : 'Discrepancy'}
+                      </span>
+                    </div>
+
+                    <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200">
+                      <span className="text-[10px] font-bold text-emerald-800 uppercase block">Reconciled</span>
+                      <span className="text-lg font-black text-emerald-700 mt-1 block">
+                        {selectedCodRunner.reconciledOrdersCount}
+                      </span>
+                      <span className="text-[10px] text-emerald-600 mt-0.5 block">Audited Orders</span>
+                    </div>
+
+                    <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200">
+                      <span className="text-[10px] font-bold text-amber-800 uppercase block">Pending</span>
+                      <span className="text-lg font-black text-amber-700 mt-1 block">
+                        {selectedCodRunner.pendingOrdersCount}
+                      </span>
+                      <span className="text-[10px] text-amber-600 mt-0.5 block">Ready: {selectedCodRunner.eligibleOrdersCount}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <div className="bg-gray-50/90 p-3.5 rounded-xl border border-gray-200">
+                      <span className="text-[10px] font-bold text-gray-500 uppercase block">Total Assigned Orders</span>
+                      <span className="text-lg font-black text-gray-900 mt-1 block">
+                        {operationalOrders.length}
+                      </span>
+                    </div>
+                    <div className="bg-blue-50/60 p-3.5 rounded-xl border border-blue-200">
+                      <span className="text-[10px] font-bold text-blue-800 uppercase block">Deliveries</span>
+                      <span className="text-lg font-black text-blue-700 mt-1 block">
+                        {operationalOrders.filter((o: any) => o.orderType === 'DELIVERY').length}
+                      </span>
+                    </div>
+                    <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200">
+                      <span className="text-[10px] font-bold text-amber-800 uppercase block">Pickups</span>
+                      <span className="text-lg font-black text-amber-700 mt-1 block">
+                        {operationalOrders.filter((o: any) => o.orderType === 'PICKUP').length}
+                      </span>
+                    </div>
+                    <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200">
+                      <span className="text-[10px] font-bold text-emerald-800 uppercase block">COD Orders</span>
+                      <span className="text-lg font-black text-emerald-700 mt-1 block">
+                        {operationalOrders.filter((o: any) => o.payment === 'COD').length}
+                      </span>
+                    </div>
+                    <div className="bg-indigo-50/60 p-3.5 rounded-xl border border-indigo-200">
+                      <span className="text-[10px] font-bold text-indigo-800 uppercase block">Online Orders</span>
+                      <span className="text-lg font-black text-indigo-700 mt-1 block">
+                        {operationalOrders.filter((o: any) => o.payment === 'ONLINE').length}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* TWO CLEARLY SEPARATED TABS: TAB 1 COD RECONCILIATION vs TAB 2 ALL STUDENT ORDERS */}
+                <div className="flex items-center gap-2 border-b border-gray-200 pt-3">
+                  {selectedCodRunner && (
                     <button
-                      onClick={() => {
-                        setBulkReconcileRunner(selectedCodRunner);
-                        setShowBulkReconcileModal(true);
-                      }}
-                      disabled={selectedCodRunner.eligibleOrdersCount === 0}
-                      className={`px-5 py-2.5 rounded-xl font-black text-xs shadow-sm flex items-center gap-2 transition-all cursor-pointer ${
-                        selectedCodRunner.eligibleOrdersCount > 0
-                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 hover:scale-[1.02]'
-                          : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                      onClick={() => setRunnerSubTab('RECONCILIATION')}
+                      className={`px-4 py-2.5 font-black text-xs rounded-t-xl border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+                        runnerSubTab === 'RECONCILIATION'
+                          ? 'border-emerald-600 text-emerald-700 bg-emerald-50/60 shadow-xs'
+                          : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
                       }`}
                     >
-                      <CheckCheck className="w-4 h-4" />
-                      RECONCILE ALL ELIGIBLE ({selectedCodRunner.eligibleOrdersCount})
+                      <BadgeCheck className="w-4 h-4 text-emerald-600" />
+                      <span>TAB 1 — COD RECONCILIATION</span>
                     </button>
-                  </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      setRunnerSubTab('ALL_ORDERS');
+                      loadOperationalOrders(selectedCodRunner?.deliveryBoyId || operationalRunnerFilter);
+                    }}
+                    className={`px-4 py-2.5 font-black text-xs rounded-t-xl border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+                      runnerSubTab === 'ALL_ORDERS' || !selectedCodRunner
+                        ? 'border-indigo-600 text-indigo-700 bg-indigo-50/60 shadow-xs'
+                        : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Package className="w-4 h-4 text-indigo-600" />
+                    <span>TAB 2 — ALL STUDENT ORDERS</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                      runnerSubTab === 'ALL_ORDERS' || !selectedCodRunner ? 'bg-indigo-200 text-indigo-900' : 'bg-gray-200 text-gray-700'
+                    }`}>
+                      {operationalOrders.length}
+                    </span>
+                  </button>
                 </div>
 
-                {/* RUNNER KPIS */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  <div className="bg-gray-50/80 p-3.5 rounded-xl border border-gray-200">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase block">COD Orders</span>
-                    <span className="text-lg font-black text-gray-900 mt-1 block">
-                      {selectedCodRunner.codOrdersCount}
-                    </span>
-                  </div>
-
-                  <div className="bg-gray-50/80 p-3.5 rounded-xl border border-gray-200">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase block">Expected Cash</span>
-                    <span className="text-lg font-black text-gray-900 mt-1 block">
-                      {formatCur(selectedCodRunner.expectedAmount)}
-                    </span>
-                  </div>
-
-                  <div className="bg-emerald-50/50 p-3.5 rounded-xl border border-emerald-200">
-                    <span className="text-[10px] font-bold text-emerald-800 uppercase block">Cash Collected</span>
-                    <span className="text-lg font-black text-emerald-700 mt-1 block">
-                      {formatCur(selectedCodRunner.collectedAmount)}
-                    </span>
-                  </div>
-
-                  <div className={`p-3.5 rounded-xl border ${
-                    selectedCodRunner.difference < 0 
-                      ? 'bg-red-50/60 border-red-200 text-red-900' 
-                      : 'bg-gray-50/80 border-gray-200 text-gray-900'
-                  }`}>
-                    <span className="text-[10px] font-bold text-gray-500 uppercase block">Difference</span>
-                    <span className={`text-lg font-black mt-1 block ${selectedCodRunner.difference < 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                      {formatCur(selectedCodRunner.difference)}
-                    </span>
-                  </div>
-
-                  <div className="bg-blue-50/50 p-3.5 rounded-xl border border-blue-200">
-                    <span className="text-[10px] font-bold text-blue-800 uppercase block">Ready for Batch</span>
-                    <span className="text-lg font-black text-blue-700 mt-1 block">
-                      {selectedCodRunner.eligibleOrdersCount} orders ({formatCur(selectedCodRunner.eligibleAmount)})
-                    </span>
-                  </div>
-                </div>
-
+                {runnerSubTab === 'RECONCILIATION' && selectedCodRunner && (
+                <>
                 {/* DIFFERENCE CALLOUT BANNER */}
                 {selectedCodRunner.differenceRequiringAttention !== 0 ? (
                   <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-xs text-amber-900">
@@ -1934,6 +2204,337 @@ export default function AdminPaymentsPage() {
                     </tbody>
                   </table>
                 </div>
+                </>
+              )}
+
+              {/* ======================================================== */}
+              {/* TAB 2: ALL STUDENT ORDERS (OPERATIONAL VISIBILITY ONLY)  */}
+              {/* ======================================================== */}
+              {(runnerSubTab === 'ALL_ORDERS' || !selectedCodRunner) && (
+                <div className="space-y-4">
+                  {/* SEPARATION NOTICE BANNER */}
+                  <div className="p-3.5 bg-blue-50/90 border border-blue-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-blue-900">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span>
+                        <strong>Operational Order Tracking:</strong> Displays every student order handled by this delivery partner (Deliveries & Pickups).
+                        This operational view is <strong>completely separate from COD reconciliation</strong> and does not alter cash collection figures.
+                      </span>
+                    </div>
+                    <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-lg font-bold text-[10px] shrink-0 uppercase tracking-wider">
+                      Operational Visibility
+                    </span>
+                  </div>
+
+                  {/* QUICK FILTER PILLS: [ ALL ] [ DELIVERY ] [ PICKUP ] */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-gray-200 shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mr-1">Filter Activity:</span>
+                      <button
+                        onClick={() => setOperationalTypeFilter('ALL')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+                          operationalTypeFilter === 'ALL'
+                            ? 'bg-gray-900 text-white shadow-xs'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        ALL ({operationalOrders.length})
+                      </button>
+                      <button
+                        onClick={() => setOperationalTypeFilter('DELIVERY')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                          operationalTypeFilter === 'DELIVERY'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
+                        }`}
+                      >
+                        <Truck className="w-3.5 h-3.5" />
+                        DELIVERY ({operationalOrders.filter((o: any) => o.orderType === 'DELIVERY').length})
+                      </button>
+                      <button
+                        onClick={() => setOperationalTypeFilter('PICKUP')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                          operationalTypeFilter === 'PICKUP'
+                            ? 'bg-amber-600 text-white shadow-xs'
+                            : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'
+                        }`}
+                      >
+                        <Package className="w-3.5 h-3.5" />
+                        PICKUP ({operationalOrders.filter((o: any) => o.orderType === 'PICKUP').length})
+                      </button>
+                    </div>
+
+                    <div className="text-xs text-gray-500 font-semibold">
+                      Showing <strong className="text-gray-900">{filteredOperationalOrders.length}</strong> of {operationalOrders.length} student orders
+                    </div>
+                  </div>
+
+                  {/* MULTI-FILTER BAR */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2.5 bg-gray-50/80 p-3 rounded-xl border border-gray-200 text-xs">
+                    {/* 1. DELIVERY BOY SELECTOR */}
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Delivery Boy</label>
+                      <select
+                        value={selectedCodRunner?.deliveryBoyId || operationalRunnerFilter}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setOperationalRunnerFilter(val);
+                          if (val === 'ALL') {
+                            setSelectedCodRunner(null);
+                            setShowAllRunnerOrdersView(true);
+                          } else {
+                            const found = codDeliveryBoys.find((b: any) => b.deliveryBoyId === val);
+                            if (found) setSelectedCodRunner(found);
+                          }
+                          loadOperationalOrders(val);
+                        }}
+                        className="w-full py-1.5 px-2.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      >
+                        <option value="ALL">All Delivery Boys</option>
+                        {codDeliveryBoys.map((r: any) => (
+                          <option key={r.deliveryBoyId} value={r.deliveryBoyId}>
+                            {r?.name || r?.deliveryBoyName || r?.fullName || 'Campus Runner'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 2. ORDER TYPE */}
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Order Type</label>
+                      <select
+                        value={operationalTypeFilter}
+                        onChange={(e) => setOperationalTypeFilter(e.target.value as any)}
+                        className="w-full py-1.5 px-2.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      >
+                        <option value="ALL">All Types</option>
+                        <option value="DELIVERY">Delivery</option>
+                        <option value="PICKUP">Pickup</option>
+                      </select>
+                    </div>
+
+                    {/* 3. PAYMENT METHOD */}
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Payment Method</label>
+                      <select
+                        value={operationalPaymentFilter}
+                        onChange={(e) => setOperationalPaymentFilter(e.target.value)}
+                        className="w-full py-1.5 px-2.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      >
+                        <option value="ALL">All Payments</option>
+                        <option value="COD">Cash on Delivery (COD)</option>
+                        <option value="ONLINE">Online Prepaid</option>
+                      </select>
+                    </div>
+
+                    {/* 4. ORDER STATUS */}
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Order Status</label>
+                      <select
+                        value={operationalStatusFilter}
+                        onChange={(e) => setOperationalStatusFilter(e.target.value)}
+                        className="w-full py-1.5 px-2.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      >
+                        <option value="ALL">All Statuses</option>
+                        <option value="ASSIGNED">Assigned</option>
+                        <option value="ACCEPTED">Accepted</option>
+                        <option value="PICKUP">Pickup</option>
+                        <option value="OUT FOR DELIVERY">Out For Delivery</option>
+                        <option value="DELIVERED">Delivered</option>
+                        <option value="COMPLETED">Completed</option>
+                        <option value="CANCELLED">Cancelled</option>
+                        <option value="RETURNED">Returned</option>
+                      </select>
+                    </div>
+
+                    {/* 5. PROVIDER */}
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Provider</label>
+                      <select
+                        value={operationalProviderFilter}
+                        onChange={(e) => setOperationalProviderFilter(e.target.value)}
+                        className="w-full py-1.5 px-2.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      >
+                        <option value="ALL">All Providers</option>
+                        {availableCodProviders.map((p: any) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 6. DATE RANGE */}
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Date Range</label>
+                      <select
+                        value={operationalDateFilter}
+                        onChange={(e) => setOperationalDateFilter(e.target.value)}
+                        className="w-full py-1.5 px-2.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      >
+                        <option value="ALL">All Time</option>
+                        <option value="TODAY">Today</option>
+                        <option value="THIS_WEEK">This Week</option>
+                        <option value="THIS_MONTH">This Month</option>
+                      </select>
+                    </div>
+
+                    {/* 7. SEARCH */}
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Search Order / Student</label>
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Order #, student, phone..."
+                          value={operationalSearchQuery}
+                          onChange={(e) => setOperationalSearchQuery(e.target.value)}
+                          className="w-full pl-8 pr-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 11-COLUMN PROFESSIONAL OPERATIONAL ORDERS TABLE */}
+                  <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white">
+                    <table className="w-full text-left text-xs text-gray-600">
+                      <thead className="bg-gray-50 text-gray-700 font-extrabold border-b border-gray-200 uppercase text-[10px] tracking-wider">
+                        <tr>
+                          <th className="py-3 px-3">Order Number</th>
+                          <th className="py-3 px-3">Student</th>
+                          <th className="py-3 px-3">Phone</th>
+                          <th className="py-3 px-3">Provider</th>
+                          <th className="py-3 px-3">Order Type</th>
+                          <th className="py-3 px-3">Payment</th>
+                          <th className="py-3 px-3">Order Amount</th>
+                          <th className="py-3 px-3">Order Status</th>
+                          <th className="py-3 px-3">Delivery Boy</th>
+                          <th className="py-3 px-3">Order Date</th>
+                          <th className="py-3 px-3 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {loadingOperationalOrders ? (
+                          <tr>
+                            <td colSpan={11} className="py-12 text-center text-gray-400">
+                              <div className="flex items-center justify-center gap-2">
+                                <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
+                                <span>Loading operational orders...</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : filteredOperationalOrders.length > 0 ? (
+                          filteredOperationalOrders.map((o: any) => {
+                            return (
+                              <tr key={o.id} className="hover:bg-indigo-50/20 transition-colors">
+                                <td className="py-3 px-3 font-mono font-bold text-gray-900">
+                                  <div className="flex items-center gap-1.5">
+                                    <span>{o.orderNumber || o.orderId}</span>
+                                    {o.hasBothActivities && (
+                                      <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[9px] font-black" title="Includes both Pickup and Delivery activities">
+                                        Dual Stage
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-gray-400 font-normal">
+                                    ID: {o.id}
+                                  </div>
+                                </td>
+
+                                <td className="py-3 px-3 font-medium text-gray-900">
+                                  <div>{o.student?.fullName || o.student?.name || 'Campus Student'}</div>
+                                  <div className="text-[10px] text-gray-400">
+                                    {o.student?.hallName ? `${o.student.hallName} • Room ${o.student.roomNumber || 'N/A'}` : 'Campus Hostel'}
+                                  </div>
+                                </td>
+
+                                <td className="py-3 px-3 font-mono text-gray-700 text-xs">
+                                  {o.phone || o.student?.phone || 'N/A'}
+                                </td>
+
+                                <td className="py-3 px-3 font-medium text-gray-800">
+                                  {o.providerName || o.provider?.name || 'Campus Provider'}
+                                </td>
+
+                                <td className="py-3 px-3">
+                                  {o.orderType === 'PICKUP' ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-xs">
+                                      <Package className="w-3 h-3 text-amber-700" />
+                                      PICKUP
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-100 text-blue-900 border border-blue-300 shadow-xs">
+                                      <Truck className="w-3 h-3 text-blue-700" />
+                                      DELIVERY
+                                    </span>
+                                  )}
+                                </td>
+
+                                <td className="py-3 px-3">
+                                  {o.payment === 'COD' ? (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                      COD
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                                      ONLINE
+                                    </span>
+                                  )}
+                                </td>
+
+                                <td className="py-3 px-3 font-mono font-bold text-gray-900">
+                                  {formatCur(o.orderAmount || o.totalAmount)}
+                                </td>
+
+                                <td className="py-3 px-3">
+                                  <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                    ['DELIVERED', 'COMPLETED', 'PICKUP_COMPLETED'].includes(o.orderStatus)
+                                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                      : ['CANCELLED', 'RETURNED'].includes(o.orderStatus)
+                                      ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                      : 'bg-blue-100 text-blue-800 border border-blue-200'
+                                  }`}>
+                                    {o.orderStatus}
+                                  </span>
+                                </td>
+
+                                <td className="py-3 px-3">
+                                  <div className="font-bold text-gray-900 text-xs">{o.deliveryBoyName || 'Campus Runner'}</div>
+                                  <div className="text-[10px] text-gray-500 font-mono">{o.deliveryBoyPhone || 'N/A'}</div>
+                                  {o.deliveryBoy?.role && (
+                                    <span className="text-[9px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded mt-0.5 inline-block">
+                                      {o.deliveryBoy.role}
+                                    </span>
+                                  )}
+                                </td>
+
+                                <td className="py-3 px-3 text-gray-500 font-mono text-[11px]">
+                                  {o.orderDate ? new Date(o.orderDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
+                                </td>
+
+                                <td className="py-3 px-3 text-right">
+                                  <button
+                                    onClick={() => setSelectedOperationalOrder(o)}
+                                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-200 transition-colors cursor-pointer flex items-center gap-1 justify-end ml-auto"
+                                    title="View order details and assignment history"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    View Trace
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={11} className="py-12 text-center text-gray-400">
+                              No student orders found matching current filters.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
               </div>
             </div>
           )}
@@ -2222,6 +2823,167 @@ export default function AdminPaymentsPage() {
       )}
 
       {/* ======================================================== */}
+      
+      {/* ======================================================== */}
+      {/* MODAL 6: ORDER OPERATIONAL & ACTIVITY TRACE MODAL        */}
+      {/* ======================================================== */}
+      {selectedOperationalOrder && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2 text-indigo-700">
+                <Package className="w-5 h-5" />
+                <div>
+                  <h3 className="text-base font-black text-gray-900">
+                    Order Trace — #{selectedOperationalOrder.orderNumber || selectedOperationalOrder.orderId}
+                  </h3>
+                  <p className="text-[11px] text-gray-400 font-mono mt-0.5">
+                    Order ID: {selectedOperationalOrder.id}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedOperationalOrder(null)} 
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* IMMUTABILITY & TRACEABILITY NOTICE */}
+              <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl flex items-start gap-2.5 text-emerald-900">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-extrabold block text-xs">Preserved Original Order Record</span>
+                  <p className="text-[11px] mt-0.5 text-emerald-800">
+                    This order maintains its single original Order ID across all operational stages. No synthetic duplicate orders are generated.
+                  </p>
+                </div>
+              </div>
+
+              {/* ORDER KEY METRICS */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase block">Activity Type</span>
+                  <span className="font-extrabold text-xs text-gray-900 mt-1 block">
+                    {selectedOperationalOrder.orderType}
+                  </span>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase block">Payment Method</span>
+                  <span className="font-extrabold text-xs text-gray-900 mt-1 block">
+                    {selectedOperationalOrder.payment}
+                  </span>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase block">Order Amount</span>
+                  <span className="font-extrabold text-xs font-mono text-gray-900 mt-1 block">
+                    {formatCur(selectedOperationalOrder.orderAmount || selectedOperationalOrder.totalAmount)}
+                  </span>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase block">Current Status</span>
+                  <span className="font-extrabold text-xs text-indigo-700 mt-1 block">
+                    {selectedOperationalOrder.orderStatus}
+                  </span>
+                </div>
+              </div>
+
+              {/* STUDENT & PROVIDER DETAILS */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3.5 bg-gray-50/70 border border-gray-200 rounded-xl space-y-1">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Student Customer</span>
+                  <div className="font-bold text-gray-900">{selectedOperationalOrder.student?.name || 'Campus Student'}</div>
+                  <div className="text-gray-500 font-mono text-[11px]">Phone: {selectedOperationalOrder.phone || 'N/A'}</div>
+                  <div className="text-gray-500 text-[11px]">
+                    {selectedOperationalOrder.student?.hallName ? `${selectedOperationalOrder.student.hallName} • Room ${selectedOperationalOrder.student.roomNumber}` : 'Campus Hostel'}
+                  </div>
+                  {selectedOperationalOrder.student?.email && (
+                    <div className="text-gray-400 text-[10px] font-mono">{selectedOperationalOrder.student.email}</div>
+                  )}
+                </div>
+
+                <div className="p-3.5 bg-gray-50/70 border border-gray-200 rounded-xl space-y-1">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Campus Provider</span>
+                  <div className="font-bold text-gray-900">{selectedOperationalOrder.providerName || selectedOperationalOrder.provider?.name || 'Campus Store'}</div>
+                  {selectedOperationalOrder.provider?.phone && (
+                    <div className="text-gray-500 font-mono text-[11px]">Contact: {selectedOperationalOrder.provider.phone}</div>
+                  )}
+                  <div className="text-gray-400 text-[11px] pt-1">
+                    Ordered: {selectedOperationalOrder.orderDate ? new Date(selectedOperationalOrder.orderDate).toLocaleString() : 'N/A'}
+                  </div>
+                </div>
+              </div>
+
+              {/* TRACEABLE ACTIVITY & ASSIGNMENT HISTORY */}
+              <div className="space-y-2 border border-gray-200 rounded-xl p-4 bg-white">
+                <div className="flex items-center gap-2 text-xs font-bold text-gray-900 pb-2 border-b border-gray-100">
+                  <History className="w-4 h-4 text-indigo-600" />
+                  <span>Traceable Delivery Partner Assignment History</span>
+                </div>
+
+                {selectedOperationalOrder.activities && selectedOperationalOrder.activities.length > 0 ? (
+                  <div className="space-y-3 pt-2">
+                    {selectedOperationalOrder.activities.map((act: any, idx: number) => (
+                      <div key={idx} className="flex items-start gap-3 text-xs bg-gray-50/80 p-3 rounded-xl border border-gray-200">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 ${
+                          act.type === 'PICKUP' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {act.type === 'PICKUP' ? <Package className="w-3.5 h-3.5" /> : <Truck className="w-3.5 h-3.5" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-black text-gray-900 text-xs">{act.stage} STAGE</span>
+                            <span className="text-[10px] text-gray-400 font-mono">
+                              {act.timestamp ? new Date(act.timestamp).toLocaleString() : 'Recorded'}
+                            </span>
+                          </div>
+                          <div className="text-gray-700 font-semibold mt-0.5">
+                            Handled by: <strong className="text-gray-900">{act.runnerName}</strong> ({act.runnerPhone})
+                          </div>
+                          <div className="text-gray-500 text-[11px] mt-0.5">
+                            Stage Status: <span className="font-bold text-indigo-700">{act.status}</span>
+                            {act.notes && <span> • {act.notes}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-gray-50 rounded-xl text-gray-500 text-[11px]">
+                    Handled by {selectedOperationalOrder.deliveryBoyName || 'Campus Runner'} (Status: {selectedOperationalOrder.orderStatus})
+                  </div>
+                )}
+              </div>
+
+              {/* ITEMS BREAKDOWN */}
+              {selectedOperationalOrder.items && selectedOperationalOrder.items.length > 0 && (
+                <div className="space-y-2 border border-gray-200 rounded-xl p-3.5 bg-gray-50/50">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Ordered Items</span>
+                  <div className="divide-y divide-gray-100 max-h-36 overflow-y-auto">
+                    {selectedOperationalOrder.items.map((it: any, idx: number) => (
+                      <div key={idx} className="py-1.5 flex items-center justify-between text-xs">
+                        <span className="text-gray-800 font-medium">{it.quantity}x {it.name}</span>
+                        <span className="font-mono font-bold text-gray-900">{formatCur(it.price * (it.quantity || 1))}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end pt-3 border-t border-gray-100">
+              <button
+                onClick={() => setSelectedOperationalOrder(null)}
+                className="px-5 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* MODAL 5: BULK RECONCILE DELIVERY BOY COD (LEVEL 4)       */}
       {/* ======================================================== */}
       {showBulkReconcileModal && bulkReconcileRunner && (

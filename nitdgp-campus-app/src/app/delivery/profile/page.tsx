@@ -22,8 +22,16 @@ import {
 
 export default function DeliveryProfilePage() {
   const router = useRouter();
-  const { isOnline } = useDelivery();
+  const { isOnline, deliveryProfile, payoutAccount, todayStats } = useDelivery();
   const { logout } = useAuth();
+
+  const profileName = deliveryProfile?.fullName || 'Delivery Partner';
+  const initials = profileName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'DP';
+  const paymentType = deliveryProfile?.paymentType || todayStats.paymentType || 'PER_DELIVERY';
+  const payoutLabel = paymentType === 'MONTHLY_CONTRACT'
+    ? `Monthly salary: ₹${Number(deliveryProfile?.monthlySalary || todayStats.monthlySalary || 0).toLocaleString('en-IN')}`
+    : `₹${Number(deliveryProfile?.perDeliveryRate || todayStats.perDeliveryRate || 0).toFixed(2)} per delivery`;
+  const maskedUpi = payoutAccount?.upiId || 'Not provided';
 
   const handleLogout = () => {
     logout();
@@ -36,7 +44,7 @@ export default function DeliveryProfilePage() {
       <div className="bg-white p-6 sm:p-8 rounded-2xl border border-gray-200 shadow-xs flex flex-col sm:flex-row items-center sm:items-start gap-6">
         <div className="relative">
           <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-[#36751F] to-[#4F9D2F] text-white flex items-center justify-center font-black text-3xl shadow-md ring-4 ring-green-50">
-            SS
+            {initials}
           </div>
           <span
             className={`absolute bottom-1 right-1 w-5 h-5 rounded-full border-4 border-white ${
@@ -48,7 +56,7 @@ export default function DeliveryProfilePage() {
         <div className="flex-1 text-center sm:text-left space-y-1">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <h2 className="text-2xl font-black text-gray-900 tracking-tight">
-              Sourav Senapati
+              {profileName}
             </h2>
             <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full self-center sm:self-auto">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
@@ -60,21 +68,21 @@ export default function DeliveryProfilePage() {
             <span>Delivery Partner</span>
             <span>•</span>
             <span className="font-mono text-gray-700 bg-gray-100 px-2 py-0.5 rounded font-bold">
-              DB_BOY_01
+              {deliveryProfile?.id || 'ID unavailable'}
             </span>
             <span>•</span>
             <span className="flex items-center gap-1 text-amber-600 font-bold">
               <Star className="w-3.5 h-3.5 fill-amber-400" />
-              4.95 Rating (184 reviews)
+              {deliveryProfile ? 'Verified Campus Runner' : 'Profile loading'}
             </span>
           </div>
 
           <div className="pt-3 flex flex-wrap items-center justify-center sm:justify-start gap-2">
             <span className="text-xs bg-gray-100 text-gray-700 font-bold px-3 py-1 rounded-lg">
-              Joined: Aug 2026
+              {deliveryProfile?.activeStatus ? 'Active account' : 'Inactive account'}
             </span>
             <span className="text-xs bg-emerald-50 text-emerald-800 font-bold px-3 py-1 rounded-lg">
-              Shift: Evening & Night Dispatch
+              {payoutLabel}
             </span>
           </div>
         </div>
@@ -97,19 +105,19 @@ export default function DeliveryProfilePage() {
           <div className="space-y-3 text-xs">
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-400 font-semibold">Full Name</span>
-              <span className="font-bold text-gray-900">Sourav Senapati</span>
+              <span className="font-bold text-gray-900">{profileName}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-400 font-semibold">Mobile Phone</span>
-              <span className="font-bold text-gray-900">+91 98765 43210</span>
+              <span className="font-bold text-gray-900">{deliveryProfile?.mobileNumber || 'Not provided'}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-400 font-semibold">Partner ID</span>
-              <span className="font-mono font-bold text-emerald-800">DB_BOY_01</span>
+              <span className="font-mono font-bold text-emerald-800">{deliveryProfile?.id || 'Not available'}</span>
             </div>
             <div className="flex justify-between py-1">
               <span className="text-gray-400 font-semibold">College Roll / Reg</span>
-              <span className="font-bold text-gray-900">NITD/STUDENT/2026</span>
+              <span className="font-bold text-gray-900">{deliveryProfile?.email || 'Not provided'}</span>
             </div>
           </div>
         </div>
@@ -131,19 +139,19 @@ export default function DeliveryProfilePage() {
           <div className="space-y-3 text-xs">
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-400 font-semibold">Vehicle Mode</span>
-              <span className="font-bold text-gray-900">Bicycle / Campus Cycle</span>
+              <span className="font-bold text-gray-900">{deliveryProfile?.vehicleType || 'Not provided'}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-400 font-semibold">Cycle Tag ID</span>
-              <span className="font-mono font-bold text-gray-800">#NITD-CY-409</span>
+              <span className="font-mono font-bold text-gray-800">Not provided</span>
             </div>
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-400 font-semibold">Delivery Thermal Bag</span>
-              <span className="font-bold text-emerald-700">Issued & Inspected ✓</span>
+              <span className="font-bold text-gray-500">Not provided</span>
             </div>
             <div className="flex justify-between py-1">
               <span className="text-gray-400 font-semibold">Speed Tier</span>
-              <span className="font-bold text-gray-900">Standard Campus (12-15 km/h)</span>
+              <span className="font-bold text-gray-900">{deliveryProfile?.vehicleType || 'Not provided'}</span>
             </div>
           </div>
         </div>
@@ -162,24 +170,19 @@ export default function DeliveryProfilePage() {
           <div className="space-y-3 text-xs">
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-400 font-semibold">Campus</span>
-              <span className="font-bold text-gray-900">Campus Central Operations</span>
+              <span className="font-bold text-gray-900">{deliveryProfile?.currentZone || 'Not provided'}</span>
             </div>
             <div className="py-1 border-b border-gray-50 space-y-1.5">
               <span className="text-gray-400 font-semibold block">Service Area Halls</span>
               <div className="flex flex-wrap gap-1.5 pt-0.5">
-                {['Halls 1–14', 'SNH (Sister Nivedita)', 'MTH (Mother Teresa Hall)'].map((zone) => (
-                  <span
-                    key={zone}
-                    className="bg-gray-100 text-gray-800 font-bold px-2 py-0.5 rounded text-[11px]"
-                  >
-                    {zone}
-                  </span>
-                ))}
+                <span className="bg-gray-100 text-gray-800 font-bold px-2 py-0.5 rounded text-[11px]">
+                  {deliveryProfile?.currentZone || 'Not provided'}
+                </span>
               </div>
             </div>
             <div className="flex justify-between py-1">
               <span className="text-gray-400 font-semibold">Campus Gate Access</span>
-              <span className="font-bold text-emerald-700">Main Gate + Back Gate Pass</span>
+              <span className="font-bold text-gray-500">Not provided</span>
             </div>
           </div>
         </div>
@@ -201,19 +204,19 @@ export default function DeliveryProfilePage() {
           <div className="space-y-3 text-xs">
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-400 font-semibold">UPI ID</span>
-              <span className="font-mono font-bold text-gray-900">sourav.runner@okhdfcbank</span>
+              <span className="font-mono font-bold text-gray-900">{maskedUpi}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-400 font-semibold">Payout Schedule</span>
-              <span className="font-bold text-gray-900">Daily Midnight Auto-Credit</span>
+              <span className="font-bold text-gray-900">{payoutAccount ? payoutLabel : 'Not configured'}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-gray-50">
               <span className="text-gray-400 font-semibold">Tax & Deductions</span>
-              <span className="font-bold text-emerald-700">0% Platform Fee</span>
+              <span className="font-bold text-gray-500">Not provided</span>
             </div>
             <div className="flex justify-between py-1">
               <span className="text-gray-400 font-semibold">Bank Status</span>
-              <span className="font-bold text-emerald-700">HDFC Bank Verified ✓</span>
+              <span className="font-bold text-gray-900">{payoutAccount?.bankName || 'Not provided'}</span>
             </div>
           </div>
         </div>

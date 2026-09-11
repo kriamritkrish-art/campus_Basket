@@ -16,6 +16,7 @@ import {
   Compass,
   History,
   IndianRupee,
+  Banknote,
   Target,
   Bell,
   User,
@@ -50,7 +51,11 @@ function DeliveryLayoutInner({ children }: { children: React.ReactNode }) {
     setMobileDrawerOpen,
     successToast,
     setSuccessToast,
+    deliveryProfile,
   } = useDelivery();
+
+  const profileName = deliveryProfile?.fullName || 'Delivery Partner';
+  const profileInitials = profileName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'DP';
 
   // If on login page, render clean standalone page
   if (pathname === '/delivery/login') {
@@ -111,6 +116,12 @@ function DeliveryLayoutInner({ children }: { children: React.ReactNode }) {
           label: 'Delivery History',
           href: '/delivery/history',
           icon: History,
+          badge: null,
+        },
+        {
+          label: 'COD Collection',
+          href: '/delivery/cod',
+          icon: Banknote,
           badge: null,
         },
         {
@@ -473,7 +484,7 @@ function DeliveryLayoutInner({ children }: { children: React.ReactNode }) {
             >
               <div className="relative">
                 <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#36751F] to-[#4F9D2F] text-white flex items-center justify-center font-bold text-sm shadow-sm">
-                  SS
+                  {profileInitials}
                 </div>
                 <span
                   className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
@@ -483,10 +494,10 @@ function DeliveryLayoutInner({ children }: { children: React.ReactNode }) {
               </div>
               <div className="hidden md:block text-left leading-tight">
                 <div className="text-xs font-extrabold text-gray-900">
-                  Sourav Senapati
+                  {profileName}
                 </div>
                 <div className="text-[10px] font-mono text-gray-400 font-semibold">
-                  DB_BOY_01
+                  {deliveryProfile?.id || 'ID unavailable'}
                 </div>
               </div>
             </Link>

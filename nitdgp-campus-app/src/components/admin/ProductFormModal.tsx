@@ -270,42 +270,53 @@ export function ProductFormModal({
 
     setLoading(true);
 
-    const formData = new FormData();
-    formData.append('name', name.trim());
-    formData.append('categoryId', categoryId);
-    formData.append('subcategory', subcategory);
-    formData.append('dietaryType', dietaryType);
-    formData.append('description', description.trim());
-    formData.append('tags', tags.trim());
-    formData.append('price', originalPriceNum.toString());
-    formData.append('discountPrice', sellingPriceNum < originalPriceNum ? sellingPriceNum.toString() : '');
-    formData.append('sellingPrice', sellingPriceNum.toString());
-    formData.append('discountPercentage', calculatedDiscount.toString());
-    formData.append('isPopular', String(isPopular));
-    formData.append('availability', String(availability));
-    formData.append('stock', stock);
-    formData.append('lowStockThreshold', lowStockThreshold);
-    formData.append('unit', unit);
-    formData.append('deliveryTime', deliveryTime);
-    formData.append('providerId', providerId);
-
-    if (selectedFile) {
-      formData.append('image', selectedFile);
-    }
+    const productPayload = {
+      name: name.trim(),
+      categoryId,
+      subcategory,
+      dietaryType,
+      description: description.trim(),
+      tags: tags.trim(),
+      price: originalPriceNum,
+      discountPrice: sellingPriceNum < originalPriceNum ? sellingPriceNum : undefined,
+      sellingPrice: sellingPriceNum,
+      discountPercentage: calculatedDiscount,
+      isPopular,
+      availability,
+      stock: Number(stock),
+      lowStockThreshold: Number(lowStockThreshold),
+      unit,
+      deliveryTime,
+      providerId
+    };
 
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token')) : null;
       const apiBase = getApiBase();
       const endpoint = initialProduct
         ? `${apiBase}/api/admin/products/${initialProduct.id}`
         : `${apiBase}/api/admin/products`;
+      const headers: Record<string, string> = {
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      };
+      let body: BodyInit;
+
+      if (selectedFile) {
+        const formData = new FormData();
+        Object.entries(productPayload).forEach(([key, value]) => {
+          if (value !== undefined) formData.append(key, String(value));
+        });
+        formData.append('image', selectedFile);
+        body = formData;
+      } else {
+        headers['Content-Type'] = 'application/json';
+        body = JSON.stringify(productPayload);
+      }
 
       const res = await fetch(endpoint, {
         method: initialProduct ? 'PATCH' : 'POST',
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: formData
+        headers,
+        body
       });
 
       let data: any = null;

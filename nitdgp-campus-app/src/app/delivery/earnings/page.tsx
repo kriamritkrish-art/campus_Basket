@@ -5,6 +5,7 @@ import { useDelivery } from '@/context/DeliveryContext';
 import { apiRequest } from '@/lib/api';
 import PayoutAccountModal from '@/components/delivery/PayoutAccountModal';
 import WithdrawalModal from '@/components/delivery/WithdrawalModal';
+import OrderFinancialDetailsModal from '@/components/common/OrderFinancialDetailsModal';
 import {
   IndianRupee,
   TrendingUp,
@@ -22,7 +23,8 @@ import {
   Landmark,
   Smartphone,
   Download,
-  ArrowDownLeft
+  ArrowDownLeft,
+  ExternalLink
 } from 'lucide-react';
 
 interface EarningRecord {
@@ -36,6 +38,8 @@ interface EarningRecord {
   adminAdjustedBy?: string;
   date: string;
   status: string;
+  otpVerified?: boolean;
+  codCollected?: number;
 }
 
 export default function DeliveryEarningsPage() {
@@ -51,6 +55,8 @@ export default function DeliveryEarningsPage() {
   const [earningsList, setEarningsList] = useState<EarningRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [backendStats, setBackendStats] = useState<any>(null);
+  const [dailyData, setDailyData] = useState<any>(null);
+  const [selectedDrilldownOrderId, setSelectedDrilldownOrderId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'EARNINGS' | 'WITHDRAWALS'>('EARNINGS');
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
@@ -61,12 +67,18 @@ export default function DeliveryEarningsPage() {
   const fetchEarningsData = async () => {
     setLoading(true);
     try {
-      const res = await apiRequest('/api/delivery/earnings').catch(() => null);
+      const [res, dailyRes] = await Promise.all([
+        apiRequest('/api/delivery/earnings').catch(() => null),
+        apiRequest('/api/delivery/earnings/daily').catch(() => null),
+      ]);
       if (res?.success) {
         setBackendStats(res);
         if (Array.isArray(res.earnings)) {
           setEarningsList(res.earnings);
         }
+      }
+      if (dailyRes?.success) {
+        setDailyData(dailyRes);
       }
       await fetchWithdrawals();
     } catch {
@@ -80,8 +92,8 @@ export default function DeliveryEarningsPage() {
     fetchEarningsData();
   }, []);
 
-  const perDeliveryRate = backendStats?.perDeliveryRate !== undefined ? backendStats.perDeliveryRate : (todayStats.perDeliveryRate || 10);
-  const monthlySalary = backendStats?.monthlySalary !== undefined ? backendStats.monthlySalary : (todayStats.monthlySalary || 15000);
+  const perDeliveryRate = backendStats?.perDeliveryRate ?? todayStats.perDeliveryRate ?? 0;
+  const monthlySalary = backendStats?.monthlySalary ?? todayStats.monthlySalary ?? 0;
   const availableBalance = todayStats.walletBalance || 0;
   const totalSettled = todayStats.totalSettled || 0;
   const pendingAmount = todayStats.pendingWithdrawals || 0;
@@ -369,6 +381,39 @@ export default function DeliveryEarningsPage() {
         )}
       </div>
 
+      {/* Daily Performance & COD Handover Banner */}
+      {dailyData?.today && (
+        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-200 rounded-2xl p-5 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider text-emerald-800">Today's Fulfillment Summary</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-emerald-800 border border-emerald-300">
+                  {dailyData.today.date}
+                </span>
+              </div>
+              <div className="flex items-center gap-4 mt-2 text-xs font-semibold text-gray-700 flex-wrap">
+                <div>Delivered: <strong className="text-emerald-900 font-bold">{dailyData.today.ordersDelivered}</strong></div>
+                <div>COD Handover Due: <strong className="text-amber-900 font-bold">₹{Number(dailyData.today.codCollected || 0).toFixed(2)}</strong></div>
+                {!isMonthly && (
+                  <>
+                    <div>Earned: <strong className="text-emerald-900 font-bold">₹{Number(dailyData.today.eligibleEarnings || 0).toFixed(2)}</strong></div>
+                    <div>Settled: <strong className="text-blue-900 font-bold">₹{Number(dailyData.today.settledAmount || 0).toFixed(2)}</strong></div>
+                    <div>Pending: <strong className="text-amber-900 font-bold">₹{Number(dailyData.today.pendingEarnings || 0).toFixed(2)}</strong></div>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-[11px] font-bold text-emerald-700 inline-flex items-center gap-1">
+                <ShieldCheck className="w-4 h-4" />
+                <span>6-Digit Customer OTP Enforced</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tabs & Table Section */}
       <div className="card p-6 bg-white space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
@@ -426,7 +471,13 @@ export default function DeliveryEarningsPage() {
                     deliveryHistory.map((h, idx) => (
                       <tr key={idx} className="hover:bg-gray-50/80 transition">
                         <td className="py-3.5 px-3 font-mono font-bold text-gray-900">
-                          {h.orderNumber}
+                          <button
+                            onClick={() => setSelectedDrilldownOrderId((h as any).orderId || (h as any).id || h.orderNumber)}
+                            className="hover:text-blue-600 hover:underline flex items-center gap-1"
+                          >
+                            <span>{h.orderNumber}</span>
+                            <ExternalLink className="w-3 h-3 text-gray-400" />
+                          </button>
                         </td>
                         <td className="py-3.5 px-3 text-gray-500">
                           {h.date.split(',')[0]}
@@ -453,7 +504,13 @@ export default function DeliveryEarningsPage() {
                   earningsList.map((row, idx) => (
                     <tr key={idx} className="hover:bg-gray-50/80 transition">
                       <td className="py-3.5 px-3 font-mono font-bold text-gray-900">
-                        {row.orderNumber}
+                        <button
+                          onClick={() => setSelectedDrilldownOrderId(row.orderId || null)}
+                          className="hover:text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <span>{row.orderNumber}</span>
+                          <ExternalLink className="w-3 h-3 text-gray-400" />
+                        </button>
                       </td>
                       <td className="py-3.5 px-3 text-gray-500">
                         {row.date}
@@ -461,7 +518,7 @@ export default function DeliveryEarningsPage() {
                       <td className="py-3.5 px-3">
                         <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full">
                           <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                          <span>Delivered</span>
+                          <span>Delivered (OTP Verified)</span>
                         </span>
                       </td>
                       <td className="py-3.5 px-3 text-right font-black text-emerald-700 text-sm font-mono">
@@ -473,7 +530,13 @@ export default function DeliveryEarningsPage() {
                   deliveryHistory.map((h, idx) => (
                     <tr key={idx} className="hover:bg-gray-50/80 transition">
                       <td className="py-3.5 px-3 font-mono font-bold text-gray-900">
-                        {h.orderNumber}
+                        <button
+                          onClick={() => setSelectedDrilldownOrderId((h as any).orderId || (h as any).id || h.orderNumber)}
+                          className="hover:text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <span>{h.orderNumber}</span>
+                          <ExternalLink className="w-3 h-3 text-gray-400" />
+                        </button>
                       </td>
                       <td className="py-3.5 px-3 text-gray-500">
                         {h.date.split(',')[0]}
@@ -615,6 +678,13 @@ export default function DeliveryEarningsPage() {
         isOpen={showWithdrawalModal}
         onClose={() => setShowWithdrawalModal(false)}
         onOpenPayoutAccountModal={() => setShowPayoutModal(true)}
+      />
+
+      {/* Single Order Financial Details Modal */}
+      <OrderFinancialDetailsModal
+        orderId={selectedDrilldownOrderId}
+        isOpen={Boolean(selectedDrilldownOrderId)}
+        onClose={() => setSelectedDrilldownOrderId(null)}
       />
     </div>
   );

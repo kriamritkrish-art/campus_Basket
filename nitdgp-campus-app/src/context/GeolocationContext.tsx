@@ -52,8 +52,8 @@ export function GeolocationProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     // Only check if geofence is disabled by admin if user has admin credentials
-    const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
-    const role = typeof window !== 'undefined' ? localStorage.getItem('nit_role') : null;
+    const token = typeof window !== 'undefined' ? (localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token')) : null;
+    const role = typeof window !== 'undefined' ? (localStorage.getItem('nit_role') || sessionStorage.getItem('nit_role')) : null;
     if (token && (role === 'ADMIN' || role === 'SUPER_ADMIN')) {
       fetch('/api/admin/settings', {
         headers: { Authorization: `Bearer ${token}` }

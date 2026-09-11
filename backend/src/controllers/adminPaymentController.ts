@@ -929,6 +929,302 @@ export class AdminPaymentController {
   }
 
   /**
+   * Section 5.1: Delivery Boy All Student Orders (Operational View)
+   * Dedicated operational order visibility - completely separate from COD financial reconciliation.
+   */
+  public static async getDeliveryBoyOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const {
+        deliveryBoyId,
+        orderType,      // 'ALL' | 'DELIVERY' | 'PICKUP'
+        paymentMethod,  // 'ALL' | 'COD' | 'ONLINE'
+        status,         // 'ALL' | 'ASSIGNED' | 'ACCEPTED' | 'PICKUP' | 'OUT FOR DELIVERY' | 'DELIVERED' | 'COMPLETED' | 'CANCELLED' | 'RETURNED'
+        providerId,
+        dateRange,      // 'ALL' | 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH'
+        search
+      } = req.query;
+
+      const [orders, deliveryBoys, providers, allReturns] = await Promise.all([
+        (prisma as any).order.findMany({
+          include: {
+            items: true,
+            student: { select: { fullName: true, mobileNumber: true, roomNumber: true, hallName: true, collegeEmail: true } },
+            provider: { select: { id: true, fullName: true, mobileNumber: true } },
+            statusHistory: true,
+            laundryDetails: true,
+            returnRequest: {
+              include: {
+                deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } }
+              }
+            }
+          },
+          orderBy: { createdAt: 'desc' }
+        }),
+        (prisma as any).deliveryBoy.findMany({
+          include: { user: true }
+        }).catch(() => []),
+        (prisma as any).serviceProvider.findMany().catch(() => []),
+        (prisma as any).returnRequest.findMany({
+          include: {
+            deliveryBoy: true,
+            order: {
+              include: {
+                items: true,
+                student: true,
+                provider: true
+              }
+            }
+          }
+        }).catch(() => [])
+      ]);
+
+      const runnerById = new Map<string, any>();
+      for (const d of deliveryBoys) {
+        runnerById.set(d.id, {
+          id: d.id,
+          name: d.fullName || 'Campus Runner',
+          fullName: d.fullName || 'Campus Runner',
+          phone: d.mobileNumber || d.phone || d.user?.phone || '+91 98765 43220',
+          vehicleType: d.vehicleType || 'Bicycle'
+        });
+      }
+
+      const returnByOrderId = new Map<string, any>();
+      for (const r of allReturns) {
+        if (r.orderId) {
+          returnByOrderId.set(r.orderId, r);
+        }
+      }
+
+      const operationalRecords: any[] = [];
+
+      for (const ord of orders) {
+        const linkedReturn = ord.returnRequest || returnByOrderId.get(ord.id) || returnByOrderId.get(ord.orderNumber);
+
+        const hasDeliveryAssignment = Boolean(ord.deliveryBoyId);
+        const deliveryRunner = ord.deliveryBoyId ? runnerById.get(ord.deliveryBoyId) : null;
+
+        const hasPickupAssignment = Boolean(linkedReturn?.deliveryBoyId);
+        const pickupRunner = linkedReturn?.deliveryBoyId ? runnerById.get(linkedReturn.deliveryBoyId) : null;
+
+        const targetRunnerId = deliveryBoyId && deliveryBoyId !== 'ALL' ? String(deliveryBoyId) : null;
+
+        const matchesDelivery = targetRunnerId ? (ord.deliveryBoyId === targetRunnerId) : hasDeliveryAssignment;
+        const matchesPickup = targetRunnerId ? (linkedReturn?.deliveryBoyId === targetRunnerId) : hasPickupAssignment;
+
+        // If target runner was requested but handled neither delivery nor pickup, skip
+        if (targetRunnerId && !matchesDelivery && !matchesPickup) {
+          continue;
+        }
+
+        // If viewing across all delivery boys and no runner at all is assigned, omit
+        if (!targetRunnerId && !hasDeliveryAssignment && !hasPickupAssignment) {
+          continue;
+        }
+
+        let resolvedOrderType: 'DELIVERY' | 'PICKUP' = 'DELIVERY';
+        if (targetRunnerId) {
+          if (matchesPickup && !matchesDelivery) {
+            resolvedOrderType = 'PICKUP';
+          } else {
+            resolvedOrderType = 'DELIVERY';
+          }
+        } else {
+          if (hasPickupAssignment && !hasDeliveryAssignment) {
+            resolvedOrderType = 'PICKUP';
+          } else {
+            resolvedOrderType = 'DELIVERY';
+          }
+        }
+
+        const isCod = ord.paymentMethod === 'CASH_ON_DELIVERY' ||
+          ord.paymentMethod === 'COD' ||
+          (typeof ord.paymentMethod === 'string' && ord.paymentMethod.toUpperCase().includes('COD'));
+        const paymentType: 'COD' | 'ONLINE' = isCod ? 'COD' : 'ONLINE';
+
+        const activities: any[] = [];
+
+        if (linkedReturn && linkedReturn.deliveryBoyId) {
+          activities.push({
+            stage: 'PICKUP',
+            type: 'PICKUP',
+            runnerId: linkedReturn.deliveryBoyId,
+            runnerName: pickupRunner?.fullName || 'Assigned Pickup Runner',
+            runnerPhone: pickupRunner?.phone || 'N/A',
+            status: linkedReturn.status === 'COMPLETED' ? 'PICKED_UP / COMPLETED' : (linkedReturn.status || 'PICKUP_ASSIGNED'),
+            timestamp: linkedReturn.updatedAt || linkedReturn.createdAt,
+            notes: linkedReturn.reasonType ? `Return Reason: ${linkedReturn.reasonType}` : 'Student return pickup'
+          });
+        }
+
+        if (ord.deliveryBoyId) {
+          activities.push({
+            stage: 'DELIVERY',
+            type: 'DELIVERY',
+            runnerId: ord.deliveryBoyId,
+            runnerName: deliveryRunner?.fullName || 'Assigned Delivery Runner',
+            runnerPhone: deliveryRunner?.phone || 'N/A',
+            status: ord.status,
+            timestamp: ord.deliveredAt || ord.updatedAt || ord.createdAt,
+            notes: `Delivery order status: ${ord.status}`
+          });
+        }
+
+        const operationalStatus = (resolvedOrderType === 'PICKUP' && linkedReturn)
+          ? (linkedReturn.status === 'COMPLETED' ? 'COMPLETED' : (linkedReturn.status === 'PICKUP_ASSIGNED' ? 'PICKUP' : linkedReturn.status))
+          : ord.status;
+
+        const activeRunner = resolvedOrderType === 'PICKUP' ? (pickupRunner || deliveryRunner) : (deliveryRunner || pickupRunner);
+        const prov = providers.find((p: any) => p.id === ord.providerId) || ord.provider;
+
+        const record = {
+          id: ord.id,
+          orderId: ord.id,
+          orderNumber: ord.orderNumber || ord.id,
+          student: {
+            fullName: ord.student?.fullName || 'Campus Student',
+            name: ord.student?.fullName || 'Campus Student',
+            phone: ord.student?.mobileNumber || ord.student?.phone || 'N/A',
+            mobileNumber: ord.student?.mobileNumber || ord.student?.phone || 'N/A',
+            email: ord.student?.collegeEmail || ord.student?.email || 'N/A',
+            roomNumber: ord.roomNumber || ord.student?.roomNumber || 'N/A',
+            hallName: ord.hallName || ord.student?.hallName || 'N/A'
+          },
+          phone: ord.student?.mobileNumber || ord.student?.phone || 'N/A',
+          provider: {
+            id: ord.providerId,
+            name: prov?.fullName || 'Campus Provider',
+            fullName: prov?.fullName || 'Campus Provider',
+            phone: prov?.mobileNumber || 'N/A'
+          },
+          providerName: prov?.fullName || 'Campus Provider',
+          orderType: resolvedOrderType,
+          payment: paymentType,
+          paymentMethod: paymentType,
+          orderAmount: Number(ord.totalAmount) || 0,
+          totalAmount: Number(ord.totalAmount) || 0,
+          orderStatus: operationalStatus,
+          status: operationalStatus,
+          deliveryBoy: activeRunner ? {
+            id: activeRunner.id,
+            name: activeRunner.fullName,
+            fullName: activeRunner.fullName,
+            phone: activeRunner.phone,
+            role: resolvedOrderType === 'PICKUP' ? 'Pickup Runner' : 'Delivery Runner'
+          } : null,
+          deliveryBoyName: activeRunner?.fullName || 'Campus Runner',
+          deliveryBoyPhone: activeRunner?.phone || 'N/A',
+          deliveryRunner: deliveryRunner ? {
+            id: deliveryRunner.id,
+            name: deliveryRunner.fullName,
+            phone: deliveryRunner.phone
+          } : null,
+          pickupRunner: pickupRunner ? {
+            id: pickupRunner.id,
+            name: pickupRunner.fullName,
+            phone: pickupRunner.phone
+          } : null,
+          hasBothActivities: Boolean(hasDeliveryAssignment && hasPickupAssignment),
+          activities,
+          items: (ord.items || []).map((i: any) => ({
+            name: i.productName || 'Item',
+            quantity: i.quantity || 1,
+            price: Number(i.unitPrice || i.price) || 0
+          })),
+          orderDate: ord.createdAt,
+          createdAt: ord.createdAt
+        };
+
+        // 1. Order Type filter ('ALL' | 'DELIVERY' | 'PICKUP')
+        if (orderType && orderType !== 'ALL') {
+          if (orderType.toString().toUpperCase() === 'DELIVERY') {
+            if (record.orderType !== 'DELIVERY' && !hasDeliveryAssignment) continue;
+          } else if (orderType.toString().toUpperCase() === 'PICKUP') {
+            if (record.orderType !== 'PICKUP' && !hasPickupAssignment) continue;
+          }
+        }
+
+        // 2. Payment Method filter ('ALL' | 'COD' | 'ONLINE')
+        if (paymentMethod && paymentMethod !== 'ALL') {
+          if (record.payment !== paymentMethod.toString().toUpperCase()) continue;
+        }
+
+        // 3. Status filter
+        if (status && status !== 'ALL') {
+          const s = String(status).toUpperCase();
+          const ordS = String(record.orderStatus).toUpperCase();
+          if (s === 'OUT FOR DELIVERY') {
+            if (!ordS.includes('OUT') && !ordS.includes('TRANSIT')) continue;
+          } else if (s === 'PICKUP') {
+            if (!ordS.includes('PICKUP') && !ordS.includes('PICKED')) continue;
+          } else if (s === 'ASSIGNED') {
+            if (!ordS.includes('ASSIGNED')) continue;
+          } else if (s === 'ACCEPTED') {
+            if (!ordS.includes('ACCEPTED')) continue;
+          } else if (s === 'DELIVERED') {
+            if (ordS !== 'DELIVERED') continue;
+          } else if (s === 'COMPLETED') {
+            if (ordS !== 'COMPLETED' && ordS !== 'DELIVERED') continue;
+          } else if (s === 'CANCELLED') {
+            if (!ordS.includes('CANCEL')) continue;
+          } else if (s === 'RETURNED') {
+            if (!ordS.includes('RETURN')) continue;
+          } else {
+            if (ordS !== s) continue;
+          }
+        }
+
+        // 4. Provider filter
+        if (providerId && providerId !== 'ALL') {
+          if (ord.providerId !== providerId) continue;
+        }
+
+        // 5. Date Range filter
+        if (dateRange && dateRange !== 'ALL') {
+          const d = new Date(ord.createdAt);
+          const now = new Date();
+          if (dateRange === 'TODAY') {
+            if (d.getFullYear() !== now.getFullYear() || d.getMonth() !== now.getMonth() || d.getDate() !== now.getDate()) {
+              continue;
+            }
+          } else if (dateRange === 'THIS_WEEK') {
+            if ((Date.now() - d.getTime()) > (7 * 24 * 60 * 60 * 1000)) {
+              continue;
+            }
+          } else if (dateRange === 'THIS_MONTH') {
+            if (d.getFullYear() !== now.getFullYear() || d.getMonth() !== now.getMonth()) {
+              continue;
+            }
+          }
+        }
+
+        // 6. Search query
+        if (search) {
+          const q = String(search).toLowerCase().trim();
+          const matchNum = record.orderNumber.toLowerCase().includes(q);
+          const matchStudent = record.student.name.toLowerCase().includes(q);
+          const matchPhone = record.phone.toLowerCase().includes(q);
+          const matchRunner = (record.deliveryBoyName || '').toLowerCase().includes(q);
+          if (!matchNum && !matchStudent && !matchPhone && !matchRunner) {
+            continue;
+          }
+        }
+
+        operationalRecords.push(record);
+      }
+
+      res.status(200).json({
+        success: true,
+        count: operationalRecords.length,
+        orders: operationalRecords,
+        deliveryBoys: Array.from(runnerById.values())
+      });
+    } catch (err: any) {
+      next(err);
+    }
+  }
+
+  /**
    * Section 6: Double-Entry Immutable Financial Ledger
    */
   public static async getFinancialLedger(req: Request, res: Response, next: NextFunction): Promise<void> {

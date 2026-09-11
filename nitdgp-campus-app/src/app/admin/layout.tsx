@@ -129,6 +129,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       ]
     },
     {
+      title: 'FINANCE',
+      items: [
+        { label: 'Finance Hub', href: '/admin/finance', icon: Banknote },
+        { label: 'Provider Payables', href: '/admin/finance?tab=providers', icon: Store },
+        { label: 'COD Collections', href: '/admin/finance?tab=cod', icon: CreditCard },
+        { label: 'Delivery Earnings', href: '/admin/finance?tab=runners', icon: Truck },
+        { label: 'Settlement History', href: '/admin/finance?tab=history', icon: History },
+        { label: 'Financial Reports', href: '/admin/finance?tab=reports', icon: FileSpreadsheet },
+      ]
+    },
+    {
       title: 'PAYMENTS',
       items: [
         { label: 'Transactions', href: '/admin/payments', icon: CreditCard },
@@ -192,7 +203,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   const handleExportCsv = () => {
-    const token = localStorage.getItem('nit_token');
+    const token = localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token');
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
     window.open(`${backendUrl}/api/admin/reports/export-csv?type=orders&token=${token}`, '_blank');
   };

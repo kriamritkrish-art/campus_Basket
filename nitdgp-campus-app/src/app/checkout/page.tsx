@@ -349,7 +349,30 @@ export default function CheckoutPage() {
           const rzp = new window.Razorpay(rzpConfig);
           rzp.on('payment.failed', function (resp: any) {
             setIsProcessing(false);
-            setError(`Advance payment failed: ${resp.error?.description || 'Transaction unsuccessful'}. Your cart has not been cleared. You can retry anytime.`);
+            const err = resp?.error || {};
+            const text = `${err.description || ''} ${err.code || ''} ${err.reason || ''}`.toLowerCase();
+            let msg = 'Payment could not be completed. Please check your payment details and try again.';
+            if (text.includes('account') || text.includes('bank') || text.includes('vpa') || text.includes('beneficiary')) {
+              msg = 'Payment could not be completed because the required payment account details are missing or invalid.';
+            } else if (text.includes('timeout') || text.includes('timed out')) {
+              msg = 'Your payment is being verified. Please do not make another payment until the current payment status is confirmed.';
+            }
+            setError(msg);
+
+            // Record failure to server for unified ledger audit trail
+            apiRequest('/api/payments/record-failure', {
+              method: 'POST',
+              body: JSON.stringify({
+                orderId: order.id,
+                razorpayOrderId: res.razorpay?.razorpayOrderId,
+                razorpayPaymentId: err.metadata?.payment_id,
+                errorCode: err.code,
+                errorDescription: err.description,
+                errorReason: err.reason,
+                errorSource: err.source,
+                errorStep: err.step
+              })
+            }).catch(() => {});
           });
           rzp.open();
           return;
@@ -427,7 +450,30 @@ export default function CheckoutPage() {
         const rzp = new window.Razorpay(rzpConfig);
         rzp.on('payment.failed', function (resp: any) {
           setIsProcessing(false);
-          setError(`Payment failed: ${resp.error.description || 'Transaction unsuccessful'}. Your cart has not been cleared. You can retry or switch to Cash on Delivery.`);
+          const err = resp?.error || {};
+          const text = `${err.description || ''} ${err.code || ''} ${err.reason || ''}`.toLowerCase();
+          let msg = 'Payment could not be completed. Please check your payment details and try again.';
+          if (text.includes('account') || text.includes('bank') || text.includes('vpa') || text.includes('beneficiary')) {
+            msg = 'Payment could not be completed because the required payment account details are missing or invalid.';
+          } else if (text.includes('timeout') || text.includes('timed out')) {
+            msg = 'Your payment is being verified. Please do not make another payment until the current payment status is confirmed.';
+          }
+          setError(`${msg} Your cart has not been cleared. You can retry or switch to Cash on Delivery.`);
+
+          // Record failure to server for unified ledger audit trail
+          apiRequest('/api/payments/record-failure', {
+            method: 'POST',
+            body: JSON.stringify({
+              orderId: order.id,
+              razorpayOrderId: res.razorpay?.razorpayOrderId,
+              razorpayPaymentId: err.metadata?.payment_id,
+              errorCode: err.code,
+              errorDescription: err.description,
+              errorReason: err.reason,
+              errorSource: err.source,
+              errorStep: err.step
+            })
+          }).catch(() => {});
         });
         rzp.open();
       }
@@ -908,8 +954,6 @@ export default function CheckoutPage() {
                   />
                 </button>
               </div>
-
-              {/* Items List (Collapsible on mobile) */}
               <div
                 className={`divide-y divide-gray-100 max-h-60 overflow-y-auto px-5 py-2 ${
                   showMobileSummary ? 'block' : 'hidden sm:block'

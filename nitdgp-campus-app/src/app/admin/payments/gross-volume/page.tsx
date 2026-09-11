@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { apiRequest, getApiBase } from '../../../../lib/api';
@@ -39,8 +39,26 @@ import {
   LogOut,
   Info,
   Shield,
-  FileSpreadsheet
+  FileSpreadsheet,
+  AlertTriangle,
+  Zap,
+  Activity,
+  BookOpen,
+  HelpCircle,
+  GitMerge,
+  ArrowDown,
+  ArrowUpRight
 } from 'lucide-react';
+import FinancialEngineDocumentation from './components/FinancialEngineDocumentation';
+
+
+export interface PaymentAttempt {
+  attemptId: string;
+  razorpayPaymentId: string;
+  eventType: string;
+  status: string;
+  time: string;
+}
 
 export interface LedgerOrder {
   id: string;
@@ -79,6 +97,26 @@ export interface LedgerOrder {
   codAmount: number;
   commissionRate: number;
   commissionAmount: number;
+  // ── Razorpay / Reconciliation Fields ──────────────────────────────────────
+  razorpayOrderId: string | null;
+  razorpayPaymentId: string | null;
+  razorpayEventId: string | null;
+  capturedAt: string | null;
+  failureReason: string | null;
+  failureCode?: string | null;
+  paymentFailureReason?: string;
+  paymentFailureCode?: string | null;
+  reconciliationTimestamp?: string | null;
+  paymentAttemptCount: number;
+  paymentAttempts: PaymentAttempt[];
+  reconciliationStatus: string;
+  paymentReconciliationStatus: string;
+  reconciledAt: string | null;
+  reconciledBy: string | null;
+  // ── Settlement Fields ──────────────────────────────────────────────────────
+  settlementStatus: string;
+  providerPayable: number;
+  // ── Refund Fields ──────────────────────────────────────────────────────────
   cancellationRefund: {
     status: 'UNCLAIMED' | 'CLAIMED' | 'DISTRIBUTED' | 'NOT_APPLICABLE';
     eligibleAmount: number;
@@ -108,7 +146,9 @@ export interface LedgerMetrics {
   codCash: number;
   refundsDistributed: number;
   finalCampusBasketEarning: number;
+  reconciliationRequired: number;
 }
+
 
 export default function OrderPaymentSettlementLedgerPage() {
   const router = useRouter();
@@ -124,8 +164,10 @@ export default function OrderPaymentSettlementLedgerPage() {
     codAdvance: 0,
     codCash: 0,
     refundsDistributed: 0,
-    finalCampusBasketEarning: 0
+    finalCampusBasketEarning: 0,
+    reconciliationRequired: 0
   });
+
 
   const [distinctProviders, setDistinctProviders] = useState<string[]>([]);
   const [distinctDeliveryBoys, setDistinctDeliveryBoys] = useState<string[]>([]);
@@ -140,9 +182,16 @@ export default function OrderPaymentSettlementLedgerPage() {
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('ALL');
   const [refundStatusFilter, setRefundStatusFilter] = useState('ALL');
   const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
+  const [reconciliationStatusFilter, setReconciliationStatusFilter] = useState('ALL');
+  const [paymentFailureReasonFilter, setPaymentFailureReasonFilter] = useState('ALL');
   const [providerFilter, setProviderFilter] = useState('ALL');
+
   const [deliveryBoyFilter, setDeliveryBoyFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('date_desc');
+
+  // Documentation & Flowchart interactive tab state
+  const [docTab, setDocTab] = useState<'FLOWCHARTS' | 'GLOSSARY' | 'PROTOCOLS'>('FLOWCHARTS');
+  const [docOpen, setDocOpen] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -207,7 +256,10 @@ export default function OrderPaymentSettlementLedgerPage() {
     setPaymentStatusFilter('ALL');
     setRefundStatusFilter('ALL');
     setOrderStatusFilter('ALL');
+    setReconciliationStatusFilter('ALL');
+    setPaymentFailureReasonFilter('ALL');
     setProviderFilter('ALL');
+
     setDeliveryBoyFilter('ALL');
     setSortBy('date_desc');
     setCurrentPage(1);
@@ -225,6 +277,8 @@ export default function OrderPaymentSettlementLedgerPage() {
       if (paymentStatusFilter !== 'ALL') params.append('paymentStatus', paymentStatusFilter);
       if (refundStatusFilter !== 'ALL') params.append('refundStatus', refundStatusFilter);
       if (orderStatusFilter !== 'ALL') params.append('orderStatus', orderStatusFilter);
+      if (reconciliationStatusFilter !== 'ALL') params.append('reconciliationStatus', reconciliationStatusFilter);
+      if (paymentFailureReasonFilter !== 'ALL') params.append('paymentFailureReason', paymentFailureReasonFilter);
       if (providerFilter !== 'ALL') params.append('providerId', providerFilter);
       if (deliveryBoyFilter !== 'ALL') params.append('deliveryBoyId', deliveryBoyFilter);
       if (searchQuery.trim()) params.append('search', searchQuery.trim());
@@ -242,7 +296,8 @@ export default function OrderPaymentSettlementLedgerPage() {
             codAdvance: res.data.metrics.codAdvance ?? 0,
             codCash: res.data.metrics.codCash ?? 0,
             refundsDistributed: res.data.metrics.refundsDistributed ?? 0,
-            finalCampusBasketEarning: res.data.metrics.finalCampusBasketEarning ?? 0
+            finalCampusBasketEarning: res.data.metrics.finalCampusBasketEarning ?? 0,
+            reconciliationRequired: res.data.metrics.reconciliationRequired ?? 0
           });
         }
         if (res.data.distinctProviders) setDistinctProviders(res.data.distinctProviders);
@@ -265,6 +320,8 @@ export default function OrderPaymentSettlementLedgerPage() {
     paymentStatusFilter,
     refundStatusFilter,
     orderStatusFilter,
+    reconciliationStatusFilter,
+    paymentFailureReasonFilter,
     providerFilter,
     deliveryBoyFilter,
     sortBy
@@ -369,7 +426,7 @@ export default function OrderPaymentSettlementLedgerPage() {
     setExportingPdf(true);
     try {
       const base = getApiBase();
-      const token = typeof window !== 'undefined' ? localStorage.getItem('nit_token') : null;
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token')) : null;
       const params = new URLSearchParams();
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
@@ -498,10 +555,13 @@ export default function OrderPaymentSettlementLedgerPage() {
     serviceTypeFilter !== 'ALL' ||
     paymentMethodFilter !== 'ALL' ||
     paymentStatusFilter !== 'ALL' ||
+    paymentFailureReasonFilter !== 'ALL' ||
     refundStatusFilter !== 'ALL' ||
     orderStatusFilter !== 'ALL' ||
+    reconciliationStatusFilter !== 'ALL' ||
     providerFilter !== 'ALL' ||
     deliveryBoyFilter !== 'ALL';
+
 
   const exportHelperText = useMemo(() => {
     if (orders.length === 0) return 'No matching orders to export.';
@@ -509,22 +569,104 @@ export default function OrderPaymentSettlementLedgerPage() {
     return `Exporting all ${orders.length} orders`;
   }, [orders.length, isAnyFilterActive]);
 
-  // Badges helper
+  // Payment badge helper — CAPTURED is the canonical successful status
+  // Maps legacy SUCCESS/PAID to CAPTURED for display
   const renderPaymentBadge = (status: string) => {
     switch (status) {
+      case 'CAPTURED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">CAPTURED</span>;
       case 'PAID':
-        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">PAID</span>;
+      case 'SUCCESS':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">CAPTURED</span>;
+      case 'AUTHORIZED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">AUTHORIZED</span>;
+      case 'FAILED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-800 border border-red-200">FAILED</span>;
+      case 'FAILED_ACCOUNT_DETAILS':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-950 border border-amber-300">
+            <AlertTriangle className="w-3 h-3 text-amber-700 flex-shrink-0" />
+            <span>FAILED (ACCT)</span>
+          </span>
+        );
       case 'PARTIALLY_PAID':
-      case 'PARTIALLY_REFUNDED':
-        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">PARTIALLY PAID</span>;
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">PARTIAL</span>;
       case 'PENDING':
         return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">PENDING</span>;
       case 'REFUNDED':
         return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-200">REFUNDED</span>;
+      case 'RECONCILIATION_REQUIRED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-orange-100 text-orange-800 border border-orange-300">⚠ REVIEW</span>;
       default:
         return <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">{status}</span>;
     }
   };
+
+  // Payment failure reason badge
+  const renderFailureReasonBadge = (reason?: string | null, code?: string | null) => {
+    const r = (reason || 'N/A').toUpperCase();
+    switch (r) {
+      case 'BANK/ACCOUNT DETAILS REQUIRED':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black bg-amber-100 text-amber-950 border border-amber-300 whitespace-nowrap">
+            <AlertTriangle className="w-3 h-3 text-amber-700 flex-shrink-0" />
+            <span>ACCOUNT REQ</span>
+          </span>
+        );
+      case 'INSUFFICIENT FUNDS':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-100 text-yellow-900 border border-yellow-300 whitespace-nowrap">
+            LOW BALANCE
+          </span>
+        );
+      case 'PAYMENT DECLINED':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300 whitespace-nowrap">
+            DECLINED
+          </span>
+        );
+      case 'PAYMENT TIMEOUT':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-300 whitespace-nowrap">
+            TIMEOUT
+          </span>
+        );
+      case 'PAYMENT CANCELLED':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-300 whitespace-nowrap">
+            CANCELLED
+          </span>
+        );
+      case 'RISK/SECURITY DECLINE':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-950 border border-red-300 whitespace-nowrap">
+            RISK DECLINE
+          </span>
+        );
+      case 'RAZORPAY ERROR':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 border border-red-200 whitespace-nowrap">
+            GATEWAY ERR
+          </span>
+        );
+      case 'NETWORK/TECHNICAL ERROR':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-100 text-cyan-900 border border-cyan-300 whitespace-nowrap">
+            NETWORK ERR
+          </span>
+        );
+      case 'UNKNOWN':
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200 whitespace-nowrap">
+            UNKNOWN
+          </span>
+        );
+      case 'N/A':
+      default:
+        return <span className="text-slate-300 text-[10px] font-medium">—</span>;
+    }
+  };
+
 
   const renderRefundStatusBadge = (status: string, amount: number) => {
     switch (status) {
@@ -659,6 +801,23 @@ export default function OrderPaymentSettlementLedgerPage() {
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Quick Toggle for Flowcharts & Documentation */}
+            <button
+              onClick={() => {
+                setDocOpen((prev) => !prev);
+                setDocTab('FLOWCHARTS');
+              }}
+              className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-2 cursor-pointer ${
+                docOpen
+                  ? 'bg-indigo-700 text-white ring-2 ring-indigo-400'
+                  : 'bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 hover:from-indigo-700 hover:to-purple-800 text-white'
+              }`}
+              title="Toggle Visual Flowcharts & Status Matrix"
+            >
+              <GitMerge className="w-3.5 h-3.5 text-indigo-200" />
+              <span>{docOpen ? 'Hide Flowcharts ▲' : 'Flowcharts & Docs ▼'}</span>
+            </button>
+
             <button
               onClick={fetchLedgerData}
               disabled={loading}
@@ -724,6 +883,51 @@ export default function OrderPaymentSettlementLedgerPage() {
         </div>
 
         {/* =========================================================================
+            2B. TOP CONTROLLER: LIFECYCLE FLOWCHARTS & STATUS DOCUMENTATION
+        ========================================================================= */}
+        <div className="bg-gradient-to-r from-[#0F172A] via-slate-900 to-indigo-950 rounded-2xl p-4 sm:p-5 text-white shadow-sm border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center shadow-xs">
+              <GitMerge className="w-5 h-5 text-indigo-300" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-sm sm:text-base font-black tracking-tight text-white uppercase">
+                  FINANCIAL LIFECYCLE FLOWCHARTS &amp; STATUS ENGINE
+                </h2>
+                <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-wider">
+                  Interactive Guide
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1">
+                Click the button to open full visual flowcharts, unconfirmed payment auto-reversals, refund deduction policies &amp; status definitions.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setDocOpen((prev) => !prev)}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-2 cursor-pointer whitespace-nowrap"
+            >
+              <BookOpen className="w-4 h-4 text-indigo-200" />
+              <span>{docOpen ? 'Hide Flowcharts & Documentation ▲' : 'View Flowcharts & Documentation ▼'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* When docOpen is true, render directly at the top! */}
+        {docOpen && (
+          <div id="engine-documentation-section" className="scroll-mt-20">
+            <FinancialEngineDocumentation
+              docTab={docTab}
+              setDocTab={setDocTab}
+              onClose={() => setDocOpen(false)}
+            />
+          </div>
+        )}
+
+        {/* =========================================================================
             3. TOP SUMMARY CARDS (NO INSTITUTION FEE ANYWHERE)
         ========================================================================= */}
         <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 sm:gap-4">
@@ -776,15 +980,39 @@ export default function OrderPaymentSettlementLedgerPage() {
             </div>
           </div>
 
-          {/* 7. FINAL CAMPUS BASKET EARNING */}
+          {/* 7. NET CAMPUS BASKET RECEIVED */}
           <div className="bg-white p-3.5 rounded-xl border-2 border-emerald-500 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800">CAMPUS BASKET EARNING</span>
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
             </div>
-            <div className="mt-2">
+            <div className="mt-1">
               <span className="text-xl sm:text-2xl font-black text-emerald-700">₹{metrics.finalCampusBasketEarning.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
+            <div className="mt-1 text-[9px] font-semibold text-emerald-600/80 leading-tight">
+              Student Paid − Refunds Distributed
+            </div>
           </div>
+
+          {/* 8. RECONCILIATION REQUIRED (clickable red card) */}
+          {metrics.reconciliationRequired > 0 && (
+            <button
+              onClick={() => setReconciliationStatusFilter('PENDING')}
+              className="bg-orange-50 p-3.5 rounded-xl border-2 border-orange-400 shadow-xs flex flex-col justify-between hover:bg-orange-100 transition cursor-pointer text-left"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-orange-800">RECONCILIATION REQUIRED</span>
+                <AlertTriangle className="w-3.5 h-3.5 text-orange-600 animate-pulse" />
+              </div>
+              <div className="mt-1">
+                <span className="text-xl sm:text-2xl font-black text-orange-700">{metrics.reconciliationRequired}</span>
+                <span className="text-xs text-orange-600 ml-1 font-semibold">Orders</span>
+              </div>
+              <div className="mt-1 text-[9px] font-semibold text-orange-600/80 leading-tight">
+                Tap to filter → Admin review needed
+              </div>
+            </button>
+          )}
         </section>
 
         {/* =========================================================================
@@ -867,8 +1095,8 @@ export default function OrderPaymentSettlementLedgerPage() {
             </div>
           )}
 
-          {/* Bottom Dropdowns Row: 8 Specific Filters */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-2.5 pt-2 border-t border-slate-100">
+          {/* Bottom Dropdowns Row: 9 Specific Filters */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2.5 pt-2 border-t border-slate-100">
             {/* 1. Service Type */}
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">SERVICE</label>
@@ -917,10 +1145,37 @@ export default function OrderPaymentSettlementLedgerPage() {
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-slate-400 cursor-pointer"
               >
                 <option value="ALL">All</option>
-                <option value="PAID">Paid</option>
-                <option value="PARTIALLY_REFUNDED">Partially Paid</option>
+                <option value="CAPTURED">Captured</option>
+                <option value="PAID">Paid (Legacy)</option>
+                <option value="AUTHORIZED">Authorized</option>
+                <option value="FAILED">Failed</option>
+                <option value="FAILED_ACCOUNT_DETAILS">Failed (Account Required)</option>
+                <option value="PARTIALLY_REFUNDED">Partial Refund</option>
                 <option value="PENDING">Pending</option>
                 <option value="REFUNDED">Refunded</option>
+                <option value="RECONCILIATION_REQUIRED">Review Required</option>
+              </select>
+            </div>
+
+            {/* 3b. Payment Failure Reason */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">FAILURE REASON</label>
+              <select
+                value={paymentFailureReasonFilter}
+                onChange={(e) => {
+                  setPaymentFailureReasonFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-slate-400 cursor-pointer"
+              >
+                <option value="ALL">All</option>
+                <option value="FAILED">Failed (Any)</option>
+                <option value="FAILED_ACCOUNT_DETAILS">Failed — Account Details Required</option>
+                <option value="PAYMENT_DECLINED">Payment Declined</option>
+                <option value="PAYMENT_TIMEOUT">Payment Timeout</option>
+                <option value="RAZORPAY_ERROR">Razorpay Error</option>
+                <option value="NETWORK_TECHNICAL_ERROR">Network/Technical Error</option>
+                <option value="UNKNOWN">Unknown</option>
               </select>
             </div>
 
@@ -1006,7 +1261,29 @@ export default function OrderPaymentSettlementLedgerPage() {
               </select>
             </div>
 
-            {/* 8. Sort By */}
+            {/* 8. Reconciliation Status */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">RECONCILIATION</label>
+              <select
+                value={reconciliationStatusFilter}
+                onChange={(e) => {
+                  setReconciliationStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-slate-400 cursor-pointer"
+              >
+                <option value="ALL">All</option>
+                <option value="NOT_REQUIRED">Not Required</option>
+                <option value="AUTO_RECONCILED">Auto Reconciled</option>
+                <option value="MANUALLY_RECONCILED">Manually Reconciled</option>
+                <option value="PENDING">Pending</option>
+                <option value="AMOUNT_MISMATCH">Amount Mismatch</option>
+                <option value="PAYMENT_NOT_FOUND">Not Found</option>
+                <option value="CUSTOMER_DEBIT_REVIEW">Customer Debit Review</option>
+              </select>
+            </div>
+
+            {/* 9. Sort By */}
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">SORT BY</label>
               <select
@@ -1052,34 +1329,36 @@ export default function OrderPaymentSettlementLedgerPage() {
         ========================================================================= */}
         <section className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
           {/* Desktop & Tablet Table */}
-          <div className="hidden md:block overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto overflow-y-auto max-h-[750px] border-b border-slate-200">
             <table className="w-full border-collapse text-left text-xs">
-              {/* Sticky Header */}
-              <thead>
-                <tr className="bg-[#0F172A] text-white border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider select-none sticky top-16 z-10">
-                  <th className="py-3 px-3.5 whitespace-nowrap">ORDER DATE</th>
-                  <th className="py-3 px-3.5 whitespace-nowrap">ORDER ID</th>
-                  <th className="py-3 px-3.5 whitespace-nowrap">STUDENT</th>
-                  <th className="py-3 px-3.5 whitespace-nowrap">PROVIDER</th>
-                  <th className="py-3 px-3.5 whitespace-nowrap">DELIVERY BOY</th>
-                  <th className="py-3 px-3.5 text-right whitespace-nowrap">TOTAL AMOUNT</th>
-                  <th className="py-3 px-3.5 text-center whitespace-nowrap">PAYMENT METHOD</th>
-                  <th className="py-3 px-3.5 text-right whitespace-nowrap">ONLINE PAID</th>
-                  <th className="py-3 px-3.5 text-right whitespace-nowrap">COD ADVANCE</th>
-                  <th className="py-3 px-3.5 text-right whitespace-nowrap">COD CASH</th>
-                  <th className="py-3 px-3.5 text-center whitespace-nowrap">PAYMENT STATUS</th>
-                  <th className="py-3 px-3.5 text-center whitespace-nowrap">CANCEL REFUND</th>
-                  <th className="py-3 px-3.5 text-center whitespace-nowrap">RETURN REFUND</th>
-                  <th className="py-3 px-3.5 text-right whitespace-nowrap">REFUND TOTAL</th>
-                  <th className="py-3 px-3.5 text-right whitespace-nowrap">FINAL CAMPUS BASKET EARNING</th>
-                  <th className="py-3 px-3.5 text-center whitespace-nowrap">ACTIONS</th>
+              {/* Table Header */}
+              <thead className="sticky top-0 z-20 bg-[#0F172A] text-white shadow-xs">
+                <tr className="border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider select-none">
+                  <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">ORDER DATE</th>
+                  <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">ORDER ID</th>
+                  <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">STUDENT</th>
+                  <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">PROVIDER</th>
+                  <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">DELIVERY BOY</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">TOTAL AMOUNT</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">PAYMENT METHOD</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">ONLINE PAID</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">COD ADVANCE</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">COD CASH</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">PAYMENT STATUS</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">FAILURE REASON</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">RECONCILIATION</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">CANCEL REFUND</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">RETURN REFUND</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">REFUND TOTAL</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">NET CB RECEIVED</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">ACTIONS</th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-slate-200 text-slate-800 font-medium">
                 {loading ? (
                   <tr>
-                    <td colSpan={16} className="py-16 text-center text-slate-500">
+                    <td colSpan={17} className="py-16 text-center text-slate-500">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <RefreshCw className="w-6 h-6 animate-spin text-slate-400" />
                         <span className="text-xs font-semibold">Loading ledger records...</span>
@@ -1088,7 +1367,7 @@ export default function OrderPaymentSettlementLedgerPage() {
                   </tr>
                 ) : currentOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={16} className="py-16 text-center">
+                    <td colSpan={17} className="py-16 text-center">
                       <div className="flex flex-col items-center justify-center gap-2 max-w-sm mx-auto">
                         <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
                           <AlertCircle className="w-5 h-5" />
@@ -1220,6 +1499,29 @@ export default function OrderPaymentSettlementLedgerPage() {
                           {renderPaymentBadge(ord.paymentStatus)}
                         </td>
 
+                        {/* 11b. Payment Failure Reason */}
+                        <td className="py-3 px-3.5 text-center whitespace-nowrap">
+                          {renderFailureReasonBadge(
+                            ord.paymentFailureReason || ord.failureReason,
+                            ord.paymentFailureCode || ord.failureCode
+                          )}
+                        </td>
+
+                        {/* 11c. Reconciliation Status */}
+                        <td className="py-3 px-3.5 text-center whitespace-nowrap">
+                          {(() => {
+                            const rs = ord.reconciliationStatus || 'NOT_REQUIRED';
+                            if (rs === 'NOT_REQUIRED') return <span className="text-slate-300 text-[10px] font-medium">—</span>;
+                            if (rs === 'AUTO_RECONCILED') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">AUTO ✓</span>;
+                            if (rs === 'MANUALLY_RECONCILED') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">MANUAL ✓</span>;
+                            if (rs === 'PENDING') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-300 animate-pulse">PENDING</span>;
+                            if (rs === 'AMOUNT_MISMATCH') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700 border border-red-300">⚠ MISMATCH</span>;
+                            if (rs === 'PAYMENT_NOT_FOUND') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700 border border-red-300">NOT FOUND</span>;
+                            if (rs === 'CUSTOMER_DEBIT_REVIEW') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-50 text-orange-700 border border-orange-300">DEBIT REVIEW</span>;
+                            return <span className="text-[10px] text-slate-500">{rs}</span>;
+                          })()}
+                        </td>
+
                         {/* 12. Cancellation Refund */}
                         <td className="py-3 px-3.5 text-center whitespace-nowrap">
                           {renderRefundStatusBadge(
@@ -1245,9 +1547,16 @@ export default function OrderPaymentSettlementLedgerPage() {
                           )}
                         </td>
 
-                        {/* 15. Final Campus Basket Earning */}
-                        <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono font-black text-emerald-700 text-sm">
-                          ₹{ord.finalCampusBasketEarning.toFixed(2)}
+                        {/* 15. Net Campus Basket Received */}
+                        <td className="py-3 px-3.5 text-right whitespace-nowrap">
+                          <div className="flex flex-col items-end">
+                            <span className="font-mono font-black text-emerald-700 text-sm">₹{ord.finalCampusBasketEarning.toFixed(2)}</span>
+                            {ord.refundTotal > 0 && (
+                              <span className="text-[9px] text-slate-400 font-medium">
+                                ₹{ord.totalAmount.toFixed(2)} − ₹{ord.refundTotal.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* 16. Actions */}
@@ -1330,6 +1639,12 @@ export default function OrderPaymentSettlementLedgerPage() {
                           <span className="text-slate-500">Payment Method:</span>
                           <span className="font-bold">{ord.paymentMethod}</span>
                         </div>
+                        {(ord.paymentFailureReason || ord.failureReason) && ord.paymentFailureReason !== 'N/A' && (
+                          <div className="flex justify-between items-center py-1 px-2 rounded bg-amber-50 border border-amber-200">
+                            <span className="text-[11px] font-bold text-amber-900">Failure Reason:</span>
+                            {renderFailureReasonBadge(ord.paymentFailureReason || ord.failureReason, ord.paymentFailureCode || ord.failureCode)}
+                          </div>
+                        )}
                         <div className="flex justify-between">
                           <span className="text-slate-500">Online Paid:</span>
                           <span className="font-mono font-semibold text-[#0284C7]">₹{ord.onlinePaid.toFixed(2)}</span>
@@ -1416,6 +1731,8 @@ export default function OrderPaymentSettlementLedgerPage() {
             </div>
           )}
         </section>
+
+
       </main>
 
       {/* =========================================================================
@@ -1518,7 +1835,186 @@ export default function OrderPaymentSettlementLedgerPage() {
                   </div>
                 </div>
 
-                {/* 3. Refund Information & Policy Calculation */}
+                {/* C. Razorpay / Gateway Information */}
+                <div className="space-y-3">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-indigo-600" />
+                    <span>RAZORPAY GATEWAY INFORMATION</span>
+                  </h3>
+                  {selectedOrder.paymentMethod === 'CASH_ON_DELIVERY' && !selectedOrder.razorpayOrderId ? (
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px] text-slate-400 italic">
+                      COD order — no Razorpay gateway used for this payment.
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2 text-[11px]">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 font-semibold">Razorpay Order ID:</span>
+                        <span className="font-mono font-bold text-slate-800 text-[10px] break-all text-right max-w-[50%]">
+                          {selectedOrder.razorpayOrderId || <span className="text-slate-300 not-italic">Not available</span>}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 font-semibold">Razorpay Payment ID:</span>
+                        <span className="font-mono font-bold text-slate-800 text-[10px] break-all text-right max-w-[50%]">
+                          {selectedOrder.razorpayPaymentId || <span className="text-slate-300 not-italic">Not yet captured</span>}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 font-semibold">Captured At:</span>
+                        <span className="font-bold text-slate-800">
+                          {selectedOrder.capturedAt
+                            ? new Date(selectedOrder.capturedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                            : <span className="text-slate-300">Not captured</span>}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center border-t border-slate-200 pt-2">
+                        <span className="text-slate-500 font-semibold">Reconciliation:</span>
+                        <span className="font-bold text-[10px]">
+                          {(() => {
+                            const rs = selectedOrder.reconciliationStatus || 'NOT_REQUIRED';
+                            if (rs === 'NOT_REQUIRED') return <span className="text-slate-400">Not Required</span>;
+                            if (rs === 'AUTO_RECONCILED') return <span className="text-emerald-700">✓ Auto Reconciled{selectedOrder.reconciledAt ? ` (${new Date(selectedOrder.reconciledAt).toLocaleDateString('en-IN')})` : ''}</span>;
+                            if (rs === 'MANUALLY_RECONCILED') return <span className="text-blue-700">✓ Admin Reconciled{selectedOrder.reconciledBy ? ` by ${selectedOrder.reconciledBy}` : ''}</span>;
+                            if (rs === 'PENDING') return <span className="text-amber-700 animate-pulse">⏳ Pending Review</span>;
+                            if (rs === 'AMOUNT_MISMATCH') return <span className="text-red-700">⚠ Amount Mismatch</span>;
+                            if (rs === 'PAYMENT_NOT_FOUND') return <span className="text-red-700">✗ Payment Not Found on Razorpay</span>;
+                            if (rs === 'CUSTOMER_DEBIT_REVIEW') return <span className="text-orange-700">⚠ Customer Debit Review</span>;
+                            return <span>{rs}</span>;
+                          })()}
+                        </span>
+                      </div>
+                      {(selectedOrder.failureReason || selectedOrder.paymentFailureReason) && (selectedOrder.failureReason !== 'N/A' || selectedOrder.paymentFailureReason !== 'N/A') && (
+                        <div className="p-3 bg-red-50 rounded-xl border border-red-200 text-[11px] text-red-900 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold">Failure Classification:</span>
+                            {renderFailureReasonBadge(selectedOrder.paymentFailureReason || selectedOrder.failureReason, selectedOrder.paymentFailureCode || selectedOrder.failureCode)}
+                          </div>
+                          {(selectedOrder.failureCode || selectedOrder.paymentFailureCode) && (
+                            <div>
+                              <span className="font-semibold text-red-700">Gateway Error Code: </span>
+                              <span className="font-mono font-bold text-slate-800">{selectedOrder.failureCode || selectedOrder.paymentFailureCode}</span>
+                            </div>
+                          )}
+                          {selectedOrder.failureReason && (
+                            <div>
+                              <span className="font-semibold text-red-700">Gateway Description: </span>
+                              <span className="text-slate-800">{selectedOrder.failureReason}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* D. Payment Attempt History */}
+                {Array.isArray(selectedOrder.paymentAttempts) && selectedOrder.paymentAttempts.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                      <Activity className="w-4 h-4 text-slate-600" />
+                      <span>PAYMENT ATTEMPT HISTORY ({selectedOrder.paymentAttempts.length})</span>
+                    </h3>
+                    <div className="space-y-2">
+                      {selectedOrder.paymentAttempts.map((attempt, i) => (
+                        <div key={attempt.attemptId || i} className="flex items-start justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px]">
+                          <div className="space-y-0.5">
+                            <div className="font-mono text-slate-600">{attempt.razorpayPaymentId || attempt.attemptId}</div>
+                            <div className="text-slate-400">{attempt.eventType}</div>
+                            <div className="text-slate-400">{attempt.time ? new Date(attempt.time).toLocaleString('en-IN') : '—'}</div>
+                          </div>
+                          <div>
+                            {attempt.status === 'CAPTURED' || attempt.status === 'SUCCESS' ? (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold">CAPTURED</span>
+                            ) : attempt.status === 'FAILED' ? (
+                              <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-800 border border-red-200 font-bold">FAILED</span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-bold">{attempt.status}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* E. Manual Reconciliation Panel (only shown when admin review needed) */}
+                {['PENDING', 'AMOUNT_MISMATCH', 'PAYMENT_NOT_FOUND', 'CUSTOMER_DEBIT_REVIEW'].includes(selectedOrder.reconciliationStatus) && (
+                  <div className="p-4 rounded-xl bg-orange-50 border-2 border-orange-300 space-y-3">
+                    <div className="flex items-center gap-2 text-orange-900 font-bold">
+                      <AlertTriangle className="w-4 h-4 text-orange-600" />
+                      <span>ADMIN RECONCILIATION REQUIRED</span>
+                      <span className="text-[10px] font-normal text-orange-700 ml-auto">Status: {selectedOrder.reconciliationStatus}</span>
+                    </div>
+                    {selectedOrder.reconciliationStatus === 'AMOUNT_MISMATCH' && (
+                      <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-[11px] text-red-800">
+                        ⚠ Razorpay payment amount does not match the expected order amount. Review before confirming.
+                        {selectedOrder.failureReason && <div className="mt-1 font-bold">{selectedOrder.failureReason}</div>}
+                      </div>
+                    )}
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await apiRequest('/api/admin/payments/recheck-payment', {
+                              method: 'POST',
+                              body: JSON.stringify({ orderId: selectedOrder.id })
+                            });
+                            if (res.success) {
+                              setRefundSuccessMsg(`Recheck: ${res.message}`);
+                              await fetchLedgerData();
+                            } else {
+                              setRefundErrorMsg(res.message || 'Recheck failed');
+                            }
+                          } catch (e: any) {
+                            setRefundErrorMsg(e?.message || 'Server error');
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] rounded-lg transition flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Recheck via Razorpay API
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-[11px] font-bold text-orange-900">MANUAL RECONCILIATION NOTE (required, min 10 chars):</label>
+                      <textarea
+                        value={distributeNotesInput}
+                        onChange={(e) => setDistributeNotesInput(e.target.value)}
+                        rows={2}
+                        placeholder="Describe why this payment is being manually reconciled..."
+                        className="w-full bg-white border border-orange-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-orange-500 resize-none"
+                      />
+                      <button
+                        disabled={distributeNotesInput.trim().length < 10}
+                        onClick={async () => {
+                          if (distributeNotesInput.trim().length < 10) return;
+                          try {
+                            const res = await apiRequest('/api/admin/payments/mark-reconciled', {
+                              method: 'POST',
+                              body: JSON.stringify({ orderId: selectedOrder.id, note: distributeNotesInput.trim() })
+                            });
+                            if (res.success) {
+                              setRefundSuccessMsg(`Order marked as reconciled. ${res.message}`);
+                              await fetchLedgerData();
+                            } else {
+                              setRefundErrorMsg(res.message || 'Failed');
+                            }
+                          } catch (e: any) {
+                            setRefundErrorMsg(e?.message || 'Server error');
+                          }
+                        }}
+                        className="w-full py-2 bg-orange-600 hover:bg-orange-700 disabled:opacity-40 text-white font-bold text-xs rounded-lg transition flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Shield className="w-3.5 h-3.5" />
+                        Mark as Manually Reconciled
+                      </button>
+                    </div>
+                    {refundErrorMsg && <div className="p-2 rounded bg-rose-100 text-rose-800 text-[11px] font-bold border border-rose-300">{refundErrorMsg}</div>}
+                    {refundSuccessMsg && <div className="p-2 rounded bg-emerald-100 text-emerald-800 text-[11px] font-bold border border-emerald-300">{refundSuccessMsg}</div>}
+                  </div>
+                )}
+
+                {/* F. Refund Information & Policy Calculation */}
                 <div className="space-y-3">
                   <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
                     <RotateCcw className="w-4 h-4 text-slate-600" />
@@ -1593,20 +2089,20 @@ export default function OrderPaymentSettlementLedgerPage() {
                     <span>FINAL FINANCIAL RESULT</span>
                   </h3>
                   <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-200 space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-slate-600">Gross Order Value:</span>
-                      <span className="font-mono font-bold text-slate-900">₹{selectedOrder.totalAmount.toFixed(2)}</span>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-600">Student Paid (Total Order):</span>
+                      <span className="font-mono font-black text-sm text-slate-900">₹{selectedOrder.totalAmount.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-amber-800">
-                      <span className="font-semibold">Total Refund Distributed:</span>
-                      <span className="font-mono font-bold">-₹{selectedOrder.refundTotal.toFixed(2)}</span>
+                    <div className="flex justify-between items-center text-amber-800">
+                      <span className="font-semibold">Less: Refund Distributed to Student:</span>
+                      <span className="font-mono font-bold">−₹{selectedOrder.refundTotal.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between border-t border-emerald-300 pt-2 text-sm font-black text-emerald-800">
-                      <span>FINAL CAMPUS BASKET EARNING:</span>
-                      <span className="font-mono">₹{selectedOrder.finalCampusBasketEarning.toFixed(2)}</span>
+                    <div className="flex justify-between items-center border-t-2 border-emerald-400 pt-2 mt-1">
+                      <span className="text-sm font-black text-emerald-900">NET CAMPUS BASKET RECEIVED:</span>
+                      <span className="font-mono font-black text-lg text-emerald-700">₹{selectedOrder.finalCampusBasketEarning.toFixed(2)}</span>
                     </div>
-                    <p className="text-[10px] text-emerald-700/80 leading-tight">
-                      Calculated from platform commission + platform delivery fee + retained policy deductions. (Institution fee is strictly excluded).
+                    <p className="text-[10px] text-emerald-700/80 leading-tight pt-1 border-t border-emerald-200">
+                      This is the exact amount Campus Basket retains after paying back the student's refund. Formula: Total Paid − Refund Distributed.
                     </p>
                   </div>
                 </div>

@@ -42,7 +42,7 @@ export async function apiRequest<T = any>(
   const url = endpoint.startsWith('http') ? endpoint : `${base}${endpoint}`;
 
   const token = typeof window !== 'undefined'
-    ? (localStorage.getItem('nit_token') || localStorage.getItem('token') || localStorage.getItem('cb_token'))
+    ? (localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token') || localStorage.getItem('token') || localStorage.getItem('cb_token'))
     : null;
   const coordsStr = typeof window !== 'undefined' ? localStorage.getItem('nit_student_coords') : null;
 

@@ -135,6 +135,19 @@ export interface TodayStats {
   dailyTarget: number;
 }
 
+export interface DeliveryProfile {
+  id: string;
+  fullName: string;
+  mobileNumber?: string | null;
+  vehicleType?: string | null;
+  currentZone?: string | null;
+  email?: string | null;
+  activeStatus?: boolean;
+  paymentType?: 'PER_DELIVERY' | 'MONTHLY_CONTRACT' | string;
+  perDeliveryRate?: number;
+  monthlySalary?: number;
+}
+
 interface DeliveryContextType {
   isOnline: boolean;
   toggleOnline: () => void;
@@ -162,6 +175,7 @@ interface DeliveryContextType {
   rejectActiveOrder: (orderId: string, reason?: string) => Promise<boolean>;
 
   deliveryHistory: HistoryOrder[];
+  deliveryProfile: DeliveryProfile | null;
   todayStats: TodayStats;
   notifications: RunnerNotification[];
   markNotificationRead: (id: string) => void;
@@ -198,13 +212,14 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [activeOrders, setActiveOrders] = useState<ActiveDeliveryOrder[]>([]);
   const [availableOrders, setAvailableOrders] = useState<AvailableOrder[]>([]);
   const [deliveryHistory, setDeliveryHistory] = useState<HistoryOrder[]>([]);
+  const [deliveryProfile, setDeliveryProfile] = useState<DeliveryProfile | null>(null);
   const [notifications, setNotifications] = useState<RunnerNotification[]>([]);
   const [payoutAccount, setPayoutAccount] = useState<DeliveryPayoutAccount | null>(null);
   const [withdrawals, setWithdrawals] = useState<DeliveryWithdrawal[]>([]);
 
   const [todayStats, setTodayStats] = useState<TodayStats>({
     paymentType: 'PER_DELIVERY',
-    perDeliveryRate: 10,
+    perDeliveryRate: 0,
     monthlySalary: 0,
     walletBalance: 0,
     totalSettled: 0,
@@ -216,8 +231,8 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     earningsToday: 0,
     weekEarnings: 0,
     monthEarnings: 0,
-    avgPerDelivery: 10,
-    dailyTarget: 10,
+    avgPerDelivery: 0,
+    dailyTarget: 0,
   });
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
@@ -243,6 +258,9 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // 1. Dashboard & Online Status & Stats
       const dashRes = await apiRequest('/api/delivery/dashboard').catch(() => null);
       if (dashRes?.success) {
+        if (dashRes.deliveryBoy) {
+          setDeliveryProfile(dashRes.deliveryBoy);
+        }
         if (typeof dashRes.deliveryBoy?.activeStatus === 'boolean') {
           setIsOnline(dashRes.deliveryBoy.activeStatus);
         }
@@ -252,7 +270,7 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (dashRes.stats) {
           setTodayStats({
             paymentType: dashRes.stats.paymentType || dashRes.deliveryBoy?.paymentType || 'PER_DELIVERY',
-            perDeliveryRate: dashRes.stats.perDeliveryRate !== undefined ? dashRes.stats.perDeliveryRate : 10,
+            perDeliveryRate: dashRes.stats.perDeliveryRate !== undefined ? dashRes.stats.perDeliveryRate : 0,
             monthlySalary: dashRes.stats.monthlySalary !== undefined ? dashRes.stats.monthlySalary : 0,
             walletBalance: dashRes.stats.walletBalance !== undefined ? dashRes.stats.walletBalance : 0,
             totalSettled: dashRes.stats.totalSettled !== undefined ? dashRes.stats.totalSettled : (dashRes.deliveryBoy?.totalSettled || 0),
@@ -264,8 +282,8 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             earningsToday: dashRes.stats.earningsToday || 0,
             weekEarnings: dashRes.stats.weekEarnings || 0,
             monthEarnings: dashRes.stats.monthEarnings || 0,
-            avgPerDelivery: dashRes.stats.avgPerDelivery !== undefined ? dashRes.stats.avgPerDelivery : 10,
-            dailyTarget: dashRes.stats.dailyTarget || 10,
+            avgPerDelivery: dashRes.stats.avgPerDelivery !== undefined ? dashRes.stats.avgPerDelivery : 0,
+            dailyTarget: dashRes.stats.dailyTarget || 0,
           });
         }
       }
@@ -748,7 +766,7 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const downloadStatementPdf = async () => {
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      const token = typeof window !== 'undefined' ? (localStorage.getItem('nit_token') || sessionStorage.getItem('nit_token') || localStorage.getItem('token')) : '';
       const response = await fetch('/api/delivery/earnings/pdf', {
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -796,6 +814,7 @@ export const DeliveryProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         rejectAvailableOrder,
         rejectActiveOrder,
         deliveryHistory,
+        deliveryProfile,
         todayStats,
         notifications,
         markNotificationRead,

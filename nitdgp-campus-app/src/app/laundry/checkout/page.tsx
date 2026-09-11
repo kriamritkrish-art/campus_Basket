@@ -275,7 +275,30 @@ export default function LaundryCheckoutPage() {
         const rzp = new window.Razorpay(rzpConfig);
         rzp.on('payment.failed', function (resp: any) {
           setIsProcessing(false);
-          setError(`Payment failed: ${resp.error?.description || 'Transaction unsuccessful'}. You can retry or switch payment mode.`);
+          const err = resp?.error || {};
+          const text = `${err.description || ''} ${err.code || ''} ${err.reason || ''}`.toLowerCase();
+          let msg = 'Payment could not be completed. Please check your payment details and try again.';
+          if (text.includes('account') || text.includes('bank') || text.includes('vpa') || text.includes('beneficiary')) {
+            msg = 'Payment could not be completed because the required payment account details are missing or invalid.';
+          } else if (text.includes('timeout') || text.includes('timed out')) {
+            msg = 'Your payment is being verified. Please do not make another payment until the current payment status is confirmed.';
+          }
+          setError(`${msg} You can retry anytime.`);
+
+          // Record failure to server for unified ledger audit trail
+          apiRequest('/api/payments/record-failure', {
+            method: 'POST',
+            body: JSON.stringify({
+              orderId: createdOrder?.id,
+              razorpayOrderId: res.razorpay?.razorpayOrderId,
+              razorpayPaymentId: err.metadata?.payment_id,
+              errorCode: err.code,
+              errorDescription: err.description,
+              errorReason: err.reason,
+              errorSource: err.source,
+              errorStep: err.step
+            })
+          }).catch(() => {});
         });
         rzp.open();
       } else {
