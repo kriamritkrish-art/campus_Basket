@@ -175,8 +175,6 @@ export default function HomePage() {
     else if (user.role === 'DELIVERY_BOY') router.replace('/delivery/dashboard');
   }, [isLoading, router, user]);
 
-  if (!isLoading && user && user.role !== 'STUDENT') return null;
-
   useEffect(() => {
     async function loadCatalog() {
       try {
@@ -368,6 +366,8 @@ export default function HomePage() {
   const smartPickItem = useMemo(() => {
     return products.find((p) => p.name.toLowerCase().includes('samosa') || p.name.toLowerCase().includes('chai')) || products[0];
   }, [products]);
+
+  if (!isLoading && user && user.role !== 'STUDENT') return null;
 
   const handleAddSmartPick = () => {
     if (smartPickItem) {
