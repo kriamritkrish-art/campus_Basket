@@ -142,6 +142,8 @@ enum SettlementStatus {
 enum CodCollectionStatus {
   PENDING
   COLLECTED
+  PARTIALLY_COLLECTED
+  NOT_APPLICABLE
   FAILED
 }
 
@@ -149,6 +151,7 @@ enum CodReconciliationStatus {
   PENDING
   RECONCILED
   MISMATCH
+  PARTIALLY_RECONCILED
   ADJUSTED
 }
 

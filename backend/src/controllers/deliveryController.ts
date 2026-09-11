@@ -3,6 +3,7 @@ import { prisma } from '../config/database';
 import { AuditService } from '../services/audit/AuditService';
 import { DeliverySettlementPdfService } from '../services/pdf/DeliverySettlementPdfService';
 import { LedgerService } from '../services/financial/LedgerService';
+import { CodReconciliationService } from '../services/codReconciliationService';
 
 async function resolveDeliveryBoyProfile(user?: any) {
   if (!user) return null;
@@ -942,8 +943,14 @@ export class DeliveryController {
       const now = new Date();
 
       const result = await prisma.$transaction(async (tx) => {
-        // 1. Update order
-        const isCod = order.paymentMethod === 'CASH_ON_DELIVERY';
+        // Calculate COD amount due = Max(0, Order Total - Online Paid Amount)
+        const orderTotal = Math.round((Number(order.totalAmount) || 0) * 100) / 100;
+        const advancePaid = Math.round((Number(order.advancePaidAmount) || 0) * 100) / 100;
+        const isPureOnline = (order.paymentMethod as string) === 'RAZORPAY' || (order.paymentMethod as string) === 'ONLINE';
+        const codAmountDue = isPureOnline ? 0 : Math.max(0, Math.round((orderTotal - advancePaid) * 100) / 100);
+        const orderType = CodReconciliationService.determineOrderType(order);
+        const hasCodCash = codAmountDue > 0 && orderType === 'CUSTOMER_ORDER';
+
         const updatedOrder = await tx.order.update({
           where: { id: order.id },
           data: {
@@ -955,35 +962,39 @@ export class DeliveryController {
             providerPayable: Number(order.providerPayable) > 0
               ? Number(order.providerPayable)
               : Math.round((Number(order.subtotal || order.totalAmount) - Number(order.discountAmount || 0)) * 100) / 100,
-            ...(isCod ? { paymentStatus: 'COD_COLLECTED' } : {}),
+            ...(hasCodCash ? { paymentStatus: 'COD_COLLECTED' } : {}),
             statusHistory: {
               create: {
                 previousStatus: order.status,
                 newStatus: 'DELIVERED',
                 changedBy: deliveryBoy.fullName,
-                notes: `Delivered to customer via verified 6-digit OTP (${paymentType === 'PER_DELIVERY' ? `+₹${earningAmount} earning credited` : 'Monthly Contract Staff - ₹0 per delivery'}).${isCod ? ` Cash of ₹${Number(order.totalAmount).toFixed(2)} collected at doorstep.` : ''}`
+                notes: `Delivered to customer via verified 6-digit OTP (${paymentType === 'PER_DELIVERY' ? `+₹${earningAmount} earning credited` : 'Monthly Contract Staff - ₹0 per delivery'}).${hasCodCash ? ` Cash of ₹${codAmountDue.toFixed(2)} collected at doorstep.` : ''}`
               }
             }
           }
         });
 
-        // 1.1 Handle COD collection recording
-        if (isCod) {
+        // 1.1 Handle COD collection recording - ONLY if there is actual COD cash due
+        if (hasCodCash) {
           await (tx as any).cODCollection.upsert({
             where: { orderId: order.id },
             update: {
               deliveryBoyId: deliveryBoy.id,
               collectionStatus: 'COLLECTED',
-              amountCollected: Number(order.totalAmount),
+              collectedAmount: codAmountDue,
+              amountCollected: codAmountDue,
               collectedAt: now,
               reconciliationStatus: 'PENDING',
               reconciliationNotes: 'Cash collected by runner at student doorstep upon OTP verification.'
             },
             create: {
+              collectionNumber: `COD-${order.orderNumber.replace(/[^a-zA-Z0-9]/g, '').slice(-8)}`,
               orderId: order.id,
               deliveryBoyId: deliveryBoy.id,
-              amountExpected: Number(order.totalAmount),
-              amountCollected: Number(order.totalAmount),
+              expectedAmount: codAmountDue,
+              amountExpected: codAmountDue,
+              collectedAmount: codAmountDue,
+              amountCollected: codAmountDue,
               difference: 0,
               collectionStatus: 'COLLECTED',
               collectedAt: now,
@@ -997,9 +1008,9 @@ export class DeliveryController {
             entryType: 'COD_COLLECTION',
             debitAccount: 'DELIVERY_RUNNER_CASH_HOLD',
             creditAccount: 'CUSTOMER_COD_RECEIVABLE',
-            amount: Number(order.totalAmount),
+            amount: codAmountDue,
             referenceId: `COD_${order.id}`,
-            description: `COD Cash collected by runner ${deliveryBoy.fullName} for order #${order.orderNumber}. Amount: ₹${order.totalAmount}.`
+            description: `COD Cash collected by runner ${deliveryBoy.fullName} for order #${order.orderNumber}. Amount: ₹${codAmountDue}.`
           }).catch(() => {});
         }
 
@@ -1418,10 +1429,9 @@ export class DeliveryController {
 
       const { dateRange, startDate, endDate, providerId, collectionStatus } = req.query;
 
-      const orders = await (prisma as any).order.findMany({
+      const rawOrders = await (prisma as any).order.findMany({
         where: {
-          deliveryBoyId: deliveryBoy.id,
-          paymentMethod: 'CASH_ON_DELIVERY'
+          deliveryBoyId: deliveryBoy.id
         },
         include: {
           student: true,
@@ -1429,6 +1439,11 @@ export class DeliveryController {
         },
         orderBy: { createdAt: 'desc' }
       });
+
+      const orders = rawOrders.filter((ord: any) =>
+        CodReconciliationService.isRealOrder(ord) &&
+        CodReconciliationService.determineOrderType(ord) === 'CUSTOMER_ORDER'
+      );
 
       const codCollections = await (prisma as any).cODCollection.findMany({
         where: { deliveryBoyId: deliveryBoy.id }
@@ -1447,16 +1462,29 @@ export class DeliveryController {
       const detailedList: any[] = [];
 
       for (const ord of orders) {
-        const codEntry = codCollections.find((c: any) => c.orderId === ord.id || c.orderId === ord.orderNumber);
         const orderAmt = Math.round((Number(ord.totalAmount) || 0) * 100) / 100;
+        const isPureOnline = ord.paymentMethod === 'RAZORPAY' || ord.paymentMethod === 'ONLINE';
+        const onlinePaid = isPureOnline ? orderAmt : Math.round((Number(ord.advancePaidAmount) || 0) * 100) / 100;
+        const codDue = isPureOnline ? 0 : Math.max(0, Math.round((orderAmt - onlinePaid) * 100) / 100);
+
+        const codEntry = codCollections.find((c: any) => c.orderId === ord.id || c.orderId === ord.orderNumber);
+
+        // Skip orders with 0 COD due unless there is a recorded collection
+        if (codDue === 0 && !codEntry) {
+          continue;
+        }
+
         const isCollected = ord.paymentStatus === 'COD_COLLECTED' || codEntry?.collectionStatus === 'COLLECTED';
-        const collectedAmt = codEntry ? Number(codEntry.collectedAmount) : (isCollected ? orderAmt : 0);
-        const pendingAmt = Math.max(0, Math.round((orderAmt - collectedAmt) * 100) / 100);
+        const rawCollected = codEntry ? (codEntry.collectedAmount !== undefined ? codEntry.collectedAmount : codEntry.amountCollected) : null;
+        const collectedAmt = rawCollected !== null && rawCollected !== undefined ? Number(rawCollected) : (isCollected ? codDue : 0);
+        const difference = Math.round((codDue - collectedAmt) * 100) / 100;
+        const pendingAmt = Math.max(0, difference);
         const currentStatus = codEntry?.collectionStatus || (isCollected ? 'COLLECTED' : 'PENDING');
+        const recStatus = codEntry?.reconciliationStatus || (difference === 0 && collectedAmt > 0 ? 'RECONCILED' : (collectedAmt > 0 ? 'PARTIALLY_RECONCILED' : 'PENDING'));
 
         const ordDate = new Date(ord.createdAt);
         if (isSameDay(ordDate, now)) {
-          todayExpected += orderAmt;
+          todayExpected += codDue;
           todayCollected += collectedAmt;
           if (ord.status === 'DELIVERED') todayDeliveredCodCount += 1;
         }
@@ -1468,10 +1496,14 @@ export class DeliveryController {
           provider: ord.provider?.fullName || '',
           providerId: ord.providerId,
           orderAmount: orderAmt,
-          codAmount: orderAmt,
+          onlinePaidAmount: onlinePaid,
+          codAmount: codDue,
+          codAmountDue: codDue,
           collectedAmount: collectedAmt,
+          difference: difference,
           pendingAmount: pendingAmt,
           collectionStatus: currentStatus,
+          reconciliationStatus: recStatus,
           orderStatus: ord.status,
           date: ord.createdAt
         });
@@ -1501,6 +1533,7 @@ export class DeliveryController {
 
       const totalCod = filtered.reduce((s, r) => s + r.codAmount, 0);
       const totalCol = filtered.reduce((s, r) => s + r.collectedAmount, 0);
+      const totalDiff = Math.round((totalCod - totalCol) * 100) / 100;
 
       res.status(200).json({
         success: true,
@@ -1511,7 +1544,8 @@ export class DeliveryController {
           todayDeliveredCount: todayDeliveredCodCount,
           totalFilteredCod: Math.round(totalCod * 100) / 100,
           totalFilteredCollected: Math.round(totalCol * 100) / 100,
-          totalFilteredPending: Math.max(0, Math.round((totalCod - totalCol) * 100) / 100)
+          totalFilteredDifference: totalDiff,
+          totalFilteredPending: Math.max(0, totalDiff)
         },
         orders: filtered
       });

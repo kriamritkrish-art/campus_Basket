@@ -931,7 +931,7 @@ export default function AdminFinancePage() {
                       <th className="py-3.5 px-3 text-right">COD Orders</th>
                       <th className="py-3.5 px-3 text-right">COD Expected</th>
                       <th className="py-3.5 px-3 text-right">Cash Collected</th>
-                      <th className="py-3.5 px-3 text-right">Pending</th>
+                      <th className="py-3.5 px-3 text-right">Difference</th>
                       <th className="py-3.5 px-3 text-center">Status</th>
                       <th className="py-3.5 px-4 text-right">Action</th>
                     </tr>
@@ -941,8 +941,8 @@ export default function AdminFinancePage() {
                       filteredCodDeliveryBoys.map((runner: any, idx: number) => {
                         const expected = Number(runner.expectedAmount || runner.codExpected || 0);
                         const collected = Number(runner.collectedAmount || runner.codCollected || 0);
-                        const pending = Math.max(0, expected - collected);
-                        const status = pending === 0 && expected > 0 ? 'COLLECTED' : (collected > 0 ? 'PARTIALLY_COLLECTED' : 'PENDING');
+                        const diff = runner.difference !== undefined ? Number(runner.difference) : Math.round((expected - collected) * 100) / 100;
+                        const status = diff === 0 && collected > 0 ? 'RECONCILED' : (collected > 0 ? 'PARTIALLY_COLLECTED' : 'PENDING');
                         return (
                           <tr key={idx} className="hover:bg-amber-50/30 transition">
                             <td className="py-3.5 px-4">
@@ -961,14 +961,14 @@ export default function AdminFinancePage() {
                               {formatCurrency(collected)}
                             </td>
                             <td className="py-3.5 px-3 text-right font-black font-mono">
-                              <span className={pending > 0 ? 'text-rose-700' : 'text-gray-400'}>
-                                {formatCurrency(pending)}
+                              <span className={diff !== 0 && collected > 0 ? 'text-rose-700' : (diff === 0 && collected > 0 ? 'text-emerald-700' : 'text-gray-700')}>
+                                {formatCurrency(diff)}
                               </span>
                             </td>
                             <td className="py-3.5 px-3 text-center">
                               <span
                                 className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full inline-block ${
-                                  status === 'COLLECTED'
+                                  (status as string) === 'RECONCILED' || (status as string) === 'COLLECTED'
                                     ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                                     : 'bg-amber-50 text-amber-800 border border-amber-200'
                                 }`}

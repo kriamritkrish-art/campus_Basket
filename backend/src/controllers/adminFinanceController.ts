@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
 import { LedgerService } from '../services/financial/LedgerService';
 import { AuditService } from '../services/audit/AuditService';
+import { CodReconciliationService } from '../services/codReconciliationService';
 
 export class AdminFinanceController {
   /**
@@ -670,13 +671,21 @@ export class AdminFinanceController {
         include: { user: true }
       }).catch(() => []);
 
-      // Filter all COD / Cash on Delivery orders
-      let codOrders = orders.filter((o: any) =>
-        o.paymentMethod === 'CASH_ON_DELIVERY' ||
-        o.paymentMethod === 'COD' ||
-        (typeof o.paymentMethod === 'string' && o.paymentMethod.toUpperCase().includes('COD')) ||
-        codList.some((c: any) => c.orderId === o.id || c.orderId === o.orderNumber)
-      );
+      // Filter genuine, non-dummy orders
+      const realOrders = orders.filter((o: any) => CodReconciliationService.isRealOrder(o));
+
+      // Normalize all orders via the single authoritative COD engine
+      const normalizedOrders = realOrders
+        .map((ord: any) => {
+          const codEntry = codList.find((c: any) => c.orderId === ord.id || c.orderId === ord.orderNumber);
+          return CodReconciliationService.normalizeOrderCod(ord, codEntry, deliveryBoys, providers);
+        })
+        .filter((norm: any) => {
+          // COD collections only concern orders with COD due > 0 or paymentMethod COD or an existing COD record
+          return norm.codAmountDue > 0 || norm.paymentMethod === 'COD' || norm.paymentMethod === 'CASH_ON_DELIVERY' || norm.cashCollectedAmount > 0;
+        });
+
+      let codOrders = normalizedOrders;
 
       if (dateRange === 'today') {
         codOrders = codOrders.filter((o: any) => AdminFinanceController.isToday(o.createdAt));
@@ -696,9 +705,8 @@ export class AdminFinanceController {
       const providerCodMap = new Map<string, any>();
       const deliveryBoyCodMap = new Map<string, any>();
 
-      const activeRunners = deliveryBoys;
-
-      for (const boy of activeRunners) {
+      // Seed active runners
+      for (const boy of deliveryBoys) {
         deliveryBoyCodMap.set(boy.id, {
           deliveryBoyId: boy.id,
           deliveryBoyName: boy.fullName || 'Campus Runner',
@@ -712,85 +720,83 @@ export class AdminFinanceController {
           expectedAmount: 0,
           codExpected: 0,
           collectedAmount: 0,
+          cashCollected: 0,
           codCollected: 0,
+          difference: 0,
           pendingCod: 0,
           pendingAmount: 0,
           collectionRate: 100,
-          collectionStatus: 'COLLECTED',
+          collectionStatus: 'PENDING',
+          reconciliationStatus: 'PENDING',
           orders: []
         });
       }
 
-      for (const ord of codOrders) {
-        const expectedAmt = AdminFinanceController.round(Number(ord.totalAmount) || 0);
-        const codEntry = codList.find((c: any) => c.orderId === ord.id || c.orderId === ord.orderNumber);
-
-        const isDeliveredAndCollected = ord.paymentStatus === 'COD_COLLECTED' || codEntry?.collectionStatus === 'COLLECTED';
-        const rawCollected = codEntry ? (codEntry.collectedAmount !== undefined ? codEntry.collectedAmount : codEntry.amountCollected) : null;
-        const parsedCollected = rawCollected !== null && rawCollected !== undefined ? Number(rawCollected) : null;
-        const collectedAmt = parsedCollected !== null && !isNaN(parsedCollected)
-          ? AdminFinanceController.round(parsedCollected)
-          : (isDeliveredAndCollected ? expectedAmt : 0);
-        const pendingAmt = Math.max(0, AdminFinanceController.round(expectedAmt - collectedAmt));
-        const collectionStatus = codEntry?.collectionStatus || (isDeliveredAndCollected ? 'COLLECTED' : 'PENDING');
+      for (const norm of codOrders) {
+        const expectedAmt = norm.codAmountDue;
+        const collectedAmt = norm.cashCollectedAmount;
+        const diffAmt = norm.difference;
+        const pendingAmt = Math.max(0, expectedAmt - collectedAmt);
 
         totalExpected += expectedAmt;
         totalCollected += collectedAmt;
 
-        if (AdminFinanceController.isToday(ord.createdAt)) {
+        if (AdminFinanceController.isToday(norm.createdAt)) {
           todayExpected += expectedAmt;
           todayCollected += collectedAmt;
         }
 
-        const prov = providers.find((p: any) => p.id === ord.providerId);
-
-        // Resolve assigned delivery partner only from the real order/collection record.
-        const assignedRunnerId = ord.deliveryBoyId ?? codEntry?.deliveryBoyId ?? null;
-        const runner = assignedRunnerId ? (activeRunners.find((d: any) => d.id === assignedRunnerId) || deliveryBoys.find((d: any) => d.id === assignedRunnerId)) : null;
-        const runnerName = runner?.fullName || (assignedRunnerId ? 'Campus Delivery Partner' : 'Unassigned Delivery Partner');
-        const runnerPhone = runner?.mobileNumber || runner?.phone || runner?.user?.phone || null;
-
         // Record for detailed table
         detailedRecords.push({
-          orderId: ord.id,
-          orderNumber: ord.orderNumber,
-          orderDate: ord.createdAt,
-          createdAt: ord.createdAt,
-          date: ord.createdAt,
-          student: ord.student?.fullName || 'Student',
-          customerName: ord.student?.fullName || 'Student',
-          providerId: ord.providerId,
-          provider: prov?.fullName || ord.provider?.fullName || 'Campus Store',
-          providerName: prov?.fullName || ord.provider?.fullName || 'Campus Store',
-          product: ord.items && ord.items.length > 0 ? ord.items.map((i: any) => i.productName).join(', ') : (ord.serviceType || 'Items'),
-          deliveryBoyId: assignedRunnerId,
-          deliveryBoy: runnerName,
-          runnerName: runnerName,
-          orderAmount: expectedAmt,
-          totalAmount: expectedAmt,
+          orderId: norm.orderId,
+          orderNumber: norm.orderNumber,
+          orderDate: norm.createdAt,
+          createdAt: norm.createdAt,
+          date: norm.createdAt,
+          student: norm.student,
+          customerName: norm.customerName,
+          studentPhone: norm.studentPhone,
+          providerId: norm.providerId,
+          provider: norm.providerName,
+          providerName: norm.providerName,
+          product: norm.items && norm.items.length > 0 ? norm.items.map((i: any) => i.name).join(', ') : 'Items',
+          deliveryBoyId: norm.deliveryBoyId,
+          deliveryBoy: norm.runnerName,
+          runnerName: norm.runnerName,
+          orderAmount: norm.orderAmount,
+          totalAmount: norm.orderAmount,
+          onlinePaid: norm.onlinePaidAmount,
+          onlinePaidAmount: norm.onlinePaidAmount,
+          codDue: norm.codAmountDue,
+          codAmountDue: norm.codAmountDue,
           codExpected: expectedAmt,
           expectedAmount: expectedAmt,
           codCollected: collectedAmt,
           collectedAmount: collectedAmt,
+          cashCollectedAmount: collectedAmt,
+          difference: diffAmt,
           pendingCod: pendingAmt,
-          collectionDate: codEntry?.collectedAt || (isDeliveredAndCollected ? ord.deliveredAt : null),
-          collectionStatus,
-          codStatus: collectionStatus,
-          orderStatus: ord.status,
-          otpVerified: Boolean(ord.deliveryOtpVerified || ord.status === 'DELIVERED'),
-          deliveryOtpVerified: Boolean(ord.deliveryOtpVerified || ord.status === 'DELIVERED')
+          collectionDate: norm.deliveryDate || (norm.isDelivered ? norm.createdAt : null),
+          collectionStatus: norm.collectionStatus,
+          codStatus: norm.collectionStatus,
+          reconciliationStatus: norm.reconciliationStatus,
+          orderStatus: norm.deliveryStatus,
+          otpVerified: norm.deliveryOtpVerified,
+          deliveryOtpVerified: norm.deliveryOtpVerified,
+          isEligibleForReconcile: norm.isEligibleForReconcile
         });
 
         // Provider-wise COD aggregation
-        const pKey = ord.providerId || 'UNASSIGNED';
+        const pKey = norm.providerId || 'UNASSIGNED';
         if (!providerCodMap.has(pKey)) {
           providerCodMap.set(pKey, {
             providerId: pKey,
-            providerName: prov?.fullName || 'Campus Vendor',
+            providerName: norm.providerName,
             codOrders: 0,
             codExpected: 0,
             codCollected: 0,
-            pendingCod: 0
+            pendingCod: 0,
+            difference: 0
           });
         }
         const pStat = providerCodMap.get(pKey);
@@ -798,63 +804,77 @@ export class AdminFinanceController {
         pStat.codExpected = AdminFinanceController.round(pStat.codExpected + expectedAmt);
         pStat.codCollected = AdminFinanceController.round(pStat.codCollected + collectedAmt);
         pStat.pendingCod = AdminFinanceController.round(pStat.pendingCod + pendingAmt);
+        pStat.difference = AdminFinanceController.round(pStat.codExpected - pStat.codCollected);
 
-        // Delivery Boy-wise COD aggregation
-        if (assignedRunnerId && !deliveryBoyCodMap.has(assignedRunnerId)) {
-          deliveryBoyCodMap.set(assignedRunnerId, {
-            deliveryBoyId: assignedRunnerId,
-            deliveryBoyName: runnerName,
-            runnerName: runnerName,
-            contactPhone: runnerPhone,
-            vehicleType: runner?.vehicleType || 'Bicycle',
-            date: new Date().toISOString().slice(0, 10),
-            totalOrders: 0,
-            codOrdersCount: 0,
-            deliveredOrders: 0,
-            expectedAmount: 0,
-            codExpected: 0,
-            collectedAmount: 0,
-            codCollected: 0,
-            pendingCod: 0,
-            pendingAmount: 0,
-            collectionRate: 100,
-            collectionStatus: 'PENDING',
-            orders: []
-          });
-        }
+        // Delivery Boy-wise COD aggregation strictly by deliveryBoyId
+        const assignedRunnerId = norm.deliveryBoyId;
         if (assignedRunnerId) {
+          if (!deliveryBoyCodMap.has(assignedRunnerId)) {
+            deliveryBoyCodMap.set(assignedRunnerId, {
+              deliveryBoyId: assignedRunnerId,
+              deliveryBoyName: norm.runnerName,
+              runnerName: norm.runnerName,
+              contactPhone: norm.runnerPhone || '+91 98765 43220',
+              vehicleType: norm.deliveryBoy?.vehicleType || 'Bicycle',
+              date: new Date().toISOString().slice(0, 10),
+              totalOrders: 0,
+              codOrdersCount: 0,
+              deliveredOrders: 0,
+              expectedAmount: 0,
+              codExpected: 0,
+              collectedAmount: 0,
+              cashCollected: 0,
+              codCollected: 0,
+              difference: 0,
+              pendingCod: 0,
+              pendingAmount: 0,
+              collectionRate: 100,
+              collectionStatus: 'PENDING',
+              reconciliationStatus: 'PENDING',
+              orders: []
+            });
+          }
+
           const dStat = deliveryBoyCodMap.get(assignedRunnerId);
           dStat.totalOrders += 1;
           dStat.codOrdersCount += 1;
-          if (ord.status === 'DELIVERED') dStat.deliveredOrders += 1;
+          if (norm.isDelivered) dStat.deliveredOrders += 1;
           dStat.expectedAmount = AdminFinanceController.round(dStat.expectedAmount + expectedAmt);
           dStat.codExpected = dStat.expectedAmount;
           dStat.collectedAmount = AdminFinanceController.round(dStat.collectedAmount + collectedAmt);
+          dStat.cashCollected = dStat.collectedAmount;
           dStat.codCollected = dStat.collectedAmount;
-          dStat.pendingCod = Math.max(0, AdminFinanceController.round(dStat.expectedAmount - dStat.collectedAmount));
+          dStat.difference = AdminFinanceController.round(dStat.expectedAmount - dStat.collectedAmount);
+          dStat.pendingCod = Math.max(0, dStat.difference);
           dStat.pendingAmount = dStat.pendingCod;
 
           dStat.orders.push({
-            id: ord.id,
-            orderId: ord.id,
-            orderNumber: ord.orderNumber,
-            createdAt: ord.createdAt,
-            date: ord.createdAt,
-            customerName: ord.student?.fullName || 'Student',
-            student: ord.student?.fullName || 'Student',
-            providerName: prov?.fullName || ord.provider?.fullName || 'Campus Store',
-            provider: prov?.fullName || ord.provider?.fullName || 'Campus Store',
-            totalAmount: expectedAmt,
-            orderAmount: expectedAmt,
+            id: norm.orderId,
+            orderId: norm.orderId,
+            orderNumber: norm.orderNumber,
+            createdAt: norm.createdAt,
+            date: norm.createdAt,
+            customerName: norm.customerName,
+            student: norm.student,
+            providerName: norm.providerName,
+            provider: norm.providerName,
+            totalAmount: norm.orderAmount,
+            orderAmount: norm.orderAmount,
+            onlinePaid: norm.onlinePaidAmount,
+            onlinePaidAmount: norm.onlinePaidAmount,
+            codDue: norm.codAmountDue,
+            codAmountDue: norm.codAmountDue,
             expectedAmount: expectedAmt,
             codExpected: expectedAmt,
             codCollected: collectedAmt,
             collectedAmount: collectedAmt,
+            difference: diffAmt,
             pendingCod: pendingAmt,
-            collectionStatus,
-            codStatus: collectionStatus,
-            otpVerified: Boolean(ord.deliveryOtpVerified || ord.status === 'DELIVERED'),
-            deliveryOtpVerified: Boolean(ord.deliveryOtpVerified || ord.status === 'DELIVERED')
+            collectionStatus: norm.collectionStatus,
+            reconciliationStatus: norm.reconciliationStatus,
+            codStatus: norm.collectionStatus,
+            otpVerified: norm.deliveryOtpVerified,
+            deliveryOtpVerified: norm.deliveryOtpVerified
           });
         }
       }
@@ -862,7 +882,16 @@ export class AdminFinanceController {
       // Compute collection rates and status
       for (const [_, d] of deliveryBoyCodMap.entries()) {
         d.collectionRate = d.codExpected > 0 ? Math.min(100, Math.round((d.codCollected / d.codExpected) * 100)) : 100;
-        d.collectionStatus = d.pendingCod === 0 && d.codCollected > 0 ? 'COLLECTED' : (d.codCollected > 0 ? 'PARTIALLY_COLLECTED' : 'PENDING');
+        if (d.codExpected > 0 && d.difference === 0 && d.codCollected > 0) {
+          d.collectionStatus = 'COLLECTED';
+          d.reconciliationStatus = 'RECONCILED';
+        } else if (d.codCollected > 0 && d.difference !== 0) {
+          d.collectionStatus = 'PARTIALLY_COLLECTED';
+          d.reconciliationStatus = 'MISMATCH';
+        } else {
+          d.collectionStatus = 'PENDING';
+          d.reconciliationStatus = 'PENDING';
+        }
       }
 
       let filteredDetailed = detailedRecords;
@@ -873,7 +902,7 @@ export class AdminFinanceController {
         filteredDetailed = filteredDetailed.filter(r => r.deliveryBoyId === deliveryBoyId);
       }
       if (status && status !== 'ALL') {
-        filteredDetailed = filteredDetailed.filter(r => r.collectionStatus === status);
+        filteredDetailed = filteredDetailed.filter(r => r.collectionStatus === status || r.reconciliationStatus === status);
       }
       if (search && typeof search === 'string') {
         const q = search.toLowerCase().trim();
@@ -953,7 +982,10 @@ export class AdminFinanceController {
         return;
       }
 
-      const expectedAmount = Number(order.totalAmount) || 0;
+      const orderTotal = Number(order.totalAmount) || 0;
+      const advancePaid = Number(order.advancePaidAmount) || 0;
+      const isPureOnline = order.paymentMethod === 'RAZORPAY' || order.paymentMethod === 'ONLINE';
+      const expectedAmount = isPureOnline ? 0 : Math.max(0, orderTotal - advancePaid);
       let existingCollection = await (prisma as any).cODCollection.findUnique({
         where: { orderId: order.id }
       });
@@ -998,7 +1030,8 @@ export class AdminFinanceController {
         }
       }
 
-      const diff = AdminFinanceController.round(finalCollected - expectedAmount);
+      const diff = AdminFinanceController.round(expectedAmount - finalCollected);
+      const recStatus = (diff === 0 && finalCollected > 0) ? 'RECONCILED' : (finalCollected > 0 ? 'PARTIALLY_RECONCILED' : 'PENDING');
 
       // Update or create COD collection
       const updatedCollection = await (prisma as any).cODCollection.upsert({
@@ -1007,6 +1040,7 @@ export class AdminFinanceController {
           collectedAmount: finalCollected,
           difference: diff,
           collectionStatus: normStatus,
+          reconciliationStatus: recStatus,
           adjustmentReason: adjustmentReason || null,
           notes: notes || null,
           reconciledBy: adminUserId,
@@ -1020,7 +1054,7 @@ export class AdminFinanceController {
           collectedAmount: finalCollected,
           difference: diff,
           collectionStatus: normStatus,
-          reconciliationStatus: diff === 0 ? 'RECONCILED' : 'MISMATCH',
+          reconciliationStatus: recStatus,
           adjustmentReason: adjustmentReason || null,
           notes: notes || null,
           reconciledBy: adminUserId,

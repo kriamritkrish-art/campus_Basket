@@ -7,6 +7,7 @@ import { AuditService } from '../services/audit/AuditService';
 import { DeliverySettlementPdfService } from '../services/pdf/DeliverySettlementPdfService';
 import { GrossVolumePdfService, LedgerPdfRow, LedgerPdfData } from '../services/pdf/GrossVolumePdfService';
 import { PaymentReconciliationService } from '../services/payment/PaymentReconciliationService';
+import { CodReconciliationService, NormalizedCodOrder } from '../services/codReconciliationService';
 
 
 export class AdminPaymentController {
@@ -48,9 +49,11 @@ export class AdminPaymentController {
         const amt = Number(o.totalAmount) || 0;
         totalGrossVolume += amt;
 
+        const advancePaid = Number(o.advancePaidAmount) || 0;
         if (o.paymentMethod === 'CASH_ON_DELIVERY') {
+          if (advancePaid > 0) totalOnlinePayments += advancePaid;
           if (o.paymentStatus === 'COD_COLLECTED' || o.paymentStatus === 'SUCCESS') {
-            totalCodCollected += amt;
+            totalCodCollected += Math.max(0, amt - advancePaid);
           }
         } else {
           if (['PAID', 'SUCCESS', 'DELIVERED'].includes(o.paymentStatus)) {
@@ -376,239 +379,107 @@ export class AdminPaymentController {
    */
   public static async getCodReconciliation(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { status, deliveryBoyId, providerId, dateRange, search } = req.query;
+      const { status, deliveryBoyId, providerId, dateRange, startDate, endDate, search } = req.query;
 
-      const orders = await (prisma as any).order.findMany({
-        include: {
-          items: true,
-          student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
-          provider: { select: { fullName: true, mobileNumber: true } }
-        },
-        orderBy: { createdAt: 'desc' }
+      const [orders, codList, deliveryBoys, providers] = await Promise.all([
+        (prisma as any).order.findMany({
+          include: {
+            items: true,
+            student: { select: { fullName: true, mobileNumber: true, roomNumber: true, hallName: true, collegeEmail: true } },
+            provider: { select: { id: true, fullName: true, mobileNumber: true } }
+          },
+          orderBy: { createdAt: 'desc' }
+        }),
+        (prisma as any).cODCollection.findMany().catch(() => []),
+        (prisma as any).deliveryBoy.findMany({ include: { user: true } }).catch(() => []),
+        (prisma as any).serviceProvider.findMany().catch(() => [])
+      ]);
+
+      // 1. Exclude artificial dummy/test orders
+      const realOrders = orders.filter((o: any) => CodReconciliationService.isRealOrder(o));
+
+      // 2. Normalize all real orders through authoritative service
+      const normalizedAll: NormalizedCodOrder[] = [];
+      for (const ord of realOrders) {
+        const codEntry = codList.find((c: any) => c.orderId === ord.id || c.orderId === ord.orderNumber);
+        const norm = CodReconciliationService.normalizeOrderCod(ord, codEntry, deliveryBoys, providers);
+        normalizedAll.push(norm);
+      }
+
+      // 3. Filter for customer COD orders (eligible or with existing COD entry)
+      // Exclude pure online paid orders with codAmountDue === 0 and no COD entry
+      let codRows = normalizedAll.filter((row) => {
+        // If order has a COD collection record or paymentMethod is COD / CASH_ON_DELIVERY with codAmountDue > 0
+        const isCodMethod = row.paymentMethod === 'CASH_ON_DELIVERY' || row.paymentMethod === 'COD';
+        const hasCodRecord = codList.some((c: any) => c.orderId === row.orderId || c.orderId === row.orderNumber);
+        return (isCodMethod || hasCodRecord) && (row.codAmountDue > 0 || hasCodRecord);
       });
-      const codList = await (prisma as any).cODCollection.findMany();
-      const deliveryBoys = await (prisma as any).deliveryBoy.findMany().catch(() => []);
-      const providers = await (prisma as any).serviceProvider.findMany().catch(() => []);
 
-      const activeRunners = deliveryBoys;
-
-      // Filter all COD orders
-      let codOrders = orders.filter((o: any) =>
-        o.paymentMethod === 'CASH_ON_DELIVERY' ||
-        o.paymentMethod === 'COD' ||
-        (typeof o.paymentMethod === 'string' && o.paymentMethod.toUpperCase().includes('COD')) ||
-        codList.some((c: any) => c.orderId === o.id || c.orderId === o.orderNumber)
-      );
-
-      if (dateRange === 'today') {
-        codOrders = codOrders.filter((o: any) => {
-          const d = new Date(o.createdAt || o.deliveredAt);
-          const now = new Date();
+      // 4. Date Range Filter
+      if (dateRange === 'today' || dateRange === 'TODAY') {
+        const now = new Date();
+        codRows = codRows.filter((r) => {
+          const d = new Date(r.createdAt);
           return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
         });
-      } else if (dateRange === 'week') {
-        codOrders = codOrders.filter((o: any) => {
-          const d = new Date(o.createdAt || o.deliveredAt).getTime();
-          return (Date.now() - d) <= (7 * 24 * 60 * 60 * 1000);
+      } else if (dateRange === 'yesterday' || dateRange === 'YESTERDAY') {
+        const yest = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        codRows = codRows.filter((r) => {
+          const d = new Date(r.createdAt);
+          return d.getFullYear() === yest.getFullYear() && d.getMonth() === yest.getMonth() && d.getDate() === yest.getDate();
         });
-      } else if (dateRange === 'month') {
-        codOrders = codOrders.filter((o: any) => {
-          const d = new Date(o.createdAt || o.deliveredAt);
-          const now = new Date();
-          return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      } else if (dateRange === 'week' || dateRange === 'THIS_WEEK' || dateRange === 'last_7_days') {
+        codRows = codRows.filter((r) => (Date.now() - new Date(r.createdAt).getTime()) <= 7 * 24 * 60 * 60 * 1000);
+      } else if (dateRange === 'month' || dateRange === 'THIS_MONTH' || dateRange === 'last_30_days') {
+        codRows = codRows.filter((r) => (Date.now() - new Date(r.createdAt).getTime()) <= 30 * 24 * 60 * 60 * 1000);
+      } else if (dateRange === 'custom' && startDate && endDate) {
+        const start = new Date(String(startDate)).getTime();
+        const end = new Date(String(endDate)).getTime();
+        codRows = codRows.filter((r) => {
+          const t = new Date(r.createdAt).getTime();
+          return t >= start && t <= end;
         });
       }
 
+      // 5. Provider Filter
       if (providerId && providerId !== 'ALL') {
-        codOrders = codOrders.filter((o: any) => o.providerId === providerId);
+        codRows = codRows.filter((r) => r.providerId === providerId);
       }
 
-      const normalizedCollections: any[] = [];
+      // 6. Build Delivery Boy Summaries strictly grouped by deliveryBoyId
       const runnerMap = new Map<string, any>();
-
-      // Pre-seed delivery boys map
-      for (const boy of activeRunners) {
-        runnerMap.set(boy.id, {
-          deliveryBoyId: boy.id,
-          name: boy.fullName || 'Campus Runner',
-          deliveryBoyName: boy.fullName || 'Campus Runner',
-          phone: boy.mobileNumber || boy.phone || boy.user?.phone || '+91 98765 43220',
-          contactPhone: boy.mobileNumber || boy.phone || boy.user?.phone || '+91 98765 43220',
-          vehicleType: boy.vehicleType || 'Bicycle',
-          codOrdersCount: 0,
-          expectedAmount: 0,
-          collectedAmount: 0,
-          difference: 0,
-          reconciledOrdersCount: 0,
-          pendingOrdersCount: 0,
-          eligibleOrdersCount: 0,
-          eligibleAmount: 0,
-          differenceRequiringAttention: 0,
-          status: 'READY TO RECONCILE',
-          orders: []
-        });
+      for (const boy of deliveryBoys) {
+        const summary = CodReconciliationService.buildDeliveryBoySummary(boy, codRows);
+        runnerMap.set(boy.id, summary);
       }
 
-      for (const ord of codOrders) {
-        const codEntry = codList.find((c: any) => c.orderId === ord.id || c.orderId === ord.orderNumber);
-
-        // Resolve assigned runner
-        const assignedRunnerId = ord.deliveryBoyId ?? codEntry?.deliveryBoyId ?? null;
-        const runner = assignedRunnerId ? (activeRunners.find((d: any) => d.id === assignedRunnerId) || deliveryBoys.find((d: any) => d.id === assignedRunnerId)) : null;
-        const runnerName = runner?.fullName || (assignedRunnerId ? 'Campus Delivery Partner' : 'Unassigned Delivery Partner');
-        const runnerPhone = runner?.mobileNumber || runner?.phone || null;
-
-        const prov = providers.find((p: any) => p.id === ord.providerId);
-        const expectedAmt = AdminPaymentController.round(Number(ord.totalAmount) || 0);
-
-        const rawCollected = codEntry ? (codEntry.collectedAmount !== undefined ? codEntry.collectedAmount : codEntry.amountCollected) : null;
-        const parsedCollected = rawCollected !== null && rawCollected !== undefined ? Number(rawCollected) : null;
-        const isDeliveredAndCollected = ord.paymentStatus === 'COD_COLLECTED' || codEntry?.collectionStatus === 'COLLECTED';
-        const collectedAmt = parsedCollected !== null && !isNaN(parsedCollected)
-          ? AdminPaymentController.round(parsedCollected)
-          : (isDeliveredAndCollected ? expectedAmt : 0);
-
-        const collectionStatus = codEntry?.collectionStatus || (isDeliveredAndCollected ? 'COLLECTED' : 'PENDING');
-        const diff = collectionStatus === 'COLLECTED'
-          ? AdminPaymentController.round(collectedAmt - expectedAmt)
-          : 0;
-
-        const reconciliationStatus = codEntry?.reconciliationStatus || (
-          collectionStatus === 'COLLECTED' && diff === 0 && ord.settlementStatus === 'SETTLED'
-            ? 'RECONCILED'
-            : (collectionStatus === 'COLLECTED' && diff !== 0
-                ? 'MISMATCH'
-                : 'PENDING')
-        );
-
-        const isOtpVerified = Boolean(ord.deliveryOtpVerified || ord.status === 'DELIVERED');
-        const isDelivered = ord.status === 'DELIVERED' || isOtpVerified;
-
-        // Strict eligibility check per requirements
-        const isEligible =
-          reconciliationStatus !== 'RECONCILED' &&
-          ord.status !== 'CANCELLED' &&
-          isDelivered &&
-          collectedAmt > 0 &&
-          diff === 0;
-
-        const normalizedRow = {
-          id: codEntry?.id || `cod_${ord.id}`,
-          collectionId: codEntry?.id || `cod_${ord.id}`,
-          collectionNumber: codEntry?.collectionNumber || `COD-${ord.orderNumber || ord.id}`,
-          orderId: ord.id,
-          orderNumber: ord.orderNumber || ord.id,
-          customerName: ord.student?.fullName || 'Campus Student',
-          student: ord.student?.fullName || 'Campus Student',
-          providerName: prov?.fullName || ord.provider?.fullName || 'Campus Store',
-          providerId: ord.providerId,
-          product: ord.items && ord.items.length > 0 ? ord.items.map((i: any) => i.productName).join(', ') : (ord.serviceType || 'Item'),
-          deliveryBoyId: assignedRunnerId,
-          deliveryBoy: {
-            id: assignedRunnerId,
-            fullName: runnerName,
-            mobileNumber: runnerPhone,
-            vehicleType: runner?.vehicleType || 'Bicycle'
-          },
-          runnerName,
-          orderAmount: expectedAmt,
-          amountExpected: expectedAmt,
-          expectedAmount: expectedAmt,
-          amountCollected: collectedAmt,
-          collectedAmount: collectedAmt,
-          difference: diff,
-          collectionStatus,
-          reconciliationStatus,
-          reconciliationNotes: codEntry?.reconciliationNotes || codEntry?.notes || null,
-          otpVerified: isOtpVerified,
-          isDelivered,
-          date: ord.createdAt || ord.deliveredAt,
-          createdAt: ord.createdAt || ord.deliveredAt,
-          isEligibleForReconcile: isEligible
-        };
-
-        normalizedCollections.push(normalizedRow);
-
-        // Group into delivery boy summary
-        if (assignedRunnerId && !runnerMap.has(assignedRunnerId)) {
-          runnerMap.set(assignedRunnerId, {
-            deliveryBoyId: assignedRunnerId,
-            name: runnerName,
-            deliveryBoyName: runnerName,
-            phone: runnerPhone,
-            contactPhone: runnerPhone,
-            vehicleType: runner?.vehicleType || 'Bicycle',
-            codOrdersCount: 0,
-            expectedAmount: 0,
-            collectedAmount: 0,
-            difference: 0,
-            reconciledOrdersCount: 0,
-            pendingOrdersCount: 0,
-            eligibleOrdersCount: 0,
-            eligibleAmount: 0,
-            differenceRequiringAttention: 0,
-            status: 'PENDING',
-            orders: []
-          });
-        }
-
-        if (assignedRunnerId) {
-          const rStat = runnerMap.get(assignedRunnerId);
-          rStat.codOrdersCount += 1;
-          rStat.expectedAmount = AdminPaymentController.round(rStat.expectedAmount + expectedAmt);
-          rStat.collectedAmount = AdminPaymentController.round(rStat.collectedAmount + collectedAmt);
-          if (collectionStatus === 'COLLECTED') {
-            rStat.difference = AdminPaymentController.round(rStat.difference + diff);
-          }
-
-          if (reconciliationStatus === 'RECONCILED') {
-            rStat.reconciledOrdersCount += 1;
-          } else {
-            rStat.pendingOrdersCount += 1;
-          }
-
-          if (isEligible) {
-            rStat.eligibleOrdersCount += 1;
-            rStat.eligibleAmount = AdminPaymentController.round(rStat.eligibleAmount + collectedAmt);
-          }
-
-          // Only flag as difference requiring attention if order is marked MISMATCH or was COLLECTED with a discrepancy
-          if (reconciliationStatus === 'MISMATCH' || (collectionStatus === 'COLLECTED' && diff !== 0)) {
-            rStat.differenceRequiringAttention = AdminPaymentController.round(rStat.differenceRequiringAttention + Math.abs(diff));
-          }
-
-          rStat.orders.push(normalizedRow);
+      // If an order has a deliveryBoyId not in deliveryBoys list, include that runner
+      for (const row of codRows) {
+        if (row.deliveryBoyId && !runnerMap.has(row.deliveryBoyId)) {
+          const pseudoRunner = {
+            id: row.deliveryBoyId,
+            fullName: row.runnerName,
+            mobileNumber: row.runnerPhone || '+91 98765 43220',
+            vehicleType: 'Bicycle'
+          };
+          const summary = CodReconciliationService.buildDeliveryBoySummary(pseudoRunner, codRows);
+          runnerMap.set(row.deliveryBoyId, summary);
         }
       }
 
-      // Compute status for each delivery boy
-      const runnerSummaries = Array.from(runnerMap.values()).map(r => {
-        let status = 'PENDING';
-        if (r.pendingOrdersCount === 0 && r.reconciledOrdersCount > 0) {
-          status = 'RECONCILED';
-        } else if (r.differenceRequiringAttention > 0 || r.orders.some((o: any) => o.reconciliationStatus === 'MISMATCH')) {
-          status = 'MISMATCH';
-        } else if (r.eligibleOrdersCount > 0) {
-          status = 'READY TO RECONCILE';
-        } else {
-          status = 'PENDING';
-        }
-        return {
-          ...r,
-          status
-        };
-      });
+      const runnerSummaries = Array.from(runnerMap.values());
 
-      let filteredCollections = normalizedCollections;
+      // 7. Filter collections for display
+      let filteredCollections = codRows;
       if (status && status !== 'ALL') {
-        filteredCollections = filteredCollections.filter(c => c.reconciliationStatus === status);
+        filteredCollections = filteredCollections.filter((c) => c.reconciliationStatus === status);
       }
       if (deliveryBoyId && deliveryBoyId !== 'ALL') {
-        filteredCollections = filteredCollections.filter(c => c.deliveryBoyId === deliveryBoyId);
+        filteredCollections = filteredCollections.filter((c) => c.deliveryBoyId === deliveryBoyId);
       }
       if (search && typeof search === 'string') {
         const q = search.toLowerCase().trim();
-        filteredCollections = filteredCollections.filter(c =>
+        filteredCollections = filteredCollections.filter((c) =>
           c.orderNumber?.toLowerCase().includes(q) ||
           c.customerName?.toLowerCase().includes(q) ||
           c.providerName?.toLowerCase().includes(q) ||
@@ -616,16 +487,20 @@ export class AdminPaymentController {
         );
       }
 
-      // Compute top-level summary cards
-      const totalCodOrders = normalizedCollections.length;
-      const totalExpectedCod = AdminPaymentController.round(normalizedCollections.reduce((s, c) => s + c.expectedAmount, 0));
-      const totalCollectedCod = AdminPaymentController.round(normalizedCollections.reduce((s, c) => s + c.collectedAmount, 0));
-      const totalDiff = AdminPaymentController.round(totalCollectedCod - totalExpectedCod);
-      const reconciledCount = normalizedCollections.filter(c => c.reconciliationStatus === 'RECONCILED').length;
-      const pendingCount = normalizedCollections.filter(c => c.reconciliationStatus !== 'RECONCILED').length;
+      // 8. Compute top-level summary cards
+      // Only include delivered customer orders with collectible COD
+      const eligibleDeliveredCodOrders = codRows.filter((c) => c.isDelivered && c.codAmountDue > 0 && c.orderType === 'CUSTOMER_ORDER');
+      const totalCodOrders = eligibleDeliveredCodOrders.length;
+      const totalExpectedCod = CodReconciliationService.round(eligibleDeliveredCodOrders.reduce((s, c) => s + c.codAmountDue, 0));
+      const totalCollectedCod = CodReconciliationService.round(eligibleDeliveredCodOrders.reduce((s, c) => s + c.collectedAmount, 0));
+      
+      // CRITICAL: Difference = Expected COD - Cash Collected (Never 0 if cash not collected)
+      const totalDiff = CodReconciliationService.round(totalExpectedCod - totalCollectedCod);
+      const reconciledCount = eligibleDeliveredCodOrders.filter((c) => c.reconciliationStatus === 'RECONCILED').length;
+      const pendingCount = eligibleDeliveredCodOrders.filter((c) => c.reconciliationStatus !== 'RECONCILED').length;
 
       const summaryCards = {
-        totalDeliveryBoys: runnerSummaries.filter(r => r.codOrdersCount > 0).length,
+        totalDeliveryBoys: runnerSummaries.filter((r) => r.codOrdersCount > 0).length,
         totalCodOrders,
         expectedCod: totalExpectedCod,
         cashCollected: totalCollectedCod,
@@ -640,7 +515,7 @@ export class AdminPaymentController {
         deliveryBoys: runnerSummaries,
         count: filteredCollections.length,
         collections: filteredCollections,
-        data: filteredCollections // backward compatibility
+        data: filteredCollections
       });
     } catch (err) {
       next(err);
@@ -652,63 +527,126 @@ export class AdminPaymentController {
    */
   public static async reconcileCod(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { collectionId, reconciliationStatus, notes, amountCollected } = req.body;
+      const { collectionId, reconciliationStatus, notes, amountCollected, actualCash } = req.body;
       const adminUserId = (req as any).user?.id || (req as any).user?.userId || 'admin_user';
 
       if (!collectionId) {
-        res.status(400).json({ success: false, message: 'Collection ID is required' });
+        res.status(400).json({ success: false, message: 'Collection ID or Order ID is required' });
         return;
       }
 
+      const cleanColId = String(collectionId).trim();
       let existing = await (prisma as any).cODCollection.findUnique({
-        where: { id: collectionId }
+        where: { id: cleanColId }
       });
 
-      if (!existing) {
-        // Find if collectionId is an orderId
-        const order = await (prisma as any).order.findUnique({
-          where: { id: collectionId.replace('cod_', '') }
+      let order: any = null;
+      if (existing) {
+        order = await (prisma as any).order.findUnique({
+          where: { id: existing.orderId }
         });
-        if (!order) {
-          res.status(404).json({ success: false, message: 'Collection or Order not found' });
-          return;
+      } else {
+        const directOrderId = cleanColId.replace(/^cod_/, '');
+        order = await (prisma as any).order.findFirst({
+          where: {
+            OR: [
+              { id: directOrderId },
+              { orderNumber: directOrderId }
+            ]
+          }
+        });
+        if (order) {
+          existing = await (prisma as any).cODCollection.findUnique({
+            where: { orderId: order.id }
+          });
         }
+      }
 
-        const expAmt = Number(order.totalAmount) || 0;
-        const colAmt = amountCollected !== undefined ? Number(amountCollected) : expAmt;
-        const diffAmt = Math.round((colAmt - expAmt) * 100) / 100;
+      if (!order && !existing) {
+        res.status(404).json({ success: false, message: 'Collection or Order record not found' });
+        return;
+      }
 
+      // Expected amount = Max(0, Order Total - Online Paid)
+      const orderTotal = order ? Number(order.totalAmount || 0) : Number(existing?.expectedAmount || 0);
+      const onlinePaid = order ? (order.paymentMethod === 'RAZORPAY' ? orderTotal : Number(order.advancePaidAmount || 0)) : 0;
+      const expectedAmount = CodReconciliationService.round(Math.max(0, orderTotal - onlinePaid));
+
+      // Resolve cash collected input
+      const rawInput = actualCash !== undefined ? actualCash : amountCollected;
+      const colAmt = rawInput !== undefined && rawInput !== null ? Number(rawInput) : expectedAmount;
+
+      if (isNaN(colAmt) || colAmt < 0) {
+        res.status(400).json({ success: false, message: 'Actual cash collected must be a non-negative number.' });
+        return;
+      }
+
+      // Difference = Expected Cash - Actual Cash Collected
+      const diffAmt = CodReconciliationService.round(expectedAmount - colAmt);
+
+      let derivedCollectionStatus: 'PENDING' | 'COLLECTED' | 'PARTIALLY_COLLECTED' | 'NOT_APPLICABLE' = 'PENDING';
+      if (expectedAmount === 0) {
+        derivedCollectionStatus = 'NOT_APPLICABLE';
+      } else if (colAmt >= expectedAmount) {
+        derivedCollectionStatus = 'COLLECTED';
+      } else if (colAmt > 0) {
+        derivedCollectionStatus = 'PARTIALLY_COLLECTED';
+      } else {
+        derivedCollectionStatus = 'PENDING';
+      }
+
+      let derivedReconciliationStatus: 'PENDING' | 'RECONCILED' | 'MISMATCH' | 'PARTIALLY_RECONCILED' = 'PENDING';
+      if (reconciliationStatus) {
+        derivedReconciliationStatus = reconciliationStatus;
+      } else if (diffAmt === 0 && colAmt > 0) {
+        derivedReconciliationStatus = 'RECONCILED';
+      } else if (colAmt > 0 && diffAmt > 0) {
+        derivedReconciliationStatus = 'PARTIALLY_RECONCILED';
+      } else if (diffAmt !== 0) {
+        derivedReconciliationStatus = 'MISMATCH';
+      } else {
+        derivedReconciliationStatus = 'PENDING';
+      }
+
+      const prevCollectionStatus = existing?.collectionStatus || 'PENDING';
+      const prevReconciliationStatus = existing?.reconciliationStatus || 'PENDING';
+      const prevCash = Number(existing?.collectedAmount ?? existing?.amountCollected ?? 0);
+
+      const targetOrderId = order ? order.id : existing.orderId;
+      const targetDeliveryBoyId = order?.deliveryBoyId || existing?.deliveryBoyId || null;
+
+      if (!existing) {
         existing = await (prisma as any).cODCollection.create({
           data: {
-            collectionNumber: `COD-${order.orderNumber || Date.now()}`,
-            orderId: order.id,
-            deliveryBoyId: order.deliveryBoyId || 'db_boy_1',
-            expectedAmount: expAmt,
-            amountExpected: expAmt,
+            collectionNumber: `COD-${order.orderNumber || order.id}`,
+            orderId: targetOrderId,
+            deliveryBoyId: targetDeliveryBoyId,
+            expectedAmount,
+            amountExpected: expectedAmount,
             collectedAmount: colAmt,
             amountCollected: colAmt,
             difference: diffAmt,
-            collectionStatus: 'HANDED_OVER',
-            reconciliationStatus: reconciliationStatus || (diffAmt === 0 ? 'RECONCILED' : 'MISMATCH'),
-            reconciliationNotes: notes || 'Single order reconciliation',
+            collectionStatus: derivedCollectionStatus,
+            reconciliationStatus: derivedReconciliationStatus,
+            reconciliationNotes: notes || 'Single order reconciliation audit',
+            notes: notes || 'Single order reconciliation audit',
             reconciledAt: new Date(),
             reconciledBy: adminUserId
           }
         });
       } else {
-        const expected = Number(existing.expectedAmount || existing.amountExpected || 0);
-        const collected = amountCollected !== undefined ? Number(amountCollected) : Number(existing.collectedAmount || existing.amountCollected || 0);
-        const diff = Math.round((collected - expected) * 100) / 100;
-
         existing = await (prisma as any).cODCollection.update({
-          where: { id: collectionId },
+          where: { id: existing.id },
           data: {
-            amountCollected: collected,
-            collectedAmount: collected,
-            difference: diff,
-            collectionStatus: 'HANDED_OVER',
-            reconciliationStatus: reconciliationStatus || (diff === 0 ? 'RECONCILED' : 'MISMATCH'),
-            reconciliationNotes: notes || existing.reconciliationNotes,
+            expectedAmount,
+            amountExpected: expectedAmount,
+            amountCollected: colAmt,
+            collectedAmount: colAmt,
+            difference: diffAmt,
+            collectionStatus: derivedCollectionStatus,
+            reconciliationStatus: derivedReconciliationStatus,
+            reconciliationNotes: notes || existing.reconciliationNotes || existing.notes,
+            notes: notes || existing.notes,
             reconciledAt: new Date(),
             reconciledBy: adminUserId,
             updatedAt: new Date()
@@ -716,24 +654,55 @@ export class AdminPaymentController {
         });
       }
 
-      // Synchronize Order paymentStatus
-      if (existing.orderId) {
+      // Synchronize Order paymentStatus if fully collected
+      if (targetOrderId && derivedCollectionStatus === 'COLLECTED') {
         await (prisma as any).order.update({
-          where: { id: existing.orderId },
+          where: { id: targetOrderId },
           data: { paymentStatus: 'COD_COLLECTED' }
         }).catch(() => {});
       }
 
-      // Double-Entry Financial Ledger
+      // Financial Ledger
       await LedgerService.recordEntry({
-        orderId: existing.orderId || null,
+        orderId: targetOrderId,
         entryType: 'COD_COLLECTION',
         debitAccount: 'CAMPUS_BANK_CURRENT_ACCOUNT',
         creditAccount: 'DELIVERY_RUNNER_CASH_HOLD',
-        amount: Number(existing.collectedAmount || existing.amountCollected || 0),
+        amount: colAmt,
         referenceId: `REC-SINGLE-${existing.id}`,
-        description: `Individual COD reconciliation for collection ${existing.id}`,
-        metadata: { collectionId: existing.id, orderId: existing.orderId }
+        description: `Individual COD reconciliation for collection ${existing.id}. Order ${order?.orderNumber || targetOrderId}`,
+        metadata: {
+          collectionId: existing.id,
+          orderId: targetOrderId,
+          orderNumber: order?.orderNumber,
+          deliveryBoyId: targetDeliveryBoyId,
+          expectedAmount,
+          collectedAmount: colAmt,
+          difference: diffAmt
+        }
+      }).catch(() => {});
+
+      // Audit Log Trail
+      await AuditService.log(prisma, {
+        userId: adminUserId,
+        action: 'COD_RECONCILIATION',
+        entity: 'CODCollection',
+        entityId: existing.id,
+        newValue: {
+          orderId: targetOrderId,
+          orderNumber: order?.orderNumber,
+          deliveryBoyId: targetDeliveryBoyId,
+          previousCollectionStatus: prevCollectionStatus,
+          newCollectionStatus: derivedCollectionStatus,
+          previousReconciliationStatus: prevReconciliationStatus,
+          newReconciliationStatus: derivedReconciliationStatus,
+          previousCash: prevCash,
+          newCash: colAmt,
+          difference: diffAmt,
+          notes: notes || 'Single order reconciliation',
+          reconciledBy: adminUserId,
+          reconciledAt: new Date().toISOString()
+        }
       }).catch(() => {});
 
       res.status(200).json({
@@ -760,57 +729,40 @@ export class AdminPaymentController {
         return;
       }
 
-      const orders = await (prisma as any).order.findMany({
-        include: {
-          items: true,
-          student: { select: { fullName: true, mobileNumber: true } },
-          provider: { select: { fullName: true } }
-        }
-      });
-      const codList = await (prisma as any).cODCollection.findMany();
-      const deliveryBoys = await (prisma as any).deliveryBoy.findMany().catch(() => []);
+      const [orders, codList, deliveryBoys] = await Promise.all([
+        (prisma as any).order.findMany({
+          include: {
+            items: true,
+            student: { select: { fullName: true, mobileNumber: true } },
+            provider: { select: { fullName: true } }
+          }
+        }),
+        (prisma as any).cODCollection.findMany().catch(() => []),
+        (prisma as any).deliveryBoy.findMany().catch(() => [])
+      ]);
 
-      const defaultRunners = [
-        { id: 'db_boy_1', fullName: 'Bikash Mondal (Lead Runner)', phone: '+91 98765 43220', vehicleType: 'Motorcycle' },
-        { id: 'db_boy_2', fullName: 'Rajesh Kumar (Express Runner)', phone: '+91 98765 43221', vehicleType: 'Bicycle' }
-      ];
-      const activeRunners = deliveryBoys.length > 0 ? deliveryBoys : defaultRunners;
-      const runner = activeRunners.find((d: any) => d.id === deliveryBoyId) || deliveryBoys.find((d: any) => d.id === deliveryBoyId);
-      const runnerName = runner?.fullName || (deliveryBoyId === 'db_boy_1' ? 'Bikash Mondal (Lead Runner)' : (deliveryBoyId === 'db_boy_2' ? 'Rajesh Kumar (Express Runner)' : 'Campus Delivery Partner'));
+      const runner = deliveryBoys.find((d: any) => d.id === deliveryBoyId);
+      const runnerName = runner?.fullName || 'Campus Delivery Partner';
 
-      // Filter all COD orders
-      const codOrders = orders.filter((o: any) =>
-        o.paymentMethod === 'CASH_ON_DELIVERY' ||
-        o.paymentMethod === 'COD' ||
-        (typeof o.paymentMethod === 'string' && o.paymentMethod.toUpperCase().includes('COD')) ||
-        codList.some((c: any) => c.orderId === o.id || c.orderId === o.orderNumber)
-      );
-
-      // Find orders attributed to this delivery boy
-      const runnerOrders = codOrders.filter((ord: any) => {
-        const codEntry = codList.find((c: any) => c.orderId === ord.id || c.orderId === ord.orderNumber);
-        let assignedRunnerId = ord.deliveryBoyId;
-        if (!assignedRunnerId && codEntry?.deliveryBoyId) {
-          assignedRunnerId = codEntry.deliveryBoyId;
-        }
-        if (!assignedRunnerId) {
-          const hashIdx = Math.abs(AdminPaymentController.hashString(ord.id || ord.orderNumber || '')) % activeRunners.length;
-          assignedRunnerId = activeRunners[hashIdx].id;
-        }
-        return assignedRunnerId === deliveryBoyId;
+      // Strictly real customer orders belonging to this delivery boy
+      const runnerOrders = orders.filter((o: any) => {
+        if (!CodReconciliationService.isRealOrder(o)) return false;
+        const codEntry = codList.find((c: any) => c.orderId === o.id || c.orderId === o.orderNumber);
+        const assignedId = o.deliveryBoyId || codEntry?.deliveryBoyId || null;
+        return assignedId === deliveryBoyId;
       });
 
-      // Scope filter: Provider
+      // Filter by provider if specified
       let scopedOrders = runnerOrders;
       if (providerId && providerId !== 'ALL') {
         scopedOrders = scopedOrders.filter((o: any) => o.providerId === providerId);
       }
 
-      // Scope filter: Date Range
+      // Filter by date range if specified
       if (dateRange === 'today') {
+        const now = new Date();
         scopedOrders = scopedOrders.filter((o: any) => {
           const d = new Date(o.createdAt || o.deliveredAt);
-          const now = new Date();
           return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
         });
       } else if (dateRange === 'week') {
@@ -826,7 +778,7 @@ export class AdminPaymentController {
         });
       }
 
-      // Filter strictly eligible orders
+      // Strictly eligible orders: Delivered, not cancelled, COD due > 0, customer order, not already reconciled
       const eligibleOrders: any[] = [];
       const ineligibleReasons: any[] = [];
 
@@ -844,29 +796,24 @@ export class AdminPaymentController {
           continue;
         }
 
-        const isDelivered = ord.status === 'DELIVERED' || Boolean(ord.deliveryOtpVerified);
+        const isDelivered = ord.status === 'DELIVERED';
         if (!isDelivered) {
           ineligibleReasons.push({ orderNumber: ord.orderNumber, reason: 'Order Not Delivered Yet' });
           continue;
         }
 
-        const expectedAmt = AdminPaymentController.round(Number(ord.totalAmount) || 0);
+        const orderTotal = Number(ord.totalAmount) || 0;
+        const onlinePaid = ord.paymentMethod === 'RAZORPAY' ? orderTotal : (Number(ord.advancePaidAmount) || 0);
+        const expectedAmt = CodReconciliationService.round(Math.max(0, orderTotal - onlinePaid));
+
+        if (expectedAmt <= 0) {
+          ineligibleReasons.push({ orderNumber: ord.orderNumber, reason: 'No Collectible COD Amount Due' });
+          continue;
+        }
+
         const rawCollected = codEntry ? (codEntry.collectedAmount !== undefined ? codEntry.collectedAmount : codEntry.amountCollected) : null;
         const parsedCollected = rawCollected !== null && rawCollected !== undefined ? Number(rawCollected) : null;
-        const collectedAmt = parsedCollected !== null && !isNaN(parsedCollected)
-          ? AdminPaymentController.round(parsedCollected)
-          : (ord.paymentStatus === 'COD_COLLECTED' || codEntry?.collectionStatus === 'COLLECTED' || ord.status === 'DELIVERED' ? expectedAmt : 0);
-
-        if (collectedAmt <= 0) {
-          ineligibleReasons.push({ orderNumber: ord.orderNumber, reason: 'No Cash Collection Recorded' });
-          continue;
-        }
-
-        const diff = AdminPaymentController.round(collectedAmt - expectedAmt);
-        if (diff !== 0) {
-          ineligibleReasons.push({ orderNumber: ord.orderNumber, reason: `Amount difference of ₹${diff} requires individual adjustment` });
-          continue;
-        }
+        const collectedAmt = parsedCollected !== null && !isNaN(parsedCollected) ? CodReconciliationService.round(parsedCollected) : expectedAmt;
 
         eligibleOrders.push({
           order: ord,
@@ -885,7 +832,6 @@ export class AdminPaymentController {
         return;
       }
 
-      // Generate unique Bulk Reconciliation Batch ID
       const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const batchId = `REC-BATCH-${dateStr}-${Date.now().toString().slice(-4)}`;
 
@@ -906,9 +852,11 @@ export class AdminPaymentController {
             where: { id: codEntry.id },
             data: {
               reconciliationStatus: 'RECONCILED',
-              collectionStatus: 'HANDED_OVER',
+              collectionStatus: 'COLLECTED',
               amountCollected: collectedAmt,
               collectedAmount: collectedAmt,
+              expectedAmount: expectedAmt,
+              amountExpected: expectedAmt,
               difference: 0,
               reconciledAt: new Date(),
               reconciledBy: adminUserId,
@@ -920,7 +868,7 @@ export class AdminPaymentController {
         } else {
           await (prisma as any).cODCollection.create({
             data: {
-              collectionNumber: `COD-${order.orderNumber || Date.now()}`,
+              collectionNumber: `COD-${order.orderNumber || order.id}`,
               orderId: order.id,
               deliveryBoyId: deliveryBoyId,
               expectedAmount: expectedAmt,
@@ -928,7 +876,7 @@ export class AdminPaymentController {
               collectedAmount: collectedAmt,
               amountCollected: collectedAmt,
               difference: 0,
-              collectionStatus: 'HANDED_OVER',
+              collectionStatus: 'COLLECTED',
               reconciliationStatus: 'RECONCILED',
               collectedAt: order.deliveredAt || new Date(),
               reconciledAt: new Date(),
@@ -1075,7 +1023,7 @@ export class AdminPaymentController {
         if (mapped?.id) targetRunnerIds.add(mapped.id);
         if (mapped?.userId) targetRunnerIds.add(mapped.userId);
         for (const d of deliveryBoys) {
-          if (d.id === targetRunnerId || d.userId === targetRunnerId || (d.fullName && d.fullName.toLowerCase() === targetRunnerId.toLowerCase())) {
+          if (d.id === targetRunnerId || d.userId === targetRunnerId) {
             targetRunnerIds.add(d.id);
             if (d.userId) targetRunnerIds.add(d.userId);
           }
@@ -1085,6 +1033,8 @@ export class AdminPaymentController {
       const operationalRecords: any[] = [];
 
       for (const ord of orders) {
+        if (!CodReconciliationService.isRealOrder(ord)) continue;
+
         const linkedReturn = ord.returnRequest || returnByOrderId.get(ord.id) || returnByOrderId.get(ord.orderNumber);
         const codEntry = allCods.find((c: any) => c.orderId === ord.id || c.orderId === ord.orderNumber);
 
@@ -1129,6 +1079,33 @@ export class AdminPaymentController {
           (typeof ord.paymentMethod === 'string' && ord.paymentMethod.toUpperCase().includes('COD'));
         const paymentType: 'COD' | 'ONLINE' = isCod ? 'COD' : 'ONLINE';
 
+        const orderTotal = CodReconciliationService.round(Number(ord.totalAmount) || 0);
+        const onlinePaid = isCod
+          ? CodReconciliationService.round(Number(ord.advancePaidAmount) || 0)
+          : orderTotal;
+        const codDue = isCod
+          ? CodReconciliationService.round(Math.max(0, orderTotal - onlinePaid))
+          : 0;
+
+        const rawCollected = codEntry ? (codEntry.collectedAmount !== undefined ? codEntry.collectedAmount : codEntry.amountCollected) : null;
+        const parsedCollected = rawCollected !== null && rawCollected !== undefined ? Number(rawCollected) : null;
+        const cashCollected = parsedCollected !== null && !isNaN(parsedCollected)
+          ? CodReconciliationService.round(parsedCollected)
+          : (ord.paymentStatus === 'COD_COLLECTED' ? codDue : 0);
+
+        let collectionStatus: 'PENDING' | 'COLLECTED' | 'PARTIALLY_COLLECTED' | 'NOT_APPLICABLE' = 'PENDING';
+        if (codDue === 0) {
+          collectionStatus = 'NOT_APPLICABLE';
+        } else if (cashCollected >= codDue) {
+          collectionStatus = 'COLLECTED';
+        } else if (cashCollected > 0) {
+          collectionStatus = 'PARTIALLY_COLLECTED';
+        } else {
+          collectionStatus = 'PENDING';
+        }
+
+        let reconciliationStatus = codEntry?.reconciliationStatus || (cashCollected >= codDue && codDue > 0 ? 'RECONCILED' : 'PENDING');
+
         const activities: any[] = [];
 
         if (linkedReturn && linkedReturn.deliveryBoyId) {
@@ -1164,10 +1141,12 @@ export class AdminPaymentController {
         const activeRunner = resolvedOrderType === 'PICKUP' ? (pickupRunner || deliveryRunner) : (deliveryRunner || pickupRunner);
         const prov = providers.find((p: any) => p.id === ord.providerId) || ord.provider;
 
+        const genuineOrderNumber = String(ord.orderNumber || ord.id);
+
         const record = {
           id: ord.id,
           orderId: ord.id,
-          orderNumber: ord.orderNumber || ord.id,
+          orderNumber: genuineOrderNumber,
           student: {
             fullName: ord.student?.fullName || 'Campus Student',
             name: ord.student?.fullName || 'Campus Student',
@@ -1188,10 +1167,19 @@ export class AdminPaymentController {
           orderType: resolvedOrderType,
           payment: paymentType,
           paymentMethod: paymentType,
-          orderAmount: Number(ord.totalAmount) || 0,
-          totalAmount: Number(ord.totalAmount) || 0,
+          orderAmount: orderTotal,
+          totalAmount: orderTotal,
+          onlinePaid,
+          onlinePaidAmount: onlinePaid,
+          codDue,
+          cashCollected,
           orderStatus: operationalStatus,
           status: operationalStatus,
+          deliveryStatus: operationalStatus,
+          deliveryDate: ord.deliveredAt ? new Date(ord.deliveredAt).toISOString() : (ord.createdAt ? new Date(ord.createdAt).toISOString() : null),
+          collectionStatus,
+          codCollectionStatus: collectionStatus,
+          reconciliationStatus,
           deliveryBoy: activeRunner ? {
             id: activeRunner.id,
             name: activeRunner.fullName,
@@ -1214,8 +1202,8 @@ export class AdminPaymentController {
           hasBothActivities: Boolean(hasDeliveryAssignment && hasPickupAssignment),
           activities,
           items: (ord.items || []).map((i: any) => ({
-            name: i.productName || 'Item',
-            quantity: i.quantity || 1,
+            name: i.productName || i.name || 'Item',
+            quantity: Number(i.quantity) || 1,
             price: Number(i.unitPrice || i.price) || 0
           })),
           orderDate: ord.createdAt,

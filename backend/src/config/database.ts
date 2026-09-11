@@ -2024,35 +2024,51 @@ const fallbackHandlers: Record<string, any> = {
       let cols = [...persistentCodCollections];
       if (args?.where?.deliveryBoyId) cols = cols.filter(c => c.deliveryBoyId === args.where.deliveryBoyId);
       if (args?.where?.reconciliationStatus) cols = cols.filter(c => c.reconciliationStatus === args.where.reconciliationStatus);
+      if (args?.where?.orderId) cols = cols.filter(c => c.orderId === args.where.orderId);
       return JSON.parse(JSON.stringify(cols.map(c => {
         const ord = persistentOrders.find(o => o.id === c.orderId || o.orderNumber === c.orderId);
         const dbUser = fallbackUsers.find(u => u.deliveryBoy?.id === c.deliveryBoyId);
         return {
           ...c,
-          order: ord ? { id: ord.id, orderNumber: ord.orderNumber, totalAmount: ord.totalAmount, student: ord.student, providerId: ord.providerId, provider: ord.provider, paymentMethod: ord.paymentMethod, status: ord.status } : null,
-          deliveryBoy: dbUser?.deliveryBoy ? { id: dbUser.deliveryBoy.id, fullName: dbUser.deliveryBoy.fullName, mobileNumber: dbUser.deliveryBoy.mobileNumber } : null
+          order: ord ? { id: ord.id, orderNumber: ord.orderNumber, totalAmount: ord.totalAmount, advancePaidAmount: ord.advancePaidAmount, student: ord.student, providerId: ord.providerId, provider: ord.provider, paymentMethod: ord.paymentMethod, status: ord.status, deliveryOtpVerified: ord.deliveryOtpVerified, deliveredAt: ord.deliveredAt } : null,
+          deliveryBoy: dbUser?.deliveryBoy ? { id: dbUser.deliveryBoy.id, fullName: dbUser.deliveryBoy.fullName, mobileNumber: dbUser.deliveryBoy.mobileNumber, vehicleType: dbUser.deliveryBoy.vehicleType } : null
         };
       })));
     },
     findUnique: async (args: any) => {
-      const c = persistentCodCollections.find(item => item.id === args.where.id || item.orderId === args.where.orderId);
+      const c = persistentCodCollections.find(item => item.id === args.where.id || item.orderId === args.where.orderId || item.collectionNumber === args.where.collectionNumber || (args.where.id && item.id === `cod_${args.where.id}`));
       if (!c) return null;
       const ord = persistentOrders.find(o => o.id === c.orderId || o.orderNumber === c.orderId);
       const dbUser = fallbackUsers.find(u => u.deliveryBoy?.id === c.deliveryBoyId);
       return JSON.parse(JSON.stringify({
         ...c,
-        order: ord ? { id: ord.id, orderNumber: ord.orderNumber, totalAmount: ord.totalAmount, student: ord.student, providerId: ord.providerId, provider: ord.provider, paymentMethod: ord.paymentMethod, status: ord.status } : null,
+        order: ord ? { id: ord.id, orderNumber: ord.orderNumber, totalAmount: ord.totalAmount, advancePaidAmount: ord.advancePaidAmount, student: ord.student, providerId: ord.providerId, provider: ord.provider, paymentMethod: ord.paymentMethod, status: ord.status, deliveryOtpVerified: ord.deliveryOtpVerified, deliveredAt: ord.deliveredAt } : null,
+        deliveryBoy: dbUser?.deliveryBoy ? { id: dbUser.deliveryBoy.id, fullName: dbUser.deliveryBoy.fullName, mobileNumber: dbUser.deliveryBoy.mobileNumber, vehicleType: dbUser.deliveryBoy.vehicleType } : null
+      }));
+    },
+    findFirst: async (args: any) => {
+      const c = persistentCodCollections.find(item => 
+        (args.where?.id && (item.id === args.where.id || item.id === `cod_${args.where.id}`)) ||
+        (args.where?.orderId && item.orderId === args.where.orderId) ||
+        (args.where?.deliveryBoyId && item.deliveryBoyId === args.where.deliveryBoyId)
+      );
+      if (!c) return null;
+      const ord = persistentOrders.find(o => o.id === c.orderId || o.orderNumber === c.orderId);
+      const dbUser = fallbackUsers.find(u => u.deliveryBoy?.id === c.deliveryBoyId);
+      return JSON.parse(JSON.stringify({
+        ...c,
+        order: ord ? { id: ord.id, orderNumber: ord.orderNumber, totalAmount: ord.totalAmount, advancePaidAmount: ord.advancePaidAmount, student: ord.student, providerId: ord.providerId, provider: ord.provider, paymentMethod: ord.paymentMethod, status: ord.status } : null,
         deliveryBoy: dbUser?.deliveryBoy ? { id: dbUser.deliveryBoy.id, fullName: dbUser.deliveryBoy.fullName, mobileNumber: dbUser.deliveryBoy.mobileNumber } : null
       }));
     },
     create: async (args: any) => {
-      const col = { id: `cod_${Date.now()}`, createdAt: new Date(), updatedAt: new Date(), ...args.data };
+      const col = { id: args.data?.id || `cod_${Date.now()}`, createdAt: new Date(), updatedAt: new Date(), ...args.data };
       persistentCodCollections.unshift(col);
       saveList('mock_cod_collections.json', persistentCodCollections);
       return JSON.parse(JSON.stringify(col));
     },
     update: async (args: any) => {
-      const c = persistentCodCollections.find(item => item.id === args.where.id || item.orderId === args.where.orderId);
+      const c = persistentCodCollections.find(item => item.id === args.where.id || item.orderId === args.where.orderId || (args.where.id && item.id === `cod_${args.where.id}`));
       if (c) {
         Object.assign(c, args.data, { updatedAt: new Date() });
         saveList('mock_cod_collections.json', persistentCodCollections);
@@ -2063,13 +2079,13 @@ const fallbackHandlers: Record<string, any> = {
     upsert: async (args: any) => {
       const orderId = args.where?.orderId || args.create?.orderId;
       const id = args.where?.id;
-      let existing = persistentCodCollections.find(item => (orderId && item.orderId === orderId) || (id && item.id === id));
+      let existing = persistentCodCollections.find(item => (orderId && item.orderId === orderId) || (id && item.id === id) || (id && item.id === `cod_${id}`));
       if (existing) {
         Object.assign(existing, args.update, { updatedAt: new Date() });
         saveList('mock_cod_collections.json', persistentCodCollections);
         return JSON.parse(JSON.stringify(existing));
       }
-      const newCol = { id: `cod_${Date.now()}`, createdAt: new Date(), updatedAt: new Date(), ...args.create };
+      const newCol = { id: args.create?.id || `cod_${Date.now()}`, createdAt: new Date(), updatedAt: new Date(), ...args.create };
       persistentCodCollections.unshift(newCol);
       saveList('mock_cod_collections.json', persistentCodCollections);
       return JSON.parse(JSON.stringify(newCol));
