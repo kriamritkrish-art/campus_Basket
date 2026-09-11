@@ -1079,16 +1079,25 @@ export class AuthController {
       const bearerToken = accessToken || (credential && credential.startsWith('ya29.') ? credential : undefined);
       if (bearerToken) {
         try {
-          const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { Authorization: `Bearer ${bearerToken}` }
-          });
-          if (userinfoRes.ok) {
-            const profile = (await userinfoRes.json()) as any;
-            googleSub = profile.sub;
-            googleEmail = profile.email?.toLowerCase().trim();
-          }
+          const oauthClient = new google.auth.OAuth2();
+          oauthClient.setCredentials({ access_token: bearerToken });
+          const profile = (await google.oauth2({ version: 'v2', auth: oauthClient }).userinfo.get()).data;
+          googleSub = profile.id || undefined;
+          googleEmail = profile.email?.toLowerCase().trim();
         } catch (tokenErr) {
-          console.warn('[GoogleAuth] Google access token verification failed:', tokenErr);
+          console.warn('[GoogleAuth] Google OAuth userinfo lookup failed:', tokenErr);
+          try {
+            const userinfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${bearerToken}` }
+            });
+            if (userinfoRes.ok) {
+              const profile = (await userinfoRes.json()) as any;
+              googleSub = profile.sub;
+              googleEmail = profile.email?.toLowerCase().trim();
+            }
+          } catch (fallbackErr) {
+            console.warn('[GoogleAuth] Google OAuth fallback lookup failed:', fallbackErr);
+          }
         }
       }
 

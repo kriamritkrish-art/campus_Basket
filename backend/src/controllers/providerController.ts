@@ -503,7 +503,7 @@ export class ProviderController {
       res.status(200).json({
         success: true,
         message: status === 'READY_FOR_PICKUP'
-          ? (assignedRunnerId ? 'Order marked ready and assigned to runner for pickup!' : 'Order marked ready! Broadcasted to campus delivery fleet.')
+          ? (updated.deliveryBoyId ? 'Order marked ready and assigned to runner for pickup!' : 'Order marked ready! Broadcasted to campus delivery fleet.')
           : `Order status updated to ${newStatus.replace(/_/g, ' ')}`,
         order: updated
       });
