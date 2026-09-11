@@ -372,7 +372,7 @@ export default function AdminProductsPage() {
                     <td className="py-3 px-4 text-slate-600 text-[11px]">
                       <span className="flex items-center gap-1 font-medium">
                         <Store className="w-3 h-3 text-slate-400" />
-                        <span>{p.provider?.businessName || 'Campus Main Canteen'}</span>
+                        <span>{p.provider?.businessName || p.provider?.fullName || 'Unassigned provider'}</span>
                       </span>
                     </td>
 
@@ -503,7 +503,7 @@ export default function AdminProductsPage() {
                   </div>
 
                   <div className="text-[11px] text-slate-500 font-medium line-clamp-1">
-                    {p.provider?.businessName || 'Main Campus Provider'}
+                    {p.provider?.businessName || p.provider?.fullName || 'Unassigned provider'}
                   </div>
 
                   <div className="flex items-baseline justify-between pt-1">

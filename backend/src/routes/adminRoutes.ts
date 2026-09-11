@@ -101,7 +101,7 @@ router.get('/products/pending', AdminController.getPendingProducts);
 router.patch('/products/:id/approve', AdminController.approveProduct);
 router.patch('/products/:id/reject', AdminController.rejectProduct);
 router.post('/products', upload.single('image'), AdminController.createProduct);
-router.patch('/products/:id', AdminController.updateProduct);
+router.patch('/products/:id', upload.single('image'), AdminController.updateProduct);
 router.post('/products/:id/image', upload.single('image'), AdminController.uploadProductImage);
 router.get('/products/:id/analytics', AdminController.getProductAnalytics);
 
