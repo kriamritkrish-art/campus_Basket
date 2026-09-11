@@ -373,6 +373,12 @@ describe('Campus Basket - Complete Delivery Boy COD Reconciliation Test Suite', 
     expect(CodReconciliationService.isRealOrder({ orderNumber: 'ORD-54321' })).toBe(true);
   });
 
+  it('Scenario 14b: Real order display values must not rely on placeholder or fake order numbers', () => {
+    expect(CodReconciliationService.resolveOrderDisplayNumber({ id: 'ord-900', orderNumber: 'N/A' })).toBe('ord-900');
+    expect(CodReconciliationService.resolveOrderDisplayNumber({ id: 'ord-901', orderNumber: 'DEMO-123' })).toBe('ord-901');
+    expect(CodReconciliationService.resolveOrderDisplayNumber({ id: 'ord-902', orderNumber: 'CB-ORD-1025' })).toBe('CB-ORD-1025');
+  });
+
   // -------------------------------------------------------------
   // 15. BULK RECONCILIATION ONLY AFFECTS ELIGIBLE ORDERS
   // -------------------------------------------------------------

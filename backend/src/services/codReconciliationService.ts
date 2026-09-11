@@ -90,10 +90,24 @@ export class CodReconciliationService {
   public static isRealOrder(order: any): boolean {
     if (!order) return false;
     const num = String(order.orderNumber || order.id || '').toUpperCase().trim();
-    if (num.startsWith('TEST-ORDER') || num.startsWith('TEST_') || num.startsWith('DEMO-') || num === 'N/A') {
+    if (!num || num === 'N/A' || num === 'NULL' || num === 'UNDEFINED') return false;
+    if (num.startsWith('TEST-ORDER') || num.startsWith('TEST_') || num.startsWith('DEMO-') || num.startsWith('DUMMY-')) {
       return false;
     }
     return true;
+  }
+
+  public static resolveOrderDisplayNumber(order: any): string {
+    const orderNumber = String(order?.orderNumber || '').trim();
+    const fallbackId = String(order?.id || '').trim();
+    if (!orderNumber || orderNumber === 'N/A' || orderNumber === 'NULL' || orderNumber === 'UNDEFINED') {
+      return fallbackId || 'Order number unavailable';
+    }
+    const normalized = orderNumber.toUpperCase();
+    if (normalized.startsWith('TEST-ORDER') || normalized.startsWith('TEST_') || normalized.startsWith('DEMO-') || normalized.startsWith('DUMMY-')) {
+      return fallbackId || 'Order number unavailable';
+    }
+    return orderNumber;
   }
 
   /**
@@ -223,7 +237,7 @@ export class CodReconciliationService {
       reconciliationStatus !== 'MISMATCH';
 
     // Real order number: strictly genuine identifier
-    const genuineOrderNumber = String(order.orderNumber || order.id);
+    const genuineOrderNumber = this.resolveOrderDisplayNumber(order);
 
     return {
       id: codEntry?.id || `cod_${order.id}`,
