@@ -453,7 +453,7 @@ export class AdminPaymentController {
         runnerMap.set(boy.id, summary);
       }
 
-      // If an order has a deliveryBoyId not in deliveryBoys list, include that runner
+      // If an order has a deliveryBoyId not in deliveryBoys list, include that runner only if they have collectible COD orders
       for (const row of codRows) {
         if (row.deliveryBoyId && !runnerMap.has(row.deliveryBoyId)) {
           const pseudoRunner = {
@@ -463,7 +463,9 @@ export class AdminPaymentController {
             vehicleType: 'Bicycle'
           };
           const summary = CodReconciliationService.buildDeliveryBoySummary(pseudoRunner, codRows);
-          runnerMap.set(row.deliveryBoyId, summary);
+          if (summary.codOrdersCount > 0) {
+            runnerMap.set(row.deliveryBoyId, summary);
+          }
         }
       }
 
@@ -768,6 +770,7 @@ export class AdminPaymentController {
       const runnerUserId = runner?.userId;
       const runnerPhone = runner?.mobileNumber || runner?.phone;
       const runnerName = runner?.fullName || 'Campus Delivery Partner';
+      const cleanRunnerPhone = runnerPhone ? String(runnerPhone).replace(/\D/g, '') : '';
 
       // Strictly real customer orders belonging to this delivery boy
       const runnerOrders = orders.filter((o: any) => {
@@ -775,7 +778,9 @@ export class AdminPaymentController {
         const codEntry = codList.find((c: any) => c.orderId === o.id || c.orderId === o.orderNumber);
         const assignedId = o.deliveryBoyId || codEntry?.deliveryBoyId || null;
         if (assignedId && (assignedId === runnerId || assignedId === runnerUserId || assignedId === deliveryBoyId)) return true;
-        if (runnerPhone && (o.deliveryBoy?.mobileNumber === runnerPhone || codEntry?.deliveryBoyPhone === runnerPhone)) return true;
+        if (o.deliveryBoy && (o.deliveryBoy.id === runnerId || o.deliveryBoy.userId === runnerUserId || o.deliveryBoy.id === deliveryBoyId)) return true;
+        const ordPhone = String(o.deliveryBoyPhone || o.deliveryBoy?.mobileNumber || o.deliveryBoy?.phone || codEntry?.deliveryBoyPhone || '').replace(/\D/g, '');
+        if (cleanRunnerPhone && ordPhone && (ordPhone.includes(cleanRunnerPhone) || cleanRunnerPhone.includes(ordPhone))) return true;
         return false;
       });
 

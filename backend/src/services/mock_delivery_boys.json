@@ -10,11 +10,11 @@
     "paymentType": "PER_DELIVERY",
     "perDeliveryRate": 10,
     "monthlySalary": 0,
-    "walletBalance": 1310,
+    "walletBalance": 1340,
     "totalSettled": 500,
     "plainPassword": "Delivery@12345",
     "createdAt": "2026-01-15T00:00:00.000Z",
-    "updatedAt": "2026-09-11T17:39:10.970Z"
+    "updatedAt": "2026-09-11T18:08:26.288Z"
   },
   {
     "id": "db_boy_2",
