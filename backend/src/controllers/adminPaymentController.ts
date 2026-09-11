@@ -417,9 +417,18 @@ export class AdminPaymentController {
           ? AdminPaymentController.round(parsedCollected)
           : (isDeliveredAndCollected ? expectedAmt : 0);
 
-        const diff = AdminPaymentController.round(collectedAmt - expectedAmt);
         const collectionStatus = codEntry?.collectionStatus || (isDeliveredAndCollected ? 'COLLECTED' : 'PENDING');
-        const reconciliationStatus = codEntry?.reconciliationStatus || (diff === 0 && collectionStatus === 'COLLECTED' && ord.settlementStatus === 'SETTLED' ? 'RECONCILED' : (diff !== 0 && collectionStatus === 'COLLECTED' ? 'MISMATCH' : 'PENDING'));
+        const diff = collectionStatus === 'COLLECTED'
+          ? AdminPaymentController.round(collectedAmt - expectedAmt)
+          : 0;
+
+        const reconciliationStatus = codEntry?.reconciliationStatus || (
+          collectionStatus === 'COLLECTED' && diff === 0 && ord.settlementStatus === 'SETTLED'
+            ? 'RECONCILED'
+            : (collectionStatus === 'COLLECTED' && diff !== 0
+                ? 'MISMATCH'
+                : 'PENDING')
+        );
 
         const isOtpVerified = Boolean(ord.deliveryOtpVerified || ord.status === 'DELIVERED');
         const isDelivered = ord.status === 'DELIVERED' || isOtpVerified;
@@ -487,7 +496,7 @@ export class AdminPaymentController {
             eligibleOrdersCount: 0,
             eligibleAmount: 0,
             differenceRequiringAttention: 0,
-            status: 'READY TO RECONCILE',
+            status: 'PENDING',
             orders: []
           });
         }
@@ -497,7 +506,9 @@ export class AdminPaymentController {
           rStat.codOrdersCount += 1;
           rStat.expectedAmount = AdminPaymentController.round(rStat.expectedAmount + expectedAmt);
           rStat.collectedAmount = AdminPaymentController.round(rStat.collectedAmount + collectedAmt);
-          rStat.difference = AdminPaymentController.round(rStat.collectedAmount - rStat.expectedAmount);
+          if (collectionStatus === 'COLLECTED') {
+            rStat.difference = AdminPaymentController.round(rStat.difference + diff);
+          }
 
           if (reconciliationStatus === 'RECONCILED') {
             rStat.reconciledOrdersCount += 1;
@@ -510,7 +521,8 @@ export class AdminPaymentController {
             rStat.eligibleAmount = AdminPaymentController.round(rStat.eligibleAmount + collectedAmt);
           }
 
-          if (diff !== 0) {
+          // Only flag as difference requiring attention if order is marked MISMATCH or was COLLECTED with a discrepancy
+          if (reconciliationStatus === 'MISMATCH' || (collectionStatus === 'COLLECTED' && diff !== 0)) {
             rStat.differenceRequiringAttention = AdminPaymentController.round(rStat.differenceRequiringAttention + Math.abs(diff));
           }
 
@@ -520,12 +532,14 @@ export class AdminPaymentController {
 
       // Compute status for each delivery boy
       const runnerSummaries = Array.from(runnerMap.values()).map(r => {
-        let status = 'READY TO RECONCILE';
+        let status = 'PENDING';
         if (r.pendingOrdersCount === 0 && r.reconciledOrdersCount > 0) {
           status = 'RECONCILED';
-        } else if (Math.abs(r.difference) > 0) {
-          status = 'PARTIAL';
-        } else if (r.eligibleOrdersCount === 0 && r.pendingOrdersCount > 0) {
+        } else if (r.differenceRequiringAttention > 0 || r.orders.some((o: any) => o.reconciliationStatus === 'MISMATCH')) {
+          status = 'MISMATCH';
+        } else if (r.eligibleOrdersCount > 0) {
+          status = 'READY TO RECONCILE';
+        } else {
           status = 'PENDING';
         }
         return {
@@ -944,7 +958,7 @@ export class AdminPaymentController {
         search
       } = req.query;
 
-      const [orders, deliveryBoys, providers, allReturns] = await Promise.all([
+      const [orders, deliveryBoys, providers, allReturns, allCods] = await Promise.all([
         (prisma as any).order.findMany({
           include: {
             items: true,
@@ -975,18 +989,24 @@ export class AdminPaymentController {
               }
             }
           }
-        }).catch(() => [])
+        }).catch(() => []),
+        (prisma as any).cODCollection.findMany().catch(() => [])
       ]);
 
       const runnerById = new Map<string, any>();
       for (const d of deliveryBoys) {
-        runnerById.set(d.id, {
+        const runnerInfo = {
           id: d.id,
+          userId: d.userId,
           name: d.fullName || 'Campus Runner',
           fullName: d.fullName || 'Campus Runner',
           phone: d.mobileNumber || d.phone || d.user?.phone || '+91 98765 43220',
           vehicleType: d.vehicleType || 'Bicycle'
-        });
+        };
+        runnerById.set(d.id, runnerInfo);
+        if (d.userId) {
+          runnerById.set(d.userId, runnerInfo);
+        }
       }
 
       const returnByOrderId = new Map<string, any>();
@@ -996,29 +1016,45 @@ export class AdminPaymentController {
         }
       }
 
+      const targetRunnerId = deliveryBoyId && deliveryBoyId !== 'ALL' ? String(deliveryBoyId).trim() : null;
+      const targetRunnerIds = new Set<string>();
+      if (targetRunnerId) {
+        targetRunnerIds.add(targetRunnerId);
+        const mapped = runnerById.get(targetRunnerId);
+        if (mapped?.id) targetRunnerIds.add(mapped.id);
+        if (mapped?.userId) targetRunnerIds.add(mapped.userId);
+        for (const d of deliveryBoys) {
+          if (d.id === targetRunnerId || d.userId === targetRunnerId || (d.fullName && d.fullName.toLowerCase() === targetRunnerId.toLowerCase())) {
+            targetRunnerIds.add(d.id);
+            if (d.userId) targetRunnerIds.add(d.userId);
+          }
+        }
+      }
+
       const operationalRecords: any[] = [];
 
       for (const ord of orders) {
         const linkedReturn = ord.returnRequest || returnByOrderId.get(ord.id) || returnByOrderId.get(ord.orderNumber);
+        const codEntry = allCods.find((c: any) => c.orderId === ord.id || c.orderId === ord.orderNumber);
 
-        const hasDeliveryAssignment = Boolean(ord.deliveryBoyId);
-        const deliveryRunner = ord.deliveryBoyId ? runnerById.get(ord.deliveryBoyId) : null;
+        const assignedDeliveryRunnerId = ord.deliveryBoyId || codEntry?.deliveryBoyId || null;
+        const deliveryRunner = assignedDeliveryRunnerId ? runnerById.get(assignedDeliveryRunnerId) : null;
+        const hasDeliveryAssignment = Boolean(assignedDeliveryRunnerId);
 
-        const hasPickupAssignment = Boolean(linkedReturn?.deliveryBoyId);
-        const pickupRunner = linkedReturn?.deliveryBoyId ? runnerById.get(linkedReturn.deliveryBoyId) : null;
+        const assignedPickupRunnerId = linkedReturn?.deliveryBoyId || null;
+        const pickupRunner = assignedPickupRunnerId ? runnerById.get(assignedPickupRunnerId) : null;
+        const hasPickupAssignment = Boolean(assignedPickupRunnerId);
 
-        const targetRunnerId = deliveryBoyId && deliveryBoyId !== 'ALL' ? String(deliveryBoyId) : null;
+        const matchesDelivery = targetRunnerId
+          ? Boolean(assignedDeliveryRunnerId && targetRunnerIds.has(assignedDeliveryRunnerId))
+          : true;
 
-        const matchesDelivery = targetRunnerId ? (ord.deliveryBoyId === targetRunnerId) : hasDeliveryAssignment;
-        const matchesPickup = targetRunnerId ? (linkedReturn?.deliveryBoyId === targetRunnerId) : hasPickupAssignment;
+        const matchesPickup = targetRunnerId
+          ? Boolean(assignedPickupRunnerId && targetRunnerIds.has(assignedPickupRunnerId))
+          : true;
 
         // If target runner was requested but handled neither delivery nor pickup, skip
         if (targetRunnerId && !matchesDelivery && !matchesPickup) {
-          continue;
-        }
-
-        // If viewing across all delivery boys and no runner at all is assigned, omit
-        if (!targetRunnerId && !hasDeliveryAssignment && !hasPickupAssignment) {
           continue;
         }
 
@@ -1057,11 +1093,11 @@ export class AdminPaymentController {
           });
         }
 
-        if (ord.deliveryBoyId) {
+        if (assignedDeliveryRunnerId) {
           activities.push({
             stage: 'DELIVERY',
             type: 'DELIVERY',
-            runnerId: ord.deliveryBoyId,
+            runnerId: assignedDeliveryRunnerId,
             runnerName: deliveryRunner?.fullName || 'Assigned Delivery Runner',
             runnerPhone: deliveryRunner?.phone || 'N/A',
             status: ord.status,

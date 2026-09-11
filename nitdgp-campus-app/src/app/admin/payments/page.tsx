@@ -1703,7 +1703,7 @@ export default function AdminPaymentsPage() {
                   <tbody className="divide-y divide-gray-100">
                     {filteredCodRunners.length > 0 ? (
                       filteredCodRunners.map((runner) => {
-                        const hasMismatch = runner.differenceRequiringAttention !== 0 || runner.difference < 0;
+                        const hasMismatch = (runner.differenceRequiringAttention > 0) || (runner.status === 'MISMATCH');
                         const isFullyReconciled = runner.pendingOrdersCount === 0 && runner.codOrdersCount > 0;
                         const isReady = runner.eligibleOrdersCount > 0;
                         const runnerDisplayName = runner?.name || runner?.deliveryBoyName || runner?.fullName || 'Campus Runner';
@@ -1731,7 +1731,7 @@ export default function AdminPaymentsPage() {
                             <td className="py-3.5 px-3 font-bold text-emerald-700">
                               {formatCur(runner.collectedAmount)}
                             </td>
-                            <td className={`py-3.5 px-3 font-bold ${runner.difference < 0 ? 'text-red-600' : 'text-gray-800'}`}>
+                            <td className={`py-3.5 px-3 font-bold ${hasMismatch ? 'text-red-600' : 'text-gray-800'}`}>
                               {formatCur(runner.difference)}
                             </td>
                             <td className="py-3.5 px-3 font-bold text-emerald-700">
@@ -1744,7 +1744,7 @@ export default function AdminPaymentsPage() {
                               {hasMismatch ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-red-100 text-red-800 border border-red-200">
                                   <AlertCircle className="w-3 h-3 text-red-600" />
-                                  MISMATCH ({formatCur(Math.abs(runner.difference))})
+                                  MISMATCH ({formatCur(Math.abs(runner.differenceRequiringAttention || runner.difference))})
                                 </span>
                               ) : isFullyReconciled ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
@@ -2015,16 +2015,23 @@ export default function AdminPaymentsPage() {
                 {runnerSubTab === 'RECONCILIATION' && selectedCodRunner && (
                 <>
                 {/* DIFFERENCE CALLOUT BANNER */}
-                {selectedCodRunner.differenceRequiringAttention !== 0 ? (
+                {selectedCodRunner.differenceRequiringAttention > 0 ? (
                   <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-xs text-amber-900">
                     <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                     <div>
                       <span className="font-bold block">Cash Discrepancy Requiring Investigation:</span>
                       <p className="mt-0.5">
                         A discrepancy of <strong className="font-bold text-amber-950">{formatCur(Math.abs(selectedCodRunner.differenceRequiringAttention))}</strong> was detected among this runner's orders. 
-                        Discrepant orders are excluded from bulk reconciliation and require individual physical verification or admin status adjustment.
+                        Discrepant orders require individual physical verification or admin status adjustment.
                       </p>
                     </div>
+                  </div>
+                ) : selectedCodRunner.pendingOrdersCount > 0 && Number(selectedCodRunner.collectedAmount) === 0 ? (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2.5 text-xs text-blue-900">
+                    <Clock className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span>
+                      <strong>Cash Collection Pending:</strong> {selectedCodRunner.pendingOrdersCount} orders totaling {formatCur(selectedCodRunner.expectedAmount)} are awaiting physical cash drop and audit reconciliation.
+                    </span>
                   </div>
                 ) : (
                   <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5 text-xs text-emerald-900">
@@ -2111,7 +2118,8 @@ export default function AdminPaymentsPage() {
                           const isEligible = c.reconciliationStatus !== 'RECONCILED' && 
                             Number(c.difference ?? 0) === 0 && 
                             c.collectionStatus === 'COLLECTED';
-                          const isMismatch = Number(c.difference ?? 0) < 0 || c.reconciliationStatus === 'MISMATCH';
+                          const isMismatch = c.reconciliationStatus === 'MISMATCH' || 
+                            (c.collectionStatus === 'COLLECTED' && Number(c.difference ?? 0) !== 0 && c.reconciliationStatus !== 'RECONCILED');
 
                           return (
                             <tr key={c.id} className="hover:bg-gray-50/80 transition-colors">
@@ -2148,8 +2156,8 @@ export default function AdminPaymentsPage() {
                                 {formatCur(c.collectedAmount ?? c.amountCollected)}
                               </td>
 
-                              <td className={`py-3 px-3 font-bold ${Number(c.difference) < 0 ? 'text-red-600' : 'text-gray-800'}`}>
-                                {formatCur(c.difference)}
+                              <td className={`py-3 px-3 font-bold ${isMismatch ? 'text-red-600' : 'text-gray-800'}`}>
+                                {c.collectionStatus === 'PENDING' && Number(c.difference) === 0 ? '₹0.00' : formatCur(c.difference)}
                               </td>
 
                               <td className="py-3 px-3">
@@ -2184,10 +2192,12 @@ export default function AdminPaymentsPage() {
                                     className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
                                       isEligible
                                         ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                                        : 'bg-amber-600 hover:bg-amber-700 text-white'
+                                        : isMismatch
+                                        ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
                                     }`}
                                   >
-                                    {isMismatch ? 'Audit Mismatch' : 'Reconcile'}
+                                    {isMismatch ? 'Audit Mismatch' : (c.collectionStatus === 'COLLECTED' ? 'Reconcile' : 'Audit / Reconcile')}
                                   </button>
                                 )}
                               </td>
