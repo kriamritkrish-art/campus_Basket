@@ -233,6 +233,8 @@ export class CodReconciliationService {
       else if (r === 'MISMATCH') reconciliationStatus = 'MISMATCH';
       else if (r === 'PARTIALLY_RECONCILED') reconciliationStatus = 'PARTIALLY_RECONCILED';
       else reconciliationStatus = 'PENDING';
+    } else if (order.reconciliationStatus === 'RECONCILED') {
+      reconciliationStatus = 'RECONCILED';
     } else {
       if (codEntry?.reconciledAt && difference === 0 && cashCollected > 0) {
         reconciliationStatus = 'RECONCILED';
@@ -354,9 +356,10 @@ export class CodReconciliationService {
     const difference = this.round(expectedCod - cashCollected);
 
     const reconciledCount = eligibleDeliveredOrders.filter((o) => o.reconciliationStatus === 'RECONCILED').length;
-    const pendingCount = eligibleDeliveredOrders.filter((o) => o.reconciliationStatus !== 'RECONCILED').length;
-    const eligibleOrdersCount = eligibleDeliveredOrders.filter((o) => o.isEligibleForReconcile).length;
-    const eligibleAmount = this.round(eligibleDeliveredOrders.filter((o) => o.isEligibleForReconcile).reduce((sum, o) => sum + o.collectedAmount, 0));
+    const pendingCount = Math.max(0, eligibleDeliveredOrders.length - reconciledCount);
+    const eligibleOrders = eligibleDeliveredOrders.filter((o) => o.reconciliationStatus !== 'RECONCILED');
+    const eligibleOrdersCount = pendingCount;
+    const eligibleAmount = this.round(eligibleOrders.reduce((sum, o) => sum + o.collectedAmount, 0));
 
     let status: 'PENDING' | 'RECONCILED' | 'MISMATCH' | 'READY TO RECONCILE' | 'PARTIALLY_RECONCILED' = 'PENDING';
     if (pendingCount === 0 && reconciledCount > 0) {

@@ -27,6 +27,7 @@ import {
   Layers,
   Scale,
   RefreshCw,
+  Loader2,
   AlertCircle,
   TrendingUp,
   Bike,
@@ -464,34 +465,41 @@ export default function AdminPaymentsPage() {
     }
   };
 
-  // Execute COD Reconciliation
-  const handleReconcileCod = async () => {
-    if (!selectedCodCollection) return;
-    setReconciling(true);
+  // Execute Direct Individual COD Reconciliation for an Order
+  const [reconcilingOrderId, setReconcilingOrderId] = useState<string | null>(null);
+
+  const handleDirectReconcileOrder = async (c: any) => {
+    const targetId = c.id || c.collectionId;
+    const targetOrderId = c.orderId || c.order?.id;
+    const orderUniqueId = targetOrderId || targetId;
+
+    if (!orderUniqueId || reconcilingOrderId === orderUniqueId) return;
+    if (c.reconciliationStatus === 'RECONCILED') return;
+
+    setReconcilingOrderId(orderUniqueId);
     try {
-      const targetId = selectedCodCollection.id || selectedCodCollection.collectionId;
-      const targetOrderId = selectedCodCollection.orderId || selectedCodCollection.order?.id;
-      const collectedVal = reconcileAmount !== '' ? Number(reconcileAmount) : Number(selectedCodCollection.cashCollectedAmount ?? selectedCodCollection.collectedAmount ?? 0);
+      const expectedCod = Number(c.codAmountDue ?? c.expectedAmount ?? c.amountExpected ?? 0);
+      const collectedAmt = Number(c.cashCollectedAmount ?? c.collectedAmount ?? c.amountCollected ?? expectedCod);
+      const diff = Math.max(0, expectedCod - collectedAmt);
 
       const res = await apiRequest('/api/admin/payments/cod/reconcile', {
         method: 'POST',
         body: JSON.stringify({
           collectionId: targetId,
           orderId: targetOrderId,
-          amountCollected: reconcileAmount !== '' ? Number(reconcileAmount) : undefined,
-          cashCollected: reconcileAmount !== '' ? Number(reconcileAmount) : undefined,
-          collectionStatus: reconcileCollectionStatus,
-          reconciliationStatus: reconcileAuditStatus,
-          notes: reconcileNotes
+          amountCollected: collectedAmt,
+          cashCollected: collectedAmt,
+          collectionStatus: 'COLLECTED',
+          reconciliationStatus: 'RECONCILED',
+          deliveryBoyId: selectedCodRunner?.deliveryBoyId,
+          notes: `Direct order reconciliation for order #${c.orderNumber || targetOrderId}`
         })
       });
-      if (res.success) {
-        showToast('COD collection reconciled successfully!');
-        setSelectedCodCollection(null);
-        setReconcileAmount('');
-        setReconcileNotes('');
 
-        // Update selected runner state immediately so audit status & badges update without delay
+      if (res.success) {
+        showToast(`Order #${c.orderNumber || targetOrderId} reconciled successfully!`);
+
+        // Update selected runner state immediately
         setSelectedCodRunner((prev: any) => {
           if (!prev || !prev.orders) return prev;
           const updatedOrders = prev.orders.map((o: any) => {
@@ -500,36 +508,76 @@ export default function AdminPaymentsPage() {
             if (matches) {
               return {
                 ...o,
-                collectionStatus: reconcileCollectionStatus,
-                reconciliationStatus: reconcileAuditStatus,
-                collectedAmount: collectedVal,
-                cashCollectedAmount: collectedVal,
-                difference: Math.max(0, Number(o.expectedAmount || o.codAmountDue || 0) - collectedVal)
+                collectionStatus: 'COLLECTED',
+                reconciliationStatus: 'RECONCILED',
+                collectedAmount: collectedAmt,
+                cashCollectedAmount: collectedAmt,
+                difference: diff
               };
             }
             return o;
           });
-          const pendingCount = updatedOrders.filter((o: any) => o.reconciliationStatus !== 'RECONCILED').length;
           const reconciledCount = updatedOrders.filter((o: any) => o.reconciliationStatus === 'RECONCILED').length;
-          const eligibleCount = updatedOrders.filter((o: any) => o.reconciliationStatus !== 'RECONCILED' && (o.collectionStatus === 'COLLECTED' || Number(o.collectedAmount || 0) > 0)).length;
+          const pendingCount = Math.max(0, updatedOrders.length - reconciledCount);
+          const totalExpected = updatedOrders.reduce((sum: number, o: any) => sum + Number(o.expectedAmount || o.codAmountDue || 0), 0);
+          const totalCollected = updatedOrders.reduce((sum: number, o: any) => sum + Number(o.collectedAmount || o.cashCollectedAmount || 0), 0);
+          const totalDiff = Math.max(0, totalExpected - totalCollected);
+
           return {
             ...prev,
             orders: updatedOrders,
-            pendingOrdersCount: pendingCount,
             reconciledOrdersCount: reconciledCount,
-            eligibleOrdersCount: eligibleCount,
-            status: pendingCount === 0 ? 'RECONCILED' : (prev.differenceRequiringAttention > 0 ? 'MISMATCH' : (eligibleCount > 0 ? 'READY' : 'PENDING'))
+            pendingOrdersCount: pendingCount,
+            eligibleOrdersCount: pendingCount,
+            expectedAmount: totalExpected,
+            collectedAmount: totalCollected,
+            difference: totalDiff,
+            status: pendingCount === 0 ? 'RECONCILED' : 'PENDING'
           };
         });
 
-        await loadData();
+        // Also update runner in codDeliveryBoys list immediately
+        setCodDeliveryBoys((prevRunners: any[]) =>
+          prevRunners.map((r: any) => {
+            if (r.deliveryBoyId === selectedCodRunner?.deliveryBoyId) {
+              const updatedOrders = (r.orders || []).map((o: any) => {
+                const matches = (targetId && (o.id === targetId || o.collectionId === targetId)) ||
+                                (targetOrderId && (o.orderId === targetOrderId || o.order?.id === targetOrderId || o.orderNumber === targetOrderId));
+                if (matches) {
+                  return {
+                    ...o,
+                    collectionStatus: 'COLLECTED',
+                    reconciliationStatus: 'RECONCILED',
+                    collectedAmount: collectedAmt,
+                    cashCollectedAmount: collectedAmt,
+                    difference: diff
+                  };
+                }
+                return o;
+              });
+              const reconciledCount = (r.reconciledOrdersCount || 0) + (c.reconciliationStatus !== 'RECONCILED' ? 1 : 0);
+              const pendingCount = Math.max(0, (r.codOrdersCount || updatedOrders.length) - reconciledCount);
+              return {
+                ...r,
+                orders: updatedOrders.length > 0 ? updatedOrders : r.orders,
+                reconciledOrdersCount: reconciledCount,
+                pendingOrdersCount: pendingCount,
+                eligibleOrdersCount: pendingCount,
+                status: pendingCount === 0 ? 'RECONCILED' : 'PENDING'
+              };
+            }
+            return r;
+          })
+        );
+
+        loadData();
       } else {
         showToast(res.message || 'Reconciliation failed', 'error');
       }
     } catch (err: any) {
       showToast(err.message || 'Reconciliation error', 'error');
     } finally {
-      setReconciling(false);
+      setReconcilingOrderId(null);
     }
   };
 
@@ -555,23 +603,36 @@ export default function AdminPaymentsPage() {
         setBulkReconcileRunner(null);
         setBulkReconcileNotes('');
 
+        const reconciledIdSet = new Set(res.reconciledOrderIds || []);
+
         // Immediately update runner in state to reconciled status
         setSelectedCodRunner((prev: any) => {
           if (!prev) return prev;
           if (prev.deliveryBoyId === runnerId || (runnerPhone && prev.phone === runnerPhone)) {
-            const updatedOrders = (prev.orders || []).map((o: any) => ({
-              ...o,
-              collectionStatus: 'COLLECTED',
-              reconciliationStatus: 'RECONCILED',
-              difference: 0
-            }));
+            const updatedOrders = (prev.orders || []).map((o: any) => {
+              const matches = reconciledIdSet.size === 0 || 
+                              reconciledIdSet.has(o.id) || 
+                              reconciledIdSet.has(o.orderId) || 
+                              (o.order?.id && reconciledIdSet.has(o.order.id));
+              if (matches) {
+                return {
+                  ...o,
+                  collectionStatus: 'COLLECTED',
+                  reconciliationStatus: 'RECONCILED',
+                  difference: 0
+                };
+              }
+              return o;
+            });
+            const reconciledCount = updatedOrders.filter((o: any) => o.reconciliationStatus === 'RECONCILED').length;
+            const pendingCount = Math.max(0, updatedOrders.length - reconciledCount);
             return {
               ...prev,
               orders: updatedOrders,
-              pendingOrdersCount: 0,
-              reconciledOrdersCount: updatedOrders.length,
-              eligibleOrdersCount: 0,
-              status: 'RECONCILED'
+              pendingOrdersCount: pendingCount,
+              reconciledOrdersCount: reconciledCount,
+              eligibleOrdersCount: pendingCount,
+              status: pendingCount === 0 ? 'RECONCILED' : 'PENDING'
             };
           }
           return prev;
@@ -1910,7 +1971,7 @@ export default function AdminPaymentsPage() {
                             </td>
                             <td className="py-3.5 px-4 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                {runner.eligibleOrdersCount > 0 ? (
+                                {runner.pendingOrdersCount > 0 ? (
                                   <button
                                     onClick={() => {
                                       setBulkReconcileRunner(runner);
@@ -1920,7 +1981,7 @@ export default function AdminPaymentsPage() {
                                     title="Quick Bulk Reconcile"
                                   >
                                     <CheckCheck className="w-3.5 h-3.5" />
-                                    Bulk ({runner.eligibleOrdersCount})
+                                    Bulk ({runner.pendingOrdersCount})
                                   </button>
                                 ) : (
                                   <button
@@ -1929,7 +1990,7 @@ export default function AdminPaymentsPage() {
                                     title={runner.codOrdersCount > 0 && runner.pendingOrdersCount === 0 ? "Bulk reconciliation already completed" : "No eligible orders for bulk reconciliation"}
                                   >
                                     <CheckCheck className="w-3.5 h-3.5" />
-                                    Bulk ({runner.eligibleOrdersCount || 0})
+                                    Bulk ({runner.pendingOrdersCount || 0})
                                   </button>
                                 )}
                                 <button
@@ -2020,15 +2081,16 @@ export default function AdminPaymentsPage() {
                           setBulkReconcileRunner(selectedCodRunner);
                           setShowBulkReconcileModal(true);
                         }}
-                        disabled={selectedCodRunner.eligibleOrdersCount === 0}
+                        disabled={(selectedCodRunner.pendingOrdersCount || 0) === 0 || bulkReconciling}
                         className={`px-5 py-2.5 rounded-xl font-black text-xs shadow-sm flex items-center gap-2 transition-all cursor-pointer ${
-                          selectedCodRunner.eligibleOrdersCount > 0
+                          (selectedCodRunner.pendingOrdersCount || 0) > 0
                             ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 hover:scale-[1.02]'
                             : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
                         }`}
                       >
                         <CheckCheck className="w-4 h-4" />
-                        RECONCILE ALL ELIGIBLE ({selectedCodRunner.eligibleOrdersCount})
+                        RECONCILE ALL ELIGIBLE ({(selectedCodRunner.pendingOrdersCount || 0)})
+                        {(selectedCodRunner.pendingOrdersCount || 0) === 0 && ' — DISABLED'}
                       </button>
                     ) : (
                       <span className="px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 font-bold text-xs flex items-center gap-1.5">
@@ -2093,7 +2155,7 @@ export default function AdminPaymentsPage() {
                       <span className="text-lg font-black text-amber-700 mt-1 block">
                         {selectedCodRunner.pendingOrdersCount}
                       </span>
-                      <span className="text-[10px] text-amber-600 mt-0.5 block">Ready: {selectedCodRunner.eligibleOrdersCount}</span>
+                      <span className="text-[10px] text-amber-600 mt-0.5 block">Pending Audit</span>
                     </div>
                   </div>
                 ) : (
@@ -2352,39 +2414,29 @@ export default function AdminPaymentsPage() {
 
                               <td className="py-3 px-3 text-right">
                                 {c.reconciliationStatus === 'RECONCILED' ? (
-                                  <span className="text-[11px] font-bold text-emerald-700 flex items-center justify-end gap-1">
+                                  <button
+                                    disabled
+                                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-end gap-1 cursor-not-allowed opacity-90 ml-auto"
+                                    title="Order already reconciled"
+                                  >
                                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                                     Reconciled
-                                  </span>
+                                  </button>
                                 ) : (
                                   <button
-                                    onClick={() => {
-                                      setSelectedCodCollection({
-                                        ...c,
-                                        orderNumber: orderNum,
-                                        customerName: custName,
-                                        studentPhone: custPhone,
-                                        providerName: provName,
-                                        orderAmount: totalAmt,
-                                        onlinePaidAmount: onlineAmt,
-                                        codAmountDue: codDue,
-                                        expectedAmount: codDue,
-                                        collectedAmount: collectedAmt
-                                      });
-                                      setReconcileAmount(String(collectedAmt));
-                                      setReconcileNotes(c.reconciliationNotes || '');
-                                      setReconcileCollectionStatus(c.collectionStatus || (collectedAmt >= codDue ? 'COLLECTED' : (collectedAmt > 0 ? 'PARTIALLY_COLLECTED' : 'PENDING')));
-                                      setReconcileAuditStatus(c.reconciliationStatus || (diff === 0 && collectedAmt > 0 ? 'RECONCILED' : 'PENDING'));
-                                    }}
-                                    className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
-                                      isEligible
-                                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                                        : isMismatch
-                                        ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                                    }`}
+                                    onClick={() => handleDirectReconcileOrder(c)}
+                                    disabled={reconcilingOrderId === (c.orderId || c.id)}
+                                    className="px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 ml-auto shadow-xs disabled:opacity-60 disabled:cursor-not-allowed"
+                                    title="Reconcile this COD order"
                                   >
-                                    {isMismatch ? 'Audit Mismatch' : (c.collectionStatus === 'COLLECTED' ? 'Reconcile' : 'Audit / Reconcile')}
+                                    {reconcilingOrderId === (c.orderId || c.id) ? (
+                                      <>
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        Reconciling...
+                                      </>
+                                    ) : (
+                                      'Reconcile'
+                                    )}
                                   </button>
                                 )}
                               </td>
@@ -3038,198 +3090,7 @@ export default function AdminPaymentsPage() {
         </div>
       )}
 
-      {/* ======================================================== */}
-      {/* MODAL 3: AUDIT & RECONCILE COD ORDER                     */}
-      {/* ======================================================== */}
-      {selectedCodCollection && (() => {
-        const orderNum = selectedCodCollection.orderNumber || selectedCodCollection.order?.orderNumber || selectedCodCollection.orderId;
-        const custName = selectedCodCollection.customerName || selectedCodCollection.student || selectedCodCollection.order?.user?.fullName || 'Student';
-        const custPhone = selectedCodCollection.studentPhone || selectedCodCollection.order?.user?.phone || selectedCodCollection.order?.phone || '';
-        const runnerName = selectedCodCollection.runnerName || selectedCodCollection.deliveryBoy?.fullName || selectedCodCollection.deliveryBoy?.name || 'Campus Runner';
-        const runnerPhone = selectedCodCollection.runnerPhone || selectedCodCollection.deliveryBoy?.mobileNumber || selectedCodCollection.deliveryBoy?.phone || '';
-        const provName = selectedCodCollection.providerName || selectedCodCollection.provider?.businessName || selectedCodCollection.provider?.name || selectedCodCollection.order?.providerName || 'Campus Provider';
-        const orderTotal = Number(selectedCodCollection.orderAmount ?? selectedCodCollection.order?.totalAmount ?? selectedCodCollection.expectedAmount ?? 0);
-        const onlinePaid = Number(selectedCodCollection.onlinePaidAmount ?? selectedCodCollection.onlinePaid ?? 0);
-        const expectedCod = Number(selectedCodCollection.codAmountDue ?? selectedCodCollection.expectedAmount ?? selectedCodCollection.amountExpected ?? 0);
-        const actualCollectedNum = Number(reconcileAmount || 0);
-        const liveDifference = Math.round((expectedCod - actualCollectedNum) * 100) / 100;
-        const isExcess = actualCollectedNum > expectedCod;
-        const isShortfall = actualCollectedNum < expectedCod && actualCollectedNum > 0;
 
-        return (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 max-h-[92vh] overflow-y-auto">
-              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-                <div className="flex items-center gap-2 text-emerald-700">
-                  <BadgeCheck className="w-5 h-5" />
-                  <div>
-                    <h3 className="text-base font-black text-gray-900">Audit & Reconcile COD Order</h3>
-                    <p className="text-[11px] font-mono text-gray-400 mt-0.5">#{orderNum}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setSelectedCodCollection(null)}
-                  className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="space-y-3.5 text-xs">
-                {/* PARTICIPANTS CARD */}
-                <div className="bg-gray-50/80 p-3 rounded-xl border border-gray-200 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <div>
-                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Student Customer</span>
-                    <strong className="text-gray-900 block mt-0.5">{custName}</strong>
-                    {custPhone && <span className="text-[11px] text-gray-500 font-mono block">{custPhone}</span>}
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Assigned Runner</span>
-                    <strong className="text-gray-900 block mt-0.5">{runnerName}</strong>
-                    {runnerPhone && <span className="text-[11px] text-gray-500 font-mono block">{runnerPhone}</span>}
-                  </div>
-                  <div className="sm:col-span-2 pt-1 border-t border-gray-200/60 flex items-center justify-between">
-                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Campus Provider:</span>
-                    <strong className="text-gray-800 text-[11px]">{provName}</strong>
-                  </div>
-                </div>
-
-                {/* FINANCIAL METRICS BREAKDOWN */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-200">
-                    <span className="text-[10px] text-gray-400 font-bold uppercase block">Order Total</span>
-                    <span className="font-extrabold text-xs font-mono text-gray-900 mt-0.5 block">{formatCur(orderTotal)}</span>
-                  </div>
-                  <div className="p-2.5 bg-indigo-50/60 rounded-xl border border-indigo-200">
-                    <span className="text-[10px] text-indigo-800 font-bold uppercase block">Online Paid</span>
-                    <span className="font-extrabold text-xs font-mono text-indigo-700 mt-0.5 block">{formatCur(onlinePaid)}</span>
-                  </div>
-                  <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-200">
-                    <span className="text-[10px] text-gray-500 font-bold uppercase block">Expected COD</span>
-                    <span className="font-extrabold text-xs font-mono text-gray-900 mt-0.5 block">{formatCur(expectedCod)}</span>
-                  </div>
-                  <div className={`p-2.5 rounded-xl border ${
-                    liveDifference !== 0 && actualCollectedNum > 0
-                      ? 'bg-red-50/60 border-red-200'
-                      : liveDifference === 0 && actualCollectedNum > 0
-                      ? 'bg-emerald-50/60 border-emerald-200'
-                      : 'bg-gray-50 border-gray-200'
-                  }`}>
-                    <span className="text-[10px] text-gray-500 font-bold uppercase block">Difference</span>
-                    <span className={`font-extrabold text-xs font-mono mt-0.5 block ${
-                      liveDifference !== 0 && actualCollectedNum > 0 ? 'text-red-600' : 'text-gray-900'
-                    }`}>
-                      {formatCur(liveDifference)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* ACTUAL CASH INPUT */}
-                <div>
-                  <label className="font-bold text-gray-700 block mb-1">
-                    Actual Cash Collected (₹) *
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={reconcileAmount}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (Number(val) < 0) return;
-                      setReconcileAmount(val);
-                      const num = Number(val || 0);
-                      const diff = Math.round((expectedCod - num) * 100) / 100;
-                      if (diff === 0 && num > 0) {
-                        setReconcileCollectionStatus('COLLECTED');
-                        setReconcileAuditStatus('RECONCILED');
-                      } else if (num > 0) {
-                        setReconcileCollectionStatus('PARTIALLY_COLLECTED');
-                        setReconcileAuditStatus('MISMATCH');
-                      } else {
-                        setReconcileCollectionStatus('PENDING');
-                        setReconcileAuditStatus('PENDING');
-                      }
-                    }}
-                    placeholder="Enter physical cash collected"
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                    required
-                  />
-                  {isExcess && (
-                    <p className="text-[11px] text-amber-700 font-semibold mt-1 bg-amber-50 p-2 rounded-lg border border-amber-200">
-                      ⚠️ Warning: Actual Cash Collected ({formatCur(actualCollectedNum)}) exceeds Expected COD ({formatCur(expectedCod)}) by {formatCur(Math.abs(liveDifference))}.
-                    </p>
-                  )}
-                  {isShortfall && (
-                    <p className="text-[11px] text-rose-700 font-semibold mt-1 bg-rose-50 p-2 rounded-lg border border-rose-200">
-                      ⚠️ Shortfall: Cash collected is less than Expected COD. Remaining difference: {formatCur(liveDifference)}.
-                    </p>
-                  )}
-                </div>
-
-                {/* STATUS CONTROLS */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="font-bold text-gray-700 block mb-1">Collection Status</label>
-                    <select
-                      value={reconcileCollectionStatus}
-                      onChange={(e) => setReconcileCollectionStatus(e.target.value as any)}
-                      className="w-full border border-gray-300 rounded-xl px-2.5 py-1.5 text-xs text-gray-800 bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                    >
-                      <option value="COLLECTED">COLLECTED (Doorstep Cash Received)</option>
-                      <option value="PENDING">PENDING (Awaiting Cash Collection)</option>
-                      <option value="PARTIALLY_COLLECTED">PARTIALLY COLLECTED</option>
-                      <option value="NOT_APPLICABLE">NOT APPLICABLE</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="font-bold text-gray-700 block mb-1">Audit Reconciliation Status</label>
-                    <select
-                      value={reconcileAuditStatus}
-                      onChange={(e) => setReconcileAuditStatus(e.target.value as any)}
-                      className="w-full border border-gray-300 rounded-xl px-2.5 py-1.5 text-xs text-gray-800 bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                    >
-                      <option value="RECONCILED">RECONCILED (Vault Balance Matched)</option>
-                      <option value="PENDING">PENDING (Awaiting Verification)</option>
-                      <option value="MISMATCH">MISMATCH (Cash Discrepancy)</option>
-                      <option value="PARTIALLY_RECONCILED">PARTIALLY RECONCILED</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* AUDIT NOTES */}
-                <div>
-                  <label className="font-bold text-gray-700 block mb-1">Reconciliation Notes / Audit Reason:</label>
-                  <textarea
-                    value={reconcileNotes}
-                    onChange={(e) => setReconcileNotes(e.target.value)}
-                    placeholder="e.g. Physical cash counted and verified against runner evening drop."
-                    className="w-full border border-gray-300 rounded-xl p-2.5 text-xs text-gray-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                    rows={2}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
-                <button
-                  onClick={() => setSelectedCodCollection(null)}
-                  className="px-4 py-2 border rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleReconcileCod}
-                  disabled={reconciling}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                >
-                  {reconciling ? 'Saving...' : 'Confirm Reconciliation'}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
 
       {/* ======================================================== */}
       
@@ -3431,7 +3292,7 @@ export default function AdminPaymentsPage() {
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] font-bold text-gray-500 uppercase block">Eligible Orders</span>
                   <span className="text-xl font-black text-gray-900 mt-1 block">
-                    {bulkReconcileRunner.eligibleOrdersCount} orders
+                    {bulkReconcileRunner.pendingOrdersCount ?? bulkReconcileRunner.eligibleOrdersCount ?? 0} orders
                   </span>
                   <span className="text-[10px] text-emerald-600 mt-0.5 block">Delivered & Balanced</span>
                 </div>
@@ -3439,7 +3300,7 @@ export default function AdminPaymentsPage() {
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] font-bold text-gray-500 uppercase block">Expected Cash</span>
                   <span className="text-xl font-black text-gray-900 mt-1 block">
-                    {formatCur(bulkReconcileRunner.eligibleAmount)}
+                    {formatCur(bulkReconcileRunner.expectedAmount ?? bulkReconcileRunner.eligibleAmount ?? 0)}
                   </span>
                   <span className="text-[10px] text-gray-400 mt-0.5 block">Total invoice value</span>
                 </div>
@@ -3447,7 +3308,7 @@ export default function AdminPaymentsPage() {
                 <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl">
                   <span className="text-[10px] font-bold text-emerald-800 uppercase block">Cash Collected</span>
                   <span className="text-xl font-black text-emerald-700 mt-1 block">
-                    {formatCur(bulkReconcileRunner.eligibleAmount)}
+                    {formatCur(bulkReconcileRunner.collectedAmount ?? bulkReconcileRunner.eligibleAmount ?? 0)}
                   </span>
                   <span className="text-[10px] text-emerald-600 mt-0.5 block">Vault deposit matched</span>
                 </div>
@@ -3455,7 +3316,7 @@ export default function AdminPaymentsPage() {
                 <div className="p-3 bg-white border border-gray-200 rounded-xl">
                   <span className="text-[10px] font-bold text-gray-500 uppercase block">Difference</span>
                   <span className="text-xl font-black text-emerald-600 mt-1 block">
-                    ₹0.00
+                    {formatCur(bulkReconcileRunner.difference ?? 0)}
                   </span>
                   <span className="text-[10px] text-emerald-600 mt-0.5 block">100% Balanced</span>
                 </div>
@@ -3508,7 +3369,7 @@ export default function AdminPaymentsPage() {
               </button>
               <button
                 onClick={handleBulkReconcileCod}
-                disabled={bulkReconciling || bulkReconcileRunner.eligibleOrdersCount === 0}
+                disabled={bulkReconciling || (bulkReconcileRunner.pendingOrdersCount ?? bulkReconcileRunner.eligibleOrdersCount ?? 0) === 0}
                 className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-100 hover:scale-[1.01] transition-all cursor-pointer flex items-center gap-2"
               >
                 {bulkReconciling ? (
@@ -3519,7 +3380,7 @@ export default function AdminPaymentsPage() {
                 ) : (
                   <>
                     <CheckCheck className="w-4 h-4" />
-                    Confirm Bulk Reconciliation ({bulkReconcileRunner.eligibleOrdersCount})
+                    Confirm Bulk Reconciliation ({bulkReconcileRunner.pendingOrdersCount ?? bulkReconcileRunner.eligibleOrdersCount ?? 0})
                   </>
                 )}
               </button>
