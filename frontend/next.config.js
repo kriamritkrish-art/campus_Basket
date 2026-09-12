@@ -14,7 +14,7 @@ const securityHeaders = [
   },
   {
     key: 'Permissions-Policy',
-    value: 'camera=(), microphone=(), geolocation=(self), payment=(self "https://checkout.razorpay.com")'
+    value: 'camera=(), microphone=(self), geolocation=(self), payment=(self "https://checkout.razorpay.com")'
   },
   {
     key: 'Strict-Transport-Security',
