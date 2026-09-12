@@ -164,6 +164,37 @@ export function useAIAssistant() {
     }
   }, [isAuthenticated, role]);
 
+  // Active product catalog state (initialized with fallback products, then synced with live database)
+  const [allProducts, setAllProducts] = useState<Product[]>(FALLBACK_STORE_PRODUCTS);
+  const allProductsRef = useRef<Product[]>(FALLBACK_STORE_PRODUCTS);
+
+  // Sync ref whenever allProducts updates
+  useEffect(() => {
+    allProductsRef.current = allProducts;
+  }, [allProducts]);
+
+  // Load live products from backend /api/products on mount and cache locally
+  useEffect(() => {
+    let isMounted = true;
+    apiRequest('/api/products?limit=100')
+      .then((res) => {
+        if (!isMounted) return;
+        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+          // Merge with fallback products ensuring no duplicates by ID
+          const existingIds = new Set(res.data.map((p: any) => p.id));
+          const uniqueFallbacks = FALLBACK_STORE_PRODUCTS.filter((p) => !existingIds.has(p.id));
+          const combined = [...res.data, ...uniqueFallbacks];
+          setAllProducts(combined);
+          allProductsRef.current = combined;
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Prefetch student orders in background (zero voice latency when student asks)
   useEffect(() => {
     if (isAuthenticated && role === 'STUDENT') {
@@ -1239,31 +1270,208 @@ export function useAIAssistant() {
     }
 
     // ==========================================
-    // 15. PRODUCT SEARCH & MATCHING (LOCAL UI FIRST)
+    // 15. CATEGORY & STORE BROWSING INTENTS
     // ==========================================
-    const keywords = ['momo', 'biryani', 'curry', 'paneer', 'samosa', 'roll', 'dosa', 'paper', 'pen', 'apple', 'fruit', 'snack', 'tea', 'coffee'];
-    const matchedKeyword = keywords.find((k) => lower.includes(k));
+    const currentPool = allProductsRef.current.length > 0 ? allProductsRef.current : FALLBACK_STORE_PRODUCTS;
 
-    let matched: Product[] = [];
-
-    if (matchedKeyword) {
-      matched = FALLBACK_STORE_PRODUCTS.filter(
-        (p) =>
-          p.name.toLowerCase().includes(matchedKeyword) ||
-          p.description.toLowerCase().includes(matchedKeyword) ||
-          (p.tags && p.tags.toLowerCase().includes(matchedKeyword))
+    // 15A. General Store / Menu / Products overview
+    if (
+      lower.includes('what do you have') ||
+      lower.includes('what is available') ||
+      lower.includes('show all products') ||
+      lower.includes('all products') ||
+      lower.includes('show menu') ||
+      lower.includes('browse store') ||
+      lower.includes('what can i buy') ||
+      lower.includes('what can i order') ||
+      lower === 'products' ||
+      lower === 'menu' ||
+      lower === 'store'
+    ) {
+      const topItems = currentPool.slice(0, 5);
+      setDisplayedProducts(topItems);
+      const itemList = topItems.map((p) => `${p.name} (₹${p.price})`).join(', ');
+      addAiMessage(
+        `We have items across Food & Meals, Fresh Fruits, Stationery, and Hostel Essentials! Popular items include: ${itemList}. Which category or product are you looking for?`,
+        'SEARCH',
+        topItems
       );
-    } else {
-      const tokens = lower
-        .replace(/^(i want|find|show me|search for|give me|add|order|get)\s+/i, '')
-        .trim()
-        .split(/\s+/);
+      setAwaitingContext('PRODUCT_CHOICE');
+      return;
+    }
 
-      matched = FALLBACK_STORE_PRODUCTS.filter((p) => {
-        const pName = p.name.toLowerCase();
-        const pTags = (p.tags || '').toLowerCase();
-        return tokens.some((tok) => tok.length > 2 && (pName.includes(tok) || pTags.includes(tok)));
-      });
+    // 15B. Food & Meals category
+    if (
+      (lower.includes('food') || lower.includes('meals') || lower.includes('lunch') || lower.includes('dinner') || lower.includes('breakfast') || lower.includes('snacks')) &&
+      !lower.includes('dog food')
+    ) {
+      const foodItems = currentPool.filter(
+        (p) =>
+          p.categoryId === 'cat_food' ||
+          p.category?.slug === 'food' ||
+          p.category?.name?.toLowerCase().includes('food') ||
+          p.subcategory?.toLowerCase() === 'meals' ||
+          p.subcategory?.toLowerCase() === 'snacks'
+      );
+      if (foodItems.length > 0) {
+        setDisplayedProducts(foodItems);
+        const top3 = foodItems.slice(0, 3).map((p) => `${p.name} (₹${p.price})`).join(' and ');
+        addAiMessage(
+          `In Food & Meals, we have ${foodItems.length} options including ${top3}. Which one would you like?`,
+          'SEARCH',
+          foodItems
+        );
+        setAwaitingContext('PRODUCT_CHOICE');
+        return;
+      }
+    }
+
+    // 15C. Fresh Fruits category
+    if (lower.includes('fruit') || lower.includes('fruits') || lower.includes('produce') || lower.includes('orchard')) {
+      const fruitItems = currentPool.filter(
+        (p) =>
+          p.categoryId === 'cat_fruits' ||
+          p.category?.slug === 'fruits' ||
+          p.category?.name?.toLowerCase().includes('fruit') ||
+          p.subcategory?.toLowerCase() === 'fruits'
+      );
+      if (fruitItems.length > 0) {
+        setDisplayedProducts(fruitItems);
+        const top3 = fruitItems.slice(0, 3).map((p) => `${p.name} (₹${p.price}/${p.unit || 'kg'})`).join(' and ');
+        addAiMessage(
+          `In Fresh Fruits, we have ${fruitItems.length} options including ${top3}. Which one would you like?`,
+          'SEARCH',
+          fruitItems
+        );
+        setAwaitingContext('PRODUCT_CHOICE');
+        return;
+      }
+    }
+
+    // 15D. Stationery & Academic category
+    if (
+      lower.includes('stationery') ||
+      lower.includes('stationery items') ||
+      lower.includes('study material') ||
+      lower.includes('college supplies') ||
+      lower.includes('lab supplies')
+    ) {
+      const statItems = currentPool.filter(
+        (p) =>
+          p.categoryId === 'cat_stationery' ||
+          p.category?.slug === 'stationery' ||
+          p.category?.name?.toLowerCase().includes('stationery') ||
+          p.tags?.toLowerCase().includes('stationery')
+      );
+      if (statItems.length > 0) {
+        setDisplayedProducts(statItems);
+        const top3 = statItems.slice(0, 3).map((p) => `${p.name} (₹${p.price})`).join(' and ');
+        addAiMessage(
+          `In Stationery, we have ${statItems.length} supplies including ${top3}. Which one do you need?`,
+          'SEARCH',
+          statItems
+        );
+        setAwaitingContext('PRODUCT_CHOICE');
+        return;
+      }
+    }
+
+    // 15E. Hostel Essentials category
+    if (
+      lower.includes('hostel essentials') ||
+      lower.includes('daily essentials') ||
+      lower.includes('personal care') ||
+      lower.includes('hygiene') ||
+      lower.includes('toiletries') ||
+      lower.includes('cleaning supplies')
+    ) {
+      const essItems = currentPool.filter(
+        (p) =>
+          p.categoryId === 'cat_essentials' ||
+          p.category?.slug === 'essentials' ||
+          p.category?.name?.toLowerCase().includes('essential') ||
+          p.tags?.toLowerCase().includes('essentials')
+      );
+      if (essItems.length > 0) {
+        setDisplayedProducts(essItems);
+        const top3 = essItems.slice(0, 3).map((p) => `${p.name} (₹${p.price})`).join(' and ');
+        addAiMessage(
+          `In Hostel Essentials, we have ${essItems.length} products including ${top3}. Which one would you like?`,
+          'SEARCH',
+          essItems
+        );
+        setAwaitingContext('PRODUCT_CHOICE');
+        return;
+      }
+    }
+
+    // ==========================================
+    // 16. COMPREHENSIVE PRODUCT SEARCH (ALL PRODUCTS)
+    // ==========================================
+    // Common conversational stopwords to strip so query tokens contain actual product keywords
+    const STOP_WORDS = new Set([
+      'i', 'want', 'need', 'give', 'me', 'please', 'can', 'you', 'show', 'find', 'search',
+      'for', 'get', 'buy', 'order', 'add', 'a', 'an', 'the', 'some', 'any', 'is', 'are',
+      'there', 'do', 'have', 'what', 'which', 'available', 'item', 'items', 'product',
+      'products', 'to', 'my', 'in', 'basket', 'cart', 'plate', 'plates', 'packet', 'pack',
+      'bottle', 'box', 'piece', 'pieces', 'kg', 'dozen', 'with', 'and', 'or', 'of', 'at',
+      'like', 'would', 'could', 'how', 'much', 'cost', 'price', 'tell', 'about', 'rate'
+    ]);
+
+    // Clean spoken query into meaningful search tokens
+    const rawTokens = lower
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 1);
+
+    const cleanTokens = rawTokens.filter((w) => !STOP_WORDS.has(w) && w.length >= 2);
+    const searchTokens = cleanTokens.length > 0 ? cleanTokens : rawTokens.filter((w) => w.length >= 3);
+
+    // Score all available products in memory
+    const scoredProducts = currentPool
+      .map((p) => {
+        const name = (p.name || '').toLowerCase();
+        const desc = (p.description || '').toLowerCase();
+        const tags = (p.tags || '').toLowerCase();
+        const subcat = (p.subcategory || '').toLowerCase();
+        const catName = (p.category?.name || '').toLowerCase();
+        const catSlug = (p.category?.slug || '').toLowerCase();
+
+        let score = 0;
+
+        // Exact full phrase match in name or tags gets highest priority
+        const fullCleanQuery = searchTokens.join(' ');
+        if (fullCleanQuery && (name.includes(fullCleanQuery) || tags.includes(fullCleanQuery))) {
+          score += 100;
+        }
+
+        for (const tok of searchTokens) {
+          if (name.includes(tok)) {
+            score += 20;
+            if (name.split(/\s+/).some((nw) => nw === tok)) score += 15; // exact word match
+          }
+          if (tags.includes(tok)) score += 12;
+          if (subcat.includes(tok)) score += 10;
+          if (catName.includes(tok) || catSlug.includes(tok)) score += 8;
+          if (desc.includes(tok)) score += 4;
+        }
+
+        return { product: p, score };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    let matched: Product[] = scoredProducts.map((entry) => entry.product);
+
+    // Fallback: If no memory match, try remote server search with apiRequest
+    if (matched.length === 0 && searchTokens.length > 0) {
+      try {
+        const searchParam = encodeURIComponent(searchTokens.join(' '));
+        const remoteRes = await apiRequest(`/api/products?search=${searchParam}&limit=10`);
+        if (remoteRes && remoteRes.success && Array.isArray(remoteRes.data) && remoteRes.data.length > 0) {
+          matched = remoteRes.data;
+        }
+      } catch {}
     }
 
     if (matched.length > 0) {
@@ -1297,6 +1505,19 @@ export function useAIAssistant() {
         return;
       }
 
+      if (quantityFound && matched.length === 1) {
+        const single = matched[0];
+        setSelectedProduct(single);
+        addItem(single, quantityFound, false);
+        addAiMessage(
+          `Added ${quantityFound} ${single.name} to your cart (₹${(single.price * quantityFound).toFixed(0)}). Would you like to continue to checkout?`,
+          'CART_ADD',
+          single
+        );
+        setAwaitingContext('CHECKOUT_CONFIRM');
+        return;
+      }
+
       if (matched.length > 1) {
         const prefix = studentName ? `Sure ${studentName}. ` : 'Sure. ';
         const optionsList = matched
@@ -1312,14 +1533,15 @@ export function useAIAssistant() {
 
       const single = matched[0];
       setSelectedProduct(single);
-      const aiReply = `${single.name} is available for ₹${single.price}. How many would you like?`;
+      const unitLabel = single.unit || 'item';
+      const aiReply = `${single.name} is available for ₹${single.price} per ${unitLabel}. How many would you like?`;
       addAiMessage(aiReply, 'SEARCH', [single]);
       setAwaitingContext('QUANTITY');
       return;
     }
 
     // ==========================================
-    // 16. HYBRID / SERVER BACKEND FALLBACK
+    // 17. HYBRID / SERVER BACKEND FALLBACK
     // ==========================================
     if (aiMode === 'HYBRID' || aiMode === 'FULL_AI') {
       try {
@@ -1333,7 +1555,7 @@ export function useAIAssistant() {
           const first = res.matchedProducts[0];
           setSelectedProduct(first);
           addAiMessage(
-            `I found ${first.name} for ₹${first.price}. How many plates would you like?`,
+            `I found ${first.name} for ₹${first.price}. How many would you like?`,
             'SEARCH',
             res.matchedProducts
           );
@@ -1347,7 +1569,7 @@ export function useAIAssistant() {
 
     // Not Found fallback
     addAiMessage(
-      `I couldn't find that item in Campus Basket. I can help you with Food & Momos, Express Laundry, Order Tracking, Order History, Refunds, or Complaints. What would you like?`
+      `I couldn't find that item in Campus Basket. I can help you with Food & Meals, Fresh Fruits, Stationery, Daily Essentials, Express Laundry, Order Tracking, or Complaints. What would you like?`
     );
   };
 
@@ -1358,7 +1580,8 @@ export function useAIAssistant() {
 
   // Helper to filter and report products by provider
   const filterProductsByProvider = (provider: ProviderInfo) => {
-    const providerProducts = FALLBACK_STORE_PRODUCTS.filter(
+    const currentPool = allProductsRef.current.length > 0 ? allProductsRef.current : FALLBACK_STORE_PRODUCTS;
+    const providerProducts = currentPool.filter(
       (p) => p.providerId === provider.id || p.tags?.toLowerCase().includes(provider.shortName.toLowerCase())
     );
 

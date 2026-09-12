@@ -273,13 +273,71 @@ export class AiController {
       const { message, studentName } = req.body;
       const lower = String(message || '').toLowerCase();
 
-      // Intelligent server-assisted matching against all active products
-      const matchedProducts = fallbackProducts.filter((p: any) => {
-        const pName = (p.name || '').toLowerCase();
-        const pTags = (p.tags || '').toLowerCase();
-        const pDesc = (p.description || '').toLowerCase();
-        return pName.includes(lower) || pTags.includes(lower) || pDesc.includes(lower);
-      });
+      // Common conversational stopwords to strip
+      const stopWords = new Set([
+        'i', 'want', 'need', 'give', 'me', 'please', 'can', 'you', 'show', 'find', 'search',
+        'for', 'get', 'buy', 'order', 'add', 'a', 'an', 'the', 'some', 'any', 'is', 'are',
+        'there', 'do', 'have', 'what', 'which', 'available', 'item', 'items', 'product',
+        'products', 'to', 'my', 'in', 'basket', 'cart', 'plate', 'plates', 'packet', 'pack'
+      ]);
+
+      const tokens = lower
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length >= 2 && !stopWords.has(w));
+
+      // Try live database products first
+      let dbProducts: any[] = [];
+      try {
+        dbProducts = await prisma.product.findMany({
+          where: { availability: true, approvalStatus: 'APPROVED' },
+          include: { category: true, images: true },
+          take: 100,
+        });
+      } catch {}
+
+      const catalogPool = dbProducts.length > 0 ? dbProducts : fallbackProducts;
+
+      // Score and rank matched products
+      const scored = catalogPool
+        .map((p: any) => {
+          const pName = (p.name || '').toLowerCase();
+          const pTags = (p.tags || '').toLowerCase();
+          const pDesc = (p.description || '').toLowerCase();
+          const pSub = (p.subcategory || '').toLowerCase();
+
+          let score = 0;
+          if (tokens.length === 0 && (pName.includes(lower) || pTags.includes(lower))) {
+            score = 10;
+          } else {
+            for (const tok of tokens) {
+              if (pName.includes(tok)) score += 20;
+              if (pTags.includes(tok)) score += 15;
+              if (pSub.includes(tok)) score += 10;
+              if (pDesc.includes(tok)) score += 5;
+            }
+          }
+
+          const primaryImage =
+            p.image ||
+            p.images?.find((img: any) => img.isPrimary)?.googleDriveUrl ||
+            p.images?.[0]?.googleDriveUrl ||
+            p.primaryImage ||
+            null;
+
+          return {
+            product: {
+              ...p,
+              price: Number(p.sellingPrice || p.discountPrice || p.price),
+              primaryImage,
+            },
+            score,
+          };
+        })
+        .filter((entry) => entry.score > 0)
+        .sort((a, b) => b.score - a.score);
+
+      const matchedProducts = scored.map((s) => s.product);
 
       res.status(200).json({
         success: true,
