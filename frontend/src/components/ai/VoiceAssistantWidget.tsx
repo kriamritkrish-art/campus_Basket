@@ -80,6 +80,20 @@ export function VoiceAssistantWidget() {
     }
   }, [setIsOpen]);
 
+  // Synchronize live speech into input box in real time while speaking
+  useEffect(() => {
+    if (state === 'LISTENING' && liveTranscript) {
+      setTypedInput(liveTranscript);
+    }
+  }, [state, liveTranscript]);
+
+  // Clear input box once speech has been dispatched into chat
+  useEffect(() => {
+    if (state === 'UNDERSTANDING' || state === 'SPEAKING') {
+      setTypedInput('');
+    }
+  }, [state]);
+
   // Scroll to bottom of chat automatically when new message arrives
   useEffect(() => {
     if (chatBottomRef.current) {

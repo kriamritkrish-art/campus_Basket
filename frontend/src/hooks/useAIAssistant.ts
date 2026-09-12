@@ -517,26 +517,29 @@ export function useAIAssistant() {
       return;
     }
 
-    // 4. Proactively request mic permission via mediaDevices to trigger the browser prompt if ungranted
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        setMicPermission('granted');
-        // Immediately release tracks - SpeechRecognition handles its own audio stream
-        stream.getTracks().forEach((track) => track.stop());
-      } catch (err: any) {
-        console.warn('[Microphone Permission Error]', err);
-        setState('IDLE');
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          setMicPermission('denied');
-          setStatusMessage('Mic blocked. Allow microphone in browser address bar.');
-          addAiMessage(
-            'Microphone access is blocked by your browser. Please click the lock/camera icon in your browser address bar to allow microphone access, or click the Grant Permission button.'
-          );
-        } else {
-          setStatusMessage('Could not access microphone hardware. Please check your mic settings.');
+    // 4. If mic permission has not been granted yet, request it once
+    if (micPermission !== 'granted') {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          setMicPermission('granted');
+          stream.getTracks().forEach((track) => track.stop());
+          // Wait for OS audio driver to clean up stream before starting speech recognition
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        } catch (err: any) {
+          console.warn('[Microphone Permission Error]', err);
+          setState('IDLE');
+          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            setMicPermission('denied');
+            setStatusMessage('Mic blocked. Allow microphone in browser address bar.');
+            addAiMessage(
+              'Microphone access is blocked by your browser. Please click the lock/camera icon in your browser address bar to allow microphone access, or click the Grant Permission button.'
+            );
+          } else {
+            setStatusMessage('Could not access microphone hardware. Please check your mic settings.');
+          }
+          return;
         }
-        return;
       }
     }
 
@@ -564,7 +567,8 @@ export function useAIAssistant() {
         let interimText = '';
         let finalText = '';
 
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
+        // Accumulate across all speech result chunks
+        for (let i = 0; i < event.results.length; ++i) {
           const result = event.results[i];
           const transcript = result[0]?.transcript || '';
           if (result.isFinal) {
@@ -593,11 +597,18 @@ export function useAIAssistant() {
 
       rec.onerror = (event: any) => {
         console.warn('[AI Assistant Speech Error]', event.error);
+        const heardSoFar = lastTranscriptRef.current.trim();
+        if ((event.error === 'no-speech' || event.error === 'network') && heardSoFar) {
+          // If we heard speech before timeout or error, process it!
+          lastTranscriptRef.current = '';
+          setLiveTranscript('');
+          handleStudentInputRef.current(heardSoFar);
+          return;
+        }
+
         if (event.error === 'not-allowed') {
+          setMicPermission('denied');
           setStatusMessage('Mic blocked. Allow microphone in browser address bar.');
-          addAiMessage(
-            'Microphone access is blocked. Please allow microphone access in your browser address bar, or type your message below.'
-          );
         } else if (event.error === 'no-speech') {
           setStatusMessage('No speech detected. Click mic to speak again.');
         } else if (event.error === 'network') {
