@@ -487,12 +487,8 @@ export default function AdminPaymentsPage() {
         body: JSON.stringify({
           collectionId: targetId,
           orderId: targetOrderId,
-          amountCollected: collectedAmt,
-          cashCollected: collectedAmt,
-          collectionStatus: 'COLLECTED',
-          reconciliationStatus: 'RECONCILED',
           deliveryBoyId: selectedCodRunner?.deliveryBoyId,
-          notes: `Direct order reconciliation for order #${c.orderNumber || targetOrderId}`
+          notes: `Reconciled order #${c.orderNumber || targetOrderId}`
         })
       });
 
@@ -582,12 +578,13 @@ export default function AdminPaymentsPage() {
   };
 
   // Execute Bulk COD Reconciliation for a Delivery Boy
-  const handleBulkReconcileCod = async () => {
-    if (!bulkReconcileRunner) return;
+  const handleBulkReconcileCod = async (runnerOverride?: any) => {
+    const runner = runnerOverride || bulkReconcileRunner;
+    if (!runner) return;
     setBulkReconciling(true);
     try {
-      const runnerId = bulkReconcileRunner.deliveryBoyId;
-      const runnerPhone = bulkReconcileRunner.phone;
+      const runnerId = runner.deliveryBoyId;
+      const runnerPhone = runner.phone;
       const res = await apiRequest('/api/admin/payments/cod/bulk-reconcile', {
         method: 'POST',
         body: JSON.stringify({
@@ -598,7 +595,7 @@ export default function AdminPaymentsPage() {
         })
       });
       if (res.success) {
-        showToast(res.message || `Successfully reconciled ${res.reconciledCount} eligible orders for ${bulkReconcileRunner?.name || bulkReconcileRunner?.deliveryBoyName || 'Runner'}!`);
+        showToast(res.message || `Successfully reconciled ${res.reconciledCount} eligible orders for ${runner?.name || runner?.deliveryBoyName || 'Runner'}!`);
         setShowBulkReconcileModal(false);
         setBulkReconcileRunner(null);
         setBulkReconcileNotes('');
@@ -1974,8 +1971,7 @@ export default function AdminPaymentsPage() {
                                 {runner.pendingOrdersCount > 0 ? (
                                   <button
                                     onClick={() => {
-                                      setBulkReconcileRunner(runner);
-                                      setShowBulkReconcileModal(true);
+                                      handleBulkReconcileCod(runner);
                                     }}
                                     className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
                                     title="Quick Bulk Reconcile"
@@ -2078,8 +2074,7 @@ export default function AdminPaymentsPage() {
                     {selectedCodRunner && runnerSubTab === 'RECONCILIATION' ? (
                       <button
                         onClick={() => {
-                          setBulkReconcileRunner(selectedCodRunner);
-                          setShowBulkReconcileModal(true);
+                          handleBulkReconcileCod(selectedCodRunner);
                         }}
                         disabled={(selectedCodRunner.pendingOrdersCount || 0) === 0 || bulkReconciling}
                         className={`px-5 py-2.5 rounded-xl font-black text-xs shadow-sm flex items-center gap-2 transition-all cursor-pointer ${

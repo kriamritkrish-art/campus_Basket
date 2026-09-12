@@ -2177,6 +2177,18 @@ const fallbackHandlers: Record<string, any> = {
       }
       return args.data;
     },
+    updateMany: async (args: any) => {
+      const id = args.where?.id;
+      const orderId = args.where?.orderId;
+      const reconciliationStatus = args.where?.reconciliationStatus;
+      const matchingItems = persistentCodCollections.filter(item =>
+        (id && (item.id === id || item.id === `cod_${id}` || `cod_${item.id}` === id)) ||
+        (orderId && item.orderId === orderId)
+      ).filter(item => !reconciliationStatus || item.reconciliationStatus === reconciliationStatus);
+      matchingItems.forEach(c => Object.assign(c, args.data, { updatedAt: new Date() }));
+      if (matchingItems.length > 0) saveList('mock_cod_collections.json', persistentCodCollections);
+      return { count: matchingItems.length };
+    },
     upsert: async (args: any) => {
       const orderId = args.where?.orderId || args.create?.orderId;
       const id = args.where?.id;

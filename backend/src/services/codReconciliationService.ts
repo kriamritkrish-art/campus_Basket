@@ -187,16 +187,11 @@ export class CodReconciliationService {
       : null;
     const parsedCollected = rawCollected !== null && rawCollected !== undefined ? Number(rawCollected) : null;
     
-    // If an explicit non-zero collection entry exists, use its number; otherwise if delivered COD or marked collected, default to codAmountDue
+    // Collection totals must come from the persisted COD collection record. A delivered
+    // order is not evidence that cash was collected.
     let cashCollected = 0;
-    if (parsedCollected !== null && !isNaN(parsedCollected) && parsedCollected > 0) {
+    if (parsedCollected !== null && !isNaN(parsedCollected) && parsedCollected >= 0) {
       cashCollected = this.round(parsedCollected);
-    } else if (codEntry?.collectionStatus === 'COLLECTED' || order.paymentStatus === 'COD_COLLECTED' || (isDelivered && codAmountDue > 0)) {
-      cashCollected = codAmountDue;
-    } else if (parsedCollected !== null && !isNaN(parsedCollected)) {
-      cashCollected = this.round(parsedCollected);
-    } else {
-      cashCollected = 0;
     }
 
     // Difference = Expected COD - Cash Collected
@@ -245,9 +240,11 @@ export class CodReconciliationService {
       }
     }
 
-    // Is Eligible For Reconcile action (delivered, has collectible COD, not already reconciled, not a mismatch)
+    // Reconciliation is available only after the real collection record says the cash
+    // was collected. Collection and reconciliation remain independent states.
     const isEligibleForReconcile =
       isEligibleOrder &&
+      collectionStatus === 'COLLECTED' &&
       reconciliationStatus !== 'RECONCILED' &&
       reconciliationStatus !== 'MISMATCH';
 
@@ -356,9 +353,9 @@ export class CodReconciliationService {
     const difference = this.round(expectedCod - cashCollected);
 
     const reconciledCount = eligibleDeliveredOrders.filter((o) => o.reconciliationStatus === 'RECONCILED').length;
+    const eligibleOrders = eligibleDeliveredOrders.filter((o) => o.isEligibleForReconcile);
     const pendingCount = Math.max(0, eligibleDeliveredOrders.length - reconciledCount);
-    const eligibleOrders = eligibleDeliveredOrders.filter((o) => o.reconciliationStatus !== 'RECONCILED');
-    const eligibleOrdersCount = pendingCount;
+    const eligibleOrdersCount = eligibleOrders.length;
     const eligibleAmount = this.round(eligibleOrders.reduce((sum, o) => sum + o.collectedAmount, 0));
 
     let status: 'PENDING' | 'RECONCILED' | 'MISMATCH' | 'READY TO RECONCILE' | 'PARTIALLY_RECONCILED' = 'PENDING';
