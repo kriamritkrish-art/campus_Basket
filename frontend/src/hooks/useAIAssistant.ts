@@ -396,12 +396,39 @@ export function useAIAssistant() {
   // Proactively request microphone permission
   const requestMicPermission = useCallback(async () => {
     if (typeof window === 'undefined') return false;
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setStatusMessage('Microphone access is not supported by your browser.');
+
+    // Cross-browser getUserMedia detection including vendor prefixes
+    const getMedia =
+      (navigator.mediaDevices && navigator.mediaDevices.getUserMedia
+        ? (constraints: MediaStreamConstraints) => navigator.mediaDevices.getUserMedia(constraints)
+        : null) ||
+      ((navigator as any).getUserMedia
+        ? (constraints: MediaStreamConstraints) =>
+            new Promise<MediaStream>((resolve, reject) => {
+              (navigator as any).getUserMedia(constraints, resolve, reject);
+            })
+        : null) ||
+      ((navigator as any).webkitGetUserMedia
+        ? (constraints: MediaStreamConstraints) =>
+            new Promise<MediaStream>((resolve, reject) => {
+              (navigator as any).webkitGetUserMedia(constraints, resolve, reject);
+            })
+        : null);
+
+    if (!getMedia) {
+      if (typeof window !== 'undefined' && window.isSecureContext === false) {
+        setStatusMessage('Mic requires HTTPS or localhost (Chrome security policy).');
+        addAiMessage(
+          'Microphone permission requires a secure origin (HTTPS or http://localhost:3000). Please ensure you are accessing via http://localhost:3000, or type your message below.'
+        );
+      } else {
+        setStatusMessage('Microphone access is not supported by your browser.');
+      }
       return false;
     }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await getMedia({ audio: true });
       stream.getTracks().forEach((track) => track.stop());
       setMicPermission('granted');
       setStatusMessage('Microphone access granted! Click mic to speak.');
@@ -415,7 +442,7 @@ export function useAIAssistant() {
         setMicPermission('denied');
         setStatusMessage('Microphone blocked. Please allow mic in browser address bar.');
       } else {
-        setStatusMessage('Microphone hardware error: ' + (err.message || err.name));
+        setStatusMessage('Microphone device error: ' + (err.message || err.name));
       }
       return false;
     }
