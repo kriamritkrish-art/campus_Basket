@@ -381,7 +381,7 @@ export class AdminPaymentController {
     try {
       const { status, deliveryBoyId, providerId, dateRange, startDate, endDate, search } = req.query;
 
-      const [orders, codList, deliveryBoys, providers] = await Promise.all([
+      const [orders, initialCodList, deliveryBoys, providers] = await Promise.all([
         (prisma as any).order.findMany({
           include: {
             items: true,
@@ -394,6 +394,54 @@ export class AdminPaymentController {
         (prisma as any).deliveryBoy.findMany({ include: { user: true } }).catch(() => []),
         (prisma as any).serviceProvider.findMany().catch(() => [])
       ]);
+
+      // Recover collection rows for real deliveries created before the collection
+      // write used schema-invalid field names. The order's persisted COD_COLLECTED
+      // status is the delivery event source; this does not create orders or ledger entries.
+      const codList = [...initialCodList];
+      for (const order of orders as any[]) {
+        const isDelivered = order.status === 'DELIVERED' || Boolean(order.deliveredAt) || Boolean(order.deliveryOtpVerified);
+        const isCod = order.paymentMethod === 'CASH_ON_DELIVERY' || String(order.paymentMethod || '').toUpperCase().includes('COD');
+        const isCancelled = order.status === 'CANCELLED' || order.status === 'REFUNDED';
+        if (!isDelivered || !isCod || isCancelled || order.paymentStatus !== 'COD_COLLECTED') continue;
+
+        const expectedAmount = CodReconciliationService.round(Math.max(
+          0,
+          Number(order.totalAmount || 0) - Number(order.advancePaidAmount || 0)
+        ));
+        if (expectedAmount <= 0) continue;
+
+        const existing = codList.find((entry: any) => entry.orderId === order.id || entry.orderId === order.orderNumber);
+        if (existing?.reconciliationStatus === 'RECONCILED') continue;
+
+        const data = {
+          deliveryBoyId: order.deliveryBoyId || existing?.deliveryBoyId || null,
+          expectedAmount,
+          collectedAmount: expectedAmount,
+          difference: 0,
+          collectionStatus: 'COLLECTED',
+          reconciliationStatus: 'PENDING',
+          collectedAt: existing?.collectedAt || order.deliveredAt || new Date(),
+          notes: existing?.notes || 'Recovered from persisted COD delivery status.'
+        };
+
+        try {
+          const repaired = existing
+            ? await (prisma as any).cODCollection.update({ where: { id: existing.id }, data })
+            : await (prisma as any).cODCollection.create({
+              data: {
+                collectionNumber: `COD-${String(order.orderNumber || order.id).replace(/[^a-zA-Z0-9]/g, '').slice(-8)}`,
+                orderId: order.id,
+                ...data
+              }
+            });
+          const index = existing ? codList.indexOf(existing) : -1;
+          if (index >= 0) codList[index] = repaired;
+          else codList.push(repaired);
+        } catch (repairError) {
+          console.warn('[COD] Could not repair persisted collection row:', repairError);
+        }
+      }
 
       // 1. Exclude artificial dummy/test orders
       const realOrders = orders.filter((o: any) => CodReconciliationService.isRealOrder(o));

@@ -982,24 +982,21 @@ export class DeliveryController {
               deliveryBoyId: deliveryBoy.id,
               collectionStatus: 'COLLECTED',
               collectedAmount: codAmountDue,
-              amountCollected: codAmountDue,
               collectedAt: now,
               reconciliationStatus: 'PENDING',
-              reconciliationNotes: 'Cash collected by runner at student doorstep upon OTP verification.'
+              notes: 'Cash collected by runner at student doorstep upon OTP verification.'
             },
             create: {
               collectionNumber: `COD-${order.orderNumber.replace(/[^a-zA-Z0-9]/g, '').slice(-8)}`,
               orderId: order.id,
               deliveryBoyId: deliveryBoy.id,
               expectedAmount: codAmountDue,
-              amountExpected: codAmountDue,
               collectedAmount: codAmountDue,
-              amountCollected: codAmountDue,
               difference: 0,
               collectionStatus: 'COLLECTED',
               collectedAt: now,
               reconciliationStatus: 'PENDING',
-              reconciliationNotes: 'Cash collected by runner at student doorstep upon OTP verification.'
+              notes: 'Cash collected by runner at student doorstep upon OTP verification.'
             }
           }).catch(() => {});
 
