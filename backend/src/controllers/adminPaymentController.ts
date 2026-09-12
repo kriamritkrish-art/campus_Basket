@@ -543,29 +543,37 @@ export class AdminPaymentController {
         return;
       }
 
-      const cleanColId = String(targetId).trim();
-      const directOrderId = cleanColId.replace(/^cod_/, '');
+      const searchKeys: string[] = [];
+      if (collectionId) {
+        const cStr = String(collectionId).trim();
+        searchKeys.push(cStr);
+        searchKeys.push(cStr.replace(/^cod_/, ''));
+        searchKeys.push(`cod_${cStr}`);
+      }
+      if (orderId) {
+        const oStr = String(orderId).trim();
+        searchKeys.push(oStr);
+        searchKeys.push(oStr.replace(/^cod_/, ''));
+        searchKeys.push(`cod_${oStr}`);
+      }
+      const uniqueKeys = Array.from(new Set(searchKeys.filter(Boolean)));
 
       let existing = await (prisma as any).cODCollection.findFirst({
         where: {
-          OR: [
-            { id: cleanColId },
-            { id: `cod_${cleanColId}` },
-            { orderId: cleanColId },
-            { orderId: directOrderId },
-            { collectionNumber: cleanColId }
-          ]
+          OR: uniqueKeys.flatMap(k => [
+            { id: k },
+            { orderId: k },
+            { collectionNumber: k }
+          ])
         }
       });
 
       let order = await (prisma as any).order.findFirst({
         where: {
-          OR: [
-            { id: cleanColId },
-            { id: directOrderId },
-            { orderNumber: cleanColId },
-            { orderNumber: directOrderId }
-          ]
+          OR: uniqueKeys.flatMap(k => [
+            { id: k },
+            { orderNumber: k }
+          ])
         }
       });
 
@@ -662,7 +670,7 @@ export class AdminPaymentController {
         });
       } else {
         existing = await (prisma as any).cODCollection.update({
-          where: { id: existing.id },
+          where: { id: existing.id, orderId: targetOrderId },
           data: {
             expectedAmount,
             amountExpected: expectedAmount,
@@ -886,7 +894,7 @@ export class AdminPaymentController {
 
         if (codEntry) {
           await (prisma as any).cODCollection.update({
-            where: { id: codEntry.id },
+            where: { id: codEntry.id, orderId: order.id },
             data: {
               reconciliationStatus: 'RECONCILED',
               collectionStatus: 'COLLECTED',
@@ -1070,6 +1078,10 @@ export class AdminPaymentController {
         }
       }
 
+      const targetRunner = targetRunnerId ? (deliveryBoys.find((d: any) => d.id === targetRunnerId || d.userId === targetRunnerId) || runnerById.get(targetRunnerId)) : null;
+      const targetCleanPhone = targetRunner?.phone || targetRunner?.mobileNumber || targetRunner?.user?.phone ? String(targetRunner.phone || targetRunner.mobileNumber || targetRunner.user?.phone).replace(/\D/g, '') : '';
+      const targetName = String(targetRunner?.fullName || targetRunner?.name || '').trim().toLowerCase();
+
       const operationalRecords: any[] = [];
 
       for (const ord of orders) {
@@ -1078,20 +1090,38 @@ export class AdminPaymentController {
         const linkedReturn = ord.returnRequest || returnByOrderId.get(ord.id) || returnByOrderId.get(ord.orderNumber);
         const codEntry = allCods.find((c: any) => c.orderId === ord.id || c.orderId === ord.orderNumber);
 
-        const assignedDeliveryRunnerId = ord.deliveryBoyId || codEntry?.deliveryBoyId || null;
-        const deliveryRunner = assignedDeliveryRunnerId ? runnerById.get(assignedDeliveryRunnerId) : null;
+        const assignedDeliveryRunnerId = ord.deliveryBoyId || codEntry?.deliveryBoyId || ord.deliveryBoy?.id || null;
+        const deliveryRunner = assignedDeliveryRunnerId ? runnerById.get(assignedDeliveryRunnerId) : (ord.deliveryBoy ? { id: ord.deliveryBoy.id, name: ord.deliveryBoy.fullName, fullName: ord.deliveryBoy.fullName, phone: ord.deliveryBoy.mobileNumber } : null);
         const hasDeliveryAssignment = Boolean(assignedDeliveryRunnerId);
 
-        const assignedPickupRunnerId = linkedReturn?.deliveryBoyId || null;
-        const pickupRunner = assignedPickupRunnerId ? runnerById.get(assignedPickupRunnerId) : null;
+        const assignedPickupRunnerId = linkedReturn?.deliveryBoyId || linkedReturn?.deliveryBoy?.id || null;
+        const pickupRunner = assignedPickupRunnerId ? runnerById.get(assignedPickupRunnerId) : (linkedReturn?.deliveryBoy ? { id: linkedReturn.deliveryBoy.id, name: linkedReturn.deliveryBoy.fullName, fullName: linkedReturn.deliveryBoy.fullName, phone: linkedReturn.deliveryBoy.mobileNumber } : null);
         const hasPickupAssignment = Boolean(assignedPickupRunnerId);
 
+        const orderRunnerPhone = String(ord.deliveryBoyPhone || ord.deliveryBoy?.mobileNumber || ord.deliveryBoy?.phone || codEntry?.deliveryBoyPhone || deliveryRunner?.phone || '').replace(/\D/g, '');
+        const orderRunnerName = String(ord.deliveryBoy?.fullName || ord.deliveryBoy?.name || deliveryRunner?.fullName || deliveryRunner?.name || '').trim().toLowerCase();
+
         const matchesDelivery = targetRunnerId
-          ? Boolean(assignedDeliveryRunnerId && targetRunnerIds.has(assignedDeliveryRunnerId))
+          ? Boolean(
+              (assignedDeliveryRunnerId && targetRunnerIds.has(assignedDeliveryRunnerId)) ||
+              (ord.deliveryBoy?.id && targetRunnerIds.has(ord.deliveryBoy.id)) ||
+              (targetCleanPhone && orderRunnerPhone && (targetCleanPhone === orderRunnerPhone || targetCleanPhone.endsWith(orderRunnerPhone) || orderRunnerPhone.endsWith(targetCleanPhone))) ||
+              (assignedDeliveryRunnerId && (assignedDeliveryRunnerId.includes(targetRunnerId) || targetRunnerId.includes(assignedDeliveryRunnerId))) ||
+              (targetName && orderRunnerName && targetName === orderRunnerName && targetName !== 'campus delivery partner' && targetName !== 'unassigned runner')
+            )
           : true;
 
+        const pickupRunnerPhone = String(linkedReturn?.deliveryBoyPhone || linkedReturn?.deliveryBoy?.mobileNumber || linkedReturn?.deliveryBoy?.phone || pickupRunner?.phone || '').replace(/\D/g, '');
+        const pickupRunnerName = String(linkedReturn?.deliveryBoy?.fullName || linkedReturn?.deliveryBoy?.name || pickupRunner?.fullName || pickupRunner?.name || '').trim().toLowerCase();
+
         const matchesPickup = targetRunnerId
-          ? Boolean(assignedPickupRunnerId && targetRunnerIds.has(assignedPickupRunnerId))
+          ? Boolean(
+              (assignedPickupRunnerId && targetRunnerIds.has(assignedPickupRunnerId)) ||
+              (linkedReturn?.deliveryBoy?.id && targetRunnerIds.has(linkedReturn.deliveryBoy.id)) ||
+              (targetCleanPhone && pickupRunnerPhone && (targetCleanPhone === pickupRunnerPhone || targetCleanPhone.endsWith(pickupRunnerPhone) || pickupRunnerPhone.endsWith(targetCleanPhone))) ||
+              (assignedPickupRunnerId && (assignedPickupRunnerId.includes(targetRunnerId) || targetRunnerId.includes(assignedPickupRunnerId))) ||
+              (targetName && pickupRunnerName && targetName === pickupRunnerName && targetName !== 'campus delivery partner' && targetName !== 'unassigned runner')
+            )
           : true;
 
         // If target runner was requested but handled neither delivery nor pickup, skip
@@ -1178,7 +1208,7 @@ export class AdminPaymentController {
           ? (linkedReturn.status === 'COMPLETED' ? 'COMPLETED' : (linkedReturn.status === 'PICKUP_ASSIGNED' ? 'PICKUP' : linkedReturn.status))
           : ord.status;
 
-        const activeRunner = resolvedOrderType === 'PICKUP' ? (pickupRunner || deliveryRunner) : (deliveryRunner || pickupRunner);
+        const activeRunner = resolvedOrderType === 'PICKUP' ? (pickupRunner || deliveryRunner || targetRunner) : (deliveryRunner || pickupRunner || targetRunner);
         const prov = providers.find((p: any) => p.id === ord.providerId) || ord.provider;
 
         const genuineOrderNumber = String(ord.orderNumber || ord.id);

@@ -224,7 +224,10 @@ export default function AdminPaymentsPage() {
           setCodSummary(res.summary);
           setCodDeliveryBoys(res.deliveryBoys || []);
           if (selectedCodRunner) {
-            const updated = (res.deliveryBoys || []).find((b: any) => b.deliveryBoyId === selectedCodRunner.deliveryBoyId);
+            const updated = (res.deliveryBoys || []).find((b: any) => 
+              b.deliveryBoyId === selectedCodRunner.deliveryBoyId || 
+              (b.phone && selectedCodRunner.phone && b.phone === selectedCodRunner.phone)
+            );
             if (updated) setSelectedCodRunner(updated);
           }
         }
@@ -466,11 +469,15 @@ export default function AdminPaymentsPage() {
     if (!selectedCodCollection) return;
     setReconciling(true);
     try {
+      const targetId = selectedCodCollection.id || selectedCodCollection.collectionId;
+      const targetOrderId = selectedCodCollection.orderId || selectedCodCollection.order?.id;
+      const collectedVal = reconcileAmount !== '' ? Number(reconcileAmount) : Number(selectedCodCollection.cashCollectedAmount ?? selectedCodCollection.collectedAmount ?? 0);
+
       const res = await apiRequest('/api/admin/payments/cod/reconcile', {
         method: 'POST',
         body: JSON.stringify({
-          collectionId: selectedCodCollection.id || selectedCodCollection.collectionId,
-          orderId: selectedCodCollection.orderId || selectedCodCollection.order?.id,
+          collectionId: targetId,
+          orderId: targetOrderId,
           amountCollected: reconcileAmount !== '' ? Number(reconcileAmount) : undefined,
           cashCollected: reconcileAmount !== '' ? Number(reconcileAmount) : undefined,
           collectionStatus: reconcileCollectionStatus,
@@ -483,7 +490,39 @@ export default function AdminPaymentsPage() {
         setSelectedCodCollection(null);
         setReconcileAmount('');
         setReconcileNotes('');
-        loadData();
+
+        // Update selected runner state immediately so audit status & badges update without delay
+        setSelectedCodRunner((prev: any) => {
+          if (!prev || !prev.orders) return prev;
+          const updatedOrders = prev.orders.map((o: any) => {
+            const matches = (targetId && (o.id === targetId || o.collectionId === targetId)) ||
+                            (targetOrderId && (o.orderId === targetOrderId || o.order?.id === targetOrderId || o.orderNumber === targetOrderId));
+            if (matches) {
+              return {
+                ...o,
+                collectionStatus: reconcileCollectionStatus,
+                reconciliationStatus: reconcileAuditStatus,
+                collectedAmount: collectedVal,
+                cashCollectedAmount: collectedVal,
+                difference: Math.max(0, Number(o.expectedAmount || o.codAmountDue || 0) - collectedVal)
+              };
+            }
+            return o;
+          });
+          const pendingCount = updatedOrders.filter((o: any) => o.reconciliationStatus !== 'RECONCILED').length;
+          const reconciledCount = updatedOrders.filter((o: any) => o.reconciliationStatus === 'RECONCILED').length;
+          const eligibleCount = updatedOrders.filter((o: any) => o.reconciliationStatus !== 'RECONCILED' && (o.collectionStatus === 'COLLECTED' || Number(o.collectedAmount || 0) > 0)).length;
+          return {
+            ...prev,
+            orders: updatedOrders,
+            pendingOrdersCount: pendingCount,
+            reconciledOrdersCount: reconciledCount,
+            eligibleOrdersCount: eligibleCount,
+            status: pendingCount === 0 ? 'RECONCILED' : (prev.differenceRequiringAttention > 0 ? 'MISMATCH' : (eligibleCount > 0 ? 'READY' : 'PENDING'))
+          };
+        });
+
+        await loadData();
       } else {
         showToast(res.message || 'Reconciliation failed', 'error');
       }
@@ -499,10 +538,12 @@ export default function AdminPaymentsPage() {
     if (!bulkReconcileRunner) return;
     setBulkReconciling(true);
     try {
+      const runnerId = bulkReconcileRunner.deliveryBoyId;
+      const runnerPhone = bulkReconcileRunner.phone;
       const res = await apiRequest('/api/admin/payments/cod/bulk-reconcile', {
         method: 'POST',
         body: JSON.stringify({
-          deliveryBoyId: bulkReconcileRunner.deliveryBoyId,
+          deliveryBoyId: runnerId,
           providerId: codProviderFilter !== 'ALL' ? codProviderFilter : undefined,
           dateRange: codDateFilter !== 'ALL' ? codDateFilter : undefined,
           notes: bulkReconcileNotes || undefined
@@ -513,6 +554,29 @@ export default function AdminPaymentsPage() {
         setShowBulkReconcileModal(false);
         setBulkReconcileRunner(null);
         setBulkReconcileNotes('');
+
+        // Immediately update runner in state to reconciled status
+        setSelectedCodRunner((prev: any) => {
+          if (!prev) return prev;
+          if (prev.deliveryBoyId === runnerId || (runnerPhone && prev.phone === runnerPhone)) {
+            const updatedOrders = (prev.orders || []).map((o: any) => ({
+              ...o,
+              collectionStatus: 'COLLECTED',
+              reconciliationStatus: 'RECONCILED',
+              difference: 0
+            }));
+            return {
+              ...prev,
+              orders: updatedOrders,
+              pendingOrdersCount: 0,
+              reconciledOrdersCount: updatedOrders.length,
+              eligibleOrdersCount: 0,
+              status: 'RECONCILED'
+            };
+          }
+          return prev;
+        });
+
         await loadData();
       } else {
         showToast(res.message || 'Bulk reconciliation failed', 'error');
@@ -566,9 +630,47 @@ export default function AdminPaymentsPage() {
     });
   }, [selectedCodRunner, codSearchQuery, codReconciliationStatusFilter, codCollectionStatusFilter, codProviderFilter]);
 
+  // Effective Operational Orders (Tab 2) - seamless fallback to selected runner orders if operational orders array is empty
+  const effectiveOperationalOrders = useMemo(() => {
+    if (operationalOrders && operationalOrders.length > 0) {
+      return operationalOrders;
+    }
+    if (selectedCodRunner && selectedCodRunner.orders && selectedCodRunner.orders.length > 0) {
+      return selectedCodRunner.orders.map((o: any) => ({
+        id: o.orderId || o.id || `ord_${Math.random()}`,
+        orderNumber: o.orderNumber || o.order?.orderNumber || o.orderId || 'NIT-ORD',
+        orderType: o.orderType || 'DELIVERY',
+        payment: o.payment || (o.paymentMethod === 'COD' || Number(o.expectedAmount || 0) > 0 ? 'COD' : 'ONLINE'),
+        paymentMethod: o.paymentMethod || 'COD',
+        orderAmount: o.orderAmount ?? o.expectedAmount ?? o.order?.totalAmount ?? 0,
+        totalAmount: o.orderAmount ?? o.expectedAmount ?? o.order?.totalAmount ?? 0,
+        orderStatus: o.orderStatus || o.order?.status || 'DELIVERED',
+        deliveryBoyId: selectedCodRunner.deliveryBoyId,
+        deliveryBoyName: selectedCodRunner.name || selectedCodRunner.deliveryBoyName || 'Campus Runner',
+        deliveryBoyPhone: selectedCodRunner.phone || selectedCodRunner.contactPhone,
+        phone: o.studentPhone || o.order?.user?.phone || o.phone || selectedCodRunner.phone,
+        student: {
+          fullName: o.customerName || o.student || o.order?.user?.fullName || 'Campus Student',
+          name: o.customerName || o.student || o.order?.user?.fullName || 'Campus Student',
+          phone: o.studentPhone || o.order?.user?.phone || o.phone || '',
+          hallName: o.hallName || o.order?.user?.hallName || 'Campus Hostel',
+          roomNumber: o.roomNumber || o.order?.user?.roomNumber || ''
+        },
+        provider: {
+          id: o.providerId || o.provider?.id,
+          name: o.providerName || o.provider?.businessName || o.provider?.name || 'Campus Provider'
+        },
+        providerName: o.providerName || o.provider?.businessName || o.provider?.name || 'Campus Provider',
+        items: o.items || (o.product ? [{ name: o.product, quantity: 1 }] : []),
+        orderDate: o.collectedAt || o.createdAt || o.order?.createdAt || new Date().toISOString()
+      }));
+    }
+    return [];
+  }, [operationalOrders, selectedCodRunner]);
+
   // Filtered Delivery Boy Operational Orders (Tab 2)
   const filteredOperationalOrders = useMemo(() => {
-    return operationalOrders.filter((o: any) => {
+    return effectiveOperationalOrders.filter((o: any) => {
       // 1. Order Type
       if (operationalTypeFilter !== 'ALL') {
         if (operationalTypeFilter === 'DELIVERY') {
@@ -628,7 +730,7 @@ export default function AdminPaymentsPage() {
       return true;
     });
   }, [
-    operationalOrders,
+    effectiveOperationalOrders,
     operationalTypeFilter,
     operationalPaymentFilter,
     operationalStatusFilter,
@@ -1797,17 +1899,26 @@ export default function AdminPaymentsPage() {
                             </td>
                             <td className="py-3.5 px-4 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                {runner.eligibleOrdersCount > 0 && (
+                                {runner.eligibleOrdersCount > 0 ? (
                                   <button
                                     onClick={() => {
                                       setBulkReconcileRunner(runner);
                                       setShowBulkReconcileModal(true);
                                     }}
-                                    className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                                    className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
                                     title="Quick Bulk Reconcile"
                                   >
                                     <CheckCheck className="w-3.5 h-3.5" />
                                     Bulk ({runner.eligibleOrdersCount})
+                                  </button>
+                                ) : (
+                                  <button
+                                    disabled
+                                    className="px-2.5 py-1.5 bg-gray-100 text-gray-400 border border-gray-200 text-xs font-bold rounded-lg cursor-not-allowed flex items-center gap-1 opacity-70"
+                                    title={runner.codOrdersCount > 0 && runner.pendingOrdersCount === 0 ? "Bulk reconciliation already completed" : "No eligible orders for bulk reconciliation"}
+                                  >
+                                    <CheckCheck className="w-3.5 h-3.5" />
+                                    Bulk ({runner.eligibleOrdersCount || 0})
                                   </button>
                                 )}
                                 <button
@@ -1979,31 +2090,31 @@ export default function AdminPaymentsPage() {
                     <div className="bg-gray-50/90 p-3.5 rounded-xl border border-gray-200">
                       <span className="text-[10px] font-bold text-gray-500 uppercase block">Total Assigned Orders</span>
                       <span className="text-lg font-black text-gray-900 mt-1 block">
-                        {operationalOrders.length}
+                        {effectiveOperationalOrders.length}
                       </span>
                     </div>
                     <div className="bg-blue-50/60 p-3.5 rounded-xl border border-blue-200">
                       <span className="text-[10px] font-bold text-blue-800 uppercase block">Deliveries</span>
                       <span className="text-lg font-black text-blue-700 mt-1 block">
-                        {operationalOrders.filter((o: any) => o.orderType === 'DELIVERY').length}
+                        {effectiveOperationalOrders.filter((o: any) => o.orderType === 'DELIVERY').length}
                       </span>
                     </div>
                     <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200">
                       <span className="text-[10px] font-bold text-amber-800 uppercase block">Pickups</span>
                       <span className="text-lg font-black text-amber-700 mt-1 block">
-                        {operationalOrders.filter((o: any) => o.orderType === 'PICKUP').length}
+                        {effectiveOperationalOrders.filter((o: any) => o.orderType === 'PICKUP').length}
                       </span>
                     </div>
                     <div className="bg-emerald-50/60 p-3.5 rounded-xl border border-emerald-200">
                       <span className="text-[10px] font-bold text-emerald-800 uppercase block">COD Orders</span>
                       <span className="text-lg font-black text-emerald-700 mt-1 block">
-                        {operationalOrders.filter((o: any) => o.payment === 'COD').length}
+                        {effectiveOperationalOrders.filter((o: any) => o.payment === 'COD').length}
                       </span>
                     </div>
                     <div className="bg-indigo-50/60 p-3.5 rounded-xl border border-indigo-200">
                       <span className="text-[10px] font-bold text-indigo-800 uppercase block">Online Orders</span>
                       <span className="text-lg font-black text-indigo-700 mt-1 block">
-                        {operationalOrders.filter((o: any) => o.payment === 'ONLINE').length}
+                        {effectiveOperationalOrders.filter((o: any) => o.payment === 'ONLINE').length}
                       </span>
                     </div>
                   </div>
@@ -2040,7 +2151,7 @@ export default function AdminPaymentsPage() {
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
                       runnerSubTab === 'ALL_ORDERS' || !selectedCodRunner ? 'bg-indigo-200 text-indigo-900' : 'bg-gray-200 text-gray-700'
                     }`}>
-                      {operationalOrders.length}
+                      {effectiveOperationalOrders.length}
                     </span>
                   </button>
                 </div>
@@ -2313,7 +2424,7 @@ export default function AdminPaymentsPage() {
                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}
                       >
-                        ALL ({operationalOrders.length})
+                        ALL ({effectiveOperationalOrders.length})
                       </button>
                       <button
                         onClick={() => setOperationalTypeFilter('DELIVERY')}
@@ -2324,7 +2435,7 @@ export default function AdminPaymentsPage() {
                         }`}
                       >
                         <Truck className="w-3.5 h-3.5" />
-                        DELIVERY ({operationalOrders.filter((o: any) => o.orderType === 'DELIVERY').length})
+                        DELIVERY ({effectiveOperationalOrders.filter((o: any) => o.orderType === 'DELIVERY').length})
                       </button>
                       <button
                         onClick={() => setOperationalTypeFilter('PICKUP')}
@@ -2335,12 +2446,12 @@ export default function AdminPaymentsPage() {
                         }`}
                       >
                         <Package className="w-3.5 h-3.5" />
-                        PICKUP ({operationalOrders.filter((o: any) => o.orderType === 'PICKUP').length})
+                        PICKUP ({effectiveOperationalOrders.filter((o: any) => o.orderType === 'PICKUP').length})
                       </button>
                     </div>
 
                     <div className="text-xs text-gray-500 font-semibold">
-                      Showing <strong className="text-gray-900">{filteredOperationalOrders.length}</strong> of {operationalOrders.length} student orders
+                      Showing <strong className="text-gray-900">{filteredOperationalOrders.length}</strong> of {effectiveOperationalOrders.length} student orders
                     </div>
                   </div>
 
@@ -2366,11 +2477,15 @@ export default function AdminPaymentsPage() {
                         className="w-full py-1.5 px-2.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                       >
                         <option value="ALL">All Delivery Boys</option>
-                        {codDeliveryBoys.map((r: any) => (
-                          <option key={r.deliveryBoyId} value={r.deliveryBoyId}>
-                            {r?.name || r?.deliveryBoyName || r?.fullName || 'Campus Runner'}
-                          </option>
-                        ))}
+                        {codDeliveryBoys.map((r: any) => {
+                          const rName = r?.name || r?.deliveryBoyName || r?.fullName || 'Campus Runner';
+                          const rPhone = r?.phone || r?.contactPhone || '';
+                          return (
+                            <option key={r.deliveryBoyId} value={r.deliveryBoyId}>
+                              {rName} {rPhone ? `(${rPhone})` : ''}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
 

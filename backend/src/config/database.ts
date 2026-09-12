@@ -2070,7 +2070,7 @@ const fallbackHandlers: Record<string, any> = {
       let cols = [...persistentCodCollections];
       if (args?.where?.deliveryBoyId) cols = cols.filter(c => c.deliveryBoyId === args.where.deliveryBoyId);
       if (args?.where?.reconciliationStatus) cols = cols.filter(c => c.reconciliationStatus === args.where.reconciliationStatus);
-      if (args?.where?.orderId) cols = cols.filter(c => c.orderId === args.where.orderId);
+      if (args?.where?.orderId) cols = cols.filter(c => c.orderId === args.where.orderId || c.orderId === `cod_${args.where.orderId}` || `cod_${c.orderId}` === args.where.orderId);
       return JSON.parse(JSON.stringify(cols.map(c => {
         const ord = persistentOrders.find(o => o.id === c.orderId || o.orderNumber === c.orderId);
         const dbUser = fallbackUsers.find(u => u.deliveryBoy?.id === c.deliveryBoyId);
@@ -2082,7 +2082,31 @@ const fallbackHandlers: Record<string, any> = {
       })));
     },
     findUnique: async (args: any) => {
-      const c = persistentCodCollections.find(item => item.id === args.where.id || item.orderId === args.where.orderId || item.collectionNumber === args.where.collectionNumber || (args.where.id && item.id === `cod_${args.where.id}`));
+      const orList: any[] = args?.where?.OR;
+      let c: any = null;
+      if (Array.isArray(orList) && orList.length > 0) {
+        c = persistentCodCollections.find(item => {
+          return orList.some(cond => {
+            const id = cond?.id;
+            const orderId = cond?.orderId;
+            const colNum = cond?.collectionNumber;
+            return (
+              (id && (item.id === id || item.id === `cod_${id}` || `cod_${item.id}` === id || item.orderId === id || item.orderId === `cod_${id}` || `cod_${item.orderId}` === id)) ||
+              (orderId && (item.orderId === orderId || item.orderId === `cod_${orderId}` || `cod_${item.orderId}` === orderId || item.id === orderId || item.id === `cod_${orderId}`)) ||
+              (colNum && (item.collectionNumber === colNum || item.id === colNum))
+            );
+          });
+        });
+      } else {
+        const id = args?.where?.id;
+        const orderId = args?.where?.orderId;
+        const colNum = args?.where?.collectionNumber;
+        c = persistentCodCollections.find(item =>
+          (id && (item.id === id || item.id === `cod_${id}` || `cod_${item.id}` === id || item.orderId === id || item.orderId === `cod_${id}` || `cod_${item.orderId}` === id)) ||
+          (orderId && (item.orderId === orderId || item.orderId === `cod_${orderId}` || `cod_${item.orderId}` === orderId || item.id === orderId || item.id === `cod_${orderId}`)) ||
+          (colNum && (item.collectionNumber === colNum || item.id === colNum))
+        );
+      }
       if (!c) return null;
       const ord = persistentOrders.find(o => o.id === c.orderId || o.orderNumber === c.orderId);
       const dbUser = fallbackUsers.find(u => u.deliveryBoy?.id === c.deliveryBoyId);
@@ -2093,11 +2117,35 @@ const fallbackHandlers: Record<string, any> = {
       }));
     },
     findFirst: async (args: any) => {
-      const c = persistentCodCollections.find(item => 
-        (args.where?.id && (item.id === args.where.id || item.id === `cod_${args.where.id}`)) ||
-        (args.where?.orderId && item.orderId === args.where.orderId) ||
-        (args.where?.deliveryBoyId && item.deliveryBoyId === args.where.deliveryBoyId)
-      );
+      const orList: any[] = args?.where?.OR;
+      let c: any = null;
+      if (Array.isArray(orList) && orList.length > 0) {
+        c = persistentCodCollections.find(item => {
+          return orList.some(cond => {
+            const id = cond?.id;
+            const orderId = cond?.orderId;
+            const colNum = cond?.collectionNumber;
+            const deliveryBoyId = cond?.deliveryBoyId;
+            return (
+              (id && (item.id === id || item.id === `cod_${id}` || `cod_${item.id}` === id || item.orderId === id || item.orderId === `cod_${id}` || `cod_${item.orderId}` === id)) ||
+              (orderId && (item.orderId === orderId || item.orderId === `cod_${orderId}` || `cod_${item.orderId}` === orderId || item.id === orderId || item.id === `cod_${orderId}`)) ||
+              (colNum && (item.collectionNumber === colNum || item.id === colNum)) ||
+              (deliveryBoyId && item.deliveryBoyId === deliveryBoyId)
+            );
+          });
+        });
+      } else {
+        const id = args?.where?.id;
+        const orderId = args?.where?.orderId;
+        const deliveryBoyId = args?.where?.deliveryBoyId;
+        const colNum = args?.where?.collectionNumber;
+        c = persistentCodCollections.find(item => 
+          (id && (item.id === id || item.id === `cod_${id}` || `cod_${item.id}` === id || item.orderId === id || item.orderId === `cod_${id}` || `cod_${item.orderId}` === id)) ||
+          (orderId && (item.orderId === orderId || item.orderId === `cod_${orderId}` || `cod_${item.orderId}` === orderId || item.id === orderId || item.id === `cod_${orderId}`)) ||
+          (deliveryBoyId && item.deliveryBoyId === deliveryBoyId) ||
+          (colNum && (item.collectionNumber === colNum || item.id === colNum))
+        );
+      }
       if (!c) return null;
       const ord = persistentOrders.find(o => o.id === c.orderId || o.orderNumber === c.orderId);
       const dbUser = fallbackUsers.find(u => u.deliveryBoy?.id === c.deliveryBoyId);
@@ -2114,18 +2162,28 @@ const fallbackHandlers: Record<string, any> = {
       return JSON.parse(JSON.stringify(col));
     },
     update: async (args: any) => {
-      const c = persistentCodCollections.find(item => item.id === args.where.id || item.orderId === args.where.orderId || (args.where.id && item.id === `cod_${args.where.id}`));
-      if (c) {
-        Object.assign(c, args.data, { updatedAt: new Date() });
+      const id = args.where?.id;
+      const orderId = args.where?.orderId;
+      const matchingItems = persistentCodCollections.filter(item =>
+        (id && (item.id === id || item.id === `cod_${id}` || `cod_${item.id}` === id || item.orderId === id || item.orderId === `cod_${id}` || `cod_${item.orderId}` === id)) ||
+        (orderId && (item.orderId === orderId || item.orderId === `cod_${orderId}` || `cod_${item.orderId}` === orderId || item.id === orderId || item.id === `cod_${orderId}`))
+      );
+      if (matchingItems.length > 0) {
+        matchingItems.forEach(c => {
+          Object.assign(c, args.data, { updatedAt: new Date() });
+        });
         saveList('mock_cod_collections.json', persistentCodCollections);
-        return JSON.parse(JSON.stringify(c));
+        return JSON.parse(JSON.stringify(matchingItems[0]));
       }
       return args.data;
     },
     upsert: async (args: any) => {
       const orderId = args.where?.orderId || args.create?.orderId;
       const id = args.where?.id;
-      let existing = persistentCodCollections.find(item => (orderId && item.orderId === orderId) || (id && item.id === id) || (id && item.id === `cod_${id}`));
+      let existing = persistentCodCollections.find(item => 
+        (orderId && (item.orderId === orderId || item.orderId === `cod_${orderId}` || `cod_${item.orderId}` === orderId || item.id === orderId || item.id === `cod_${orderId}`)) || 
+        (id && (item.id === id || item.id === `cod_${id}` || `cod_${item.id}` === id || item.orderId === id))
+      );
       if (existing) {
         Object.assign(existing, args.update, { updatedAt: new Date() });
         saveList('mock_cod_collections.json', persistentCodCollections);
