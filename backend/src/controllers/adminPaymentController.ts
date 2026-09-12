@@ -410,7 +410,7 @@ export class AdminPaymentController {
       // Exclude pure online paid orders with codAmountDue === 0 and no COD entry
       let codRows = normalizedAll.filter((row) => {
         // If order has a COD collection record or paymentMethod is COD / CASH_ON_DELIVERY with codAmountDue > 0
-        const isCodMethod = row.paymentMethod === 'CASH_ON_DELIVERY' || row.paymentMethod === 'COD';
+        const isCodMethod = row.paymentMethod === 'CASH_ON_DELIVERY' || row.paymentMethod === 'COD' || String(row.paymentMethod || '').toUpperCase().includes('COD') || String(row.paymentMethod || '').toUpperCase().includes('CASH');
         const hasCodRecord = codList.some((c: any) => c.orderId === row.orderId || c.orderId === row.orderNumber);
         return (isCodMethod || hasCodRecord) && (row.codAmountDue > 0 || hasCodRecord);
       });
@@ -495,8 +495,8 @@ export class AdminPaymentController {
       }
 
       // 8. Compute top-level summary cards
-      // Only include delivered customer orders with collectible COD
-      const eligibleDeliveredCodOrders = codRows.filter((c) => c.isDelivered && c.codAmountDue > 0 && c.orderType === 'CUSTOMER_ORDER');
+      // Only include delivered customer orders with collectible COD (excluding only non-cash laundry pickups)
+      const eligibleDeliveredCodOrders = codRows.filter((c) => c.isDelivered && c.codAmountDue > 0 && c.deliveryStatus !== 'CANCELLED' && c.orderType !== 'LAUNDRY_PICKUP');
       const totalCodOrders = eligibleDeliveredCodOrders.length;
       const totalExpectedCod = CodReconciliationService.round(eligibleDeliveredCodOrders.reduce((s, c) => s + c.codAmountDue, 0));
       const totalCollectedCod = CodReconciliationService.round(eligibleDeliveredCodOrders.reduce((s, c) => s + c.collectedAmount, 0));

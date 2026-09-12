@@ -2899,9 +2899,9 @@ export const prisma = new Proxy(rawPrisma as any, {
                   } catch (e) {}
                 }
 
-                // If mutation on returnRequest or order, also mirror to fallback persistent storage
+                // If mutation on returnRequest, order, or cODCollection, also mirror to fallback persistent storage
                 if (
-                  (modelName === 'returnRequest' || modelName === 'order') &&
+                  (modelName === 'returnRequest' || modelName === 'order' || modelName === 'cODCollection') &&
                   (methodKey === 'create' || methodKey === 'update' || methodKey === 'upsert') &&
                   typeof fallbackModel[methodKey] === 'function'
                 ) {

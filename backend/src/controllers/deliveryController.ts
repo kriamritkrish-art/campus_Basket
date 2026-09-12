@@ -948,8 +948,8 @@ export class DeliveryController {
         const advancePaid = Math.round((Number(order.advancePaidAmount) || 0) * 100) / 100;
         const isPureOnline = (order.paymentMethod as string) === 'RAZORPAY' || (order.paymentMethod as string) === 'ONLINE';
         const codAmountDue = isPureOnline ? 0 : Math.max(0, Math.round((orderTotal - advancePaid) * 100) / 100);
-        const orderType = CodReconciliationService.determineOrderType(order);
-        const hasCodCash = codAmountDue > 0 && orderType === 'CUSTOMER_ORDER';
+        const isCodPayment = (order.paymentMethod as string) === 'CASH_ON_DELIVERY' || (order.paymentMethod as string) === 'COD' || String(order.paymentMethod || '').toUpperCase().includes('COD') || String(order.paymentMethod || '').toUpperCase().includes('CASH');
+        const hasCodCash = codAmountDue > 0 && isCodPayment && !(order as any).returnRequest;
 
         const updatedOrder = await tx.order.update({
           where: { id: order.id },

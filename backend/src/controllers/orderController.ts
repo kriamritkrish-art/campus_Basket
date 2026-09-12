@@ -476,7 +476,8 @@ export class OrderController {
         }
 
         // Create COD collection entry if cash on delivery
-        if (data.paymentMethod === 'CASH_ON_DELIVERY') {
+        const isCodOrder = (data.paymentMethod as string) === 'CASH_ON_DELIVERY' || (data.paymentMethod as string) === 'COD' || String(data.paymentMethod || '').toUpperCase().includes('COD') || String(data.paymentMethod || '').toUpperCase().includes('CASH');
+        if (isCodOrder) {
           const codColNum = `COD-${Date.now().toString().slice(-6)}`;
           await (tx as any).cODCollection.create({
             data: {

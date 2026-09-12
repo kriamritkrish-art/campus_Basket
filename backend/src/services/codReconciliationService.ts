@@ -91,7 +91,8 @@ export class CodReconciliationService {
     if (!order) return false;
     const num = String(order.orderNumber || order.id || '').toUpperCase().trim();
     if (!num || num === 'N/A' || num === 'NULL' || num === 'UNDEFINED') return false;
-    if (num.startsWith('TEST-ORDER') || num.startsWith('TEST_') || num.startsWith('DEMO-') || num.startsWith('DUMMY-')) {
+    // Only filter out test orders if they are not delivered and have no OTP verification
+    if ((num.startsWith('TEST-ORDER') || num.startsWith('TEST_') || num.startsWith('DEMO-') || num.startsWith('DUMMY-')) && order.status !== 'DELIVERED' && !order.deliveryOtpVerified) {
       return false;
     }
     return true;
@@ -146,14 +147,15 @@ export class CodReconciliationService {
     // COD Amount Due = Max(0, Order Total - Online Paid)
     const codAmountDue = this.round(Math.max(0, orderTotal - onlinePaid));
 
-    // Order status and delivery verification
-    const isDelivered = order.status === 'DELIVERED';
+    // Order status and delivery verification (supports DELIVERED, COMPLETED, deliveredAt, or OTP verified)
+    const isDelivered = order.status === 'DELIVERED' || order.status === 'COMPLETED' || Boolean(order.deliveredAt) || Boolean(order.deliveryOtpVerified);
     const isOtpVerified = Boolean(order.deliveryOtpVerified || isDelivered);
     const isCancelled = order.status === 'CANCELLED' || order.status === 'REFUNDED';
     const orderType = this.determineOrderType(order);
 
-    // COD Eligibility: Must be delivered, not cancelled, COD Due > 0, and not a pickup/return order
-    const isEligibleOrder = isDelivered && !isCancelled && codAmountDue > 0 && orderType === 'CUSTOMER_ORDER';
+    // COD Eligibility: Must be delivered, not cancelled, COD Due > 0, and not a non-cash laundry pickup
+    const isCod = order.paymentMethod === 'CASH_ON_DELIVERY' || order.paymentMethod === 'COD' || String(order.paymentMethod || '').toUpperCase().includes('COD') || String(order.paymentMethod || '').toUpperCase().includes('CASH');
+    const isEligibleOrder = isDelivered && !isCancelled && codAmountDue > 0 && isCod && orderType !== 'LAUNDRY_PICKUP';
 
     // Delivery Boy resolution - robust multi-attribute matching (ID, user ID, phone, name)
     const assignedDeliveryBoyId = order.deliveryBoyId || codEntry?.deliveryBoyId || order.deliveryBoy?.id || null;
@@ -281,7 +283,7 @@ export class CodReconciliationService {
       reconciledBy: codEntry?.reconciledBy || null,
       reconciledAt: codEntry?.reconciledAt ? new Date(codEntry.reconciledAt).toISOString() : null,
       reconciliationNotes: codEntry?.reconciliationNotes || codEntry?.notes || null,
-      deliveryBoyId: assignedDeliveryBoyId,
+      deliveryBoyId: runner ? runner.id : assignedDeliveryBoyId,
       deliveryBoy: runner ? {
         id: runner.id,
         fullName: runner.fullName,
@@ -341,8 +343,8 @@ export class CodReconciliationService {
       return false;
     });
 
-    // Only count customer orders eligible for COD (delivered with COD due > 0)
-    const eligibleDeliveredOrders = boyOrders.filter((o) => o.isDelivered && o.codAmountDue > 0 && o.orderType === 'CUSTOMER_ORDER');
+    // Only count customer orders eligible for COD (delivered with COD due > 0 and not non-cash pickup)
+    const eligibleDeliveredOrders = boyOrders.filter((o) => o.isDelivered && o.codAmountDue > 0 && o.deliveryStatus !== 'CANCELLED' && o.orderType !== 'LAUNDRY_PICKUP');
 
     const expectedCod = this.round(eligibleDeliveredOrders.reduce((sum, o) => sum + o.codAmountDue, 0));
     const cashCollected = this.round(eligibleDeliveredOrders.reduce((sum, o) => sum + o.collectedAmount, 0));
