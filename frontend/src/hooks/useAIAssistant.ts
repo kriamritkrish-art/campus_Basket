@@ -117,8 +117,6 @@ export function useAIAssistant() {
   >('NONE');
 
   const [pendingCancelOrderId, setPendingCancelOrderId] = useState<string | null>(null);
-  const [cachedOrders, setCachedOrders] = useState<any[]>([]);
-  const [cachedLaundryOrders, setCachedLaundryOrders] = useState<any[]>([]);
 
   const [liveTranscript, setLiveTranscript] = useState<string>('');
   const [micSupported, setMicSupported] = useState<boolean>(true);
@@ -128,6 +126,17 @@ export function useAIAssistant() {
   const isSpeakingRef = useRef<boolean>(false);
   const lastTranscriptRef = useRef<string>('');
   const handleStudentInputRef = useRef<(text: string) => Promise<void>>(async () => {});
+
+  const isOpenRef = useRef<boolean>(isOpen);
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
+
+  const isVoiceSessionActiveRef = useRef<boolean>(false);
+  const isEndingRef = useRef<boolean>(false);
+  const startListeningRef = useRef<() => void>(() => {});
+  const displayedProductsIndexRef = useRef<number>(0);
+  const lastCategoryOrPoolRef = useRef<Product[]>([]);
 
   // Student first name extraction from logged in session
   const studentFirstName =
@@ -168,12 +177,21 @@ export function useAIAssistant() {
   const [allProducts, setAllProducts] = useState<Product[]>(FALLBACK_STORE_PRODUCTS);
   const allProductsRef = useRef<Product[]>(FALLBACK_STORE_PRODUCTS);
 
+  // Dynamic categories discovered from database
+  const [availableCategories, setAvailableCategories] = useState<any[]>([]);
+
+  // Cached student records for zero-latency read-only voice replies
+  const [cachedOrders, setCachedOrders] = useState<any[]>([]);
+  const [cachedLaundryOrders, setCachedLaundryOrders] = useState<any[]>([]);
+  const [cachedTickets, setCachedTickets] = useState<any[]>([]);
+  const [cachedRefundAccount, setCachedRefundAccount] = useState<any | null>(null);
+
   // Sync ref whenever allProducts updates
   useEffect(() => {
     allProductsRef.current = allProducts;
   }, [allProducts]);
 
-  // Load live products from backend /api/products on mount and cache locally
+  // Dynamic discovery: Load live products and categories from database on mount
   useEffect(() => {
     let isMounted = true;
     apiRequest('/api/products?limit=100')
@@ -190,14 +208,25 @@ export function useAIAssistant() {
       })
       .catch(() => {});
 
+    // Dynamically discover all existing and future categories created in database
+    apiRequest('/api/products/categories')
+      .then((res) => {
+        if (!isMounted) return;
+        if (res && res.success && Array.isArray(res.categories)) {
+          setAvailableCategories(res.categories);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // Prefetch student orders in background (zero voice latency when student asks)
+  // Prefetch student read-only records in background (Orders, Laundry, Tickets, Refund Account)
   useEffect(() => {
     if (isAuthenticated && role === 'STUDENT') {
+      // 1. Food and store orders
       apiRequest('/api/orders')
         .then((res) => {
           if (res && res.success && Array.isArray(res.orders)) {
@@ -206,10 +235,29 @@ export function useAIAssistant() {
         })
         .catch(() => {});
 
+      // 2. Laundry facility bookings
       apiRequest('/api/laundry/orders')
         .then((res) => {
           if (res && res.success && Array.isArray(res.orders)) {
             setCachedLaundryOrders(res.orders);
+          }
+        })
+        .catch(() => {});
+
+      // 3. Student support tickets and complaints
+      apiRequest('/api/campus/support/tickets')
+        .then((res) => {
+          if (res && (Array.isArray(res.tickets) || Array.isArray(res.data))) {
+            setCachedTickets(res.tickets || res.data || []);
+          }
+        })
+        .catch(() => {});
+
+      // 4. Student refund account details
+      apiRequest('/api/orders/refund-account')
+        .then((res) => {
+          if (res && res.success && res.data) {
+            setCachedRefundAccount(res.data);
           }
         })
         .catch(() => {});
@@ -330,6 +378,24 @@ export function useAIAssistant() {
           isSpeakingRef.current = false;
           setState('IDLE');
           setStatusMessage('Ready');
+
+          // Continuous conversation loop: automatically reactivate microphone hands-free
+          if (
+            isVoiceSessionActiveRef.current &&
+            isOpenRef.current &&
+            !isEndingRef.current
+          ) {
+            setTimeout(() => {
+              if (
+                isVoiceSessionActiveRef.current &&
+                isOpenRef.current &&
+                !isSpeakingRef.current &&
+                !isEndingRef.current
+              ) {
+                startListeningRef.current();
+              }
+            }, 350);
+          }
         };
 
         utterance.onerror = () => {
@@ -483,9 +549,10 @@ export function useAIAssistant() {
   useEffect(() => {
     if (isOpen && !hasGreetedRef.current) {
       hasGreetedRef.current = true;
+      isVoiceSessionActiveRef.current = true;
       const greeting = studentFirstName
-        ? `Hello ${studentFirstName} 👋 How can I help you today?`
-        : `Hello 👋 How can I help you today?`;
+        ? `Hello ${studentFirstName}, how can I help you?`
+        : `Hello, how can I help you?`;
 
       setMessages([
         {
@@ -501,6 +568,7 @@ export function useAIAssistant() {
 
   // Stop Voice Recording or Speaking
   const stopListening = useCallback(() => {
+    isVoiceSessionActiveRef.current = false;
     if (recognitionRef.current) {
       try {
         recognitionRef.current.abort();
@@ -520,6 +588,7 @@ export function useAIAssistant() {
   // Start Voice Recording with mic permission check and interim transcription
   const startListening = useCallback(async () => {
     if (typeof window === 'undefined') return;
+    isVoiceSessionActiveRef.current = true;
 
     // 1. Immediately cancel active TTS output so microphone doesn't capture assistant's voice
     if (window.speechSynthesis) {
@@ -673,6 +742,11 @@ export function useAIAssistant() {
       setState('IDLE');
     }
   }, [addAiMessage]);
+
+  // Keep startListeningRef synchronized
+  useEffect(() => {
+    startListeningRef.current = startListening;
+  }, [startListening]);
 
   // Main Conversational NLU Logic (UI-FIRST, Multi-Facility Support)
   const handleStudentInput = async (inputText: string) => {
@@ -828,7 +902,167 @@ export function useAIAssistant() {
     }
 
     // ==========================================
-    // 2. LAUNDRY SUPPORT (FULL FACILITY CONTROL)
+    // 2. STOP / GRACEFUL EXIT (WHEN STUDENT SAYS NO OR STOP)
+    // ==========================================
+    const EXIT_WORDS = [
+      'no',
+      'nothing',
+      "that's all",
+      'that is all',
+      "i'm done",
+      'im done',
+      'stop',
+      'bye',
+      'goodbye',
+      'no more',
+      "thank you that's all",
+      "thank you, that's all",
+      'thanks that is all',
+      'thanks that is it',
+      "that's it",
+      'that is it',
+      'no thanks',
+      'no thank you',
+      'exit',
+      'quit',
+    ];
+
+    const cleanInput = lower.replace(/[.,!?;:]/g, '').trim();
+    const isExplicitExit =
+      awaitingContext !== 'CANCEL_CONFIRM' &&
+      awaitingContext !== 'CHECKOUT_CONFIRM' &&
+      EXIT_WORDS.some(
+        (w) => cleanInput === w || cleanInput.startsWith(w + ' ') || cleanInput.endsWith(' ' + w)
+      );
+
+    if (isExplicitExit) {
+      isVoiceSessionActiveRef.current = false;
+      isEndingRef.current = true;
+      stopListening();
+      setAwaitingContext('NONE');
+      const exitReply = studentName
+        ? `Sure, ${studentName}. I'm here whenever you need me.`
+        : `Sure. I'm here whenever you need me.`;
+      addAiMessage(exitReply);
+      setTimeout(() => {
+        isEndingRef.current = false;
+      }, 3000);
+      return;
+    }
+
+    const currentPool = allProductsRef.current.length > 0 ? allProductsRef.current : FALLBACK_STORE_PRODUCTS;
+
+    // ==========================================
+    // 3. CHEAPEST ITEM LOOKUP (CONTINUOUS CONTEXT)
+    // ==========================================
+    if (lower.includes('cheapest') || lower.includes('lowest price') || lower.includes('most affordable')) {
+      const pool =
+        displayedProducts.length > 0
+          ? displayedProducts
+          : lastCategoryOrPoolRef.current.length > 0
+          ? lastCategoryOrPoolRef.current
+          : currentPool;
+      const sorted = [...pool].sort((a, b) => a.price - b.price);
+      const cheapest = sorted[0];
+      if (cheapest) {
+        setSelectedProduct(cheapest);
+        setDisplayedProducts([cheapest]);
+        addAiMessage(
+          `The cheapest option is ${cheapest.name} at ₹${cheapest.price}. Would you like me to add it to your basket?`,
+          'SEARCH',
+          cheapest
+        );
+        setAwaitingContext('QUANTITY');
+        return;
+      }
+    }
+
+    // ==========================================
+    // 4. SHOW ME MORE (PAGINATION IN ACTIVE CONTEXT)
+    // ==========================================
+    if (
+      lower.includes('show me more') ||
+      lower.includes('show more') ||
+      lower.includes('what else') ||
+      lower === 'more' ||
+      lower === 'next'
+    ) {
+      const pool = lastCategoryOrPoolRef.current.length > 0 ? lastCategoryOrPoolRef.current : currentPool;
+      if (pool.length > 0) {
+        displayedProductsIndexRef.current = (displayedProductsIndexRef.current + 3) % pool.length;
+        const nextSlice = pool.slice(displayedProductsIndexRef.current, displayedProductsIndexRef.current + 3);
+        if (nextSlice.length > 0) {
+          setDisplayedProducts(nextSlice);
+          const names = nextSlice.map((p) => `${p.name} (₹${p.price})`).join(', ');
+          addAiMessage(`Here are more options: ${names}. Which one would you like?`, 'SEARCH', nextSlice);
+          setAwaitingContext('PRODUCT_CHOICE');
+          return;
+        }
+      }
+    }
+
+    // ==========================================
+    // 5. DYNAMIC PRICE RANGE FILTER (e.g. "under 100", "below 150", "meals under 100")
+    // ==========================================
+    const priceMatch = lower.match(/(?:under|below|less than|within|max(?:imum)?)\s*(?:rs\.?|inr|₹)?\s*(\d+)/i);
+    if (priceMatch) {
+      const maxPrice = parseInt(priceMatch[1], 10);
+      let pool = currentPool;
+
+      if (lower.includes('food') || lower.includes('meal') || lower.includes('snack')) {
+        pool = pool.filter(
+          (p) =>
+            p.categoryId === 'cat_food' ||
+            p.category?.slug === 'food' ||
+            p.category?.name?.toLowerCase().includes('food') ||
+            p.subcategory?.toLowerCase() === 'meals' ||
+            p.subcategory?.toLowerCase() === 'snacks'
+        );
+      } else if (lower.includes('fruit')) {
+        pool = pool.filter((p) => p.categoryId === 'cat_fruits' || p.category?.slug === 'fruits');
+      } else if (lower.includes('stationery')) {
+        pool = pool.filter((p) => p.categoryId === 'cat_stationery' || p.category?.slug === 'stationery');
+      } else if (lower.includes('essential')) {
+        pool = pool.filter((p) => p.categoryId === 'cat_essentials' || p.category?.slug === 'essentials');
+      }
+
+      const underBudget = pool.filter((p) => p.price <= maxPrice);
+
+      if (underBudget.length > 0) {
+        lastCategoryOrPoolRef.current = underBudget;
+        displayedProductsIndexRef.current = 0;
+        setDisplayedProducts(underBudget);
+
+        if (underBudget.length === 1) {
+          const item = underBudget[0];
+          setSelectedProduct(item);
+          addAiMessage(
+            `I found ${item.name} available for ₹${item.price}. How many would you like?`,
+            'SEARCH',
+            [item]
+          );
+          setAwaitingContext('QUANTITY');
+          return;
+        }
+
+        const top3Names = underBudget.slice(0, 3).map((p) => `${p.name} (₹${p.price})`).join(', ');
+        addAiMessage(
+          `I found ${underBudget.length} available items under ₹${maxPrice}, including ${top3Names}. Would you like to see them?`,
+          'SEARCH',
+          underBudget
+        );
+        setAwaitingContext('PRODUCT_CHOICE');
+        return;
+      } else {
+        addAiMessage(
+          `There are currently no available products matching that request under ₹${maxPrice}. Would you like me to help with anything else?`
+        );
+        return;
+      }
+    }
+
+    // ==========================================
+    // 6. LAUNDRY SUPPORT (FULL FACILITY CONTROL & STATUS)
     // ==========================================
     if (
       lower.includes('laundry') ||
@@ -838,8 +1072,14 @@ export function useAIAssistant() {
       lower.includes('wash shirts') ||
       lower.includes('steam press')
     ) {
-      // 2A. Track Laundry
-      if (lower.includes('track') || lower.includes('status') || lower.includes('where')) {
+      // 6A. Track Laundry / Status
+      if (
+        lower.includes('track') ||
+        lower.includes('status') ||
+        lower.includes('where') ||
+        lower.includes('what is my laundry') ||
+        lower.includes('laundry status')
+      ) {
         setState('WORKING');
         setStatusMessage('Checking laundry status...');
 
@@ -865,13 +1105,21 @@ export function useAIAssistant() {
             ? ` Delivery OTP: ${activeJob.deliveryOtp}.`
             : '';
 
-          const aiReply = `Your laundry booking #${activeJob.orderNumber || activeJob.trackingNumber} is currently ${activeJob.status.replace(/_/g, ' ')}.${otpInfo} Opening laundry order details for you!`;
+          const isReady =
+            activeJob.status === 'READY_FOR_DELIVERY' ||
+            activeJob.status === 'DELIVERY_ASSIGNED' ||
+            activeJob.status === 'READY';
+
+          const aiReply = isReady
+            ? `Your laundry order is ready for return.${otpInfo} Would you like me to show the order details?`
+            : `Your laundry order #${activeJob.orderNumber || activeJob.trackingNumber} is currently ${activeJob.status.replace(/_/g, ' ').toLowerCase()}.${otpInfo} Would you like me to show the order details?`;
+
           router.push('/laundry');
           addAiMessage(aiReply, 'LAUNDRY_TRACK', activeJob);
           return;
         } else if (laundryOrders.length > 0) {
           const lastJob = laundryOrders[0];
-          const aiReply = `Your previous laundry booking #${lastJob.orderNumber || lastJob.trackingNumber} was completed. Opening your laundry orders history.`;
+          const aiReply = `Your previous laundry order #${lastJob.orderNumber || lastJob.trackingNumber} was completed. Would you like to schedule a new room pickup?`;
           router.push('/laundry');
           addAiMessage(aiReply, 'LAUNDRY_TRACK', lastJob);
           return;
@@ -883,15 +1131,21 @@ export function useAIAssistant() {
         }
       }
 
-      // 2B. Laundry Complaint / Issue
-      if (lower.includes('complaint') || lower.includes('complain') || lower.includes('late') || lower.includes('lost') || lower.includes('damaged')) {
-        const aiReply = `I'm sorry about the laundry issue. I'm opening the Campus Laundry complaint section so you can submit your issue directly to the supervisor.`;
+      // 6B. Laundry Complaint / Issue
+      if (
+        lower.includes('complaint') ||
+        lower.includes('complain') ||
+        lower.includes('late') ||
+        lower.includes('lost') ||
+        lower.includes('damaged')
+      ) {
+        const aiReply = `I'm opening the Campus Laundry complaint section so you can submit your issue directly to the supervisor. Would you like me to help with anything else?`;
         router.push('/laundry');
         addAiMessage(aiReply, 'COMPLAINT_OPEN');
         return;
       }
 
-      // 2C. Book Laundry with Garment Selection (e.g. "Book laundry for 5 shirts")
+      // 6C. Book Laundry with Garment Selection (e.g. "Book laundry for 5 shirts")
       const qty = parseNumberFromText(lower) || 5;
       let garmentType = 'Shirt';
       if (lower.includes('pant')) garmentType = 'Pants';
@@ -913,28 +1167,31 @@ export function useAIAssistant() {
         pickupDate: tomorrow,
         preferredPickupTime: '08:00 AM - 10:00 AM (Morning Slot)',
         preferredReturnTime: 'Tomorrow • 05:00 PM - 07:00 PM (24h Express)',
-        clothPhotos: []
+        clothPhotos: [],
       };
 
       if (typeof window !== 'undefined') {
         localStorage.setItem('cb_laundry_draft', JSON.stringify(laundryDraft));
       }
 
-      const aiReply = `Sure ${studentName}. I have prepared a laundry booking for ${qty} ${garmentType}s (₹${totalAmount} total) using your saved address: ${fullAddress}. Opening Laundry checkout for you to review!`;
+      const aiReply = `Sure ${studentName}. I have prepared a laundry booking for ${qty} ${garmentType}s (₹${totalAmount} total) using your saved address: ${fullAddress}. Opening Laundry checkout for you to review. Would you like me to help with anything else?`;
       router.push('/laundry/checkout');
       addAiMessage(aiReply, 'LAUNDRY_BOOK', laundryDraft);
       return;
     }
 
     // ==========================================
-    // 3. ORDER TRACKING & "WHERE IS MY ORDER"
+    // 7. ORDER TRACKING, STATUS & PENDING ORDERS
     // ==========================================
     if (
       lower.includes('track') ||
       lower.includes('where is my order') ||
       lower.includes('status of my order') ||
       lower.includes('live tracking') ||
-      lower.includes('track my order')
+      lower.includes('track my order') ||
+      lower.includes('do i have any pending orders') ||
+      lower.includes('pending orders') ||
+      lower.includes('any pending order')
     ) {
       setState('WORKING');
       setStatusMessage('Finding active orders...');
@@ -951,33 +1208,46 @@ export function useAIAssistant() {
       }
 
       const ACTIVE_STATUSES = [
-        'PENDING', 'PENDING_PAYMENT', 'CONFIRMED', 'ACCEPTED',
-        'PREPARING', 'READY', 'READY_FOR_PICKUP', 'DELIVERY_ASSIGNED',
-        'PICKED_UP', 'OUT_FOR_DELIVERY'
+        'PENDING',
+        'PENDING_PAYMENT',
+        'CONFIRMED',
+        'ACCEPTED',
+        'PREPARING',
+        'READY',
+        'READY_FOR_PICKUP',
+        'DELIVERY_ASSIGNED',
+        'PICKED_UP',
+        'OUT_FOR_DELIVERY',
       ];
 
       const activeOrder = ordersList.find((o) => ACTIVE_STATUSES.includes(o.status));
 
       if (activeOrder) {
-        const itemNames = activeOrder.items?.map((i: any) => i.productName || i.name).join(', ') || 'Campus items';
-        const aiReply = `Your order #${activeOrder.orderNumber} (${itemNames}) is currently ${activeOrder.status.replace(/_/g, ' ')}. Opening live tracking for you!`;
+        const itemNames =
+          activeOrder.items?.map((i: any) => i.productName || i.name).join(', ') || 'Campus items';
+        const isOutForDelivery = activeOrder.status === 'OUT_FOR_DELIVERY';
+
+        const aiReply = isOutForDelivery
+          ? `Your food order is currently out for delivery. Would you like me to check the delivery details?`
+          : `Your order #${activeOrder.orderNumber} for ${itemNames} is currently ${activeOrder.status.replace(/_/g, ' ').toLowerCase()}. Would you like me to check the delivery details?`;
+
         router.push(`/orders/${activeOrder.id}/track?id=${activeOrder.id}`);
         addAiMessage(aiReply, 'TRACK_ORDER', activeOrder);
         return;
       } else if (ordersList.length > 0) {
         const lastOrder = ordersList[0];
-        const aiReply = `Your latest order #${lastOrder.orderNumber} is marked as ${lastOrder.status.replace(/_/g, ' ')}. Opening order details.`;
+        const aiReply = `You have no pending orders right now. Your latest order #${lastOrder.orderNumber} was marked as ${lastOrder.status.replace(/_/g, ' ').toLowerCase()}. Would you like me to check anything else?`;
         router.push(`/orders/${lastOrder.id}/track?id=${lastOrder.id}`);
         addAiMessage(aiReply, 'TRACK_ORDER', lastOrder);
         return;
       } else {
-        addAiMessage(`You have no orders yet. Would you like to check out today's food menu?`);
+        addAiMessage(`You have no orders yet. Would you like to check out today's food options?`);
         return;
       }
     }
 
     // ==========================================
-    // 4. ORDER CANCELLATION
+    // 8. ORDER CANCELLATION (POLICY GUARDED)
     // ==========================================
     if (lower.includes('cancel order') || lower.includes('cancel my order')) {
       setState('WORKING');
@@ -999,7 +1269,7 @@ export function useAIAssistant() {
       );
 
       if (!activeOrder) {
-        addAiMessage(`You don't have an active order that can be cancelled.`);
+        addAiMessage(`You don't have an active order that can be cancelled. Would you like me to help with anything else?`);
         return;
       }
 
@@ -1007,12 +1277,12 @@ export function useAIAssistant() {
       const allowedCancellationStatuses = ['PENDING', 'PENDING_PAYMENT', 'CONFIRMED', 'ACCEPTED'];
       if (!allowedCancellationStatuses.includes(activeOrder.status)) {
         addAiMessage(
-          `Order #${activeOrder.orderNumber} is already in the ${activeOrder.status.replace(/_/g, ' ')} stage. Per Campus Basket policy, orders cannot be cancelled once food preparation or delivery dispatch has begun.`
+          `Order #${activeOrder.orderNumber} is already in the ${activeOrder.status.replace(/_/g, ' ')} stage. Per Campus Basket policy, orders cannot be cancelled once food preparation or delivery dispatch has begun. Can I help you with anything else?`
         );
         return;
       }
 
-      // Eligible: Must ask for explicit confirmation before irreversible action
+      // Eligible: Ask explicit confirmation before irreversible action
       setPendingCancelOrderId(activeOrder.id);
       setAwaitingContext('CANCEL_CONFIRM');
       addAiMessage(
@@ -1024,7 +1294,7 @@ export function useAIAssistant() {
     }
 
     // ==========================================
-    // 5. ORDER HISTORY & DETAILS
+    // 9. ORDER HISTORY & DETAILS
     // ==========================================
     if (
       lower.includes('order history') ||
@@ -1035,7 +1305,8 @@ export function useAIAssistant() {
     ) {
       router.push('/orders');
       const count = cachedOrders.length;
-      const aiReply = `Opening your Order History. You have placed ${count > 0 ? count : ''} orders with Campus Basket.`;
+      const countText = count > 0 ? `You have placed ${count} order(s) with Campus Basket.` : '';
+      const aiReply = `Opening your Order History. ${countText} Would you like me to check details of your latest order?`;
       addAiMessage(aiReply, 'ORDER_HISTORY');
       return;
     }
@@ -1059,8 +1330,9 @@ export function useAIAssistant() {
 
       if (ordersList.length > 0) {
         const latest = ordersList[0];
-        const itemsText = latest.items?.map((i: any) => `${i.quantity}x ${i.productName || i.name}`).join(', ') || 'items';
-        const aiReply = `Your latest order #${latest.orderNumber} contains ${itemsText} totaling ₹${latest.totalAmount} (Status: ${latest.status.replace(/_/g, ' ')}). Opening full details!`;
+        const itemsText =
+          latest.items?.map((i: any) => `${i.quantity}x ${i.productName || i.name}`).join(', ') || 'items';
+        const aiReply = `Your latest order #${latest.orderNumber} contains ${itemsText} totaling ₹${latest.totalAmount} (Status: ${latest.status.replace(/_/g, ' ')}). Opening full details. Would you like me to help with anything else?`;
         router.push(`/orders/${latest.id}/track?id=${latest.id}`);
         addAiMessage(aiReply, 'ORDER_DETAIL', latest);
         return;
@@ -1071,7 +1343,7 @@ export function useAIAssistant() {
     }
 
     // ==========================================
-    // 6. REFUND & REFUND ACCOUNT DETAILS
+    // 10. REFUND & REFUND ACCOUNT DETAILS
     // ==========================================
     if (
       lower.includes('refund') ||
@@ -1080,58 +1352,101 @@ export function useAIAssistant() {
       lower.includes('where is my refund')
     ) {
       router.push('/dashboard?tab=refunds');
-      addAiMessage(
-        `Opening your Refund & Cancellations section. Approved refunds are credited directly to your saved student refund account or UPI within 24–48 hours per platform policy.`,
-        'REFUND_VIEW'
-      );
+      if (cachedRefundAccount) {
+        const masked = cachedRefundAccount.accountNumber
+          ? `••••${cachedRefundAccount.accountNumber.slice(-4)}`
+          : 'registered';
+        addAiMessage(
+          `Your saved refund account is with ${cachedRefundAccount.bankName || 'bank'} ending in ${masked} (IFSC: ${cachedRefundAccount.ifscCode}). Approved refunds are credited directly there within 24–48 hours. Would you like me to show your refund records?`,
+          'REFUND_VIEW',
+          cachedRefundAccount
+        );
+      } else {
+        addAiMessage(
+          `Approved refunds are credited directly to your saved student refund account or original payment method within 24–48 hours. Opening your refund records. Would you like me to help with anything else?`,
+          'REFUND_VIEW'
+        );
+      }
       return;
     }
 
     // ==========================================
-    // 7. COMPLAINTS & SUPPORT
+    // 11. COMPLAINTS & SUPPORT TICKETS
     // ==========================================
     if (
       lower.includes('complaint') ||
       lower.includes('complain') ||
       lower.includes('support') ||
       lower.includes('report an issue') ||
-      lower.includes('help ticket')
+      lower.includes('help ticket') ||
+      lower.includes('do i have any complaints') ||
+      lower.includes('my tickets')
     ) {
       router.push('/dashboard?tab=support');
-      addAiMessage(
-        `I'm opening the Campus Support and Complaints portal so you can submit your issue directly to campus administration.`,
-        'COMPLAINT_OPEN'
-      );
+      const openTickets = cachedTickets.filter((t) => !['RESOLVED', 'CLOSED'].includes(t.status));
+      if (openTickets.length > 0) {
+        const latest = openTickets[0];
+        addAiMessage(
+          `You have ${openTickets.length} active support ticket(s). Ticket #${(latest.id || '').slice(-6)} regarding ${latest.category || 'campus service'} is currently ${latest.status}. Would you like me to open the support portal?`,
+          'COMPLAINT_OPEN',
+          latest
+        );
+      } else {
+        addAiMessage(
+          `You have no pending complaints or support tickets in your Campus Basket account. I'm opening the Campus Support portal if you'd like to submit an inquiry. Would you like me to help with anything else?`,
+          'COMPLAINT_OPEN'
+        );
+      }
       return;
     }
 
     // ==========================================
-    // 8. PROFILE & ACCOUNT NAVIGATION
+    // 12. PROFILE & ACCOUNT NAVIGATION
     // ==========================================
     if (
       lower.includes('profile') ||
       lower.includes('my account') ||
       lower.includes('my room') ||
-      lower.includes('my hostel')
+      lower.includes('my hostel') ||
+      lower.includes('who am i')
     ) {
       router.push('/dashboard?tab=profile');
       addAiMessage(
-        `Opening your Student Profile. You are currently registered in ${fullAddress}.`,
+        `Opening your Student Profile. You are registered as ${user?.student?.fullName || studentName || 'Student'} in ${fullAddress}. Would you like me to help with anything else?`,
         'PROFILE_VIEW'
       );
       return;
     }
 
     // ==========================================
-    // 9. ADDRESS & ROOM NUMBER
+    // 13. ADDRESS & ROOM NUMBER
     // ==========================================
     if (lower.includes('address') || lower.includes('saved address')) {
-      addAiMessage(`Using your saved campus delivery address: ${fullAddress}. Ready for room delivery!`);
+      addAiMessage(`Using your saved campus delivery address: ${fullAddress}. Ready for room delivery! Would you like me to help with anything else?`);
       return;
     }
 
     // ==========================================
-    // 10. QUANTITY MODIFICATIONS ON ACTIVE CART
+    // 14. SERVICES & FACILITIES DISCOVERY
+    // ==========================================
+    if (
+      lower.includes('what services') ||
+      lower.includes('what can i use') ||
+      lower.includes('what can i do') ||
+      lower.includes('what can i buy') ||
+      lower.includes('what can i order') ||
+      lower.includes('facilities') ||
+      lower.includes('features') ||
+      lower.includes('help me with')
+    ) {
+      addAiMessage(
+        `Campus Basket provides Food & Meals, Fresh Fruits, Stationery, Daily Essentials, Express Laundry, Live Order Tracking, Refund Details, and Campus Support. What would you like to explore today?`
+      );
+      return;
+    }
+
+    // ==========================================
+    // 15. QUANTITY MODIFICATIONS ON ACTIVE CART
     // ==========================================
     if (
       lower.includes('make it') ||
@@ -1152,7 +1467,8 @@ export function useAIAssistant() {
 
       if (lower.includes('add one more')) {
         updateQuantity(targetItem.productId, targetItem.quantity + 1);
-        addAiMessage(`Added one more. You now have ${targetItem.quantity + 1} ${targetItem.name}.`, 'CART_UPDATE');
+        addAiMessage(`Added one more. You now have ${targetItem.quantity + 1} ${targetItem.name}. Would you like to continue to checkout?`, 'CART_UPDATE');
+        setAwaitingContext('CHECKOUT_CONFIRM');
         return;
       }
 
@@ -1160,10 +1476,11 @@ export function useAIAssistant() {
         const nextQty = targetItem.quantity - 1;
         if (nextQty <= 0) {
           removeItem(targetItem.productId);
-          addAiMessage(`Removed ${targetItem.name} from your cart.`, 'CART_UPDATE');
+          addAiMessage(`Removed ${targetItem.name} from your cart. Would you like to help with anything else?`, 'CART_UPDATE');
         } else {
           updateQuantity(targetItem.productId, nextQty);
-          addAiMessage(`Removed one. You now have ${nextQty} ${targetItem.name}.`, 'CART_UPDATE');
+          addAiMessage(`Removed one. You now have ${nextQty} ${targetItem.name}. Would you like to continue to checkout?`, 'CART_UPDATE');
+          setAwaitingContext('CHECKOUT_CONFIRM');
         }
         return;
       }
@@ -1171,13 +1488,14 @@ export function useAIAssistant() {
       const newQty = parseNumberFromText(lower);
       if (newQty && newQty > 0) {
         updateQuantity(targetItem.productId, newQty);
-        addAiMessage(`Updated quantity to ${newQty} ${targetItem.name} in your cart.`, 'CART_UPDATE');
+        addAiMessage(`Updated quantity to ${newQty} ${targetItem.name} in your cart. Would you like to continue to checkout?`, 'CART_UPDATE');
+        setAwaitingContext('CHECKOUT_CONFIRM');
         return;
       }
     }
 
     // ==========================================
-    // 11. CART VIEW & CLEAR
+    // 16. CART VIEW & CLEAR
     // ==========================================
     if (
       lower.includes('open cart') ||
@@ -1208,7 +1526,7 @@ export function useAIAssistant() {
     }
 
     // ==========================================
-    // 12. CHECKOUT & FINAL CONFIRMATION
+    // 17. CHECKOUT & FINAL CONFIRMATION
     // ==========================================
     if (
       lower.includes('checkout') ||
@@ -1237,7 +1555,7 @@ export function useAIAssistant() {
     }
 
     // ==========================================
-    // 13. PROVIDER SPECIFIC FILTERING (e.g. "I want ABC provider")
+    // 18. PROVIDER SPECIFIC FILTERING
     // ==========================================
     const matchedProv = FALLBACK_PROVIDERS.find(
       (p) => lower.includes(p.shortName.toLowerCase()) || lower.includes(p.name.toLowerCase())
@@ -1250,31 +1568,56 @@ export function useAIAssistant() {
     }
 
     // ==========================================
-    // 14. CHEAPEST ITEM LOOKUP
+    // 19. DYNAMIC FUTURE-PROOF CATEGORIES DISCOVERY
+    // Discovers any existing or newly added category from database/API
     // ==========================================
-    if (lower.includes('cheapest') || lower.includes('lowest price')) {
-      const pool = displayedProducts.length > 0 ? displayedProducts : FALLBACK_STORE_PRODUCTS;
-      const sorted = [...pool].sort((a, b) => a.price - b.price);
-      const cheapest = sorted[0];
-      if (cheapest) {
-        setSelectedProduct(cheapest);
-        setDisplayedProducts([cheapest]);
+    const matchedCategory = availableCategories.find(
+      (c) =>
+        lower.includes(c.name?.toLowerCase()) ||
+        lower.includes(c.slug?.toLowerCase())
+    );
+
+    if (
+      matchedCategory &&
+      (lower.includes('category') ||
+        lower.includes('show') ||
+        lower.includes('browse') ||
+        lower.includes('view') ||
+        lower.includes(matchedCategory.name?.toLowerCase())) &&
+      !lower.includes('cancel')
+    ) {
+      const catProducts = currentPool.filter(
+        (p) =>
+          p.categoryId === matchedCategory.id ||
+          p.category?.id === matchedCategory.id ||
+          p.category?.slug === matchedCategory.slug ||
+          p.category?.name?.toLowerCase() === matchedCategory.name?.toLowerCase()
+      );
+
+      if (catProducts.length > 0) {
+        lastCategoryOrPoolRef.current = catProducts;
+        displayedProductsIndexRef.current = 0;
+        setDisplayedProducts(catProducts);
+        const top3 = catProducts.slice(0, 3).map((p) => `${p.name} (₹${p.price})`).join(' and ');
         addAiMessage(
-          `The cheapest option is ${cheapest.name} at ₹${cheapest.price}. Would you like me to add it to your basket?`,
+          `In ${matchedCategory.name}, we have ${catProducts.length} options including ${top3}. Which one would you like?`,
           'SEARCH',
-          cheapest
+          catProducts
         );
-        setAwaitingContext('QUANTITY');
+        setAwaitingContext('PRODUCT_CHOICE');
+        return;
+      } else {
+        addAiMessage(
+          `There are currently no items listed under ${matchedCategory.name}. Would you like me to help with anything else?`
+        );
         return;
       }
     }
 
     // ==========================================
-    // 15. CATEGORY & STORE BROWSING INTENTS
+    // 20. STANDARD CATEGORIES BROWSING
     // ==========================================
-    const currentPool = allProductsRef.current.length > 0 ? allProductsRef.current : FALLBACK_STORE_PRODUCTS;
-
-    // 15A. General Store / Menu / Products overview
+    // 20A. General Store / Menu overview
     if (
       lower.includes('what do you have') ||
       lower.includes('what is available') ||
@@ -1282,13 +1625,13 @@ export function useAIAssistant() {
       lower.includes('all products') ||
       lower.includes('show menu') ||
       lower.includes('browse store') ||
-      lower.includes('what can i buy') ||
-      lower.includes('what can i order') ||
+      lower.includes('today\'s food') ||
       lower === 'products' ||
       lower === 'menu' ||
       lower === 'store'
     ) {
       const topItems = currentPool.slice(0, 5);
+      lastCategoryOrPoolRef.current = currentPool;
       setDisplayedProducts(topItems);
       const itemList = topItems.map((p) => `${p.name} (₹${p.price})`).join(', ');
       addAiMessage(
@@ -1300,9 +1643,14 @@ export function useAIAssistant() {
       return;
     }
 
-    // 15B. Food & Meals category
+    // 20B. Food & Meals category
     if (
-      (lower.includes('food') || lower.includes('meals') || lower.includes('lunch') || lower.includes('dinner') || lower.includes('breakfast') || lower.includes('snacks')) &&
+      (lower.includes('food') ||
+        lower.includes('meals') ||
+        lower.includes('lunch') ||
+        lower.includes('dinner') ||
+        lower.includes('breakfast') ||
+        lower.includes('snacks')) &&
       !lower.includes('dog food')
     ) {
       const foodItems = currentPool.filter(
@@ -1314,6 +1662,8 @@ export function useAIAssistant() {
           p.subcategory?.toLowerCase() === 'snacks'
       );
       if (foodItems.length > 0) {
+        lastCategoryOrPoolRef.current = foodItems;
+        displayedProductsIndexRef.current = 0;
         setDisplayedProducts(foodItems);
         const top3 = foodItems.slice(0, 3).map((p) => `${p.name} (₹${p.price})`).join(' and ');
         addAiMessage(
@@ -1326,8 +1676,13 @@ export function useAIAssistant() {
       }
     }
 
-    // 15C. Fresh Fruits category
-    if (lower.includes('fruit') || lower.includes('fruits') || lower.includes('produce') || lower.includes('orchard')) {
+    // 20C. Fresh Fruits category
+    if (
+      lower.includes('fruit') ||
+      lower.includes('fruits') ||
+      lower.includes('produce') ||
+      lower.includes('orchard')
+    ) {
       const fruitItems = currentPool.filter(
         (p) =>
           p.categoryId === 'cat_fruits' ||
@@ -1336,6 +1691,8 @@ export function useAIAssistant() {
           p.subcategory?.toLowerCase() === 'fruits'
       );
       if (fruitItems.length > 0) {
+        lastCategoryOrPoolRef.current = fruitItems;
+        displayedProductsIndexRef.current = 0;
         setDisplayedProducts(fruitItems);
         const top3 = fruitItems.slice(0, 3).map((p) => `${p.name} (₹${p.price}/${p.unit || 'kg'})`).join(' and ');
         addAiMessage(
@@ -1348,7 +1705,7 @@ export function useAIAssistant() {
       }
     }
 
-    // 15D. Stationery & Academic category
+    // 20D. Stationery & Academic category
     if (
       lower.includes('stationery') ||
       lower.includes('stationery items') ||
@@ -1364,6 +1721,8 @@ export function useAIAssistant() {
           p.tags?.toLowerCase().includes('stationery')
       );
       if (statItems.length > 0) {
+        lastCategoryOrPoolRef.current = statItems;
+        displayedProductsIndexRef.current = 0;
         setDisplayedProducts(statItems);
         const top3 = statItems.slice(0, 3).map((p) => `${p.name} (₹${p.price})`).join(' and ');
         addAiMessage(
@@ -1376,7 +1735,7 @@ export function useAIAssistant() {
       }
     }
 
-    // 15E. Hostel Essentials category
+    // 20E. Hostel Essentials category
     if (
       lower.includes('hostel essentials') ||
       lower.includes('daily essentials') ||
@@ -1393,6 +1752,8 @@ export function useAIAssistant() {
           p.tags?.toLowerCase().includes('essentials')
       );
       if (essItems.length > 0) {
+        lastCategoryOrPoolRef.current = essItems;
+        displayedProductsIndexRef.current = 0;
         setDisplayedProducts(essItems);
         const top3 = essItems.slice(0, 3).map((p) => `${p.name} (₹${p.price})`).join(' and ');
         addAiMessage(
@@ -1567,9 +1928,9 @@ export function useAIAssistant() {
       } catch {}
     }
 
-    // Not Found fallback
+    // Not Found fallback per Requirement 12 & 6
     addAiMessage(
-      `I couldn't find that item in Campus Basket. I can help you with Food & Meals, Fresh Fruits, Stationery, Daily Essentials, Express Laundry, Order Tracking, or Complaints. What would you like?`
+      `I couldn't find that information in your Campus Basket account. I can help you with Food & Meals, Fresh Fruits, Stationery, Daily Essentials, Express Laundry, Orders & Tracking, or Complaints. Would you like me to help with anything else?`
     );
   };
 

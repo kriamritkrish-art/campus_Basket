@@ -286,35 +286,66 @@ export class AiController {
         .split(/\s+/)
         .filter((w) => w.length >= 2 && !stopWords.has(w));
 
-      // Try live database products first
+      // =========================================================================
+      // READ-ONLY DATABASE ACCESS: STRICT SECURITY RULE
+      // The assistant connects in READ-ONLY mode. It NEVER creates, updates,
+      // or deletes database records. It only reads student-accessible info.
+      // =========================================================================
+
+      // 1. DYNAMIC CATEGORIES (discovers any new categories added by admin)
+      let dynamicCategories: any[] = [];
+      try {
+        dynamicCategories = await prisma.category.findMany({
+          where: { isActive: true },
+          select: { id: true, name: true, slug: true, description: true },
+        });
+      } catch {}
+
+      // 2. DYNAMIC PRODUCTS (All categories, food, produce, stationery, essentials, etc.)
       let dbProducts: any[] = [];
       try {
         dbProducts = await prisma.product.findMany({
           where: { availability: true, approvalStatus: 'APPROVED' },
           include: { category: true, images: true },
-          take: 100,
+          take: 120,
         });
       } catch {}
 
       const catalogPool = dbProducts.length > 0 ? dbProducts : fallbackProducts;
 
+      // Check for price threshold queries e.g. "under 100", "below 200", "less than 150"
+      const priceMatch = lower.match(/(?:under|below|less than|within)\s*(?:rs\.?|inr|₹)?\s*(\d+)/i);
+      const maxPriceThreshold = priceMatch ? parseInt(priceMatch[1], 10) : null;
+
+      // Filter by max price if requested
+      let candidatePool = catalogPool;
+      if (maxPriceThreshold !== null) {
+        candidatePool = candidatePool.filter((p: any) => {
+          const actualPrice = Number(p.sellingPrice || p.discountPrice || p.price);
+          return actualPrice <= maxPriceThreshold;
+        });
+      }
+
       // Score and rank matched products
-      const scored = catalogPool
+      const scored = candidatePool
         .map((p: any) => {
           const pName = (p.name || '').toLowerCase();
           const pTags = (p.tags || '').toLowerCase();
           const pDesc = (p.description || '').toLowerCase();
           const pSub = (p.subcategory || '').toLowerCase();
+          const catName = (p.category?.name || '').toLowerCase();
+          const catSlug = (p.category?.slug || '').toLowerCase();
 
           let score = 0;
-          if (tokens.length === 0 && (pName.includes(lower) || pTags.includes(lower))) {
-            score = 10;
+          if (tokens.length === 0) {
+            score = 5;
           } else {
             for (const tok of tokens) {
               if (pName.includes(tok)) score += 20;
               if (pTags.includes(tok)) score += 15;
-              if (pSub.includes(tok)) score += 10;
-              if (pDesc.includes(tok)) score += 5;
+              if (pSub.includes(tok)) score += 12;
+              if (catName.includes(tok) || catSlug.includes(tok)) score += 10;
+              if (pDesc.includes(tok)) score += 4;
             }
           }
 
@@ -344,7 +375,9 @@ export class AiController {
         mode: configuredMode,
         todayUsage: aiUsage.todayCount,
         studentGreeting: studentName ? `Hello ${studentName} 👋` : 'Hello 👋',
-        matchedProducts: matchedProducts.slice(0, 6),
+        matchedProducts: matchedProducts.slice(0, 8),
+        categories: dynamicCategories,
+        totalAvailable: candidatePool.length,
       });
     } catch (err) {
       next(err);
