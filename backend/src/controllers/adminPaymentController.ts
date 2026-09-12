@@ -858,7 +858,9 @@ export class AdminPaymentController {
           ineligibleReasons.push({ orderNumber: ord.orderNumber, reason: 'Cash collection is not complete' });
           continue;
         }
-        const collectedAmt = CodReconciliationService.round(Number(codEntry.collectedAmount || 0));
+        const collectedAmt = CodReconciliationService.round(Number(
+          codEntry.collectedAmount !== undefined ? codEntry.collectedAmount : codEntry.amountCollected || 0
+        ));
 
         eligibleOrders.push({
           order: ord,
