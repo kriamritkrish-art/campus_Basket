@@ -9,6 +9,7 @@ import { FloatingCartButton } from '../cart/FloatingCartButton';
 import { MobileBottomNav } from './MobileBottomNav';
 import { MobileCategoryDrawer } from './MobileCategoryDrawer';
 import { MobileCartBar } from '../cart/MobileCartBar';
+import { VoiceAssistantWidget } from '../ai/VoiceAssistantWidget';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -30,7 +31,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (isDedicatedServiceRoute) {
     // Dedicated standalone service & checkout flows (zero marketplace clutter, no cart ₹139, no floating basket, no marketplace footer)
-    return <div className="min-h-screen bg-[#f8f9fa] w-full">{children}</div>;
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] w-full">
+        {children}
+        <VoiceAssistantWidget />
+      </div>
+    );
   }
 
   return (
@@ -50,6 +56,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         isOpen={isCategoryDrawerOpen}
         onClose={() => setIsCategoryDrawerOpen(false)}
       />
+      <VoiceAssistantWidget />
     </div>
   );
 }

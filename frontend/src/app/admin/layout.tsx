@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   LayoutDashboard,
   ShoppingBag,
+  Sparkles,
   Layers,
   Boxes,
   ClipboardList,
@@ -178,6 +179,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     {
       title: 'SYSTEM',
       items: [
+        { label: 'AI Shopping Assistant', href: '/admin/system/ai-assistant', icon: Sparkles },
         { label: 'Support Tickets', href: '/admin/system/tickets', icon: HelpCircle },
         { label: 'Settings', href: '/admin/system/settings', icon: Settings },
         { label: 'Audit Logs', href: '/admin/system/audit', icon: ShieldAlert }

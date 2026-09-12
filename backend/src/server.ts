@@ -19,6 +19,7 @@ import paymentRoutes from './routes/paymentRoutes';
 import imageRoutes from './routes/imageRoutes';
 import campusRoutes from './routes/campusRoutes';
 import returnRoutes from './routes/returnRoutes';
+import aiRoutes from './routes/aiRoutes';
 import { apiGlobalLimiter } from './middleware/rateLimiter';
 import { PaymentReconciliationService } from './services/payment/PaymentReconciliationService';
 
@@ -108,6 +109,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/images', imageRoutes);
 app.use('/api/campus', campusRoutes);
 app.use('/api/returns', returnRoutes);
+app.use('/api/ai', aiRoutes);
 
 // 404 handler
 app.use((req, res) => {

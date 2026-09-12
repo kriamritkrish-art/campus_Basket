@@ -39,8 +39,80 @@ export const FALLBACK_CATEGORIES: Category[] = [
   }
 ];
 
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  shortName: string;
+  category: string;
+  rating: number;
+}
+
+export const FALLBACK_PROVIDERS: ProviderInfo[] = [
+  { id: 'prov_abc', name: 'ABC Provider', shortName: 'ABC', category: 'Food & Meals', rating: 4.8 },
+  { id: 'prov_canteen', name: 'Campus Food & Cafeteria Vendor', shortName: 'Canteen', category: 'Food & Meals', rating: 4.7 },
+  { id: 'prov_fruits', name: 'Green Basket Campus Fresh Fruits', shortName: 'Green Basket', category: 'Fresh Fruits', rating: 4.9 },
+  { id: 'prov_general', name: 'Campus Services Dispatch & Essentials Cell', shortName: 'Essentials', category: 'Stationery & Essentials', rating: 4.8 },
+  { id: 'prov_laundry', name: 'Campus Laundry Cell', shortName: 'Laundry', category: 'Express Laundry', rating: 4.9 },
+];
+
 export const FALLBACK_STORE_PRODUCTS: Product[] = [
   // 1. Food & Meals (Pure Veg / Non-Veg)
+  {
+    id: 'prod_momo_veg',
+    name: 'Veg Steamed Momo',
+    slug: 'veg-steamed-momo',
+    categoryId: 'cat_food',
+    category: FALLBACK_CATEGORIES[0],
+    providerId: 'prov_abc',
+    subcategory: 'Snacks',
+    dietaryType: 'Pure Veg',
+    isPopular: true,
+    description: '6 pieces of fresh steamed vegetable momo stuffed with cabbage, carrots, onion and served with spicy red chili chutney.',
+    price: 80,
+    originalPrice: 80,
+    sellingPrice: 80,
+    discountPrice: null,
+    discountPercentage: 0,
+    unit: 'plate',
+    stock: 50,
+    isLowStock: false,
+    isOutOfStock: false,
+    availability: true,
+    isFeatured: true,
+    availableToday: true,
+    tags: 'momo, veg momo, steamed momo, snacks, pure veg, abc, popular',
+    primaryImage: 'https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=800',
+    rating: 4.8,
+    reviewsCount: 38
+  },
+  {
+    id: 'prod_momo_chicken',
+    name: 'Chicken Steamed Momo',
+    slug: 'chicken-steamed-momo',
+    categoryId: 'cat_food',
+    category: FALLBACK_CATEGORIES[0],
+    providerId: 'prov_abc',
+    subcategory: 'Snacks',
+    dietaryType: 'Non-Veg',
+    isPopular: true,
+    description: '6 pieces of juicy minced chicken steamed momo seasoned with Himalayan spices, served with fiery momo chili sauce.',
+    price: 100,
+    originalPrice: 100,
+    sellingPrice: 100,
+    discountPrice: null,
+    discountPercentage: 0,
+    unit: 'plate',
+    stock: 60,
+    isLowStock: false,
+    isOutOfStock: false,
+    availability: true,
+    isFeatured: true,
+    availableToday: true,
+    tags: 'momo, chicken momo, steamed momo, nonveg, chicken, abc, popular',
+    primaryImage: 'https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=800',
+    rating: 4.9,
+    reviewsCount: 52
+  },
   {
     id: 'prod_1',
     name: 'Kolkata Style Chicken Biryani',
