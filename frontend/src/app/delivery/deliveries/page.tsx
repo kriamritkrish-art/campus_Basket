@@ -134,7 +134,7 @@ export default function AvailableDeliveriesPage() {
               className="card p-5 bg-white flex flex-col justify-between hover:border-emerald-300 transition group"
             >
               <div>
-                {/* Card Top: Order Tag & Product Value */}
+                {/* Card Top: Order Tag & Cash to Collect */}
                 <div className="flex items-center justify-between pb-3 border-b border-gray-100">
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-black uppercase px-2 py-0.5 rounded ${
@@ -148,8 +148,8 @@ export default function AvailableDeliveriesPage() {
                   </div>
 
                   <div className="text-right">
-                    <div className="text-[10px] text-gray-400 uppercase font-bold">Product Value</div>
-                    <div className="text-base font-black text-emerald-700 font-mono">₹{order.productPrice || order.totalAmount || order.earning}</div>
+                    <div className="text-[10px] text-gray-400 uppercase font-bold">Cash to Collect</div>
+                    <div className="text-base font-black text-emerald-700 font-mono">₹{Number(order.codDue || 0).toFixed(2)}</div>
                   </div>
                 </div>
 

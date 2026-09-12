@@ -267,6 +267,14 @@ export default function AdminPaymentsPage() {
     codReconciliationStatusFilter
   ]);
 
+  useEffect(() => {
+    if (activeTab !== 'COD') return;
+    const refreshTimer = window.setInterval(() => {
+      loadData();
+    }, 5000);
+    return () => window.clearInterval(refreshTimer);
+  }, [activeTab, codDateFilter, codRunnerFilter, codProviderFilter, codReconciliationStatusFilter]);
+
   // Load Delivery Boy Operational Orders (Tab 2 - Operational Visibility Only)
   const loadOperationalOrders = async (overrideRunnerId?: string) => {
     setLoadingOperationalOrders(true);

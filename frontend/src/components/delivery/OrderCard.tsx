@@ -180,7 +180,7 @@ export default function OrderCard({ order }: OrderCardProps) {
 
   return (
     <div className="order-card relative">
-      {/* CARD TOP ROW: Status Badge | Order ID | ₹Earning */}
+      {/* CARD TOP ROW: Status Badge | Order ID | Cash to collect */}
       <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-gray-100">
         <div className="flex items-center gap-2 flex-wrap">
           {getStatusBadge(order.status)}
@@ -196,10 +196,13 @@ export default function OrderCard({ order }: OrderCardProps) {
         </div>
 
         <div className="text-right">
-          <span className="text-[10px] font-bold text-gray-400 block uppercase tracking-wider">Product Value</span>
+          <span className="text-[10px] font-bold text-gray-400 block uppercase tracking-wider">Cash to Collect</span>
           <span className="text-base sm:text-lg font-black text-emerald-700 font-mono">
-            ₹{Number(order.productPrice || order.totalAmount || order.earning || 0).toFixed(2)}
+            ₹{Number(order.codDue || 0).toFixed(2)}
           </span>
+          {Number(order.codDue || 0) > 0 && Number(order.advancePaidAmount || 0) > 0 && (
+            <span className="text-[10px] text-gray-500 block">After ₹{Number(order.advancePaidAmount).toFixed(2)} advance</span>
+          )}
         </div>
       </div>
 

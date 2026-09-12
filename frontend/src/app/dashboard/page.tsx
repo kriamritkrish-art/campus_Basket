@@ -761,8 +761,22 @@ function DashboardContent() {
                         </div>
 
                         <div className="text-left sm:text-right">
-                          <div className="text-base font-black text-gray-900">₹{order.totalAmount}</div>
-                          <div className="text-[11px] text-gray-500">{order.paymentMethod.replace(/_/g, ' ')}</div>
+                          {order.paymentMethod === 'CASH_ON_DELIVERY' ? (
+                            <>
+                              <div className={`text-[10px] font-bold uppercase ${order.paymentStatus === 'COD_COLLECTED' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                {order.paymentStatus === 'COD_COLLECTED' ? 'Cash collected' : 'Cash due on delivery'}
+                              </div>
+                              <div className={`text-base font-black ${order.paymentStatus === 'COD_COLLECTED' ? 'text-emerald-800' : 'text-amber-800'}`}>
+                                ₹{Math.max(0, Number(order.totalAmount || 0) - Number(order.advancePaidAmount || 0)).toFixed(2)}
+                              </div>
+                              <div className="text-[11px] text-gray-500">{Number(order.advancePaidAmount || 0) > 0 ? `₹${Number(order.advancePaidAmount).toFixed(2)} paid upfront` : 'No advance paid'}</div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-base font-black text-gray-900">₹{Number(order.totalAmount || 0).toFixed(2)}</div>
+                              <div className="text-[11px] text-gray-500">Paid online</div>
+                            </>
+                          )}
                         </div>
                       </div>
 
@@ -992,6 +1006,12 @@ function DashboardContent() {
                       <span>Total Amount</span>
                       <span>₹{activeOrder.totalAmount}</span>
                     </div>
+                    {activeOrder.paymentMethod === 'CASH_ON_DELIVERY' && (
+                      <div className="pt-2 flex justify-between text-sm font-black text-amber-800">
+                        <span>Cash to collect</span>
+                        <span>₹{Math.max(0, Number(activeOrder.totalAmount || 0) - Number(activeOrder.advancePaidAmount || 0)).toFixed(2)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

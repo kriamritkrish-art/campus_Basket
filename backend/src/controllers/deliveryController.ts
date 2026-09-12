@@ -306,7 +306,10 @@ export class DeliveryController {
         const itemsSummary = o.items.map((i) => `${i.quantity}x ${i.productName}`).join(', ');
         const studentAddress = `${o.hallName} • Room ${o.roomNumber}`;
         const providerAddress = o.provider?.fullName ? `${o.provider.fullName} • Dispatch Counter` : '';
-        const productVal = Number(o.totalAmount || 0);
+        const orderTotal = Number(o.totalAmount || 0);
+        const advancePaid = Number(o.advancePaidAmount || 0);
+        const isCod = o.paymentMethod === 'CASH_ON_DELIVERY' || String(o.paymentMethod || '').toUpperCase().includes('COD');
+        const codDue = isCod ? Math.max(0, orderTotal - advancePaid) : 0;
         return {
           id: o.id,
           orderNumber: `#${o.orderNumber}`,
@@ -320,8 +323,11 @@ export class DeliveryController {
           distance: '0.9 km',
           eta: '10–12 min',
           earning: Number(o.deliveryFee) || 0,
-          productPrice: productVal,
-          totalAmount: productVal,
+          productPrice: orderTotal,
+          totalAmount: orderTotal,
+          codDue,
+          advancePaidAmount: advancePaid,
+          paymentMethod: o.paymentMethod,
           itemsCount: o.items.length,
           items: o.items.map((i) => `${i.quantity}x ${i.productName}`),
           itemsSummary,
@@ -655,7 +661,10 @@ export class DeliveryController {
       const formatted = orders.map((o) => {
         const studentAddress = `${o.hallName} • Room ${o.roomNumber}`;
         const providerAddress = o.provider?.fullName || '';
-        const productVal = Number(o.totalAmount || 0);
+        const orderTotal = Number(o.totalAmount || 0);
+        const advancePaid = Number(o.advancePaidAmount || 0);
+        const isCod = o.paymentMethod === 'CASH_ON_DELIVERY' || String(o.paymentMethod || '').toUpperCase().includes('COD');
+        const codDue = isCod ? Math.max(0, orderTotal - advancePaid) : 0;
         return {
           id: o.id,
           orderNumber: `#${o.orderNumber}`,
@@ -670,8 +679,11 @@ export class DeliveryController {
           distance: '',
           eta: '',
           earning: Number(o.deliveryFee) || 0,
-          productPrice: productVal,
-          totalAmount: productVal,
+          productPrice: orderTotal,
+          totalAmount: orderTotal,
+          codDue,
+          advancePaidAmount: advancePaid,
+          paymentMethod: o.paymentMethod,
           status: o.status,
           items: o.items.map((i) => `${i.quantity}x ${i.productName}`),
           isOtpVerified: false,

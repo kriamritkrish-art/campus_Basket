@@ -40,6 +40,9 @@ export interface ActiveDeliveryOrder {
   proofImageUrl?: string;
   productPrice?: number;
   totalAmount?: number;
+  codDue?: number;
+  advancePaidAmount?: number;
+  paymentMethod?: string;
   studentAddress?: string;
   providerAddress?: string;
   providerName?: string;
@@ -60,6 +63,9 @@ export interface AvailableOrder {
   earning: number;
   productPrice?: number;
   totalAmount?: number;
+  codDue?: number;
+  advancePaidAmount?: number;
+  paymentMethod?: string;
   itemsCount: number;
   items?: string[];
   itemsSummary?: string;
