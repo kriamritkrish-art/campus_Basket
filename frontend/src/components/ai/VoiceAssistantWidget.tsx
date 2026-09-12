@@ -54,7 +54,20 @@ export function VoiceAssistantWidget() {
     clearConversation,
     liveTranscript,
     micSupported,
+    micPermission,
+    requestMicPermission,
   } = useAIAssistant();
+
+  const handleMicClick = async () => {
+    if (micPermission !== 'granted') {
+      const granted = await requestMicPermission();
+      if (granted) {
+        startListening();
+      }
+    } else {
+      startListening();
+    }
+  };
 
   // Scroll to bottom of chat automatically when new message arrives
   useEffect(() => {
@@ -199,11 +212,55 @@ export function VoiceAssistantWidget() {
             </div>
           </div>
 
-          {/* Status Sub-bar */}
+          {/* Status Sub-bar with Indian Female Voice Badge */}
           <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between shrink-0">
-            <div className="text-[11px] font-semibold text-slate-500">Facility Control Status</div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-slate-500">Assistant</span>
+              <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+                Indian Female Voice
+              </span>
+            </div>
             {getStateBadge()}
           </div>
+
+          {/* Microphone Permission Prompts & Resolution Banners */}
+          {micPermission === 'denied' && (
+            <div className="px-3.5 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-900 flex flex-col gap-1.5 shrink-0 animate-in fade-in">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Microphone Blocked</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={requestMicPermission}
+                  className="px-2.5 py-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold shadow-xs transition-colors cursor-pointer shrink-0"
+                >
+                  Grant Permission
+                </button>
+              </div>
+              <p className="text-[10px] text-amber-700 leading-normal">
+                Click the <strong>lock / camera icon</strong> in your browser address bar (top-left), set Microphone to <strong>Allow</strong>, then tap Grant Permission.
+              </p>
+            </div>
+          )}
+
+          {micPermission === 'prompt' && (
+            <div className="px-3.5 py-2 bg-emerald-50 border-b border-emerald-200 text-emerald-900 flex items-center justify-between gap-2 shrink-0 animate-in fade-in">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-800">
+                <Mic className="w-3.5 h-3.5 text-[#4F9D2F] shrink-0" />
+                <span>Microphone access required for voice</span>
+              </div>
+              <button
+                type="button"
+                onClick={requestMicPermission}
+                className="px-2.5 py-1 rounded-xl bg-[#4F9D2F] hover:bg-[#438727] text-white text-[10px] font-bold shadow-xs transition-colors cursor-pointer shrink-0"
+              >
+                Allow Mic
+              </button>
+            </div>
+          )}
 
           {/* Conversation Transcript Area */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#fbfcfb]">
@@ -503,7 +560,7 @@ export function VoiceAssistantWidget() {
               ) : (
                 <button
                   type="button"
-                  onClick={startListening}
+                  onClick={handleMicClick}
                   className="w-10 h-10 rounded-2xl bg-[#4F9D2F] hover:bg-[#438727] text-white flex items-center justify-center shrink-0 transition-transform active:scale-95 shadow-md cursor-pointer group"
                   title="Speak into Microphone"
                   id="ai-assistant-mic-button"

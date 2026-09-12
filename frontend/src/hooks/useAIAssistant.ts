@@ -122,6 +122,7 @@ export function useAIAssistant() {
 
   const [liveTranscript, setLiveTranscript] = useState<string>('');
   const [micSupported, setMicSupported] = useState<boolean>(true);
+  const [micPermission, setMicPermission] = useState<'granted' | 'prompt' | 'denied' | 'unknown'>('unknown');
   const recognitionRef = useRef<any>(null);
   const hasGreetedRef = useRef<boolean>(false);
   const isSpeakingRef = useRef<boolean>(false);
@@ -184,7 +185,81 @@ export function useAIAssistant() {
     }
   }, [isAuthenticated, role]);
 
-  // Text-To-Speech (TTS) Voice output
+  // Helper to discover and select Indian female voice across all operating systems & browsers
+  const findIndianFemaleVoice = useCallback((): SpeechSynthesisVoice | null => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices || voices.length === 0) return null;
+
+    // Priority 1: Indian English / Hindi Female Voices by known names and language tags
+    // Windows: "Microsoft Heera", "Microsoft Neerja", "Microsoft Swara"
+    // Chrome / Android: "Google हिन्दी", "Google en-IN", "en-IN-Wavenet-A", "en-IN-Standard-A"
+    // macOS / iOS: "Veena", "Lekha", "Kaveri", "Aditi", "Raveena", "Sangeeta"
+    const femaleIndianVoice = voices.find((v) => {
+      const name = v.name.toLowerCase();
+      const lang = (v.lang || '').toLowerCase().replace(/_/g, '-');
+      const isIndian =
+        lang === 'en-in' ||
+        lang.startsWith('en-in') ||
+        lang === 'hi-in' ||
+        lang.startsWith('hi-in') ||
+        name.includes('india') ||
+        name.includes('hindi');
+      const isFemale =
+        name.includes('heera') ||
+        name.includes('neerja') ||
+        name.includes('swara') ||
+        name.includes('aditi') ||
+        name.includes('raveena') ||
+        name.includes('veena') ||
+        name.includes('lekha') ||
+        name.includes('kaveri') ||
+        name.includes('sangeeta') ||
+        name.includes('kalpana') ||
+        name.includes('female') ||
+        name.includes('girl') ||
+        name.includes('woman') ||
+        name.includes('natural');
+      return isIndian && isFemale;
+    });
+    if (femaleIndianVoice) return femaleIndianVoice;
+
+    // Priority 2: Any Indian Voice (en-IN or hi-IN)
+    const anyIndianVoice = voices.find((v) => {
+      const lang = (v.lang || '').toLowerCase().replace(/_/g, '-');
+      const name = v.name.toLowerCase();
+      return (
+        lang === 'en-in' ||
+        lang.startsWith('en-in') ||
+        lang === 'hi-in' ||
+        name.includes('india') ||
+        name.includes('hindi')
+      );
+    });
+    if (anyIndianVoice) return anyIndianVoice;
+
+    // Priority 3: Any English Female Voice
+    const femaleVoice = voices.find((v) => {
+      const name = v.name.toLowerCase();
+      const lang = (v.lang || '').toLowerCase();
+      return (
+        (lang.startsWith('en') || !lang) &&
+        (name.includes('female') ||
+          name.includes('zira') ||
+          name.includes('jenny') ||
+          name.includes('samantha') ||
+          name.includes('victoria') ||
+          name.includes('karen') ||
+          name.includes('siri') ||
+          name.includes('aria'))
+      );
+    });
+    if (femaleVoice) return femaleVoice;
+
+    return voices[0] || null;
+  }, []);
+
+  // Text-To-Speech (TTS) Voice output - Female Indian Accent
   const speakVoice = useCallback(
     (text: string) => {
       if (typeof window === 'undefined' || isVoiceMuted) return;
@@ -194,15 +269,25 @@ export function useAIAssistant() {
 
         // Clean speech of emojis and symbols
         const cleanText = text
-          .replace(/[👋🎤🛒📦₹✓↩📍🥟👔👕👖🛏️🧖🛋️⚠️🚚]/g, '')
+          .replace(/[👋🎤🛒📦₹✓↩📍🥟👔👕👖🛏️🧖🛋️⚠️🚚🔒🔓]/g, '')
           .replace(/[*_~`#]/g, '')
           .replace(/ABC Provider/gi, 'A B C Provider')
           .trim();
 
         const utterance = new SpeechSynthesisUtterance(cleanText);
+
+        // Select Indian Female voice
+        const femaleVoice = findIndianFemaleVoice();
+        if (femaleVoice) {
+          utterance.voice = femaleVoice;
+          utterance.lang = femaleVoice.lang || 'en-IN';
+        } else {
+          utterance.lang = 'en-IN';
+        }
+
+        // Young, pleasant feminine pitch and friendly Indian-oriented pacing
+        utterance.pitch = 1.18; // Distinctly female, warm and polite
         utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-        utterance.lang = 'en-IN';
 
         utterance.onstart = () => {
           isSpeakingRef.current = true;
@@ -230,7 +315,7 @@ export function useAIAssistant() {
         setStatusMessage('Ready');
       }
     },
-    [isVoiceMuted]
+    [isVoiceMuted, findIndianFemaleVoice]
   );
 
   // Helper to append AI message, update status and speak
@@ -258,12 +343,39 @@ export function useAIAssistant() {
     [speakVoice]
   );
 
-  // Detect browser speech capability on client mount
+  // Detect browser speech capability, query mic permissions, and preload voices
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      setMicSupported(!!SpeechRecognition);
+    if (typeof window === 'undefined') return;
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    setMicSupported(!!SpeechRecognition);
+
+    // Query microphone permission state if available
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions
+        .query({ name: 'microphone' as any })
+        .then((status) => {
+          setMicPermission(status.state as any);
+          status.onchange = () => {
+            setMicPermission(status.state as any);
+          };
+        })
+        .catch(() => {});
+    }
+
+    // Preload system voices
+    if (window.speechSynthesis) {
+      window.speechSynthesis.getVoices();
+      const onVoicesChanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+      window.speechSynthesis.onvoiceschanged = onVoicesChanged;
+      return () => {
+        if (window.speechSynthesis) {
+          window.speechSynthesis.onvoiceschanged = null;
+        }
+      };
     }
   }, []);
 
@@ -280,6 +392,34 @@ export function useAIAssistant() {
       }
     };
   }, []);
+
+  // Proactively request microphone permission
+  const requestMicPermission = useCallback(async () => {
+    if (typeof window === 'undefined') return false;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatusMessage('Microphone access is not supported by your browser.');
+      return false;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setMicPermission('granted');
+      setStatusMessage('Microphone access granted! Click mic to speak.');
+      addAiMessage(
+        'Microphone permission is granted! You can now speak to me by clicking the green microphone button.'
+      );
+      return true;
+    } catch (err: any) {
+      console.warn('[Mic Permission Request Error]', err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setMicPermission('denied');
+        setStatusMessage('Microphone blocked. Please allow mic in browser address bar.');
+      } else {
+        setStatusMessage('Microphone hardware error: ' + (err.message || err.name));
+      }
+      return false;
+    }
+  }, [addAiMessage]);
 
   // Trigger Personalized Greeting when first opened
   useEffect(() => {
@@ -354,15 +494,17 @@ export function useAIAssistant() {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setMicPermission('granted');
         // Immediately release tracks - SpeechRecognition handles its own audio stream
         stream.getTracks().forEach((track) => track.stop());
       } catch (err: any) {
         console.warn('[Microphone Permission Error]', err);
         setState('IDLE');
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          setMicPermission('denied');
           setStatusMessage('Mic blocked. Allow microphone in browser address bar.');
           addAiMessage(
-            'Microphone access is blocked by your browser. Please click the lock/camera icon in your browser address bar to allow microphone access, or type your message below.'
+            'Microphone access is blocked by your browser. Please click the lock/camera icon in your browser address bar to allow microphone access, or click the Grant Permission button.'
           );
         } else {
           setStatusMessage('Could not access microphone hardware. Please check your mic settings.');
@@ -1226,5 +1368,7 @@ export function useAIAssistant() {
     selectedProduct,
     liveTranscript,
     micSupported,
+    micPermission,
+    requestMicPermission,
   };
 }
