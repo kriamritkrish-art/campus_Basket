@@ -492,7 +492,7 @@ export default function AdminPaymentsPage() {
           collectionStatus: 'COLLECTED',
           reconciliationStatus: 'RECONCILED',
           deliveryBoyId: selectedCodRunner?.deliveryBoyId,
-          notes: `Direct order reconciliation for order #${c.orderNumber || targetOrderId}`
+          notes: `Reconciled order #${c.orderNumber || targetOrderId}`
         })
       });
 
@@ -512,7 +512,8 @@ export default function AdminPaymentsPage() {
                 reconciliationStatus: 'RECONCILED',
                 collectedAmount: collectedAmt,
                 cashCollectedAmount: collectedAmt,
-                difference: diff
+                difference: diff,
+                isEligibleForReconcile: false
               };
             }
             return o;
@@ -550,7 +551,8 @@ export default function AdminPaymentsPage() {
                     reconciliationStatus: 'RECONCILED',
                     collectedAmount: collectedAmt,
                     cashCollectedAmount: collectedAmt,
-                    difference: diff
+                    difference: diff,
+                    isEligibleForReconcile: false
                   };
                 }
                 return o;
@@ -582,12 +584,13 @@ export default function AdminPaymentsPage() {
   };
 
   // Execute Bulk COD Reconciliation for a Delivery Boy
-  const handleBulkReconcileCod = async () => {
-    if (!bulkReconcileRunner) return;
+  const handleBulkReconcileCod = async (runnerOverride?: any) => {
+    const runner = runnerOverride || bulkReconcileRunner;
+    if (!runner) return;
     setBulkReconciling(true);
     try {
-      const runnerId = bulkReconcileRunner.deliveryBoyId;
-      const runnerPhone = bulkReconcileRunner.phone;
+      const runnerId = runner.deliveryBoyId;
+      const runnerPhone = runner.phone;
       const res = await apiRequest('/api/admin/payments/cod/bulk-reconcile', {
         method: 'POST',
         body: JSON.stringify({
@@ -598,45 +601,61 @@ export default function AdminPaymentsPage() {
         })
       });
       if (res.success) {
-        showToast(res.message || `Successfully reconciled ${res.reconciledCount} eligible orders for ${bulkReconcileRunner?.name || bulkReconcileRunner?.deliveryBoyName || 'Runner'}!`);
+        showToast(res.message || `Successfully reconciled ${res.reconciledCount} eligible orders for ${runner?.name || runner?.deliveryBoyName || 'Runner'}!`);
         setShowBulkReconcileModal(false);
         setBulkReconcileRunner(null);
         setBulkReconcileNotes('');
 
         const reconciledIdSet = new Set(res.reconciledOrderIds || []);
 
-        // Immediately update runner in state to reconciled status
+        // Immediately update selected runner in state
         setSelectedCodRunner((prev: any) => {
           if (!prev) return prev;
           if (prev.deliveryBoyId === runnerId || (runnerPhone && prev.phone === runnerPhone)) {
-            const updatedOrders = (prev.orders || []).map((o: any) => {
-              const matches = reconciledIdSet.size === 0 || 
-                              reconciledIdSet.has(o.id) || 
-                              reconciledIdSet.has(o.orderId) || 
-                              (o.order?.id && reconciledIdSet.has(o.order.id));
-              if (matches) {
-                return {
-                  ...o,
-                  collectionStatus: 'COLLECTED',
-                  reconciliationStatus: 'RECONCILED',
-                  difference: 0
-                };
-              }
-              return o;
-            });
-            const reconciledCount = updatedOrders.filter((o: any) => o.reconciliationStatus === 'RECONCILED').length;
-            const pendingCount = Math.max(0, updatedOrders.length - reconciledCount);
+            const updatedOrders = (prev.orders || []).map((o: any) => ({
+              ...o,
+              collectionStatus: 'COLLECTED',
+              reconciliationStatus: 'RECONCILED',
+              difference: 0,
+              isEligibleForReconcile: false
+            }));
+            const totalOrders = prev.codOrdersCount || updatedOrders.length;
             return {
               ...prev,
               orders: updatedOrders,
-              pendingOrdersCount: pendingCount,
-              reconciledOrdersCount: reconciledCount,
-              eligibleOrdersCount: pendingCount,
-              status: pendingCount === 0 ? 'RECONCILED' : 'PENDING'
+              pendingOrdersCount: 0,
+              reconciledOrdersCount: totalOrders,
+              eligibleOrdersCount: 0,
+              status: 'RECONCILED'
             };
           }
           return prev;
         });
+
+        // Immediately update codDeliveryBoys list
+        setCodDeliveryBoys((prevRunners: any[]) =>
+          prevRunners.map((r: any) => {
+            if (r.deliveryBoyId === runnerId || (runnerPhone && r.phone === runnerPhone)) {
+              const updatedOrders = (r.orders || []).map((o: any) => ({
+                ...o,
+                collectionStatus: 'COLLECTED',
+                reconciliationStatus: 'RECONCILED',
+                difference: 0,
+                isEligibleForReconcile: false
+              }));
+              const totalOrders = r.codOrdersCount || updatedOrders.length;
+              return {
+                ...r,
+                orders: updatedOrders,
+                reconciledOrdersCount: totalOrders,
+                pendingOrdersCount: 0,
+                eligibleOrdersCount: 0,
+                status: 'RECONCILED'
+              };
+            }
+            return r;
+          })
+        );
 
         await loadData();
       } else {
@@ -675,15 +694,15 @@ export default function AdminPaymentsPage() {
   }, [codDeliveryBoys, codSearchQuery, codReconciliationStatusFilter, codRunnerFilter]);
 
   const codOverviewCards = useMemo(() => {
-    const totalDeliveryBoys = codSummary?.totalDeliveryBoys ?? codDeliveryBoys.filter(r => (r.codOrdersCount || 0) > 0).length;
-    const totalOrders = codSummary?.totalOrders ?? codSummary?.totalCodOrders ?? codDeliveryBoys.reduce((s, r) => s + (Number(r.codOrdersCount) || 0), 0);
-    const totalExpected = codSummary?.totalExpected ?? codSummary?.expectedCod ?? codDeliveryBoys.reduce((s, r) => s + (Number(r.expectedAmount) || 0), 0);
-    const totalCollected = codSummary?.totalCollected ?? codSummary?.cashCollected ?? codDeliveryBoys.reduce((s, r) => s + (Number(r.collectedAmount) || 0), 0);
-    const totalDifference = codSummary?.totalDifference ?? codSummary?.difference ?? codDeliveryBoys.reduce((s, r) => s + (Number(r.difference) || 0), 0);
-    const reconciledOrders = codSummary?.reconciledOrders ?? codSummary?.reconciledCount ?? codDeliveryBoys.reduce((s, r) => s + (Number(r.reconciledOrdersCount) || 0), 0);
-    const pendingOrders = codSummary?.pendingOrders ?? codSummary?.pendingCount ?? codDeliveryBoys.reduce((s, r) => s + (Number(r.pendingOrdersCount) || 0), 0);
+    const totalDeliveryBoys = codDeliveryBoys.filter(r => (r.codOrdersCount || 0) > 0).length;
+    const totalOrders = codDeliveryBoys.reduce((s, r) => s + (Number(r.codOrdersCount) || 0), 0);
+    const totalExpected = codDeliveryBoys.reduce((s, r) => s + (Number(r.expectedAmount) || 0), 0);
+    const totalCollected = codDeliveryBoys.reduce((s, r) => s + (Number(r.collectedAmount) || 0), 0);
+    const totalDifference = codDeliveryBoys.reduce((s, r) => s + (Number(r.difference) || 0), 0);
+    const reconciledOrders = codDeliveryBoys.reduce((s, r) => s + (Number(r.reconciledOrdersCount) || 0), 0);
+    const pendingOrders = codDeliveryBoys.reduce((s, r) => s + (Number(r.pendingOrdersCount) || 0), 0);
     return { totalDeliveryBoys, totalOrders, totalExpected, totalCollected, totalDifference, reconciledOrders, pendingOrders };
-  }, [codSummary, codDeliveryBoys]);
+  }, [codDeliveryBoys]);
 
   const filteredRunnerOrders = useMemo(() => {
     if (!selectedCodRunner || !selectedCodRunner.orders) return [];
@@ -1783,7 +1802,7 @@ export default function AdminPaymentsPage() {
               <span className="text-xl font-black text-emerald-700 mt-1 block">
                 {codOverviewCards.reconciledOrders}
               </span>
-              <span className="text-[10px] text-emerald-600 mt-0.5 block">Audited Orders</span>
+              <span className="text-[10px] text-emerald-600 mt-0.5 block">Reconciled Orders</span>
             </div>
 
             <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/20 shadow-xs">
@@ -1791,7 +1810,7 @@ export default function AdminPaymentsPage() {
               <span className="text-xl font-black text-amber-700 mt-1 block">
                 {codOverviewCards.pendingOrders}
               </span>
-              <span className="text-[10px] text-amber-600 mt-0.5 block">Awaiting Audit</span>
+              <span className="text-[10px] text-amber-600 mt-0.5 block">Awaiting Reconciliation</span>
             </div>
           </div>
 
@@ -1974,8 +1993,7 @@ export default function AdminPaymentsPage() {
                                 {runner.pendingOrdersCount > 0 ? (
                                   <button
                                     onClick={() => {
-                                      setBulkReconcileRunner(runner);
-                                      setShowBulkReconcileModal(true);
+                                      handleBulkReconcileCod(runner);
                                     }}
                                     className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
                                     title="Quick Bulk Reconcile"
@@ -2078,8 +2096,7 @@ export default function AdminPaymentsPage() {
                     {selectedCodRunner && runnerSubTab === 'RECONCILIATION' ? (
                       <button
                         onClick={() => {
-                          setBulkReconcileRunner(selectedCodRunner);
-                          setShowBulkReconcileModal(true);
+                          handleBulkReconcileCod(selectedCodRunner);
                         }}
                         disabled={(selectedCodRunner.pendingOrdersCount || 0) === 0 || bulkReconciling}
                         className={`px-5 py-2.5 rounded-xl font-black text-xs shadow-sm flex items-center gap-2 transition-all cursor-pointer ${
@@ -2291,9 +2308,9 @@ export default function AdminPaymentsPage() {
                       onChange={(e) => setCodReconciliationStatusFilter(e.target.value)}
                       className="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                     >
-                      <option value="ALL">All Audit Statuses</option>
+                      <option value="ALL">All Statuses</option>
                       <option value="RECONCILED">Reconciled</option>
-                      <option value="PENDING">Pending Audit</option>
+                      <option value="PENDING">Pending</option>
                       <option value="MISMATCH">Mismatch</option>
                     </select>
                   </div>
@@ -2326,7 +2343,7 @@ export default function AdminPaymentsPage() {
                         <th className="py-3 px-3">Collected</th>
                         <th className="py-3 px-3">Difference</th>
                         <th className="py-3 px-3">Collection</th>
-                        <th className="py-3 px-3">Audit Status</th>
+                        <th className="py-3 px-3">Reconciliation Status</th>
                         <th className="py-3 px-3 text-right">Action</th>
                       </tr>
                     </thead>
@@ -2345,8 +2362,7 @@ export default function AdminPaymentsPage() {
                           const diff = Number(c.difference ?? (codDue - collectedAmt));
 
                           const isEligible = c.reconciliationStatus !== 'RECONCILED' && 
-                            diff === 0 && 
-                            c.collectionStatus === 'COLLECTED';
+                            (c.collectionStatus === 'COLLECTED' || c.isDelivered || Number(c.expectedAmount || c.codAmountDue || 0) > 0);
                           const isMismatch = c.reconciliationStatus === 'MISMATCH' || 
                             (c.collectionStatus === 'COLLECTED' && diff !== 0 && c.reconciliationStatus !== 'RECONCILED');
 

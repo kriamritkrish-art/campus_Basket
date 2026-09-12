@@ -671,6 +671,36 @@ describe('Campus Basket - Complete Delivery Boy COD Reconciliation Test Suite', 
     expect(col.collectionStatus).toBe('COLLECTED');
   });
 
+  it('Scenario 21: getCodReconciliation summary matches runners and getDeliveryBoyOrders returns orders', async () => {
+    const { AdminPaymentController } = await import('../backend/src/controllers/adminPaymentController');
+
+    let codData: any = null;
+    const codRes: any = {
+      status(c: number) { this.statusCode = c; return this; },
+      json(d: any) { codData = d; return this; }
+    };
+    await AdminPaymentController.getCodReconciliation({ query: {} } as any, codRes, () => {});
+
+    expect(codData.success).toBe(true);
+    const sumOrders = codData.deliveryBoys.reduce((s: number, b: any) => s + (b.codOrdersCount || 0), 0);
+    expect(codData.summary.totalOrders).toBe(sumOrders);
+    expect(codData.summary.totalOrders).toBeGreaterThan(0);
+
+    let ordersData: any = null;
+    const ordRes: any = {
+      status(c: number) { this.statusCode = c; return this; },
+      json(d: any) { ordersData = d; return this; }
+    };
+    await AdminPaymentController.getDeliveryBoyOrders({ query: { deliveryBoyId: 'ALL' } } as any, ordRes, () => {});
+    expect(ordersData?.success).toBe(true);
+    expect(ordersData?.orders?.length).toBeGreaterThan(0);
+
+    let s1Count = 0;
+    const s1Res: any = { status(c: number) { this.statusCode = c; return this; }, json(d: any) { s1Count = d?.orders?.length || 0; } };
+    await AdminPaymentController.getDeliveryBoyOrders({ query: { deliveryBoyId: 'db_boy_sourav_1' } } as any, s1Res, () => {});
+    expect(s1Count).toBeGreaterThan(0);
+  });
+
   afterAll(async () => {
     const { prisma } = await import('../backend/src/config/database');
     const resetOrders = ['ord_cod_sourav_101', 'ord_cod_sourav_102', 'ord_cod_sourav_103', 'ord_cod_sourav_104', 'ord_cod_sourav_105'];
