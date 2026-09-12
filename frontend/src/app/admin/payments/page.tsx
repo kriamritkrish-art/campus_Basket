@@ -613,6 +613,17 @@ export default function AdminPaymentsPage() {
     });
   }, [codDeliveryBoys, codSearchQuery, codReconciliationStatusFilter, codRunnerFilter]);
 
+  const codOverviewCards = useMemo(() => {
+    const totalDeliveryBoys = codSummary?.totalDeliveryBoys ?? codDeliveryBoys.filter(r => (r.codOrdersCount || 0) > 0).length;
+    const totalOrders = codSummary?.totalOrders ?? codSummary?.totalCodOrders ?? codDeliveryBoys.reduce((s, r) => s + (Number(r.codOrdersCount) || 0), 0);
+    const totalExpected = codSummary?.totalExpected ?? codSummary?.expectedCod ?? codDeliveryBoys.reduce((s, r) => s + (Number(r.expectedAmount) || 0), 0);
+    const totalCollected = codSummary?.totalCollected ?? codSummary?.cashCollected ?? codDeliveryBoys.reduce((s, r) => s + (Number(r.collectedAmount) || 0), 0);
+    const totalDifference = codSummary?.totalDifference ?? codSummary?.difference ?? codDeliveryBoys.reduce((s, r) => s + (Number(r.difference) || 0), 0);
+    const reconciledOrders = codSummary?.reconciledOrders ?? codSummary?.reconciledCount ?? codDeliveryBoys.reduce((s, r) => s + (Number(r.reconciledOrdersCount) || 0), 0);
+    const pendingOrders = codSummary?.pendingOrders ?? codSummary?.pendingCount ?? codDeliveryBoys.reduce((s, r) => s + (Number(r.pendingOrdersCount) || 0), 0);
+    return { totalDeliveryBoys, totalOrders, totalExpected, totalCollected, totalDifference, reconciledOrders, pendingOrders };
+  }, [codSummary, codDeliveryBoys]);
+
   const filteredRunnerOrders = useMemo(() => {
     if (!selectedCodRunner || !selectedCodRunner.orders) return [];
     return selectedCodRunner.orders.filter((c: any) => {
@@ -1661,7 +1672,7 @@ export default function AdminPaymentsPage() {
             <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
               <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">Delivery Boys</span>
               <span className="text-xl font-black text-gray-900 mt-1 block">
-                {codSummary?.totalDeliveryBoys ?? codDeliveryBoys.length ?? 0}
+                {codOverviewCards.totalDeliveryBoys}
               </span>
               <span className="text-[10px] text-gray-400 mt-0.5 block">Active Runners</span>
             </div>
@@ -1669,7 +1680,7 @@ export default function AdminPaymentsPage() {
             <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
               <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">COD Orders</span>
               <span className="text-xl font-black text-gray-900 mt-1 block">
-                {codSummary?.totalOrders ?? 0}
+                {codOverviewCards.totalOrders}
               </span>
               <span className="text-[10px] text-gray-400 mt-0.5 block">Total Cash Orders</span>
             </div>
@@ -1677,7 +1688,7 @@ export default function AdminPaymentsPage() {
             <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
               <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">Expected COD</span>
               <span className="text-xl font-black text-gray-900 mt-1 block">
-                {formatCur(codSummary?.totalExpected ?? 0)}
+                {formatCur(codOverviewCards.totalExpected)}
               </span>
               <span className="text-[10px] text-gray-400 mt-0.5 block">Invoice Value</span>
             </div>
@@ -1685,31 +1696,31 @@ export default function AdminPaymentsPage() {
             <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/20 shadow-xs">
               <span className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wider block">Cash Collected</span>
               <span className="text-xl font-black text-emerald-700 mt-1 block">
-                {formatCur(codSummary?.totalCollected ?? 0)}
+                {formatCur(codOverviewCards.totalCollected)}
               </span>
               <span className="text-[10px] text-emerald-600 mt-0.5 block">Vault Drops</span>
             </div>
 
             <div className={`bg-white p-4 rounded-xl border shadow-xs ${
-              Number(codSummary?.totalDifference || 0) < 0 
+              Number(codOverviewCards.totalDifference || 0) < 0 
                 ? 'border-red-200 bg-red-50/30 text-red-900' 
                 : 'border-gray-200'
             }`}>
               <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">Difference</span>
               <span className={`text-xl font-black mt-1 block ${
-                Number(codSummary?.totalDifference || 0) < 0 ? 'text-red-600' : 'text-gray-900'
+                Number(codOverviewCards.totalDifference || 0) < 0 ? 'text-red-600' : 'text-gray-900'
               }`}>
-                {formatCur(codSummary?.totalDifference ?? 0)}
+                {formatCur(codOverviewCards.totalDifference)}
               </span>
               <span className="text-[10px] text-gray-400 mt-0.5 block">
-                {Number(codSummary?.totalDifference || 0) === 0 ? 'Balanced' : 'Discrepancy'}
+                {Number(codOverviewCards.totalDifference || 0) === 0 ? 'Balanced' : 'Discrepancy'}
               </span>
             </div>
 
             <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
               <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">Reconciled</span>
               <span className="text-xl font-black text-emerald-700 mt-1 block">
-                {codSummary?.reconciledOrders ?? 0}
+                {codOverviewCards.reconciledOrders}
               </span>
               <span className="text-[10px] text-emerald-600 mt-0.5 block">Audited Orders</span>
             </div>
@@ -1717,7 +1728,7 @@ export default function AdminPaymentsPage() {
             <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/20 shadow-xs">
               <span className="text-[11px] font-semibold text-amber-800 uppercase tracking-wider block">Pending</span>
               <span className="text-xl font-black text-amber-700 mt-1 block">
-                {codSummary?.pendingOrders ?? 0}
+                {codOverviewCards.pendingOrders}
               </span>
               <span className="text-[10px] text-amber-600 mt-0.5 block">Awaiting Audit</span>
             </div>

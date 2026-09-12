@@ -509,11 +509,17 @@ export class AdminPaymentController {
       const summaryCards = {
         totalDeliveryBoys: runnerSummaries.filter((r) => r.codOrdersCount > 0).length,
         totalCodOrders,
+        totalOrders: totalCodOrders,
         expectedCod: totalExpectedCod,
+        totalExpected: totalExpectedCod,
         cashCollected: totalCollectedCod,
+        totalCollected: totalCollectedCod,
         difference: totalDiff,
+        totalDifference: totalDiff,
         reconciledCount,
-        pendingCount
+        reconciledOrders: reconciledCount,
+        pendingCount,
+        pendingOrders: pendingCount
       };
 
       res.status(200).json({
