@@ -52,6 +52,8 @@ export function VoiceAssistantWidget() {
     stopListening,
     handleStudentInput,
     clearConversation,
+    liveTranscript,
+    micSupported,
   } = useAIAssistant();
 
   // Scroll to bottom of chat automatically when new message arrives
@@ -372,15 +374,39 @@ export function VoiceAssistantWidget() {
               </div>
             ))}
 
-            {/* Pulsing Audio Animation when Listening or Speaking */}
-            {(state === 'LISTENING' || state === 'SPEAKING') && (
-              <div className="flex items-center gap-1.5 p-3 rounded-2xl bg-white border border-slate-200/80 shadow-xs max-w-[180px]">
-                <div className="w-2 h-4 bg-[#4F9D2F] rounded-full animate-pulse" />
-                <div className="w-2 h-6 bg-[#4F9D2F] rounded-full animate-pulse delay-75" />
-                <div className="w-2 h-3 bg-[#4F9D2F] rounded-full animate-pulse delay-150" />
-                <div className="w-2 h-5 bg-[#4F9D2F] rounded-full animate-pulse delay-100" />
-                <span className="text-[11px] font-bold text-slate-600 ml-1">
-                  {state === 'LISTENING' ? 'Listening...' : 'Speaking...'}
+            {/* Listening Indicator with Real-Time Live Transcript */}
+            {state === 'LISTENING' && (
+              <div className="flex flex-col gap-1.5 p-3 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-xs max-w-[90%] self-start animate-in fade-in duration-150">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  </span>
+                  <span className="text-xs font-bold text-emerald-800">
+                    Listening to your voice... Speak now
+                  </span>
+                </div>
+                {liveTranscript ? (
+                  <div className="px-2.5 py-1.5 rounded-xl bg-white border border-emerald-100 text-xs text-slate-800 font-medium italic shadow-2xs">
+                    &ldquo;{liveTranscript}&rdquo;
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-emerald-600">
+                    Say: &ldquo;I want momo&rdquo;, &ldquo;Book laundry&rdquo;, &ldquo;Track my order&rdquo;...
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Speaking Audio Animation */}
+            {state === 'SPEAKING' && (
+              <div className="flex items-center gap-1.5 p-3 rounded-2xl bg-purple-50/80 border border-purple-200 shadow-2xs max-w-[180px]">
+                <div className="w-1.5 h-3 bg-purple-600 rounded-full animate-pulse" />
+                <div className="w-1.5 h-5 bg-purple-600 rounded-full animate-pulse delay-75" />
+                <div className="w-1.5 h-2 bg-purple-600 rounded-full animate-pulse delay-150" />
+                <div className="w-1.5 h-4 bg-purple-600 rounded-full animate-pulse delay-100" />
+                <span className="text-[11px] font-bold text-purple-700 ml-1">
+                  Speaking...
                 </span>
               </div>
             )}
@@ -441,28 +467,48 @@ export function VoiceAssistantWidget() {
             </button>
           </div>
 
+          {/* Status / Notice Banner */}
+          {statusMessage &&
+            statusMessage !== 'Ready' &&
+            statusMessage !== 'Listening...' &&
+            statusMessage !== 'Speaking...' &&
+            statusMessage !== 'Understanding...' && (
+              <div className="px-3.5 py-1.5 bg-amber-50/90 border-t border-amber-200/70 text-[11px] font-medium text-amber-800 flex items-center justify-between shrink-0">
+                <span className="truncate">{statusMessage}</span>
+              </div>
+            )}
+
           {/* Bottom Interactive Controls (Mic + Text Input Fallback) */}
           <div className="p-3 bg-white border-t border-slate-200 shrink-0">
             <form onSubmit={handleSend} className="flex items-center gap-2">
               {/* Mic & Stop Buttons */}
-              {state === 'LISTENING' || state === 'SPEAKING' ? (
+              {state === 'LISTENING' ? (
                 <button
                   type="button"
                   onClick={stopListening}
-                  className="w-10 h-10 rounded-2xl bg-red-600 hover:bg-red-700 text-white flex items-center justify-center shrink-0 transition-transform active:scale-95 shadow-md"
-                  title="Stop listening / speaking"
+                  className="relative w-10 h-10 rounded-2xl bg-red-600 hover:bg-red-700 text-white flex items-center justify-center shrink-0 transition-transform active:scale-95 shadow-md ring-4 ring-red-400/30 animate-pulse cursor-pointer"
+                  title="Stop listening"
                 >
                   <Square className="w-4 h-4 fill-white" />
+                </button>
+              ) : state === 'SPEAKING' ? (
+                <button
+                  type="button"
+                  onClick={stopListening}
+                  className="w-10 h-10 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center shrink-0 transition-transform active:scale-95 shadow-md cursor-pointer"
+                  title="Stop speaking"
+                >
+                  <VolumeX className="w-4 h-4" />
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={startListening}
-                  className="w-10 h-10 rounded-2xl bg-[#4F9D2F] hover:bg-[#438727] text-white flex items-center justify-center shrink-0 transition-transform active:scale-95 shadow-md cursor-pointer"
+                  className="w-10 h-10 rounded-2xl bg-[#4F9D2F] hover:bg-[#438727] text-white flex items-center justify-center shrink-0 transition-transform active:scale-95 shadow-md cursor-pointer group"
                   title="Speak into Microphone"
                   id="ai-assistant-mic-button"
                 >
-                  <Mic className="w-5 h-5" />
+                  <Mic className="w-5 h-5 group-hover:scale-110 transition-transform" />
                 </button>
               )}
 

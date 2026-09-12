@@ -120,9 +120,13 @@ export function useAIAssistant() {
   const [cachedOrders, setCachedOrders] = useState<any[]>([]);
   const [cachedLaundryOrders, setCachedLaundryOrders] = useState<any[]>([]);
 
+  const [liveTranscript, setLiveTranscript] = useState<string>('');
+  const [micSupported, setMicSupported] = useState<boolean>(true);
   const recognitionRef = useRef<any>(null);
   const hasGreetedRef = useRef<boolean>(false);
   const isSpeakingRef = useRef<boolean>(false);
+  const lastTranscriptRef = useRef<string>('');
+  const handleStudentInputRef = useRef<(text: string) => Promise<void>>(async () => {});
 
   // Student first name extraction from logged in session
   const studentFirstName =
@@ -180,56 +184,6 @@ export function useAIAssistant() {
     }
   }, [isAuthenticated, role]);
 
-  // Setup Web Speech Recognition
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (SpeechRecognition) {
-      const rec = new SpeechRecognition();
-      rec.continuous = false;
-      rec.interimResults = false;
-      rec.lang = 'en-IN'; // Tailored for campus students
-
-      rec.onstart = () => {
-        setState('LISTENING');
-        setStatusMessage('Listening...');
-      };
-
-      rec.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        if (transcript) {
-          handleStudentInput(transcript);
-        }
-      };
-
-      rec.onerror = (event: any) => {
-        console.warn('[AI Assistant Speech Error]', event.error);
-        setState('IDLE');
-        setStatusMessage('Ready');
-      };
-
-      rec.onend = () => {
-        if (!isSpeakingRef.current) {
-          setState('IDLE');
-          setStatusMessage('Ready');
-        }
-      };
-
-      recognitionRef.current = rec;
-    }
-
-    return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {}
-      }
-    };
-  }, []);
-
   // Text-To-Speech (TTS) Voice output
   const speakVoice = useCallback(
     (text: string) => {
@@ -279,6 +233,54 @@ export function useAIAssistant() {
     [isVoiceMuted]
   );
 
+  // Helper to append AI message, update status and speak
+  const addAiMessage = useCallback(
+    (
+      text: string,
+      actionType?: ChatMessage['actionType'],
+      actionData?: any
+    ) => {
+      const aiMsg: ChatMessage = {
+        id: `msg_ai_${Date.now()}`,
+        sender: 'ai',
+        text,
+        timestamp: new Date(),
+        actionType,
+        actionData,
+        suggestedProducts: Array.isArray(actionData) ? actionData : undefined,
+      };
+
+      setMessages((prev) => [...prev, aiMsg]);
+      setState('SPEAKING');
+      setStatusMessage('Speaking...');
+      speakVoice(text);
+    },
+    [speakVoice]
+  );
+
+  // Detect browser speech capability on client mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition =
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      setMicSupported(!!SpeechRecognition);
+    }
+  }, []);
+
+  // Cleanup speech resources on component unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {}
+      }
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
   // Trigger Personalized Greeting when first opened
   useEffect(() => {
     if (isOpen && !hasGreetedRef.current) {
@@ -299,60 +301,167 @@ export function useAIAssistant() {
     }
   }, [isOpen, studentFirstName, speakVoice]);
 
-  // Start Voice Recording
-  const startListening = () => {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.start();
-      } catch (e) {
-        try {
-          recognitionRef.current.stop();
-          setTimeout(() => recognitionRef.current.start(), 150);
-        } catch {}
-      }
-    } else {
-      setStatusMessage('Voice recognition not supported in this browser.');
-    }
-  };
-
   // Stop Voice Recording or Speaking
-  const stopListening = () => {
+  const stopListening = useCallback(() => {
     if (recognitionRef.current) {
       try {
-        recognitionRef.current.stop();
+        recognitionRef.current.abort();
       } catch {}
+      recognitionRef.current = null;
     }
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
+    isSpeakingRef.current = false;
+    setLiveTranscript('');
+    lastTranscriptRef.current = '';
     setState('IDLE');
     setStatusMessage('Ready');
-  };
+  }, []);
 
-  // Helper to append AI message, update status and speak
-  const addAiMessage = (
-    text: string,
-    actionType?: ChatMessage['actionType'],
-    actionData?: any
-  ) => {
-    const aiMsg: ChatMessage = {
-      id: `msg_ai_${Date.now()}`,
-      sender: 'ai',
-      text,
-      timestamp: new Date(),
-      actionType,
-      actionData,
-      suggestedProducts: Array.isArray(actionData) ? actionData : undefined,
-    };
+  // Start Voice Recording with mic permission check and interim transcription
+  const startListening = useCallback(async () => {
+    if (typeof window === 'undefined') return;
 
-    setMessages((prev) => [...prev, aiMsg]);
-    setState('SPEAKING');
-    setStatusMessage('Speaking...');
-    speakVoice(text);
-  };
+    // 1. Immediately cancel active TTS output so microphone doesn't capture assistant's voice
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    isSpeakingRef.current = false;
+
+    // 2. Abort existing recognition instance to avoid InvalidStateError
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch {}
+      recognitionRef.current = null;
+    }
+
+    // 3. Detect browser Web Speech API
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setMicSupported(false);
+      setStatusMessage('Voice recognition is not supported in this browser.');
+      addAiMessage(
+        'Voice recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge for voice features, or type your message in the chat box.'
+      );
+      return;
+    }
+
+    // 4. Proactively request mic permission via mediaDevices to trigger the browser prompt if ungranted
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Immediately release tracks - SpeechRecognition handles its own audio stream
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (err: any) {
+        console.warn('[Microphone Permission Error]', err);
+        setState('IDLE');
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          setStatusMessage('Mic blocked. Allow microphone in browser address bar.');
+          addAiMessage(
+            'Microphone access is blocked by your browser. Please click the lock/camera icon in your browser address bar to allow microphone access, or type your message below.'
+          );
+        } else {
+          setStatusMessage('Could not access microphone hardware. Please check your mic settings.');
+        }
+        return;
+      }
+    }
+
+    // 5. Instantiate fresh SpeechRecognition object
+    try {
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      rec.lang = 'en-IN'; // Indian English tailored for campus students
+
+      lastTranscriptRef.current = '';
+      setLiveTranscript('');
+
+      rec.onstart = () => {
+        setState('LISTENING');
+        setStatusMessage('Listening to your voice... Speak now');
+      };
+
+      rec.onspeechstart = () => {
+        setStatusMessage('Listening...');
+      };
+
+      rec.onresult = (event: any) => {
+        let interimText = '';
+        let finalText = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const result = event.results[i];
+          const transcript = result[0]?.transcript || '';
+          if (result.isFinal) {
+            finalText += transcript;
+          } else {
+            interimText += transcript;
+          }
+        }
+
+        const heard = (finalText || interimText).trim();
+        if (heard) {
+          lastTranscriptRef.current = heard;
+          setLiveTranscript(heard);
+        }
+
+        if (finalText.trim()) {
+          const toProcess = finalText.trim();
+          lastTranscriptRef.current = '';
+          setLiveTranscript('');
+          try {
+            rec.stop();
+          } catch {}
+          handleStudentInputRef.current(toProcess);
+        }
+      };
+
+      rec.onerror = (event: any) => {
+        console.warn('[AI Assistant Speech Error]', event.error);
+        if (event.error === 'not-allowed') {
+          setStatusMessage('Mic blocked. Allow microphone in browser address bar.');
+          addAiMessage(
+            'Microphone access is blocked. Please allow microphone access in your browser address bar, or type your message below.'
+          );
+        } else if (event.error === 'no-speech') {
+          setStatusMessage('No speech detected. Click mic to speak again.');
+        } else if (event.error === 'network') {
+          setStatusMessage('Network issue with speech recognition. Please try again or type.');
+        } else if (event.error !== 'aborted') {
+          setStatusMessage(`Voice notice: ${event.error}`);
+        }
+        setLiveTranscript('');
+        lastTranscriptRef.current = '';
+        setState('IDLE');
+      };
+
+      rec.onend = () => {
+        const remaining = lastTranscriptRef.current.trim();
+        lastTranscriptRef.current = '';
+        setLiveTranscript('');
+
+        if (remaining) {
+          handleStudentInputRef.current(remaining);
+        } else if (!isSpeakingRef.current) {
+          setState('IDLE');
+          setStatusMessage('Ready');
+        }
+      };
+
+      recognitionRef.current = rec;
+      rec.start();
+    } catch (err) {
+      console.warn('[Start Listening Exception]', err);
+      setStatusMessage('Failed to activate microphone.');
+      setState('IDLE');
+    }
+  }, [addAiMessage]);
 
   // Main Conversational NLU Logic (UI-FIRST, Multi-Facility Support)
   const handleStudentInput = async (inputText: string) => {
@@ -1062,6 +1171,11 @@ export function useAIAssistant() {
     );
   };
 
+  // Keep handleStudentInputRef continuously updated to the latest closure
+  useEffect(() => {
+    handleStudentInputRef.current = handleStudentInput;
+  });
+
   // Helper to filter and report products by provider
   const filterProductsByProvider = (provider: ProviderInfo) => {
     const providerProducts = FALLBACK_STORE_PRODUCTS.filter(
@@ -1110,5 +1224,7 @@ export function useAIAssistant() {
     clearConversation,
     displayedProducts,
     selectedProduct,
+    liveTranscript,
+    micSupported,
   };
 }
