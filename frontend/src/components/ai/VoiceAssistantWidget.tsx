@@ -69,6 +69,17 @@ export function VoiceAssistantWidget() {
     }
   };
 
+  // Auto-reopen assistant if user reloaded page after granting permission
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const wasOpen = sessionStorage.getItem('cb_ai_assistant_open');
+      if (wasOpen === 'true') {
+        sessionStorage.removeItem('cb_ai_assistant_open');
+        setIsOpen(true);
+      }
+    }
+  }, [setIsOpen]);
+
   // Scroll to bottom of chat automatically when new message arrives
   useEffect(() => {
     if (chatBottomRef.current) {
@@ -231,22 +242,36 @@ export function VoiceAssistantWidget() {
 
           {/* Microphone Permission Prompts & Resolution Banners */}
           {micPermission === 'denied' && (
-            <div className="px-3.5 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-900 flex flex-col gap-1.5 shrink-0 animate-in fade-in">
+            <div className="px-3.5 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-900 flex flex-col gap-2 shrink-0 animate-in fade-in">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800">
                   <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                   <span>Microphone Blocked</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={requestMicPermission}
-                  className="px-2.5 py-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold shadow-xs transition-colors cursor-pointer shrink-0"
-                >
-                  Grant Permission
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        sessionStorage.setItem('cb_ai_assistant_open', 'true');
+                        window.location.reload();
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-xl bg-amber-700 hover:bg-amber-800 text-white text-[10px] font-bold shadow-xs transition-colors cursor-pointer"
+                  >
+                    Reload Page
+                  </button>
+                  <button
+                    type="button"
+                    onClick={requestMicPermission}
+                    className="px-2.5 py-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold shadow-xs transition-colors cursor-pointer"
+                  >
+                    Re-check Mic
+                  </button>
+                </div>
               </div>
               <p className="text-[10px] text-amber-700 leading-normal">
-                Click the <strong>lock / camera icon</strong> in your browser address bar (top-left), set Microphone to <strong>Allow</strong>, then tap Grant Permission.
+                Click <strong>Reload</strong> at the top of your browser (or the brown banner) to apply your microphone permission!
               </p>
             </div>
           )}
