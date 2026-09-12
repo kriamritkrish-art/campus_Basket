@@ -1429,9 +1429,10 @@ export class DeliveryController {
 
       const { dateRange, startDate, endDate, providerId, collectionStatus } = req.query;
 
+      const runnerCandidateIds = [deliveryBoy.id, deliveryBoy.userId].filter(Boolean);
       const rawOrders = await (prisma as any).order.findMany({
         where: {
-          deliveryBoyId: deliveryBoy.id
+          OR: runnerCandidateIds.map(rid => ({ deliveryBoyId: rid }))
         },
         include: {
           student: true,
@@ -1446,7 +1447,9 @@ export class DeliveryController {
       );
 
       const codCollections = await (prisma as any).cODCollection.findMany({
-        where: { deliveryBoyId: deliveryBoy.id }
+        where: {
+          OR: runnerCandidateIds.map(rid => ({ deliveryBoyId: rid }))
+        }
       });
 
       const now = new Date();
@@ -1474,12 +1477,13 @@ export class DeliveryController {
           continue;
         }
 
-        const isCollected = ord.paymentStatus === 'COD_COLLECTED' || codEntry?.collectionStatus === 'COLLECTED';
+        const isCollected = ord.paymentStatus === 'COD_COLLECTED' || codEntry?.collectionStatus === 'COLLECTED' || (ord.status === 'DELIVERED' && codDue > 0);
         const rawCollected = codEntry ? (codEntry.collectedAmount !== undefined ? codEntry.collectedAmount : codEntry.amountCollected) : null;
-        const collectedAmt = rawCollected !== null && rawCollected !== undefined ? Number(rawCollected) : (isCollected ? codDue : 0);
+        const parsedCollected = rawCollected !== null && rawCollected !== undefined && Number(rawCollected) > 0 ? Number(rawCollected) : null;
+        const collectedAmt = parsedCollected !== null ? parsedCollected : (isCollected ? codDue : 0);
         const difference = Math.round((codDue - collectedAmt) * 100) / 100;
         const pendingAmt = Math.max(0, difference);
-        const currentStatus = codEntry?.collectionStatus || (isCollected ? 'COLLECTED' : 'PENDING');
+        const currentStatus = codEntry?.collectionStatus === 'COLLECTED' || isCollected ? 'COLLECTED' : (codEntry?.collectionStatus || 'PENDING');
         const recStatus = codEntry?.reconciliationStatus || (difference === 0 && collectedAmt > 0 ? 'RECONCILED' : (collectedAmt > 0 ? 'PARTIALLY_RECONCILED' : 'PENDING'));
 
         const ordDate = new Date(ord.createdAt);

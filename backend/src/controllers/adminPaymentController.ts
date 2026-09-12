@@ -385,7 +385,7 @@ export class AdminPaymentController {
         (prisma as any).order.findMany({
           include: {
             items: true,
-            student: { select: { fullName: true, mobileNumber: true, roomNumber: true, hallName: true, collegeEmail: true } },
+            student: { select: { fullName: true, mobileNumber: true, roomNumber: true, collegeEmail: true } },
             provider: { select: { id: true, fullName: true, mobileNumber: true } }
           },
           orderBy: { createdAt: 'desc' }
@@ -676,7 +676,7 @@ export class AdminPaymentController {
         });
       } else {
         existing = await (prisma as any).cODCollection.update({
-          where: { id: existing.id, orderId: targetOrderId },
+          where: { id: existing.id },
           data: {
             expectedAmount,
             amountExpected: expectedAmount,
@@ -800,6 +800,10 @@ export class AdminPaymentController {
         if (o.deliveryBoy && (o.deliveryBoy.id === runnerId || o.deliveryBoy.userId === runnerUserId || o.deliveryBoy.id === deliveryBoyId)) return true;
         const ordPhone = String(o.deliveryBoyPhone || o.deliveryBoy?.mobileNumber || o.deliveryBoy?.phone || codEntry?.deliveryBoyPhone || '').replace(/\D/g, '');
         if (cleanRunnerPhone && ordPhone && (ordPhone.includes(cleanRunnerPhone) || cleanRunnerPhone.includes(ordPhone))) return true;
+        const ordRunnerName = String(o.deliveryBoy?.fullName || o.deliveryBoy?.name || '').trim().toLowerCase();
+        if (runnerName && ordRunnerName && runnerName.trim().toLowerCase() === ordRunnerName && ordRunnerName !== 'campus delivery partner') {
+          if (!cleanRunnerPhone || !ordPhone || cleanRunnerPhone === ordPhone) return true;
+        }
         return false;
       });
 
@@ -900,7 +904,7 @@ export class AdminPaymentController {
 
         if (codEntry) {
           await (prisma as any).cODCollection.update({
-            where: { id: codEntry.id, orderId: order.id },
+            where: { id: codEntry.id },
             data: {
               reconciliationStatus: 'RECONCILED',
               collectionStatus: 'COLLECTED',
@@ -1015,7 +1019,7 @@ export class AdminPaymentController {
         (prisma as any).order.findMany({
           include: {
             items: true,
-            student: { select: { fullName: true, mobileNumber: true, roomNumber: true, hallName: true, collegeEmail: true } },
+            student: { select: { fullName: true, mobileNumber: true, roomNumber: true, collegeEmail: true } },
             provider: { select: { id: true, fullName: true, mobileNumber: true } },
             statusHistory: true,
             laundryDetails: true,

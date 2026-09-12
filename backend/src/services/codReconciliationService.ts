@@ -187,12 +187,14 @@ export class CodReconciliationService {
       : null;
     const parsedCollected = rawCollected !== null && rawCollected !== undefined ? Number(rawCollected) : null;
     
-    // If an explicit collection entry exists, use its number; otherwise if delivered COD, default to codAmountDue
+    // If an explicit non-zero collection entry exists, use its number; otherwise if delivered COD or marked collected, default to codAmountDue
     let cashCollected = 0;
-    if (parsedCollected !== null && !isNaN(parsedCollected)) {
+    if (parsedCollected !== null && !isNaN(parsedCollected) && parsedCollected > 0) {
       cashCollected = this.round(parsedCollected);
-    } else if (codEntry?.collectionStatus === 'COLLECTED' || (isDelivered && codAmountDue > 0)) {
+    } else if (codEntry?.collectionStatus === 'COLLECTED' || order.paymentStatus === 'COD_COLLECTED' || (isDelivered && codAmountDue > 0)) {
       cashCollected = codAmountDue;
+    } else if (parsedCollected !== null && !isNaN(parsedCollected)) {
+      cashCollected = this.round(parsedCollected);
     } else {
       cashCollected = 0;
     }
@@ -219,6 +221,7 @@ export class CodReconciliationService {
       if (s === 'COLLECTED' || s === 'CASH_COLLECTED') collectionStatus = 'COLLECTED';
       else if (s === 'PARTIALLY_COLLECTED') collectionStatus = 'PARTIALLY_COLLECTED';
       else if (s === 'NOT_APPLICABLE') collectionStatus = 'NOT_APPLICABLE';
+      else if (s === 'PENDING' && isDelivered && cashCollected >= codAmountDue && codAmountDue > 0) collectionStatus = 'COLLECTED';
       else if (s === 'PENDING') collectionStatus = 'PENDING';
     }
 
