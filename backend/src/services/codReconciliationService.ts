@@ -187,14 +187,11 @@ export class CodReconciliationService {
       : null;
     const parsedCollected = rawCollected !== null && rawCollected !== undefined ? Number(rawCollected) : null;
     
-    // If an explicit collection entry exists, use its number; otherwise if delivered COD or marked collected, default to codAmountDue
+    // A delivered order is not proof that cash was collected. Cash must come from
+    // the persisted COD collection record created by the delivery flow.
     let cashCollected = 0;
     if (parsedCollected !== null && !isNaN(parsedCollected) && parsedCollected >= 0) {
       cashCollected = this.round(parsedCollected);
-    } else if (codEntry?.collectionStatus === 'COLLECTED' || order.paymentStatus === 'COD_COLLECTED' || (isDelivered && codAmountDue > 0)) {
-      cashCollected = codAmountDue;
-    } else {
-      cashCollected = 0;
     }
 
     // Difference = Expected COD - Cash Collected
@@ -245,6 +242,7 @@ export class CodReconciliationService {
     // Is Eligible For Reconcile action (delivered, has collectible COD, not already reconciled, not a mismatch)
     const isEligibleForReconcile =
       isEligibleOrder &&
+      collectionStatus === 'COLLECTED' &&
       reconciliationStatus !== 'RECONCILED' &&
       reconciliationStatus !== 'MISMATCH';
 

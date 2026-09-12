@@ -478,19 +478,11 @@ export default function AdminPaymentsPage() {
 
     setReconcilingOrderId(orderUniqueId);
     try {
-      const expectedCod = Number(c.codAmountDue ?? c.expectedAmount ?? c.amountExpected ?? 0);
-      const collectedAmt = Number(c.cashCollectedAmount ?? c.collectedAmount ?? c.amountCollected ?? expectedCod);
-      const diff = Math.max(0, expectedCod - collectedAmt);
-
       const res = await apiRequest('/api/admin/payments/cod/reconcile', {
         method: 'POST',
         body: JSON.stringify({
           collectionId: targetId,
           orderId: targetOrderId,
-          amountCollected: collectedAmt,
-          cashCollected: collectedAmt,
-          collectionStatus: 'COLLECTED',
-          reconciliationStatus: 'RECONCILED',
           deliveryBoyId: selectedCodRunner?.deliveryBoyId,
           notes: `Reconciled order #${c.orderNumber || targetOrderId}`
         })
@@ -510,9 +502,7 @@ export default function AdminPaymentsPage() {
                 ...o,
                 collectionStatus: 'COLLECTED',
                 reconciliationStatus: 'RECONCILED',
-                collectedAmount: collectedAmt,
-                cashCollectedAmount: collectedAmt,
-                difference: diff,
+                difference: Number(o.expectedAmount || o.codAmountDue || 0) - Number(o.collectedAmount || o.cashCollectedAmount || 0),
                 isEligibleForReconcile: false
               };
             }
@@ -549,9 +539,7 @@ export default function AdminPaymentsPage() {
                     ...o,
                     collectionStatus: 'COLLECTED',
                     reconciliationStatus: 'RECONCILED',
-                    collectedAmount: collectedAmt,
-                    cashCollectedAmount: collectedAmt,
-                    difference: diff,
+                    difference: Number(o.expectedAmount || o.codAmountDue || 0) - Number(o.collectedAmount || o.cashCollectedAmount || 0),
                     isEligibleForReconcile: false
                   };
                 }
@@ -590,7 +578,6 @@ export default function AdminPaymentsPage() {
     setBulkReconciling(true);
     try {
       const runnerId = runner.deliveryBoyId;
-      const runnerPhone = runner.phone;
       const res = await apiRequest('/api/admin/payments/cod/bulk-reconcile', {
         method: 'POST',
         body: JSON.stringify({
@@ -605,57 +592,6 @@ export default function AdminPaymentsPage() {
         setShowBulkReconcileModal(false);
         setBulkReconcileRunner(null);
         setBulkReconcileNotes('');
-
-        const reconciledIdSet = new Set(res.reconciledOrderIds || []);
-
-        // Immediately update selected runner in state
-        setSelectedCodRunner((prev: any) => {
-          if (!prev) return prev;
-          if (prev.deliveryBoyId === runnerId || (runnerPhone && prev.phone === runnerPhone)) {
-            const updatedOrders = (prev.orders || []).map((o: any) => ({
-              ...o,
-              collectionStatus: 'COLLECTED',
-              reconciliationStatus: 'RECONCILED',
-              difference: 0,
-              isEligibleForReconcile: false
-            }));
-            const totalOrders = prev.codOrdersCount || updatedOrders.length;
-            return {
-              ...prev,
-              orders: updatedOrders,
-              pendingOrdersCount: 0,
-              reconciledOrdersCount: totalOrders,
-              eligibleOrdersCount: 0,
-              status: 'RECONCILED'
-            };
-          }
-          return prev;
-        });
-
-        // Immediately update codDeliveryBoys list
-        setCodDeliveryBoys((prevRunners: any[]) =>
-          prevRunners.map((r: any) => {
-            if (r.deliveryBoyId === runnerId || (runnerPhone && r.phone === runnerPhone)) {
-              const updatedOrders = (r.orders || []).map((o: any) => ({
-                ...o,
-                collectionStatus: 'COLLECTED',
-                reconciliationStatus: 'RECONCILED',
-                difference: 0,
-                isEligibleForReconcile: false
-              }));
-              const totalOrders = r.codOrdersCount || updatedOrders.length;
-              return {
-                ...r,
-                orders: updatedOrders,
-                reconciledOrdersCount: totalOrders,
-                pendingOrdersCount: 0,
-                eligibleOrdersCount: 0,
-                status: 'RECONCILED'
-              };
-            }
-            return r;
-          })
-        );
 
         await loadData();
       } else {
@@ -1904,7 +1840,7 @@ export default function AdminPaymentsPage() {
                     <option value="ALL">All Statuses</option>
                     <option value="READY TO RECONCILE">Ready to Reconcile</option>
                     <option value="RECONCILED">Fully Reconciled</option>
-                    <option value="PENDING">Pending Audit</option>
+                    <option value="PENDING">Pending Reconciliation</option>
                     <option value="MISMATCH">Cash Discrepancy</option>
                   </select>
                 </div>
@@ -2164,7 +2100,7 @@ export default function AdminPaymentsPage() {
                       <span className="text-lg font-black text-emerald-700 mt-1 block">
                         {selectedCodRunner.reconciledOrdersCount}
                       </span>
-                      <span className="text-[10px] text-emerald-600 mt-0.5 block">Audited Orders</span>
+                      <span className="text-[10px] text-emerald-600 mt-0.5 block">Completed Reconciliation</span>
                     </div>
 
                     <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200">
@@ -2172,7 +2108,7 @@ export default function AdminPaymentsPage() {
                       <span className="text-lg font-black text-amber-700 mt-1 block">
                         {selectedCodRunner.pendingOrdersCount}
                       </span>
-                      <span className="text-[10px] text-amber-600 mt-0.5 block">Pending Audit</span>
+                      <span className="text-[10px] text-amber-600 mt-0.5 block">Awaiting Reconciliation</span>
                     </div>
                   </div>
                 ) : (

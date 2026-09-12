@@ -618,20 +618,29 @@ export class AdminPaymentController {
         return;
       }
 
-      const isCod = !order || order.paymentMethod === 'CASH_ON_DELIVERY' || String(order.paymentMethod || '').toUpperCase().includes('COD');
-      const isDelivered = !order || order.status === 'DELIVERED' || Boolean(order.deliveredAt) || Boolean(order.deliveryOtpVerified);
-      const isCancelled = order && (order.status === 'CANCELLED' || order.status === 'REFUNDED');
-      const orderTotal = Number(order?.totalAmount || existing?.expectedAmount || 0);
+      if (!existing || !order) {
+        res.status(404).json({ success: false, message: 'A real COD collection record is required before reconciliation.' });
+        return;
+      }
+
+      const isCod = order.paymentMethod === 'CASH_ON_DELIVERY' || String(order.paymentMethod || '').toUpperCase().includes('COD');
+      const isDelivered = order.status === 'DELIVERED' || Boolean(order.deliveredAt) || Boolean(order.deliveryOtpVerified);
+      const isCancelled = order.status === 'CANCELLED' || order.status === 'REFUNDED';
+      const orderTotal = Number(order.totalAmount || 0);
       const onlinePaid = order?.paymentMethod === 'RAZORPAY' ? orderTotal : Number(order?.advancePaidAmount || 0);
       const expectedAmount = CodReconciliationService.round(Math.max(0, orderTotal - onlinePaid));
       const rawCollected = existing ? (existing.collectedAmount !== undefined ? existing.collectedAmount : existing.amountCollected) : null;
       const parsedCollected = rawCollected !== null && rawCollected !== undefined ? Number(rawCollected) : null;
       const collectedAmount = parsedCollected !== null && !isNaN(parsedCollected) && parsedCollected >= 0
         ? CodReconciliationService.round(parsedCollected)
-        : expectedAmount;
+        : 0;
 
       if (!isCod || !isDelivered || isCancelled || expectedAmount <= 0) {
         res.status(400).json({ success: false, message: 'Order is not eligible for COD reconciliation.' });
+        return;
+      }
+      if (existing.collectionStatus !== 'COLLECTED') {
+        res.status(400).json({ success: false, message: 'Cash must be collected before reconciliation.' });
         return;
       }
 
@@ -655,74 +664,31 @@ export class AdminPaymentController {
       const targetDeliveryBoyId = order?.deliveryBoyId || existing?.deliveryBoyId || requestedDeliveryBoyId || null;
       const updatedAt = new Date();
 
-      if (existing) {
-        await (prisma as any).cODCollection.update({
-          where: { id: existing.id },
-          data: {
-            expectedAmount,
-            amountExpected: expectedAmount,
-            collectedAmount,
-            amountCollected: collectedAmount,
-            difference: diffAmt,
-            collectionStatus: 'COLLECTED',
-            reconciliationStatus: 'RECONCILED',
-            reconciledAt: updatedAt,
-            reconciledBy: adminUserId,
-            notes: notes || existing.notes || 'Single order reconciliation',
-            updatedAt
-          }
-        });
-        existing = await (prisma as any).cODCollection.findUnique({ where: { id: existing.id } });
-      } else if (order) {
-        existing = await (prisma as any).cODCollection.create({
-          data: {
-            collectionNumber: `COD-${order.orderNumber || order.id}`,
-            orderId: order.id,
-            deliveryBoyId: targetDeliveryBoyId,
-            expectedAmount,
-            amountExpected: expectedAmount,
-            collectedAmount,
-            amountCollected: collectedAmount,
-            difference: diffAmt,
-            collectionStatus: 'COLLECTED',
-            reconciliationStatus: 'RECONCILED',
-            collectedAt: order.deliveredAt || updatedAt,
-            reconciledAt: updatedAt,
-            reconciledBy: adminUserId,
-            adjustmentReason: 'Reconciled',
-            notes: notes || 'Single order reconciliation',
-            createdAt: updatedAt,
-            updatedAt
-          }
-        });
+      const transition = await (prisma as any).cODCollection.updateMany({
+        where: { id: existing.id, reconciliationStatus: 'PENDING' },
+        data: {
+          expectedAmount,
+          collectedAmount,
+          difference: diffAmt,
+          reconciliationStatus: 'RECONCILED',
+          reconciledAt: updatedAt,
+          reconciledBy: adminUserId,
+          notes: notes || existing.notes || 'Single order reconciliation',
+          updatedAt
+        }
+      });
+      if (!transition.count) {
+        res.status(200).json({ success: true, message: 'This order has already been reconciled.', alreadyReconciled: true, data: existing });
+        return;
       }
+      existing = await (prisma as any).cODCollection.findUnique({ where: { id: existing.id } });
 
       if (targetOrderId) {
         await (prisma as any).order.update({
           where: { id: targetOrderId },
-          data: { paymentStatus: 'COD_COLLECTED', settlementStatus: 'ELIGIBLE' }
+          data: { paymentStatus: 'COD_COLLECTED', settlementStatus: 'ELIGIBLE', reconciliationStatus: 'MANUALLY_RECONCILED' }
         }).catch(() => {});
       }
-
-      // Financial Ledger
-      await LedgerService.recordEntry({
-        orderId: targetOrderId,
-        entryType: 'COD_COLLECTION',
-        debitAccount: 'CAMPUS_BANK_CURRENT_ACCOUNT',
-        creditAccount: 'DELIVERY_RUNNER_CASH_HOLD',
-        amount: collectedAmount,
-        referenceId: `REC-SINGLE-${existing?.id || targetOrderId}`,
-        description: `Individual COD reconciliation for order ${order?.orderNumber || targetOrderId}`,
-        metadata: {
-          collectionId: existing?.id,
-          orderId: targetOrderId,
-          orderNumber: order?.orderNumber,
-          deliveryBoyId: targetDeliveryBoyId,
-          expectedAmount,
-          collectedAmount,
-          difference: diffAmt
-        }
-      }).catch(() => {});
 
       // Audit Log Trail
       await AuditService.log(prisma, {
@@ -862,8 +828,16 @@ export class AdminPaymentController {
         }
 
         const isCod = ord.paymentMethod === 'CASH_ON_DELIVERY' || String(ord.paymentMethod || '').toUpperCase().includes('COD');
-        if (!isCod && !codEntry) {
+        if (!isCod) {
           ineligibleReasons.push({ orderNumber: ord.orderNumber, reason: 'Order is not COD' });
+          continue;
+        }
+        if (!codEntry) {
+          ineligibleReasons.push({ orderNumber: ord.orderNumber, reason: 'No COD collection record' });
+          continue;
+        }
+        if (codEntry.collectionStatus !== 'COLLECTED') {
+          ineligibleReasons.push({ orderNumber: ord.orderNumber, reason: 'Cash collection is not complete' });
           continue;
         }
 
@@ -871,7 +845,7 @@ export class AdminPaymentController {
         const parsedCollected = rawCollected !== null && rawCollected !== undefined ? Number(rawCollected) : null;
         const collectedAmt = parsedCollected !== null && !isNaN(parsedCollected) && parsedCollected >= 0
           ? CodReconciliationService.round(parsedCollected)
-          : expectedAmt;
+          : 0;
 
         eligibleOrders.push({
           order: ord,
@@ -903,65 +877,29 @@ export class AdminPaymentController {
         const { order, codEntry, expectedAmt, collectedAmt } = item;
 
         try {
-          if (codEntry) {
-            await (prisma as any).cODCollection.update({
-              where: { id: codEntry.id },
-              data: {
-                reconciliationStatus: 'RECONCILED',
-                collectionStatus: 'COLLECTED',
-                expectedAmount: expectedAmt,
-                amountExpected: expectedAmt,
-                collectedAmount: collectedAmt,
-                amountCollected: collectedAmt,
-                difference: CodReconciliationService.round(expectedAmt - collectedAmt),
-                reconciledAt: new Date(),
-                reconciledBy: adminUserId,
-                adjustmentReason: `Bulk reconciliation batch ${batchId}`,
-                notes: notes || `Reconciled in bulk batch ${batchId} for ${runnerName}`,
-                updatedAt: new Date()
-              }
-            });
-          } else {
-            await (prisma as any).cODCollection.create({
-              data: {
-                collectionNumber: `COD-${order.orderNumber || order.id}`,
-                orderId: order.id,
-                deliveryBoyId: deliveryBoyId,
-                expectedAmount: expectedAmt,
-                amountExpected: expectedAmt,
-                collectedAmount: collectedAmt,
-                amountCollected: collectedAmt,
-                difference: CodReconciliationService.round(expectedAmt - collectedAmt),
-                collectionStatus: 'COLLECTED',
-                reconciliationStatus: 'RECONCILED',
-                collectedAt: order.deliveredAt || new Date(),
-                reconciledAt: new Date(),
-                reconciledBy: adminUserId,
-                adjustmentReason: `Bulk reconciliation batch ${batchId}`,
-                notes: notes || `Reconciled in bulk batch ${batchId} for ${runnerName}`,
-                createdAt: new Date(),
-                updatedAt: new Date()
-              }
-            });
-          }
+          const updated = await (prisma as any).cODCollection.updateMany({
+            where: { id: codEntry.id, reconciliationStatus: 'PENDING' },
+            data: {
+              reconciliationStatus: 'RECONCILED',
+              expectedAmount: expectedAmt,
+              collectedAmount: collectedAmt,
+              difference: CodReconciliationService.round(expectedAmt - collectedAmt),
+              reconciledAt: new Date(),
+              reconciledBy: adminUserId,
+              adjustmentReason: `Bulk reconciliation batch ${batchId}`,
+              notes: notes || `Reconciled in bulk batch ${batchId} for ${runnerName}`,
+              updatedAt: new Date()
+            }
+          });
+          if (!updated.count) continue;
 
           await (prisma as any).order.update({
             where: { id: order.id },
             data: {
               paymentStatus: 'COD_COLLECTED',
-              settlementStatus: 'ELIGIBLE'
+              settlementStatus: 'ELIGIBLE',
+              reconciliationStatus: 'MANUALLY_RECONCILED'
             }
-          }).catch(() => {});
-
-          await LedgerService.recordEntry({
-            orderId: order.id,
-            entryType: 'COD_COLLECTION',
-            debitAccount: 'CAMPUS_BANK_CURRENT_ACCOUNT',
-            creditAccount: 'DELIVERY_RUNNER_CASH_HOLD',
-            amount: collectedAmt,
-            referenceId: batchId,
-            description: `Bulk COD reconciliation batch ${batchId}. Order #${order.orderNumber}. Runner: ${runnerName}.`,
-            metadata: { batchId, runnerId: deliveryBoyId, runnerName, orderId: order.id, orderNumber: order.orderNumber }
           }).catch(() => {});
 
           totalExpectedReconciled += expectedAmt;
