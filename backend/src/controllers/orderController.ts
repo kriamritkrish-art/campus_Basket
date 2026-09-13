@@ -17,7 +17,7 @@ const emailService = new EmailService();
 const receiptService = new ReceiptService();
 const laundryOtpService = new LaundryOtpService();
 
-async function resolveStudentProfile(user?: any) {
+export async function resolveStudentProfile(user?: any) {
   if (!user) return null;
   if (user.studentId) {
     const student = await prisma.student.findUnique({
@@ -1169,7 +1169,7 @@ export class OrderController {
   public static async requestReturn(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const { reason, reasonType, reasonDetails, proofImageUrl, itemIds } = req.body;
+      const { reason, reasonType, reasonDetails, proofImageUrl, itemIds, refundMethod } = req.body;
       const student = await resolveStudentProfile(req.user);
       const studentId = student?.id;
 
@@ -1201,6 +1201,7 @@ export class OrderController {
       const isMindChange = reasonType === 'MIND_CHANGE';
       const actualReasonType = isMindChange ? 'MIND_CHANGE' : 'PRODUCT_ISSUE';
       const details = (reasonDetails || reason || (isMindChange ? 'Customer mind change / item no longer needed' : 'Product defect/issue reported upon doorstep delivery')).trim();
+      const chosenRefundMethod = refundMethod || 'CAMPUS_BASKET_WALLET';
 
       if (actualReasonType === 'PRODUCT_ISSUE' && !proofImageUrl && (!details || details.length < 10)) {
         res.status(400).json({
@@ -1246,6 +1247,8 @@ export class OrderController {
       }
 
       // Create / upsert ReturnRequest record
+      // CRITICAL: Submitting return request does NOT credit refund to wallet.
+      // Pickup OTP verification by the runner is the strictly required refund trigger.
       const returnRequest = await (prisma as any).returnRequest.upsert({
         where: { orderId: order.id },
         update: {
@@ -1255,6 +1258,7 @@ export class OrderController {
           itemAmount: itemTotal,
           deliveryFeeDeducted: deliveryFeeDeducted,
           refundAmount: netRefundAmount,
+          refundMethod: chosenRefundMethod,
           status: 'REQUESTED'
         },
         create: {
@@ -1266,6 +1270,7 @@ export class OrderController {
           itemAmount: itemTotal,
           deliveryFeeDeducted: deliveryFeeDeducted,
           refundAmount: netRefundAmount,
+          refundMethod: chosenRefundMethod,
           status: 'REQUESTED'
         }
       });
@@ -1427,18 +1432,98 @@ export class OrderController {
   }
 
   /**
+   * Get pre-cancellation financial calculation & eligibility
+   */
+  public static async getCancellationQuote(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const student = await resolveStudentProfile(req.user);
+      const studentId = student?.id;
+
+      const order = await (prisma as any).order.findFirst({
+        where: {
+          OR: [{ id }, { orderNumber: id }]
+        },
+        include: { payment: true, statusHistory: true, items: true }
+      });
+
+      if (!order) {
+        res.status(404).json({ success: false, message: 'Order not found' });
+        return;
+      }
+
+      if (req.user?.role === 'STUDENT' && order.studentId !== studentId) {
+        res.status(403).json({ success: false, message: 'Unauthorized' });
+        return;
+      }
+
+      const quote = RefundService.calculateCancellationQuote(order);
+
+      res.status(200).json({
+        success: true,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        ...quote
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Get pre-return financial calculation & eligibility before student applies
+   */
+  public static async getReturnQuote(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { reasonType = 'PRODUCT_ISSUE', itemIds } = req.query;
+      const student = await resolveStudentProfile(req.user);
+      const studentId = student?.id;
+
+      const order = await (prisma as any).order.findFirst({
+        where: {
+          OR: [{ id }, { orderNumber: id }]
+        },
+        include: { items: true, payment: true }
+      });
+
+      if (!order) {
+        res.status(404).json({ success: false, message: 'Order not found' });
+        return;
+      }
+
+      if (req.user?.role === 'STUDENT' && order.studentId !== studentId) {
+        res.status(403).json({ success: false, message: 'Unauthorized' });
+        return;
+      }
+
+      const parsedItemIds = typeof itemIds === 'string' ? itemIds.split(',').map(s => s.trim()) : undefined;
+      const quote = RefundService.calculateReturnQuote(order, String(reasonType), parsedItemIds);
+
+      res.status(200).json({
+        success: true,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        ...quote
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
    * Cancel an order (service-adaptive rules & automatic refund sequence)
    */
   public static async cancelOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const { reason } = req.body;
+      const { reason, refundMethod } = req.body;
       const student = await resolveStudentProfile(req.user);
       const studentId = student?.id;
 
       const order = await (prisma as any).order.findUnique({
         where: { id },
-        include: { items: true }
+        include: { items: true, payment: true, statusHistory: true, student: true }
       });
 
       if (!order) {
@@ -1468,7 +1553,8 @@ export class OrderController {
         id,
         req.user?.userId || studentId || 'unknown_user',
         callerRole,
-        reason || 'Customer requested cancellation'
+        reason || 'Customer requested cancellation',
+        refundMethod || 'CAMPUS_BASKET_WALLET'
       );
 
       // Restore inventory
@@ -1488,6 +1574,12 @@ export class OrderController {
         message: updated.explanation || 'Order cancelled successfully.',
         cancellationType: updated.cancellationType,
         refundableAmount: updated.refundableAmount,
+        refundMethod: updated.refundMethod,
+        refundStatus: updated.refundStatus,
+        expectedProcessing: updated.expectedProcessing,
+        walletCredited: updated.walletCredited,
+        walletBalance: updated.walletBalance,
+        walletTransaction: updated.walletTransaction,
         order: updated
       });
     } catch (err: any) {

@@ -88,6 +88,9 @@ function DashboardContent() {
   const [wishlistProducts, setWishlistProducts] = useState<Product[]>([]);
   const [loadingWishlist, setLoadingWishlist] = useState(false);
 
+  // Campus Basket Wallet Balance State
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+
   // Notifications State
   const [notifications, setNotifications] = useState([
     {
@@ -223,6 +226,20 @@ function DashboardContent() {
     }
   };
 
+  // Load Campus Basket Wallet
+  const loadWallet = async () => {
+    try {
+      const res = await apiRequest('/api/wallet');
+      if (res?.success && res.balance !== undefined) {
+        setWalletBalance(res.balance);
+      } else if (res?.wallet?.balance !== undefined) {
+        setWalletBalance(Number(res.wallet.balance));
+      }
+    } catch (err) {
+      console.warn('Wallet fetch error:', err);
+    }
+  };
+
   useEffect(() => {
     if (!isLoading) {
       if (!isAuthenticated) {
@@ -244,6 +261,7 @@ function DashboardContent() {
       loadOrders();
       loadWishlist();
       loadTickets();
+      loadWallet();
     }
   }, [isAuthenticated, isLoading, role, router]);
 
@@ -443,18 +461,39 @@ function DashboardContent() {
             </div>
           </div>
 
-          <div className="bg-[#1e293b] text-white rounded-2xl p-4 flex items-center gap-3.5 shrink-0 shadow-sm">
-            <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
-              <MapPin className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">
-                Assigned Delivery Room
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/wallet"
+              className="bg-emerald-950 text-white rounded-2xl p-4 flex items-center gap-3.5 shrink-0 shadow-sm hover:bg-emerald-900 transition-colors border border-emerald-800/40 group"
+            >
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <Wallet className="w-5 h-5" />
               </div>
-              <div className="text-sm font-black text-white mt-0.5">
-                {hallName}, Room {roomNumber}
+              <div>
+                <div className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider flex items-center gap-1.5">
+                  <span>Campus Basket Wallet</span>
+                  <span className="text-[8px] bg-emerald-500 text-black px-1.5 py-0.2 rounded font-black tracking-normal">INSTANT REFUND</span>
+                </div>
+                <div className="text-sm font-black text-white mt-0.5">
+                  ₹{walletBalance !== null ? walletBalance.toFixed(2) : '0.00'}
+                </div>
+                <div className="text-[10px] text-emerald-300 font-bold underline">View Ledger &amp; Balance &rarr;</div>
               </div>
-              <div className="text-[10px] text-gray-400">Campus Residence</div>
+            </Link>
+
+            <div className="bg-[#1e293b] text-white rounded-2xl p-4 flex items-center gap-3.5 shrink-0 shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
+                <MapPin className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">
+                  Assigned Delivery Room
+                </div>
+                <div className="text-sm font-black text-white mt-0.5">
+                  {hallName}, Room {roomNumber}
+                </div>
+                <div className="text-[10px] text-gray-400">Campus Residence</div>
+              </div>
             </div>
           </div>
         </div>
@@ -557,6 +596,19 @@ function DashboardContent() {
                 <span className="ml-0.5 text-[10px] opacity-80">({refundOrders.length})</span>
               )}
             </button>
+
+            <Link
+              href="/wallet"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
+            >
+              <Wallet className="w-4 h-4 text-emerald-600" />
+              <span>Campus Wallet</span>
+              {walletBalance !== null && (
+                <span className="ml-0.5 text-[10px] font-black bg-emerald-600 text-white px-1.5 py-0.5 rounded-full">
+                  ₹{walletBalance.toFixed(0)}
+                </span>
+              )}
+            </Link>
 
             <button
               onClick={() => handleTabChange('payments')}
@@ -1043,56 +1095,141 @@ function DashboardContent() {
               </p>
             </div>
 
-            {/* Campus Basket Refund & Cancellation Rules */}
-            <div className="bg-slate-50/80 rounded-2xl p-5 border border-slate-200/80 space-y-3.5">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-[#4F9D2F]" />
-                <h3 className="text-sm font-bold text-slate-900">Campus Basket Refund &amp; Cancellation Rules</h3>
+            {/* Campus Basket Refund & Cancellation Rules — Authoritative Governance */}
+            <div className="bg-slate-50/90 rounded-2xl p-6 border border-slate-200 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <ShieldCheck className="w-5 h-5 text-[#4F9D2F]" />
+                  <h3 className="text-sm font-black text-slate-900 tracking-tight">
+                    Campus Basket Refund &amp; Cancellation Rules
+                  </h3>
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    Source of Truth
+                  </span>
+                </div>
+                <Link
+                  href="/refund-policy"
+                  className="text-xs font-bold text-[#4F9D2F] hover:underline inline-flex items-center gap-1"
+                >
+                  <span>Read Full Campus Policy</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </Link>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                {/* Rule 1: Online / Prepaid */}
-                <div className="bg-white p-3.5 rounded-xl border border-slate-200/60 space-y-1.5 shadow-xs">
-                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span>Online / Prepaid Orders</span>
+              {/* Two Primary Pillars: Cancellation vs Return */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 1. Cancellation Flow */}
+                <div className="bg-white rounded-xl p-4 border border-slate-200 space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 font-black text-slate-900 text-xs">
+                      <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
+                      <span>1. Cancellation Rules (Pre-Acceptance)</span>
+                    </div>
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200">
+                      Before Vendor Cooking
+                    </span>
                   </div>
-                  <p className="text-slate-600 text-[11px] leading-relaxed">
-                    <strong>100% Full Refund</strong> if cancelled before provider accepts. Automatically credited back to your original payment method (UPI: 2–4 hrs, Cards/Banks: 2–5 business days).
+
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    Cancellation is permitted <strong>only before</strong> the provider accepts and starts kitchen cooking or produce packing. The system calculates and displays the exact refund before you confirm.
+                  </p>
+
+                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 space-y-1.5 text-[11px]">
+                    <div className="font-bold text-slate-800 text-[11px]">Refund Method Options:</div>
+                    <div className="flex items-start gap-1.5 text-slate-700">
+                      <span className="text-emerald-600 font-black">●</span>
+                      <span><strong>Campus Basket Wallet:</strong> Instant credit to your wallet immediately after cancellation confirmation.</span>
+                    </div>
+                    <div className="flex items-start gap-1.5 text-slate-700">
+                      <span className="text-slate-500 font-black">●</span>
+                      <span><strong>Original Payment Method:</strong> Refund processed in <strong>3–5 business days</strong> back to your bank/UPI.</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Return Flow */}
+                <div className="bg-white rounded-xl p-4 border border-slate-200 space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 font-black text-slate-900 text-xs">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                      <span>2. Return Rules &amp; Pickup Trigger</span>
+                    </div>
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      Physical Pickup Required
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    Returns are eligible for damaged, wrong, or non-perishable campus goods. <strong>Submitting a return request does NOT credit the refund.</strong>
+                  </p>
+
+                  <div className="bg-amber-50/70 p-3 rounded-lg border border-amber-200/80 space-y-1.5 text-[11px] text-amber-900">
+                    <div className="font-bold flex items-center gap-1.5 text-amber-950">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Doorstep Pickup OTP is the Sole Refund Trigger</span>
+                    </div>
+                    <p className="text-[10px] text-amber-800 leading-relaxed">
+                      Refund is triggered <strong>strictly after</strong> the delivery boy physically arrives, inspects items, and verifies your Doorstep Pickup OTP.
+                    </p>
+                    <div className="pt-1 text-[10px] text-amber-950 font-medium space-y-0.5">
+                      <div>• <strong>Wallet Refund:</strong> Credited immediately after successful pickup.</div>
+                      <div>• <strong>Original Payment:</strong> Initiated after pickup; takes 3–5 business days.</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* COD & Advance Paid Differentiation */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-1">
+                <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1">
+                  <div className="font-bold text-slate-800 text-[11px] flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span>Online Prepaid Orders</span>
+                  </div>
+                  <p className="text-[10px] text-slate-600">
+                    100% full amount actually paid online is refundable before acceptance.
                   </p>
                 </div>
 
-                {/* Rule 2: Normal COD */}
-                <div className="bg-white p-3.5 rounded-xl border border-slate-200/60 space-y-1.5 shadow-xs">
-                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1">
+                  <div className="font-bold text-slate-800 text-[11px] flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-slate-400" />
                     <span>Standard Cash on Delivery</span>
                   </div>
-                  <p className="text-slate-600 text-[11px] leading-relaxed">
-                    <strong>₹0 Paid Upfront</strong>. Since no advance payment was collected, cancelled COD orders have no refund applicable and do not generate refund records.
+                  <p className="text-[10px] text-slate-600">
+                    ₹0 collected upfront. Unpaid cash due at doorstep is non-refundable and waived.
                   </p>
                 </div>
 
-                {/* Rule 3: COD + Partial Advance */}
-                <div className="bg-white p-3.5 rounded-xl border border-slate-200/60 space-y-1.5 shadow-xs">
-                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1">
+                  <div className="font-bold text-slate-800 text-[11px] flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-amber-500" />
                     <span>COD + Partial Advance</span>
                   </div>
-                  <p className="text-slate-600 text-[11px] leading-relaxed">
-                    <strong>Only Advance Paid</strong> (e.g. ₹20) is refunded if cancelled before provider acceptance. The remaining cash-due balance is waived.
+                  <p className="text-[10px] text-slate-600">
+                    Only actual advance paid online is refunded. Never refunds uncollected COD amounts.
                   </p>
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-200/60 gap-1.5">
-                <span className="flex items-center gap-1">
-                  <span>⚠️</span>
-                  <span>Orders cancelled after kitchen cooking or produce packing begins cannot be refunded for food safety reasons.</span>
-                </span>
-                <Link href="/refund-policy" className="text-[#4F9D2F] font-bold hover:underline shrink-0 flex items-center gap-1">
-                  <span>Full Policy</span>
-                  <ExternalLink className="w-3 h-3" />
+              {/* Wallet Direct Action Banner */}
+              <div className="bg-emerald-900 text-white rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-emerald-500/30 flex items-center justify-center text-emerald-300 shrink-0">
+                    <Wallet className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-black">Campus Basket Wallet</div>
+                    <div className="text-[11px] text-emerald-200">
+                      Use refunded balances instantly for food, canteen snacks, fruit bowls, and campus essentials.
+                    </div>
+                  </div>
+                </div>
+                <Link
+                  href="/wallet"
+                  className="px-4 py-2 bg-white hover:bg-emerald-50 text-emerald-900 font-extrabold text-xs rounded-lg transition-all shrink-0 text-center shadow-xs"
+                >
+                  View Wallet Balance (₹{walletBalance !== null ? walletBalance.toFixed(2) : '0.00'}) &rarr;
                 </Link>
               </div>
             </div>

@@ -81,6 +81,10 @@ const persistentProviderRequests: any[] = loadSavedList('mock_provider_requests.
   }
 ]);
 const persistentSupportTickets: any[] = loadSavedList('mock_support_tickets.json', fallbackSupportTickets);
+const persistentWallets: any[] = loadSavedList('mock_wallets.json', [
+  { id: 'wlt_sourav', studentId: 'stud_sourav', balance: 0.00, currency: 'INR', status: 'ACTIVE', createdAt: new Date(), updatedAt: new Date() }
+]);
+const persistentWalletTransactions: any[] = loadSavedList('mock_wallet_transactions.json', []);
 
 function enrichFallbackReturn(r: any): any {
   if (!r) return null;
@@ -2538,6 +2542,104 @@ const fallbackHandlers: Record<string, any> = {
       const created = { id: `rfa_${Date.now()}`, createdAt: new Date(), updatedAt: new Date(), ...args.create };
       fallbackRefundAccounts.unshift(created);
       return JSON.parse(JSON.stringify(created));
+    }
+  },
+  wallet: {
+    findUnique: async (args: any) => {
+      const studentId = args?.where?.studentId;
+      const id = args?.where?.id;
+      const w = persistentWallets.find(item => (studentId && item.studentId === studentId) || (id && item.id === id));
+      if (!w) return null;
+      const txns = persistentWalletTransactions.filter(t => t.walletId === w.id || t.studentId === w.studentId);
+      return JSON.parse(JSON.stringify({ ...w, transactions: txns }));
+    },
+    findFirst: async (args: any) => {
+      const studentId = args?.where?.studentId;
+      const id = args?.where?.id;
+      const w = persistentWallets.find(item => (studentId && item.studentId === studentId) || (id && item.id === id));
+      if (!w) return null;
+      const txns = persistentWalletTransactions.filter(t => t.walletId === w.id || t.studentId === w.studentId);
+      return JSON.parse(JSON.stringify({ ...w, transactions: txns }));
+    },
+    create: async (args: any) => {
+      const newW = {
+        id: args.data?.id || `wlt_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        balance: 0.00,
+        currency: 'INR',
+        status: 'ACTIVE',
+        ...args.data
+      };
+      persistentWallets.push(newW);
+      saveList('mock_wallets.json', persistentWallets);
+      return JSON.parse(JSON.stringify(newW));
+    },
+    update: async (args: any) => {
+      const id = args?.where?.id;
+      const studentId = args?.where?.studentId;
+      const w = persistentWallets.find(item => (id && item.id === id) || (studentId && item.studentId === studentId));
+      if (w) {
+        Object.assign(w, args.data, { updatedAt: new Date() });
+        saveList('mock_wallets.json', persistentWallets);
+        return JSON.parse(JSON.stringify(w));
+      }
+      return args.data;
+    }
+  },
+  walletTransaction: {
+    findMany: async (args?: any) => {
+      let list = [...persistentWalletTransactions];
+      if (args?.where?.studentId) list = list.filter(t => t.studentId === args.where.studentId);
+      if (args?.where?.walletId) list = list.filter(t => t.walletId === args.where.walletId);
+      if (args?.where?.orderId) list = list.filter(t => t.orderId === args.where.orderId);
+      return JSON.parse(JSON.stringify(list));
+    },
+    findFirst: async (args?: any) => {
+      const t = persistentWalletTransactions.find(item => {
+        if (args?.where?.transactionId && item.transactionId !== args.where.transactionId) return false;
+        if (args?.where?.id && item.id !== args.where.id) return false;
+        if (args?.where?.studentId && item.studentId !== args.where.studentId) return false;
+        if (args?.where?.orderId && item.orderId !== args.where.orderId) return false;
+        if (args?.where?.triggerEvent && item.triggerEvent !== args.where.triggerEvent) return false;
+        if (args?.where?.refundType && item.refundType !== args.where.refundType) return false;
+        if (args?.where?.type && item.type !== args.where.type) return false;
+        if (args?.where?.transactionId || args?.where?.id || (args?.where?.orderId && args?.where?.triggerEvent) || args?.where?.orderId) {
+          return true;
+        }
+        return false;
+      });
+      return t ? JSON.parse(JSON.stringify(t)) : null;
+    },
+    create: async (args: any) => {
+      const newT = {
+        id: args.data?.id || `wt_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
+        createdAt: new Date(),
+        status: 'COMPLETED',
+        ...args.data
+      };
+      persistentWalletTransactions.unshift(newT);
+      saveList('mock_wallet_transactions.json', persistentWalletTransactions);
+      return JSON.parse(JSON.stringify(newT));
+    },
+    deleteMany: async (args?: any) => {
+      const studentId = args?.where?.studentId;
+      const orderId = args?.where?.orderId;
+      if (studentId) {
+        for (let i = persistentWalletTransactions.length - 1; i >= 0; i--) {
+          if (persistentWalletTransactions[i].studentId === studentId) {
+            persistentWalletTransactions.splice(i, 1);
+          }
+        }
+      } else if (orderId) {
+        for (let i = persistentWalletTransactions.length - 1; i >= 0; i--) {
+          if (persistentWalletTransactions[i].orderId === orderId) {
+            persistentWalletTransactions.splice(i, 1);
+          }
+        }
+      }
+      saveList('mock_wallet_transactions.json', persistentWalletTransactions);
+      return { count: 0 };
     }
   },
   providerSettlementAccount: {

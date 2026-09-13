@@ -21,6 +21,8 @@ router.get('/:id/receipt', rbacGuard(['STUDENT', 'ADMIN']), OrderController.down
 router.put('/:id/modify', rbacGuard(['STUDENT', 'ADMIN']), OrderController.modifyOrder);
 router.patch('/:id/modify', rbacGuard(['STUDENT', 'ADMIN']), OrderController.modifyOrder);
 router.post('/:id/add-items', rbacGuard(['STUDENT', 'ADMIN']), OrderController.modifyOrder);
+router.get('/:id/cancellation-quote', rbacGuard(['STUDENT', 'ADMIN']), OrderController.getCancellationQuote);
+router.get('/:id/return-quote', rbacGuard(['STUDENT', 'ADMIN']), OrderController.getReturnQuote);
 router.post('/:id/cancel', rbacGuard(['STUDENT', 'ADMIN']), OrderController.cancelOrder);
 router.get('/:id/return', rbacGuard(['STUDENT', 'ADMIN', 'DELIVERY_BOY']), OrderController.getOrderReturn);
 router.post('/:id/return', rbacGuard(['STUDENT', 'ADMIN']), OrderController.requestReturn);

@@ -2850,9 +2850,56 @@ export default function AdminPaymentsPage() {
                 <span className="text-gray-500">Student:</span>{' '}
                 <strong className="text-gray-900">{selectedRefundOrder.student?.fullName}</strong>
               </div>
-              <div>
-                <span className="text-gray-500">Refund Amount:</span>{' '}
-                <strong className="text-red-600 font-bold text-sm">₹{Number(selectedRefundOrder.refundAmount ?? (selectedRefundOrder.refunds?.[0]?.amount || selectedRefundOrder.totalAmount)).toFixed(2)}</strong>
+              {/* Section 15: Admin Refund Calculation Breakdown */}
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <div className="font-bold text-slate-800 text-xs uppercase tracking-wider border-b border-slate-200/80 pb-1.5 flex items-center justify-between">
+                  <span>Refund Calculation Breakdown</span>
+                  <span className="text-[10px] font-mono text-slate-500">#{selectedRefundOrder.orderNumber}</span>
+                </div>
+                <div className="space-y-1 text-slate-600 text-xs">
+                  <div className="flex justify-between">
+                    <span>Order Total:</span>
+                    <span className="font-mono font-medium text-slate-900">₹{Number(selectedRefundOrder.totalAmount || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Online Amount Paid:</span>
+                    <span className="font-mono font-medium text-emerald-700">
+                      ₹{(selectedRefundOrder.paymentMethod === 'CASH_ON_DELIVERY' ? Number(selectedRefundOrder.advancePaidAmount || 0) : Number(selectedRefundOrder.totalAmount || 0)).toFixed(2)}
+                    </span>
+                  </div>
+                  {selectedRefundOrder.paymentMethod === 'CASH_ON_DELIVERY' && (
+                    <div className="flex justify-between text-amber-800">
+                      <span>COD Amount (Unpaid):</span>
+                      <span className="font-mono font-medium">
+                        ₹{Math.max(0, Number(selectedRefundOrder.totalAmount || 0) - Number(selectedRefundOrder.advancePaidAmount || 0)).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span>Refund Method:</span>
+                    <span className="font-bold text-slate-800">
+                      {selectedRefundOrder.refundMethod === 'CAMPUS_BASKET_WALLET' ? 'Campus Basket Wallet' : 'Original Payment Method'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Refund Trigger:</span>
+                    <span className="font-medium text-slate-700">
+                      {selectedRefundOrder.status === 'CANCELLED' ? 'Cancellation confirmed' : 'Successful return pickup'}
+                    </span>
+                  </div>
+                  <div className="pt-1.5 border-t border-slate-200 flex justify-between font-bold text-slate-900 text-sm">
+                    <span>Refund Eligible:</span>
+                    <span className="font-mono text-red-600 font-black">
+                      ₹{Number(selectedRefundOrder.refundAmount ?? (selectedRefundOrder.refunds?.[0]?.amount || selectedRefundOrder.totalAmount)).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[11px] text-slate-500">
+                    <span>Status:</span>
+                    <span className="font-bold text-emerald-700">
+                      {selectedRefundOrder.refundStatus || 'Completed'}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {selectedRefundOrder.refundAccount && (

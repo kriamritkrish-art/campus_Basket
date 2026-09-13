@@ -3,6 +3,7 @@ import { prisma } from '../config/database';
 import { AuditService } from '../services/audit/AuditService';
 import { LedgerService } from '../services/financial/LedgerService';
 import { RazorpayService } from '../services/payment/RazorpayService';
+import { WalletService } from '../services/financial/WalletService';
 
 const razorpayService = new RazorpayService();
 
@@ -607,7 +608,40 @@ export class ReturnController {
         }
       }
 
-      // Update Order Status History and status (Physical pickup completed, ready for Admin refund disbursement)
+      // 3. Process Student Return Refund
+      // RETURN PICKUP IS THE REFUND TRIGGER:
+      // If student selected Campus Basket Wallet, credit the eligible refund amount immediately upon successful return pickup OTP verification.
+      const selectedRefundMethod = returnRequest.refundMethod || 'CAMPUS_BASKET_WALLET';
+      const isWalletRefund = selectedRefundMethod === 'CAMPUS_BASKET_WALLET';
+      const refundAmount = Number(returnRequest.refundAmount || 0);
+
+      let walletResult: any = null;
+      if (isWalletRefund && refundAmount > 0) {
+        const studentId = returnRequest.studentId || returnRequest.order?.studentId;
+        if (studentId) {
+          try {
+            walletResult = await WalletService.creditRefund({
+              studentId,
+              orderId: returnRequest.orderId,
+              refundId: returnRequest.id,
+              refundType: 'RETURN',
+              amount: refundAmount,
+              triggerEvent: 'RETURN_PICKUP_COMPLETED',
+              refundMethod: 'CAMPUS_BASKET_WALLET',
+              description: `Doorstep return pickup verified for order #${returnRequest.order?.orderNumber || returnRequest.orderId}. Refund of ₹${refundAmount.toFixed(2)} credited.`
+            });
+          } catch (wErr) {
+            console.warn('[ReturnController] Wallet refund error:', wErr);
+          }
+        }
+      }
+
+      const finalOrderRefundStatus = isWalletRefund && refundAmount > 0 ? 'COMPLETED' : 'PROCESSING';
+      const refundHistoryNote = isWalletRefund && refundAmount > 0
+        ? `Return pickup confirmed at student hostel room with 6-digit OTP (${cleanOtp}). Item collected by runner. Runner payout (+₹${runnerRate.toFixed(2)}) credited. ₹${refundAmount.toFixed(2)} credited to student's Campus Basket Wallet instantly.`
+        : `Return pickup confirmed at student hostel room with 6-digit OTP (${cleanOtp}). Item collected by runner. Runner payout (+₹${runnerRate.toFixed(2)}) credited. Refund of ₹${refundAmount.toFixed(2)} routed for Original Payment Method processing (3–5 business days).`;
+
+      // Update Order Status History and status
       const orderIdsToUpdate = [
         returnRequest.orderId,
         returnRequest.order?.id,
@@ -621,13 +655,14 @@ export class ReturnController {
           await (prisma as any).order.update({
             where: { id: oid },
             data: {
-              refundStatus: 'PROCESSING',
+              refundStatus: finalOrderRefundStatus,
+              refundAmount: refundAmount,
               statusHistory: {
                 create: {
                   previousStatus: returnRequest.order?.status || 'DELIVERED',
                   newStatus: returnRequest.order?.status || 'DELIVERED',
                   changedBy: req.user?.email || 'DELIVERY_RUNNER',
-                  notes: `Return pickup confirmed at student hostel room with 6-digit OTP (${cleanOtp}). Item collected by runner. Runner payout (+₹${runnerRate.toFixed(2)}) credited. Awaiting Admin refund disbursement.`
+                  notes: refundHistoryNote
                 }
               }
             }
@@ -635,18 +670,34 @@ export class ReturnController {
         } catch (orderErr) {}
       }
 
+      if (walletResult?.transaction?.transactionId) {
+        await (prisma as any).returnRequest.update({
+          where: { id: returnRequest.id },
+          data: {
+            refundTransactionRef: walletResult.transaction.transactionId,
+            refundMethod: 'CAMPUS_BASKET_WALLET'
+          }
+        }).catch(() => {});
+      }
+
       res.status(200).json({
         success: true,
-        message: `Return pickup verified successfully! ₹${runnerRate.toFixed(2)} delivery fee credited to runner dashboard. Ready for Admin refund disbursement.`,
+        message: isWalletRefund
+          ? `Return pickup verified successfully! ₹${refundAmount.toFixed(2)} credited to student Campus Basket Wallet. ₹${runnerRate.toFixed(2)} credited to runner dashboard.`
+          : `Return pickup verified successfully! ₹${runnerRate.toFixed(2)} delivery fee credited to runner dashboard. Original payment method refund processing (3–5 business days).`,
         returnRequest: {
           ...updatedReturn,
           status: 'COMPLETED',
           pickupOtpVerified: true,
           pickupOtpVerifiedAt: now,
-          completedAt: now
+          completedAt: now,
+          refundMethod: selectedRefundMethod,
+          refundTransactionRef: walletResult?.transaction?.transactionId || returnRequest.refundTransactionRef
         },
         runnerPayoutCredited: runnerRate,
-        refundDueAmount: Number(returnRequest.refundAmount)
+        refundDueAmount: refundAmount,
+        refundCreditedToWallet: Boolean(isWalletRefund && walletResult && !walletResult.alreadyProcessed),
+        studentWalletBalance: walletResult ? walletResult.newBalance : null
       });
     } catch (err) {
       next(err);
