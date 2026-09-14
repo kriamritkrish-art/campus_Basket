@@ -16,19 +16,19 @@ export function Footer() {
   return (
     <footer className="bg-white border-t border-gray-200 text-gray-600 text-xs mt-12 w-full max-w-full overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 w-full min-w-0">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
           {/* Col 1: Institutional & College Info */}
           <div className="space-y-3">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-[#4F9D2F] flex items-center justify-center font-extrabold text-white text-xs shadow-xs">
-                cb
+              <div className="w-8 h-8 rounded-xl bg-[#4F9D2F] flex items-center justify-center font-black text-white text-xs shadow-xs shrink-0">
+                CB
               </div>
               <div>
                 <div className="font-extrabold text-[#172033] text-base leading-none">
-                  campus<span className="text-[#4F9D2F]">basket</span>
+                  Campus Basket
                 </div>
-                <div className="text-[9.5px] font-semibold text-gray-400 uppercase mt-0.5">
-                  NIT Durgapur Marketplace
+                <div className="text-[9.5px] font-bold tracking-wider text-gray-400 uppercase mt-0.5">
+                  CAMPUS MARKETPLACE &amp; SERVICES
                 </div>
               </div>
             </div>

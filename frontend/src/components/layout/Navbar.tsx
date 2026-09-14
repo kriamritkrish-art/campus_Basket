@@ -155,8 +155,8 @@ export function Navbar() {
               </div>
             </Link>
 
-            {/* CENTER: Large Contextual Search */}
-            <form onSubmit={handleSearch} className="flex-1 max-w-xl hidden md:block">
+            {/* CENTER: Large Contextual Search (Desktop >= lg) */}
+            <form onSubmit={handleSearch} className="flex-1 max-w-xl hidden lg:block mx-4">
               <div className="relative flex items-center">
                 <Search className="w-4 h-4 text-gray-400 absolute left-3.5" />
                 <input
@@ -176,25 +176,22 @@ export function Navbar() {
             </form>
 
             {/* RIGHT: Campus Location + Compact Professional Basket + Notifications + Profile */}
-            <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-              {/* Campus Location Button (DESKTOP) */}
+            <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+              {/* Campus Location Button */}
               <button
                 type="button"
                 onClick={() => setIsLocationModalOpen(true)}
-                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F7F8F6] hover:bg-[#EEF7E9] border border-[#E5E7EB] text-left transition-colors group cursor-pointer shrink-0"
+                className="hidden sm:flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#F7F8F6] hover:bg-[#EEF7E9] border border-[#E5E7EB] text-left transition-colors group cursor-pointer shrink-0"
                 title={isAuthenticated && selectedHall ? 'Change Campus Delivery Location' : 'Set Campus Delivery Location'}
               >
                 <MapPin className="w-3.5 h-3.5 text-[#4F9D2F] shrink-0" />
-                <div className="leading-tight">
+                <div className="leading-tight max-w-[95px] md:max-w-[125px] lg:max-w-[160px]">
                   {isAuthenticated && selectedHall ? (
                     <>
-                      <div className="text-[11px] font-black text-[#172033] flex items-center gap-1">
-                        <span>{selectedHall}</span>
+                      <div className="text-[11px] font-black text-[#172033] flex items-center gap-1 truncate">
+                        <span className="truncate">{selectedHall}</span>
                         {roomNumber && (
-                          <>
-                            <span className="text-gray-300">•</span>
-                            <span className="text-gray-600 font-semibold">{roomNumber}</span>
-                          </>
+                          <span className="text-gray-500 font-semibold shrink-0 hidden md:inline truncate">• {roomNumber}</span>
                         )}
                       </div>
                       <div className="text-[10px] font-bold text-[#4F9D2F] group-hover:underline">
@@ -203,8 +200,8 @@ export function Navbar() {
                     </>
                   ) : (
                     <>
-                      <div className="text-[11px] font-black text-[#172033]">
-                        Campus delivery available
+                      <div className="text-[11px] font-black text-[#172033] truncate">
+                        Campus delivery
                       </div>
                       <div className="text-[10px] font-bold text-[#4F9D2F] group-hover:underline">
                         Set location
@@ -229,16 +226,16 @@ export function Navbar() {
                   )}
                 </div>
                 <div className="text-left text-xs leading-tight flex items-center gap-1">
-                  <span className="hidden sm:inline text-gray-600 text-[11px] font-semibold">{itemCount} {itemCount === 1 ? 'item' : 'items'}</span>
-                  <span className="hidden sm:inline text-gray-300">•</span>
+                  <span className="hidden xl:inline text-gray-600 text-[11px] font-semibold">{itemCount} {itemCount === 1 ? 'item' : 'items'}</span>
+                  <span className="hidden xl:inline text-gray-300">•</span>
                   <span className="text-[#172033] font-black">₹{total.toFixed(0)}</span>
                 </div>
               </Link>
 
-              {/* Notifications Bell (Desktop) */}
+              {/* Notifications Bell (Desktop & Tablet) */}
               <Link
                 href="/dashboard?tab=notifications"
-                className="hidden sm:flex relative p-2 rounded-xl text-gray-500 hover:text-gray-900 hover:bg-[#F7F8F6] border border-transparent hover:border-[#E5E7EB] transition-colors"
+                className="hidden sm:flex relative p-2 rounded-xl text-gray-500 hover:text-gray-900 hover:bg-[#F7F8F6] border border-transparent hover:border-[#E5E7EB] transition-colors shrink-0"
                 title="Notifications"
               >
                 <Bell className="w-4 h-4" />
@@ -249,18 +246,18 @@ export function Navbar() {
 
               {/* Auth / Profile Dropdown */}
               {isAuthenticated ? (
-                <div className="relative">
+                <div className="relative shrink-0">
                   <button
                     onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                    className="flex items-center gap-1.5 sm:gap-2 px-2.5 py-1.5 rounded-xl bg-[#F7F8F6] hover:bg-gray-100 border border-[#E5E7EB] text-xs font-bold text-[#172033] transition-colors cursor-pointer"
+                    className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-2.5 py-1.5 rounded-xl bg-[#F7F8F6] hover:bg-gray-100 border border-[#E5E7EB] text-xs font-bold text-[#172033] transition-colors cursor-pointer shrink-0"
                   >
-                    <div className="w-6 h-6 rounded-lg bg-[#4F9D2F] text-white flex items-center justify-center text-xs font-black">
+                    <div className="w-6 h-6 rounded-lg bg-[#4F9D2F] text-white flex items-center justify-center text-xs font-black shrink-0">
                       {user?.student?.fullName?.charAt(0) || user?.email?.charAt(0) || 'U'}
                     </div>
-                    <span className="hidden sm:inline">
+                    <span className="hidden md:inline max-w-[80px] lg:max-w-[120px] truncate">
                       {user?.student?.fullName?.split(' ')[0] || user?.email?.split('@')[0] || 'Profile'}
                     </span>
-                    <ChevronDown className={`w-3 h-3 text-gray-500 transition-transform ${profileDropdownOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`w-3 h-3 text-gray-500 transition-transform shrink-0 ${profileDropdownOpen ? 'rotate-180' : ''}`} />
                   </button>
 
                   {/* Profile Menu */}
@@ -374,8 +371,8 @@ export function Navbar() {
             </div>
           </div>
 
-          {/* Mobile Contextual Search Field */}
-          <form onSubmit={handleSearch} className="pb-2.5 md:hidden">
+          {/* Mobile & Tablet Contextual Search Field (Screens < lg) */}
+          <form onSubmit={handleSearch} className="pb-2.5 lg:hidden">
             <div className="relative flex items-center">
               <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3" />
               <input
@@ -395,32 +392,32 @@ export function Navbar() {
           </form>
         </div>
 
-        {/* Tier 2: Sub-Navigation Bar (DESKTOP ONLY) */}
+        {/* Tier 2: Sub-Navigation Bar (DESKTOP & TABLET >= md) */}
         <div className="hidden md:block border-t border-[#E5E7EB] bg-[#FCFDFB]">
           <div className="w-full px-2.5 sm:px-4 lg:px-6">
             <div className="flex items-center justify-between h-10 text-xs">
-              <div className="flex items-center gap-5 sm:gap-7 overflow-x-auto no-scrollbar font-semibold">
+              <div className="flex items-center gap-4 sm:gap-6 lg:gap-7 overflow-x-auto no-scrollbar font-semibold">
                 <Link
                   href="/"
-                  className={`transition-colors py-1 ${pathname === '/' ? 'text-[#4F9D2F] font-bold border-b-2 border-[#4F9D2F]' : 'text-gray-600 hover:text-[#172033]'}`}
+                  className={`transition-colors py-1 shrink-0 ${pathname === '/' ? 'text-[#4F9D2F] font-bold border-b-2 border-[#4F9D2F]' : 'text-gray-600 hover:text-[#172033]'}`}
                 >
                   Home
                 </Link>
                 <a
                   href="/#campus-services"
-                  className="text-gray-600 hover:text-[#172033] transition-colors py-1"
+                  className="text-gray-600 hover:text-[#172033] transition-colors py-1 shrink-0"
                 >
                   Campus Services
                 </a>
                 <Link
                   href="/dashboard?tab=orders"
-                  className={`transition-colors py-1 ${pathname?.includes('orders') && !pathname?.includes('track') ? 'text-[#4F9D2F] font-bold border-b-2 border-[#4F9D2F]' : 'text-gray-600 hover:text-[#172033]'}`}
+                  className={`transition-colors py-1 shrink-0 ${pathname?.includes('orders') && !pathname?.includes('track') ? 'text-[#4F9D2F] font-bold border-b-2 border-[#4F9D2F]' : 'text-gray-600 hover:text-[#172033]'}`}
                 >
                   Orders
                 </Link>
                 <Link
                   href={activeOrder ? `/orders/${activeOrder.id}/track?id=${activeOrder.id}` : '/orders/track'}
-                  className="text-gray-600 hover:text-[#172033] transition-colors py-1 flex items-center gap-1"
+                  className="text-gray-600 hover:text-[#172033] transition-colors py-1 flex items-center gap-1 shrink-0"
                 >
                   <span>Track Order</span>
                   {activeOrder && (
@@ -429,14 +426,14 @@ export function Navbar() {
                 </Link>
                 <Link
                   href="/dashboard?tab=support"
-                  className="text-gray-600 hover:text-[#172033] transition-colors py-1"
+                  className="text-gray-600 hover:text-[#172033] transition-colors py-1 shrink-0"
                 >
                   Support
                 </Link>
               </div>
 
-              {/* Verified Campus Hub Status */}
-              <div className="flex items-center gap-2 text-[11px] text-gray-500 font-medium">
+              {/* Verified Campus Hub Status (Desktop only, hidden on tablet to prevent collision) */}
+              <div className="hidden lg:flex items-center gap-2 text-[11px] text-gray-500 font-medium shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#4F9D2F]" />
                 <span>Verified Campus Marketplace Hub</span>
               </div>

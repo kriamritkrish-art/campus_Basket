@@ -612,15 +612,15 @@ export default function CheckoutPage() {
         <div className="max-w-[1240px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           {/* Left: Campus Basket Logo */}
           <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 rounded-lg bg-[#4F9D2F] flex items-center justify-center text-white font-bold text-sm shadow-xs">
-              cb
+            <div className="w-8 h-8 rounded-lg bg-[#4F9D2F] flex items-center justify-center text-white font-black text-sm shadow-xs shrink-0">
+              CB
             </div>
             <div>
               <div className="font-extrabold text-base tracking-tight text-[#172033] group-hover:text-[#4F9D2F] transition-colors leading-none">
-                campus basket
+                Campus Basket
               </div>
-              <div className="text-[10px] text-[#667085] font-medium tracking-wide">
-                Campus Basket Marketplace
+              <div className="text-[10px] text-[#667085] font-bold tracking-wider uppercase mt-0.5">
+                CAMPUS MARKETPLACE &amp; SERVICES
               </div>
             </div>
           </Link>
