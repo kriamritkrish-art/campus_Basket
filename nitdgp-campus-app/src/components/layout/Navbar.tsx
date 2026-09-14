@@ -138,9 +138,9 @@ export function Navbar() {
     <>
       <header className="sticky top-0 z-40 bg-white border-b border-[#E5E7EB] shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
         {/* Tier 1: Main Campus Header */}
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="w-full px-2.5 sm:px-4 lg:px-6">
           <div className="flex items-center justify-between h-16 gap-3 sm:gap-6">
-            {/* LEFT: Campus Basket Logo & Subtitle */}
+            {/* LEFT: Campus Basket Logo & Subtitle - Immediate Left Corner */}
             <Link href="/" className="flex items-center gap-2.5 shrink-0 group py-1">
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#4F9D2F] flex items-center justify-center text-white font-black text-sm sm:text-base shadow-xs group-hover:bg-[#36751F] transition-colors shrink-0">
                 CB
@@ -397,7 +397,7 @@ export function Navbar() {
 
         {/* Tier 2: Sub-Navigation Bar (DESKTOP ONLY) */}
         <div className="hidden md:block border-t border-[#E5E7EB] bg-[#FCFDFB]">
-          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+          <div className="w-full px-2.5 sm:px-4 lg:px-6">
             <div className="flex items-center justify-between h-10 text-xs">
               <div className="flex items-center gap-5 sm:gap-7 overflow-x-auto no-scrollbar font-semibold">
                 <Link

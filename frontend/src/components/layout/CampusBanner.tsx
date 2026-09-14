@@ -48,8 +48,8 @@ export function CampusBanner() {
       )}
 
       {/* Top Information Bar */}
-      <div className="bg-[#172033] text-white px-3 sm:px-6 lg:px-8 py-1.5 text-center text-xs font-semibold tracking-wide">
-        <div className="max-w-7xl mx-auto flex items-center justify-center gap-1.5 sm:gap-2">
+      <div className="bg-[#172033] text-white px-2.5 sm:px-4 lg:px-6 py-1.5 text-center text-xs font-semibold tracking-wide w-full">
+        <div className="w-full flex items-center justify-center gap-1.5 sm:gap-2">
           <span className="text-[#4F9D2F]">⚡</span>
           <span>10–15 min campus delivery across campus</span>
         </div>
