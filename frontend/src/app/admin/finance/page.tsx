@@ -31,7 +31,10 @@ import {
   Lock,
   ArrowRight,
   TrendingUp,
-  FileText
+  FileText,
+  Banknote,
+  SlidersHorizontal,
+  Check
 } from 'lucide-react';
 
 interface FinanceSummary {
@@ -51,14 +54,21 @@ interface FinanceSummary {
     grossSales: number;
     campusCommission?: number;
     netProviderPayable: number;
+    totalProviderPayable?: number;
     providerSettled: number;
+    totalProviderSettled?: number;
     providerPending: number;
+    totalProviderPending?: number;
+    totalRefunds?: number;
     totalCodExpected: number;
     totalCodCollected: number;
     totalCodPending: number;
     totalDeliveryEarnings: number;
     totalDeliverySettled: number;
     totalDeliveryPending: number;
+    cbGrossRetained?: number;
+    pendingSettlementRequestsCount?: number;
+    pendingSettlementRequestsAmount?: number;
   };
   counts: {
     totalOrders: number;
@@ -166,6 +176,114 @@ export default function AdminFinancePage() {
   // Common Financial Detail Modal for any single order
   const [drilldownOrderId, setDrilldownOrderId] = useState<string | null>(null);
 
+  // Settlement Execution Modal State (Requirements 8, 9, 10)
+  const [settlementTarget, setSettlementTarget] = useState<any | null>(null);
+  const [settleAmount, setSettleAmount] = useState<string>('');
+  const [settleReference, setSettleReference] = useState<string>('');
+  const [settleNotes, setSettleNotes] = useState<string>('');
+  const [settling, setSettling] = useState(false);
+
+  // Financial Adjustment Modal State (Requirement 23)
+  const [adjustmentModalOpen, setAdjustmentModalOpen] = useState(false);
+  const [adjProviderId, setAdjProviderId] = useState('');
+  const [adjAmount, setAdjAmount] = useState('');
+  const [adjDirection, setAdjDirection] = useState<'CREDIT' | 'DEBIT'>('CREDIT');
+  const [adjReason, setAdjReason] = useState('');
+  const [adjReferenceId, setAdjReferenceId] = useState('');
+  const [adjNotes, setAdjNotes] = useState('');
+  const [submittingAdjustment, setSubmittingAdjustment] = useState(false);
+
+  // Feedback Notification
+  const [financeNotice, setFinanceNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const showFinanceNotice = (text: string, type: 'success' | 'error' = 'success') => {
+    setFinanceNotice({ type, text });
+    setTimeout(() => setFinanceNotice(null), 4500);
+  };
+
+  const handleExecuteSettlement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!settlementTarget) return;
+    const amt = Number(settleAmount);
+    if (isNaN(amt) || amt <= 0) {
+      showFinanceNotice('Please enter a valid positive settlement amount.', 'error');
+      return;
+    }
+    const maxPending = Number(settlementTarget.remainingAmount || settlementTarget.pendingPayable || 0);
+    if (amt > maxPending) {
+      showFinanceNotice(`Settlement amount (₹${amt}) cannot exceed remaining pending payable (₹${maxPending}).`, 'error');
+      return;
+    }
+    setSettling(true);
+    try {
+      const res = await apiRequest('/api/admin/finance/provider-status', {
+        method: 'POST',
+        body: JSON.stringify({
+          providerId: settlementTarget.providerId,
+          status: 'APPROVED',
+          settlementAmount: amt,
+          payoutReference: settleReference || `ST-PAY-${Date.now().toString().slice(-6)}`,
+          notes: settleNotes || `Disbursed ₹${amt} to provider`
+        })
+      });
+      if (res?.success) {
+        showFinanceNotice(`Settlement of ₹${amt.toLocaleString('en-IN')} successfully executed! Ledger updated.`);
+        setSettlementTarget(null);
+        if (selectedProvider && selectedProvider.providerId === settlementTarget.providerId) {
+          setSelectedProvider(null);
+        }
+        await Promise.all([fetchSummary(), fetchProviders(), fetchHistory()]);
+      } else {
+        showFinanceNotice(res?.message || 'Failed to process settlement', 'error');
+      }
+    } catch (err: any) {
+      showFinanceNotice(err?.message || 'Settlement execution failed', 'error');
+    } finally {
+      setSettling(false);
+    }
+  };
+
+  const handleCreateAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adjProviderId || !adjAmount || !adjReason) {
+      showFinanceNotice('Provider, Amount, and Reason are required.', 'error');
+      return;
+    }
+    const amt = Number(adjAmount);
+    if (isNaN(amt) || amt <= 0) {
+      showFinanceNotice('Please enter a valid positive adjustment amount.', 'error');
+      return;
+    }
+    setSubmittingAdjustment(true);
+    try {
+      const res = await apiRequest('/api/admin/finance/adjustments', {
+        method: 'POST',
+        body: JSON.stringify({
+          providerId: adjProviderId,
+          amount: amt,
+          direction: adjDirection,
+          reason: adjReason,
+          referenceId: adjReferenceId || `ADJ-${Date.now().toString().slice(-6)}`,
+          notes: adjNotes
+        })
+      });
+      if (res?.success) {
+        showFinanceNotice(`Adjustment of ${adjDirection === 'CREDIT' ? '+' : '-'}₹${amt.toLocaleString('en-IN')} posted to ledger!`);
+        setAdjustmentModalOpen(false);
+        setAdjAmount('');
+        setAdjReason('');
+        setAdjReferenceId('');
+        setAdjNotes('');
+        await Promise.all([fetchSummary(), fetchProviders(), fetchHistory()]);
+      } else {
+        showFinanceNotice(res?.message || 'Failed to record adjustment', 'error');
+      }
+    } catch (err: any) {
+      showFinanceNotice(err?.message || 'Adjustment creation failed', 'error');
+    } finally {
+      setSubmittingAdjustment(false);
+    }
+  };
+
   // Load High-Level Summary
   const fetchSummary = async () => {
     try {
@@ -185,14 +303,15 @@ export default function AdminFinancePage() {
         setProvidersData(
           list.map((p: any) => ({
             ...p,
-            providerName: p.providerName || p.name || 'Vendor Partner',
-            businessCategory: p.businessCategory || p.category || 'CAMPUS',
+            providerId: p.providerId || p.id,
+            providerName: p.providerName || p.fullName || p.name || 'Vendor Partner',
+            businessCategory: p.businessCategory || p.serviceCategory || p.category || 'CAMPUS',
             ordersCount: p.ordersCount ?? p.totalOrders ?? (p.orders?.length || 0),
             grossSales: Number(p.grossSales ?? p.grossOrderValue ?? 0),
             campusCommission: 0,
             totalPayable: Number(p.totalPayable ?? p.providerPayable ?? (p.grossSales ?? p.grossOrderValue ?? 0)),
             settledAmount: Number(p.settledAmount ?? p.alreadySettled ?? 0),
-            remainingAmount: Number(p.remainingAmount ?? p.remainingPayable ?? 0),
+            remainingAmount: Number(p.remainingAmount ?? p.pendingPayable ?? p.remainingPayable ?? 0),
             settlementStatus: p.settlementStatus || 'PENDING',
             orders: Array.isArray(p.orders) ? p.orders : []
           }))
@@ -463,42 +582,51 @@ export default function AdminFinancePage() {
     <div className="space-y-6 pb-12">
       {/* Top Header */}
       <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-sm">
-              <IndianRupee className="w-5 h-5" />
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-sm shrink-0">
+            <IndianRupee className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-black text-gray-900 tracking-tight">
+                Financial Treasury &amp; Reconciliation
+              </h1>
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                <span>Single Source of Truth</span>
+              </span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-black text-gray-900 tracking-tight">
-                  Financial Treasury &amp; Reconciliation
-                </h1>
-                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" />
-                  <span>Read-Only Reporting Layer</span>
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-gray-500 font-medium mt-0.5">
-                Centralized financial audit and reconciliation. Single Order Identity synchronized with ledger.
-              </p>
-            </div>
+            <p className="text-xs sm:text-sm text-gray-500 font-medium mt-0.5">
+              Institutional reconciliation system. Product-level snapshots, verified refunds, and immutable financial ledger.
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={() => {
+              setAdjProviderId(providersData[0]?.providerId || '');
+              setAdjustmentModalOpen(true);
+            }}
+            className="px-3.5 py-2 rounded-xl bg-purple-50 border border-purple-200 hover:bg-purple-100 text-purple-900 text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+          >
+            <SlidersHorizontal className="w-4 h-4 text-purple-600" />
+            <span>Record Financial Adjustment</span>
+          </button>
+
           <Link
             href="/admin/payments"
             className="px-3.5 py-2 rounded-xl bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-900 text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
           >
             <CreditCard className="w-4 h-4 text-indigo-600" />
-            <span>Payments &amp; Transactions</span>
+            <span>Settlement Transactions</span>
             <ArrowRight className="w-3.5 h-3.5 text-indigo-500" />
           </Link>
 
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+            className="px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-blue-600' : 'text-gray-500'}`} />
             <span>Refresh</span>
@@ -506,7 +634,7 @@ export default function AdminFinancePage() {
 
           <button
             onClick={handleExportCsv}
-            className="px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+            className="px-3.5 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
           >
             <Download className="w-4 h-4 text-emerald-600" />
             <span>Export CSV</span>
@@ -514,7 +642,7 @@ export default function AdminFinancePage() {
 
           <button
             onClick={handleExportPdf}
-            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
           >
             <Printer className="w-4 h-4 text-gray-300" />
             <span>Print PDF</span>
@@ -522,35 +650,56 @@ export default function AdminFinancePage() {
         </div>
       </div>
 
-      {/* Read-Only Architecture Notice Banner */}
-      <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-2xl flex items-center justify-between gap-3 text-xs text-slate-600">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
-            <Lock className="w-4 h-4" />
-          </div>
-          <div>
-            <strong className="text-slate-900">Source of Truth Separation:</strong> Finance Hub is a 100% read-only reporting and audit layer. All settlements, payout authorizations, COD collections, and status adjustments are strictly executed from{' '}
-            <Link href="/admin/payments" className="font-bold text-indigo-600 hover:underline">
-              Payments &rarr; Transactions
-            </Link>.
-          </div>
-        </div>
-        <Link
-          href="/admin/payments"
-          className="shrink-0 font-bold text-[11px] text-indigo-700 hover:text-indigo-900 flex items-center gap-1"
+      {/* Realtime Toast Banner */}
+      {financeNotice && (
+        <div
+          className={`p-4 rounded-2xl border flex items-center justify-between gap-3 text-xs font-bold transition animate-in fade-in ${
+            financeNotice.type === 'success'
+              ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+              : 'bg-rose-50 text-rose-900 border-rose-200'
+          }`}
         >
-          <span>Open Transactions</span>
-          <ArrowRight className="w-3 h-3" />
-        </Link>
-      </div>
+          <div className="flex items-center gap-2.5">
+            {financeNotice.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span>{financeNotice.text}</span>
+          </div>
+          <button onClick={() => setFinanceNotice(null)} className="p-1 hover:opacity-75">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
-      {/* High-Level Overview Cards (Separate Concepts) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Concept 1: Provider Payable */}
-        <div className="bg-white p-5 rounded-2xl border border-indigo-100 shadow-xs hover:border-indigo-300 transition">
+      {/* Advanced Financial Overview - 9 Critical Reconciliation Cards (Requirement 18) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
+        {/* Card 1: Total Customer Sales */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs hover:border-slate-300 transition">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-              Provider Payables
+              Total Customer Sales
+            </span>
+            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
+              <CreditCard className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-black text-gray-900 font-mono">
+              {formatCurrency(summary?.overall?.grossSales)}
+            </div>
+            <div className="text-[11px] text-gray-500 mt-1 font-medium">
+              Gross student payments across online &amp; COD
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2: Total Provider Payable */}
+        <div className="bg-white p-5 rounded-2xl border border-indigo-100 shadow-xs hover:border-indigo-300 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">
+              Total Provider Payable
             </span>
             <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center">
               <Store className="w-4 h-4" />
@@ -558,20 +707,79 @@ export default function AdminFinancePage() {
           </div>
           <div className="mt-3">
             <div className="text-2xl font-black text-indigo-950 font-mono">
-              {formatCurrency(summary?.overall?.netProviderPayable)}
+              {formatCurrency(summary?.overall?.totalProviderPayable ?? summary?.overall?.netProviderPayable)}
             </div>
-            <div className="flex items-center justify-between text-xs mt-2 text-gray-500">
-              <span>Settled: <strong className="text-emerald-700 font-mono">{formatCurrency(summary?.overall?.providerSettled)}</strong></span>
-              <span>Pending: <strong className="text-amber-700 font-mono">{formatCurrency(summary?.overall?.providerPending)}</strong></span>
+            <div className="text-[11px] text-indigo-800 mt-1 font-medium">
+              Sum of product settlement snapshots minus refunds
             </div>
           </div>
         </div>
 
-        {/* Concept 2: COD Collection */}
+        {/* Card 3: Total Provider Settled */}
+        <div className="bg-white p-5 rounded-2xl border border-emerald-100 shadow-xs hover:border-emerald-300 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">
+              Total Provider Settled
+            </span>
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-black text-emerald-800 font-mono">
+              {formatCurrency(summary?.overall?.totalProviderSettled ?? summary?.overall?.providerSettled)}
+            </div>
+            <div className="text-[11px] text-emerald-700 mt-1 font-medium">
+              Disbursed &amp; reconciled in official settlements
+            </div>
+          </div>
+        </div>
+
+        {/* Card 4: Total Provider Pending */}
         <div className="bg-white p-5 rounded-2xl border border-amber-100 shadow-xs hover:border-amber-300 transition">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-              COD Collections
+            <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">
+              Total Provider Pending
+            </span>
+            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
+              <Clock className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-black text-amber-900 font-mono">
+              {formatCurrency(summary?.overall?.totalProviderPending ?? summary?.overall?.providerPending)}
+            </div>
+            <div className="text-[11px] text-amber-800 mt-1 font-medium">
+              Net payable unpaid balance due to providers
+            </div>
+          </div>
+        </div>
+
+        {/* Card 5: Total Refunds */}
+        <div className="bg-white p-5 rounded-2xl border border-rose-100 shadow-xs hover:border-rose-300 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">
+              Total Refunds
+            </span>
+            <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-700 flex items-center justify-center">
+              <Receipt className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-black text-rose-900 font-mono">
+              {formatCurrency(summary?.overall?.totalRefunds ?? 0)}
+            </div>
+            <div className="text-[11px] text-rose-700 mt-1 font-medium">
+              Verified customer refunds &amp; return deductions
+            </div>
+          </div>
+        </div>
+
+        {/* Card 6: Total COD Collected */}
+        <div className="bg-white p-5 rounded-2xl border border-amber-100 shadow-xs hover:border-amber-300 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">
+              Total COD Collected
             </span>
             <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
               <Wallet className="w-4 h-4" />
@@ -579,41 +787,39 @@ export default function AdminFinancePage() {
           </div>
           <div className="mt-3">
             <div className="text-2xl font-black text-amber-950 font-mono">
-              {formatCurrency(summary?.overall?.totalCodExpected)}
+              {formatCurrency(summary?.overall?.totalCodCollected)}
             </div>
-            <div className="flex items-center justify-between text-xs mt-2 text-gray-500">
-              <span>Collected: <strong className="text-emerald-700 font-mono">{formatCurrency(summary?.overall?.totalCodCollected)}</strong></span>
-              <span>Pending: <strong className="text-rose-700 font-mono">{formatCurrency(summary?.overall?.totalCodPending)}</strong></span>
+            <div className="text-[11px] text-gray-500 mt-1 font-medium">
+              Cash gathered by campus runners (Expected: {formatCurrency(summary?.overall?.totalCodExpected)})
             </div>
           </div>
         </div>
 
-        {/* Concept 3: Delivery Boy Earnings */}
-        <div className="bg-white p-5 rounded-2xl border border-emerald-100 shadow-xs hover:border-emerald-300 transition">
+        {/* Card 7: Total Delivery Earnings */}
+        <div className="bg-white p-5 rounded-2xl border border-teal-100 shadow-xs hover:border-teal-300 transition">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-              Delivery Partner Earnings
+            <span className="text-xs font-bold text-teal-700 uppercase tracking-wider">
+              Total Delivery Earnings
             </span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center">
               <Bike className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-2xl font-black text-emerald-950 font-mono">
+            <div className="text-2xl font-black text-teal-950 font-mono">
               {formatCurrency(summary?.overall?.totalDeliveryEarnings)}
             </div>
-            <div className="flex items-center justify-between text-xs mt-2 text-gray-500">
-              <span>Settled: <strong className="text-blue-700 font-mono">{formatCurrency(summary?.overall?.totalDeliverySettled)}</strong></span>
-              <span>Pending: <strong className="text-amber-700 font-mono">{formatCurrency(summary?.overall?.totalDeliveryPending)}</strong></span>
+            <div className="text-[11px] text-teal-700 mt-1 font-medium">
+              Runner fulfillment payouts (Settled: {formatCurrency(summary?.overall?.totalDeliverySettled)})
             </div>
           </div>
         </div>
 
-        {/* Concept 4: Total Campus Volume */}
+        {/* Card 8: Campus Basket Gross Retained */}
         <div className="bg-white p-5 rounded-2xl border border-purple-100 shadow-xs hover:border-purple-300 transition">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-              Total Campus Volume
+            <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">
+              Campus Basket Gross Retained
             </span>
             <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center">
               <Sparkles className="w-4 h-4" />
@@ -621,18 +827,37 @@ export default function AdminFinancePage() {
           </div>
           <div className="mt-3">
             <div className="text-2xl font-black text-purple-950 font-mono">
-              {formatCurrency(summary?.overall?.grossSales)}
+              {formatCurrency(summary?.overall?.cbGrossRetained ?? ((summary?.overall?.grossSales ?? 0) - (summary?.overall?.totalProviderPayable ?? summary?.overall?.netProviderPayable ?? 0)))}
             </div>
-            <div className="flex items-center justify-between text-xs mt-2 text-gray-500">
-              <span>Today Volume: <strong className="text-gray-800 font-mono">{formatCurrency((summary?.today as any)?.todayGrossSales || (summary?.today as any)?.providerPayable)}</strong></span>
-              <span>Orders: <strong className="text-purple-800">{formatNum(summary?.counts?.totalOrders)}</strong></span>
+            <div className="text-[11px] text-purple-800 mt-1 font-medium">
+              Sales minus provider payables before fleet costs
+            </div>
+          </div>
+        </div>
+
+        {/* Card 9: Pending Settlement Requests */}
+        <div className="bg-white p-5 rounded-2xl border border-indigo-100 shadow-xs hover:border-indigo-300 transition">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">
+              Pending Settlement Requests
+            </span>
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center">
+              <Receipt className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-black text-indigo-900 font-mono">
+              {formatNum(summary?.overall?.pendingSettlementRequestsCount ?? providerRequests.filter((r) => r.status === 'PENDING' || r.status === 'REQUESTED').length)}
+            </div>
+            <div className="text-[11px] text-indigo-700 mt-1 font-medium">
+              Requests awaiting review &amp; disbursal
             </div>
           </div>
         </div>
       </div>
 
-      {/* Pending Settlement Requests Notification Banner (Read-Only) */}
-      {providerRequests.filter((r) => r.status === 'PENDING').length > 0 && (
+      {/* Pending Settlement Requests Action Banner */}
+      {providerRequests.filter((r) => r.status === 'PENDING' || r.status === 'REQUESTED').length > 0 && (
         <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
@@ -640,20 +865,32 @@ export default function AdminFinancePage() {
             </div>
             <div>
               <h4 className="text-xs font-bold text-amber-900">
-                {providerRequests.filter((r) => r.status === 'PENDING').length} Settlement Request(s) Awaiting Payout
+                {providerRequests.filter((r) => r.status === 'PENDING' || r.status === 'REQUESTED').length} Settlement Request(s) Awaiting Payout
               </h4>
               <p className="text-[11px] text-amber-800 mt-0.5">
-                Providers have requested treasury disbursals. To review and approve payments, go to the Transactions module.
+                Providers have requested treasury disbursals. Review amounts and execute full or partial settlements directly below.
               </p>
             </div>
           </div>
-          <Link
-            href="/admin/payments"
-            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition shrink-0 flex items-center gap-1.5"
+          <button
+            onClick={() => {
+              const pendingReq = providerRequests.find((r) => r.status === 'PENDING' || r.status === 'REQUESTED');
+              if (pendingReq) {
+                const prov = providersData.find((p) => p.providerId === pendingReq.providerId) || {
+                  providerId: pendingReq.providerId,
+                  providerName: pendingReq.provider?.fullName || 'Vendor Partner',
+                  remainingAmount: pendingReq.requestedAmount
+                };
+                setSettlementTarget(prov);
+                setSettleAmount(String(pendingReq.requestedAmount));
+                setSettleReference(`ST-REQ-${pendingReq.id.slice(-6)}`);
+              }
+            }}
+            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition shrink-0 flex items-center gap-1.5 cursor-pointer"
           >
-            <span>Review in Transactions</span>
+            <span>Review First Request</span>
             <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
+          </button>
         </div>
       )}
 
@@ -774,19 +1011,23 @@ export default function AdminFinancePage() {
                   <tr className="bg-gray-50/80 border-b border-gray-200 text-[11px] font-black uppercase text-gray-500">
                     <th className="py-3.5 px-4">Provider</th>
                     <th className="py-3.5 px-3">Category</th>
-                    <th className="py-3.5 px-3 text-right">Orders</th>
-                    <th className="py-3.5 px-3 text-right">Gross Sales</th>
-                    <th className="py-3.5 px-3 text-right">Net Payable</th>
-                    <th className="py-3.5 px-3 text-right">Settled</th>
-                    <th className="py-3.5 px-3 text-right">Remaining</th>
-                    <th className="py-3.5 px-3 text-center">Status</th>
-                    <th className="py-3.5 px-4 text-right">Action</th>
+                    <th className="py-3.5 px-3 text-right">Total Orders</th>
+                    <th className="py-3.5 px-3 text-right">Gross Customer Sales</th>
+                    <th className="py-3.5 px-3 text-right">Provider Payable</th>
+                    <th className="py-3.5 px-3 text-right">Already Settled</th>
+                    <th className="py-3.5 px-3 text-right">Pending Payable</th>
+                    <th className="py-3.5 px-3 text-center">Settlement Status</th>
+                    <th className="py-3.5 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredProviders.length > 0 ? (
                     filteredProviders.map((p) => {
-                      const remaining = Number(p.remainingAmount || 0);
+                      const payable = Number(p.totalPayable ?? p.providerPayable ?? 0);
+                      const settled = Number(p.settledAmount ?? p.alreadySettled ?? 0);
+                      const remaining = Math.max(0, payable - settled);
+                      const status = remaining <= 0 && settled > 0 ? 'SETTLED' : settled > 0 ? 'PARTIALLY SETTLED' : 'PENDING';
+
                       return (
                         <tr key={p.providerId} className="hover:bg-blue-50/30 transition">
                           <td className="py-3.5 px-4">
@@ -807,37 +1048,56 @@ export default function AdminFinancePage() {
                             {formatCurrency(p.grossSales)}
                           </td>
                           <td className="py-3.5 px-3 text-right font-black text-indigo-900 font-mono">
-                            {formatCurrency(p.totalPayable)}
+                            {formatCurrency(payable)}
                           </td>
                           <td className="py-3.5 px-3 text-right font-bold text-emerald-700 font-mono">
-                            {formatCurrency(p.settledAmount)}
+                            {formatCurrency(settled)}
                           </td>
                           <td className="py-3.5 px-3 text-right font-black font-mono">
-                            <span className={remaining > 0 ? 'text-amber-800' : 'text-gray-400'}>
+                            <span className={remaining > 0 ? 'text-amber-800' : 'text-emerald-600'}>
                               {formatCurrency(remaining)}
                             </span>
                           </td>
                           <td className="py-3.5 px-3 text-center">
                             <span
                               className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full inline-block ${
-                                p.settlementStatus === 'SETTLED'
+                                status === 'SETTLED'
                                   ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                                  : p.settlementStatus === 'PARTIALLY_SETTLED'
+                                  : status === 'PARTIALLY SETTLED'
                                   ? 'bg-blue-50 text-blue-800 border border-blue-200'
                                   : 'bg-amber-50 text-amber-800 border border-amber-200'
                               }`}
                             >
-                              {p.settlementStatus}
+                              {status}
                             </span>
                           </td>
                           <td className="py-3.5 px-4 text-right">
-                            <button
-                              onClick={() => setSelectedProvider(p)}
-                              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 ml-auto"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>View</span>
-                            </button>
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => setSelectedProvider(p)}
+                                className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1"
+                                title="View detailed financial audit and orders"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>View</span>
+                              </button>
+
+                              {remaining > 0 && (
+                                <button
+                                  onClick={() => {
+                                    setSettlementTarget(p);
+                                    setSettleAmount(String(remaining));
+                                    setSettleReference(`ST-PAY-${Date.now().toString().slice(-6)}`);
+                                    setSettleNotes(`Disbursement for ${p.providerName}`);
+                                  }}
+                                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-1 shadow-xs"
+                                  title="Disburse full or partial settlement"
+                                >
+                                  <Banknote className="w-3.5 h-3.5" />
+                                  <span>Settle</span>
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1547,16 +1807,30 @@ export default function AdminFinancePage() {
               </div>
 
               <div className="flex items-center gap-2">
+                {providerMetrics.remainingPayable > 0 && (
+                  <button
+                    onClick={() => {
+                      setSettlementTarget(selectedProvider);
+                      setSettleAmount(String(providerMetrics.remainingPayable));
+                      setSettleReference(`ST-PAY-${Date.now().toString().slice(-6)}`);
+                      setSettleNotes(`Full settlement for ${selectedProvider.providerName}`);
+                    }}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Banknote className="w-3.5 h-3.5" />
+                    <span>Settle ({formatCurrency(providerMetrics.remainingPayable)})</span>
+                  </button>
+                )}
                 <Link
                   href="/admin/payments"
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-indigo-200"
                 >
-                  <span>Go to Transactions</span>
+                  <span>Transactions</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
                 <button
                   onClick={() => setSelectedProvider(null)}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700"
+                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1687,76 +1961,88 @@ export default function AdminFinancePage() {
                 <div className="border border-gray-200 rounded-xl overflow-hidden">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black uppercase text-gray-400">
+                      <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black uppercase text-gray-500">
                         <th className="py-2.5 px-3">Order ID</th>
-                        <th className="py-2.5 px-2">Date</th>
+                        <th className="py-2.5 px-2">Order Date</th>
                         <th className="py-2.5 px-2">Student</th>
                         <th className="py-2.5 px-2">Product</th>
                         <th className="py-2.5 px-2 text-center">Qty</th>
-                        <th className="py-2.5 px-2 text-right">Order Amount</th>
-                        <th className="py-2.5 px-2">Mode</th>
-                        <th className="py-2.5 px-2">Delivery Boy</th>
+                        <th className="py-2.5 px-2 text-right">Selling Price</th>
+                        <th className="py-2.5 px-2 text-right">Customer Paid</th>
+                        <th className="py-2.5 px-2 text-right">Provider Settlement Amount</th>
                         <th className="py-2.5 px-2 text-right">Provider Payable</th>
-                        <th className="py-2.5 px-2 text-right">Settled</th>
-                        <th className="py-2.5 px-2 text-right">Remaining</th>
+                        <th className="py-2.5 px-2">Payment Type</th>
+                        <th className="py-2.5 px-2 text-center">Order Status</th>
                         <th className="py-2.5 px-2 text-center">Settlement Status</th>
-                        <th className="py-2.5 px-3 text-right">Action</th>
+                        <th className="py-2.5 px-3 text-right">Settlement Batch / Trx ID</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {providerFilteredOrders.length > 0 ? (
                         providerFilteredOrders.map((ord: any) => {
-                          const orderAmt = Number(ord.orderAmount || ord.totalAmount || 0);
-                          const payable = Number(ord.providerPayable !== undefined ? ord.providerPayable : orderAmt);
-                          const settled = Number(ord.settledAmount || ord.providerSettledAmount || 0);
-                          const remaining = Math.max(0, payable - settled);
+                          const orderAmt = Number(ord.customerPaid || ord.orderAmount || ord.totalAmount || 0);
+                          const qty = Number(ord.quantity || 1);
+                          const sellingPrice = ord.sellingPrice !== undefined && ord.sellingPrice !== null
+                            ? Number(ord.sellingPrice)
+                            : (qty > 0 ? Math.round((orderAmt / qty) * 100) / 100 : orderAmt);
+                          const unitProvAmount = ord.providerSettlementAmount !== undefined && ord.providerSettlementAmount !== null
+                            ? Number(ord.providerSettlementAmount)
+                            : (ord.providerAmount !== undefined ? Number(ord.providerAmount) : sellingPrice);
+                          const payable = Number(ord.providerPayable !== undefined ? ord.providerPayable : (unitProvAmount * qty));
+                          const batchId = ord.payoutReference || ord.settlementId || ord.settlementNumber || (ord.settlementStatus === 'SETTLED' ? 'SETTLED' : '—');
+
                           return (
                             <tr key={ord.id} className="hover:bg-gray-50/80 transition">
                               <td className="py-2.5 px-3 font-mono font-bold text-gray-900">
                                 {ord.orderNumber}
                               </td>
                               <td className="py-2.5 px-2 text-gray-500 whitespace-nowrap">
-                                {formatDateSafe(ord.createdAt || ord.orderDate)}
+                                {formatDateSafe(ord.createdAt || ord.orderDate || ord.date)}
                               </td>
-                              <td className="py-2.5 px-2 font-medium text-gray-800 truncate max-w-[100px]">
+                              <td className="py-2.5 px-2 font-medium text-gray-800 truncate max-w-[110px]">
                                 {safeText(ord.studentName || ord.customerName || ord.student, 'Student')}
                               </td>
-                              <td className="py-2.5 px-2 text-gray-700 truncate max-w-[130px]">
-                                {safeText(ord.productService || ord.product, 'Products')}
+                              <td className="py-2.5 px-2 text-gray-700 truncate max-w-[140px]" title={ord.products || ord.productService || ord.product}>
+                                {safeText(ord.product || ord.products || ord.productService, 'Products')}
                               </td>
-                              <td className="py-2.5 px-2 text-center font-mono">
-                                {ord.quantity || 1}
+                              <td className="py-2.5 px-2 text-center font-mono font-bold">
+                                {qty}
+                              </td>
+                              <td className="py-2.5 px-2 text-right font-mono text-gray-700">
+                                {formatCurrency(sellingPrice)}
                               </td>
                               <td className="py-2.5 px-2 text-right font-mono font-bold text-gray-900">
                                 {formatCurrency(orderAmt)}
                               </td>
-                              <td className="py-2.5 px-2 font-mono text-[10px] text-gray-600">
-                                {safeText(ord.paymentMode, 'ONLINE')}
+                              <td className="py-2.5 px-2 text-right font-mono font-bold text-indigo-700">
+                                {formatCurrency(unitProvAmount)}
                               </td>
-                              <td className="py-2.5 px-2 text-gray-600 truncate max-w-[90px]">
-                                {safeText(ord.deliveryBoy || ord.deliveryBoyName, 'Unassigned')}
-                              </td>
-                              <td className="py-2.5 px-2 text-right font-mono font-bold text-emerald-800">
+                              <td className="py-2.5 px-2 text-right font-mono font-black text-emerald-800">
                                 {formatCurrency(payable)}
                               </td>
-                              <td className="py-2.5 px-2 text-right font-mono text-emerald-700">
-                                {formatCurrency(settled)}
-                              </td>
-                              <td className="py-2.5 px-2 text-right font-mono font-black text-amber-800">
-                                {formatCurrency(remaining)}
+                              <td className="py-2.5 px-2 font-mono text-[10px] text-gray-600 uppercase">
+                                {safeText(ord.paymentMode || ord.paymentMethod, 'ONLINE')}
                               </td>
                               <td className="py-2.5 px-2 text-center">
-                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 whitespace-nowrap">
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 whitespace-nowrap">
+                                  {ord.orderStatus || ord.status || 'DELIVERED'}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-2 text-center">
+                                <span
+                                  className={`text-[9px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                                    ord.settlementStatus === 'SETTLED'
+                                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                      : ord.settlementStatus === 'PARTIALLY_SETTLED'
+                                      ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                                      : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                  }`}
+                                >
                                   {ord.settlementStatus || ord.financialStatus || 'PENDING'}
                                 </span>
                               </td>
-                              <td className="py-2.5 px-3 text-right">
-                                <button
-                                  onClick={() => setDrilldownOrderId(ord.id)}
-                                  className="px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md font-bold text-[10px]"
-                                >
-                                  View Ledger
-                                </button>
+                              <td className="py-2.5 px-3 text-right font-mono text-[11px] text-gray-600">
+                                {batchId}
                               </td>
                             </tr>
                           );
@@ -2165,6 +2451,309 @@ export default function AdminFinancePage() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SETTLEMENT EXECUTION & PARTIAL SETTLEMENT MODAL (Requirements 8, 9, 10)   */}
+      {/* ========================================================================= */}
+      {settlementTarget && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                  <Banknote className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-gray-900">
+                    Disburse Provider Settlement
+                  </h3>
+                  <p className="text-xs text-gray-500 font-medium">
+                    {settlementTarget.providerName}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSettlementTarget(null)}
+                className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleExecuteSettlement} className="p-5 space-y-4 text-xs">
+              {/* Financial Snapshot */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Total Provider Payable:</span>
+                  <span className="font-mono font-bold text-gray-900">
+                    {formatCurrency(settlementTarget.totalPayable ?? settlementTarget.providerPayable)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Already Settled:</span>
+                  <span className="font-mono font-bold text-emerald-700">
+                    {formatCurrency(settlementTarget.settledAmount ?? settlementTarget.alreadySettled)}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-black">
+                  <span className="text-amber-800">Available Pending Payable:</span>
+                  <span className="font-mono text-amber-900">
+                    {formatCurrency(settlementTarget.remainingAmount ?? settlementTarget.pendingPayable)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Settlement Amount Input (supports partial settlement!) */}
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Settlement Amount (₹) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  max={Number(settlementTarget.remainingAmount ?? settlementTarget.pendingPayable ?? 0)}
+                  value={settleAmount}
+                  onChange={(e) => setSettleAmount(e.target.value)}
+                  className="w-full text-sm font-mono font-bold px-3.5 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-500"
+                  placeholder="Enter amount to disburse (can be partial)"
+                  required
+                />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Enter full amount or any partial amount. Remaining balance will stay PENDING.
+                </p>
+              </div>
+
+              {/* UTR / Payout Transaction ID */}
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Transaction / Payout Reference (UTR) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={settleReference}
+                  onChange={(e) => setSettleReference(e.target.value)}
+                  className="w-full font-mono text-xs px-3.5 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-500"
+                  placeholder="e.g. UTR-928174 or ST-PAY-001"
+                  required
+                />
+              </div>
+
+              {/* Audit Notes */}
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Audit Notes / Reason
+                </label>
+                <textarea
+                  value={settleNotes}
+                  onChange={(e) => setSettleNotes(e.target.value)}
+                  rows={2}
+                  className="w-full text-xs px-3.5 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-500"
+                  placeholder="Notes for accounting and ledger record..."
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setSettlementTarget(null)}
+                  className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={settling}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {settling ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Posting Ledger...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Execute Settlement</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* FINANCIAL ADJUSTMENT MODAL (Requirement 23)                               */}
+      {/* ========================================================================= */}
+      {adjustmentModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center">
+                  <SlidersHorizontal className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-gray-900">
+                    Record Financial Adjustment
+                  </h3>
+                  <p className="text-xs text-gray-500 font-medium">
+                    Ledger-audited adjustment to provider payable balance
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAdjustmentModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateAdjustment} className="p-5 space-y-4 text-xs">
+              {/* Provider Selection */}
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Select Provider <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={adjProviderId}
+                  onChange={(e) => setAdjProviderId(e.target.value)}
+                  className="w-full text-xs px-3.5 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-purple-500 bg-white"
+                  required
+                >
+                  <option value="">-- Choose Provider --</option>
+                  {providersData.map((p) => (
+                    <option key={p.providerId} value={p.providerId}>
+                      {p.providerName} (Pending: {formatCurrency(p.remainingAmount)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Adjustment Direction */}
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Adjustment Type / Direction <span className="text-rose-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setAdjDirection('CREDIT')}
+                    className={`py-2 px-3 rounded-xl border font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                      adjDirection === 'CREDIT'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-200'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span>+ Credit (Increase Payable)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdjDirection('DEBIT')}
+                    className={`py-2 px-3 rounded-xl border font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                      adjDirection === 'DEBIT'
+                        ? 'border-rose-500 bg-rose-50 text-rose-800 ring-2 ring-rose-200'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span>- Debit (Deduct Payable)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Adjustment Amount */}
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Adjustment Amount (₹) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={adjAmount}
+                  onChange={(e) => setAdjAmount(e.target.value)}
+                  className="w-full text-sm font-mono font-bold px-3.5 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-purple-500"
+                  placeholder="e.g. 500.00"
+                  required
+                />
+              </div>
+
+              {/* Reason (Mandatory) */}
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Reason for Adjustment <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={adjReason}
+                  onChange={(e) => setAdjReason(e.target.value)}
+                  className="w-full text-xs px-3.5 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-purple-500"
+                  placeholder="Mandatory explanation for financial audit..."
+                  required
+                />
+              </div>
+
+              {/* Reference ID */}
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Audit / Reference ID
+                </label>
+                <input
+                  type="text"
+                  value={adjReferenceId}
+                  onChange={(e) => setAdjReferenceId(e.target.value)}
+                  className="w-full font-mono text-xs px-3.5 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-purple-500"
+                  placeholder="e.g. INV-ERR-402 or TICKET-889"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">
+                  Additional Notes
+                </label>
+                <textarea
+                  value={adjNotes}
+                  onChange={(e) => setAdjNotes(e.target.value)}
+                  rows={2}
+                  className="w-full text-xs px-3.5 py-2 rounded-xl border border-gray-200 focus:outline-none focus:border-purple-500"
+                  placeholder="Internal audit trail documentation..."
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setAdjustmentModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingAdjustment}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {submittingAdjustment ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Posting Ledger...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Save Adjustment</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

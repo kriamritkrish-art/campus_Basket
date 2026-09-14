@@ -32,7 +32,6 @@ export class AdminPeopleController {
               totalAmount: true,
               status: true,
               paymentStatus: true,
-              returnStatus: true,
               refundStatus: true,
               createdAt: true,
               updatedAt: true
@@ -96,10 +95,10 @@ export class AdminPeopleController {
         total,
         students: paginatedStudents.map((s) => {
           const sOrders = s.orders || [];
-          const completedOrders = sOrders.filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED').length;
-          const cancelledOrders = sOrders.filter((o) => o.status === 'CANCELLED').length;
+          const completedOrders = sOrders.filter((o) => o.status === 'DELIVERED' || (o.status as any) === 'COMPLETED').length;
+          const cancelledOrders = sOrders.filter((o) => (o.status as any) === 'CANCELLED').length;
           const returnedOrders = sOrders.filter(
-            (o) => o.status === 'RETURNED' || (o.returnStatus && o.returnStatus !== 'NO_RETURN' && o.returnStatus !== 'NONE')
+            (o) => (o.status as any) === 'RETURNED' || ((o as any).returnStatus && (o as any).returnStatus !== 'NO_RETURN' && (o as any).returnStatus !== 'NONE')
           ).length;
 
           const totalAmountSpent = Math.round(
@@ -647,13 +646,13 @@ export class AdminPeopleController {
         const pOrders = p.orders || [];
         const provGrossSales = Math.round(
           pOrders
-            .filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED')
+            .filter((o) => o.status === 'DELIVERED' || (o.status as any) === 'COMPLETED')
             .reduce((sum, o) => sum + Number(o.totalAmount || 0), 0) * 100
         ) / 100;
 
         const provPayable = Math.round(
           pOrders
-            .filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED')
+            .filter((o) => o.status === 'DELIVERED' || (o.status as any) === 'COMPLETED')
             .reduce(
               (sum, o) =>
                 sum + Number(o.providerAmount !== null && o.providerAmount !== undefined ? o.providerAmount : (o.providerPayable || Number(o.totalAmount) * 0.85)),
@@ -663,10 +662,10 @@ export class AdminPeopleController {
 
         const provCbShare = Math.max(0, Math.round((provGrossSales - provPayable) * 100) / 100);
 
-        const provCompleted = pOrders.filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED').length;
-        const provCancelled = pOrders.filter((o) => o.status === 'CANCELLED').length;
+        const provCompleted = pOrders.filter((o) => o.status === 'DELIVERED' || (o.status as any) === 'COMPLETED').length;
+        const provCancelled = pOrders.filter((o) => (o.status as any) === 'CANCELLED').length;
         const provReturnedOrders = pOrders.filter(
-          (o) => o.status === 'RETURNED' || (o.returnStatus && o.returnStatus !== 'NO_RETURN' && o.returnStatus !== 'NONE') || Boolean(o.returnRequest)
+          (o) => (o.status as any) === 'RETURNED' || ((o as any).returnStatus && (o as any).returnStatus !== 'NO_RETURN' && (o as any).returnStatus !== 'NONE') || Boolean(o.returnRequest)
         );
         const provReturned = provReturnedOrders.length;
         const provReturnAmt = Math.round(
@@ -678,7 +677,7 @@ export class AdminPeopleController {
 
         const provRefundAmt = Math.round(
           pOrders.reduce((sum, o) => {
-            if (o.refundStatus === 'COMPLETED' || o.paymentStatus === 'REFUNDED' || o.returnRequest?.status === 'COMPLETED') {
+            if ((o as any).refundStatus === 'COMPLETED' || (o as any).paymentStatus === 'REFUNDED' || o.returnRequest?.status === 'COMPLETED') {
               return sum + Number(o.refundAmount || o.returnRequest?.refundAmount || o.totalAmount || 0);
             }
             return sum;
@@ -688,7 +687,7 @@ export class AdminPeopleController {
         const provPendingSettlement = Math.round(
           pOrders
             .filter(
-              (o) => (o.status === 'DELIVERED' || o.status === 'COMPLETED') && (o.settlementStatus === 'ELIGIBLE' || o.settlementStatus === 'PENDING' || !o.settlementStatus)
+              (o) => (o.status === 'DELIVERED' || (o.status as any) === 'COMPLETED') && (o.settlementStatus === 'ELIGIBLE' || o.settlementStatus === 'PENDING' || !o.settlementStatus)
             )
             .reduce(
               (sum, o) =>
@@ -1097,13 +1096,13 @@ export class AdminPeopleController {
       // 1. Financial Summary (Requirement 9)
       const grossSales = Math.round(
         orders
-          .filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED')
+          .filter((o) => o.status === 'DELIVERED' || (o.status as any) === 'COMPLETED')
           .reduce((acc, o) => acc + Number(o.totalAmount || 0), 0) * 100
       ) / 100;
 
       const providerPayable = Math.round(
         orders
-          .filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED')
+          .filter((o) => o.status === 'DELIVERED' || (o.status as any) === 'COMPLETED')
           .reduce(
             (acc, o) =>
               acc + Number(o.providerAmount !== null && o.providerAmount !== undefined ? o.providerAmount : (o.providerPayable || Number(o.totalAmount) * 0.85)),
@@ -1114,7 +1113,7 @@ export class AdminPeopleController {
       const cbGrossShare = Math.max(0, Math.round((grossSales - providerPayable) * 100) / 100);
 
       const returnedOrdersList = orders.filter(
-        (o) => o.status === 'RETURNED' || (o.returnStatus && o.returnStatus !== 'NO_RETURN' && o.returnStatus !== 'NONE') || Boolean(o.returnRequest)
+        (o) => (o.status as any) === 'RETURNED' || ((o as any).returnStatus && (o as any).returnStatus !== 'NO_RETURN' && (o as any).returnStatus !== 'NONE') || Boolean(o.returnRequest)
       );
       const totalReturns = returnedOrdersList.length;
       const totalReturnedAmount = Math.round(
@@ -1124,10 +1123,10 @@ export class AdminPeopleController {
         ) * 100
       ) / 100;
 
-      const totalCancellations = orders.filter((o) => o.status === 'CANCELLED').length;
+      const totalCancellations = orders.filter((o) => (o.status as any) === 'CANCELLED').length;
       const totalRefundAmount = Math.round(
         orders.reduce((acc, o) => {
-          if (o.refundStatus === 'COMPLETED' || o.paymentStatus === 'REFUNDED' || o.returnRequest?.status === 'COMPLETED') {
+          if ((o as any).refundStatus === 'COMPLETED' || o.paymentStatus === 'REFUNDED' || (o.returnRequest as any)?.status === 'COMPLETED') {
             return acc + Number(o.refundAmount || o.returnRequest?.refundAmount || o.totalAmount || 0);
           }
           return acc;
@@ -1137,7 +1136,7 @@ export class AdminPeopleController {
       const pendingSettlement = Math.round(
         orders
           .filter(
-            (o) => (o.status === 'DELIVERED' || o.status === 'COMPLETED') && (o.settlementStatus === 'ELIGIBLE' || o.settlementStatus === 'PENDING' || !o.settlementStatus)
+            (o) => (o.status === 'DELIVERED' || (o.status as any) === 'COMPLETED') && (o.settlementStatus === 'ELIGIBLE' || o.settlementStatus === 'PENDING' || !o.settlementStatus)
           )
           .reduce(
             (acc, o) =>
@@ -1230,10 +1229,10 @@ export class AdminPeopleController {
           (o.items || []).forEach((item: any) => {
             if (item.productId === p.id || item.productName === p.name) {
               const qty = Number(item.quantity || 1);
-              if (o.status === 'DELIVERED' || o.status === 'COMPLETED') {
+              if (o.status === 'DELIVERED' || (o.status as any) === 'COMPLETED') {
                 unitsSold += qty;
               }
-              if (o.status === 'RETURNED' || (o.returnStatus && o.returnStatus !== 'NO_RETURN' && o.returnStatus !== 'NONE') || o.returnRequest) {
+              if ((o.status as any) === 'RETURNED' || ((o as any).returnStatus && (o as any).returnStatus !== 'NO_RETURN' && (o as any).returnStatus !== 'NONE') || o.returnRequest) {
                 returnedUnits += qty;
               }
             }
@@ -1287,7 +1286,7 @@ export class AdminPeopleController {
         );
 
         const isSettled = o.settlementStatus === 'SETTLED';
-        const isDelivered = o.status === 'DELIVERED' || o.status === 'COMPLETED';
+        const isDelivered = o.status === 'DELIVERED' || (o.status as any) === 'COMPLETED';
 
         return {
           orderId: o.orderNumber || o.id,
@@ -1307,7 +1306,7 @@ export class AdminPeopleController {
           paymentStatus: o.paymentStatus || 'PENDING',
           orderStatus: o.status,
           status: o.status,
-          returnStatus: o.returnStatus || (o.returnRequest ? o.returnRequest.status : 'No Return'),
+          returnStatus: (o as any).returnStatus || (o.returnRequest ? (o.returnRequest as any).status : 'No Return'),
           refundStatus: o.refundStatus || (o.paymentStatus === 'REFUNDED' ? 'COMPLETED' : 'None'),
           providerSettlementStatus: o.settlementStatus || (isDelivered ? 'ELIGIBLE' : 'PENDING'),
           walletTransactionStatus: isSettled ? 'Settled' : (isDelivered ? 'Credited' : 'Pending')
@@ -1317,8 +1316,8 @@ export class AdminPeopleController {
       // 5. Returns & Cancellations section (Requirement 12)
       const returnsAndCancellations: any[] = [];
       orders.forEach((o) => {
-        const hasReturn = o.returnRequest || (o.returnStatus && o.returnStatus !== 'NO_RETURN' && o.returnStatus !== 'NONE') || o.status === 'RETURNED';
-        const hasCancel = o.status === 'CANCELLED' || o.cancellationRequest;
+        const hasReturn = o.returnRequest || ((o as any).returnStatus && (o as any).returnStatus !== 'NO_RETURN' && (o as any).returnStatus !== 'NONE') || (o.status as any) === 'RETURNED';
+        const hasCancel = o.status === 'CANCELLED' || (o as any).cancellationRequest;
 
         if (hasReturn || hasCancel) {
           const prodSummary = Array.isArray(o.items) && o.items.length > 0
@@ -1419,7 +1418,7 @@ export class AdminPeopleController {
           todayOrders: orders.length,
           totalSales: grossSales,
           totalOrders: orders.length,
-          totalDelivered: orders.filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED').length,
+          totalDelivered: orders.filter((o) => o.status === 'DELIVERED' || (o.status as any) === 'COMPLETED').length,
           totalPending: orders.filter((o) => ['PLACED', 'PAID', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.status)).length,
           totalProducts: (provider.products || []).length,
           activeProducts: (provider.products || []).filter((p) => p.availability && p.approvalStatus === 'APPROVED').length

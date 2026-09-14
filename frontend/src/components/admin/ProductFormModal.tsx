@@ -193,13 +193,15 @@ export function ProductFormModal({
       setProviderId(initialProduct.providerId || '');
       setImagePreviewUrl(initialProduct.image || initialProduct.primaryImage || null);
 
-      const shareType = (initialProduct.providerShareType === 'FIXED' || initialProduct.providerShareType === 'PERCENTAGE')
-        ? initialProduct.providerShareType
-        : 'PERCENTAGE';
+      const shareType = initialProduct.providerShareType === 'PERCENTAGE'
+        ? 'PERCENTAGE'
+        : 'FIXED';
       setProviderShareType(shareType);
-      const shareVal = initialProduct.providerShareValue !== undefined && initialProduct.providerShareValue !== null
-        ? String(initialProduct.providerShareValue)
-        : (shareType === 'FIXED' ? (initialProduct.providerAmount ? String(initialProduct.providerAmount) : '') : '80');
+      const shareVal = initialProduct.providerAmount !== undefined && initialProduct.providerAmount !== null
+        ? String(initialProduct.providerAmount)
+        : (initialProduct.providerShareValue !== undefined && initialProduct.providerShareValue !== null
+          ? String(initialProduct.providerShareValue)
+          : (shareType === 'FIXED' ? (initialProduct.discountPrice || initialProduct.price ? String(Math.round(Number(initialProduct.discountPrice || initialProduct.price) * 0.8)) : '') : '80'));
       setProviderShareValue(shareVal);
     } else {
       setName('');
@@ -218,8 +220,8 @@ export function ProductFormModal({
       setDeliveryTime('10-15 mins');
       setSelectedFile(null);
       setImagePreviewUrl(null);
-      setProviderShareType('PERCENTAGE');
-      setProviderShareValue('80');
+      setProviderShareType('FIXED');
+      setProviderShareValue('');
       if (providersList.length > 0) {
         setProviderId(providersList[0].id);
       }
@@ -841,34 +843,45 @@ export function ProductFormModal({
           {/* ==================================================== */}
           {/* SECTION 5: PROVIDER SETTLEMENT CONFIGURATION        */}
           {/* ==================================================== */}
-          <div className="space-y-3.5 border border-emerald-200 p-4 sm:p-5 rounded-2xl bg-emerald-50/40">
-            <div className="flex items-center justify-between pb-2 border-b border-emerald-100">
+          <div className="space-y-3.5 border border-emerald-300 p-4 sm:p-5 rounded-2xl bg-emerald-50/50 shadow-xs">
+            <div className="flex items-center justify-between pb-2 border-b border-emerald-200">
               <div className="flex items-center gap-2">
                 <Store className="w-4 h-4 text-[#4F9D32]" />
                 <h4 className="text-xs font-black uppercase tracking-wider text-[#17202A]">
                   5. Provider Settlement Configuration
                 </h4>
               </div>
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                Financial Split
+              <span className="text-[10px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full">
+                Single Source of Truth
               </span>
             </div>
 
-            <p className="text-[11px] text-slate-600">
-              Configure how much the provider receives for each sale of this product. When orders are placed, an immutable financial snapshot is recorded.
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              Admin controls how much money goes to the provider for each sale. When an order is placed, this exact amount is <strong className="text-emerald-900 font-semibold">snapshotted</strong> into the order record. Changing it later will not alter historical orders.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 items-end">
-              {/* Share Type */}
+              {/* Share Configuration Mode */}
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  Share Type <span className="text-red-500">*</span>
+                  Calculation Mode <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
+                    onClick={() => setProviderShareType('FIXED')}
+                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition ${
+                      providerShareType === 'FIXED'
+                        ? 'bg-[#4F9D32] text-white border-[#4F9D32] shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    Direct Amount (₹)
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setProviderShareType('PERCENTAGE')}
-                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition ${
+                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition ${
                       providerShareType === 'PERCENTAGE'
                         ? 'bg-[#4F9D32] text-white border-[#4F9D32] shadow-xs'
                         : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
@@ -876,24 +889,13 @@ export function ProductFormModal({
                   >
                     Percentage (%)
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setProviderShareType('FIXED')}
-                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition ${
-                      providerShareType === 'FIXED'
-                        ? 'bg-[#4F9D32] text-white border-[#4F9D32] shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    Fixed Amount (₹)
-                  </button>
                 </div>
               </div>
 
-              {/* Share Value */}
+              {/* Provider Settlement Amount Input */}
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  {providerShareType === 'PERCENTAGE' ? 'Provider Share (%)' : 'Fixed Provider Amount (₹)'} <span className="text-red-500">*</span>
+                <label className="text-xs font-bold text-slate-800 block mb-1.5">
+                  {providerShareType === 'FIXED' ? 'Provider Settlement Amount (₹)' : 'Provider Share Percentage (%)'} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -902,25 +904,35 @@ export function ProductFormModal({
                   max={providerShareType === 'PERCENTAGE' ? '100' : undefined}
                   value={providerShareValue}
                   onChange={(e) => setProviderShareValue(e.target.value)}
-                  placeholder={providerShareType === 'PERCENTAGE' ? '80' : '150'}
+                  placeholder={providerShareType === 'FIXED' ? (sellingPriceNum > 0 ? String(Math.round(sellingPriceNum * 0.8)) : '60') : '80'}
                   className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-[#17202A] focus:outline-none focus:border-[#4F9D32] transition"
                   required
                 />
               </div>
 
-              {/* Live Preview Summary */}
-              <div className="bg-white border border-emerald-200 rounded-xl p-3 space-y-1">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Live Financial Split</div>
+              {/* Live Financial Breakdown Card */}
+              <div className="bg-white border border-emerald-200 rounded-xl p-3 space-y-1.5 shadow-2xs">
+                <div className="text-[10px] font-black uppercase tracking-wider text-emerald-800 flex items-center justify-between">
+                  <span>Per-Unit Split</span>
+                  <span className="text-slate-400 font-normal">Selling: ₹{sellingPriceNum || 0}</span>
+                </div>
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-600">Provider Amount:</span>
+                  <span className="text-slate-600 font-medium">Provider Earns:</span>
                   <span className="font-mono font-bold text-emerald-700">₹{calculatedProviderAmount}</span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-600">CB Gross Share:</span>
-                  <span className="font-mono font-bold text-[#17202A]">₹{calculatedCbGrossShare}</span>
+                  <span className="text-slate-600 font-medium">CB Gross Retained:</span>
+                  <span className="font-mono font-bold text-slate-900">₹{calculatedCbGrossShare}</span>
                 </div>
               </div>
             </div>
+
+            {calculatedProviderAmount > sellingPriceNum && sellingPriceNum > 0 && (
+              <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-semibold flex items-center gap-1.5">
+                <span>⚠️</span>
+                <span>Provider Settlement Amount (₹{calculatedProviderAmount}) cannot exceed Selling Price (₹{sellingPriceNum}).</span>
+              </div>
+            )}
           </div>
 
           {/* Form Actions */}

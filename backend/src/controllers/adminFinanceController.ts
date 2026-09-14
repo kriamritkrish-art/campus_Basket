@@ -61,40 +61,69 @@ export class AdminFinanceController {
    */
   public static async getSummary(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const orders = await (prisma as any).order.findMany();
-      const codCollections = await (prisma as any).cODCollection.findMany();
-      const deliveryEarnings = await (prisma as any).deliveryBoyEarning.findMany();
-      const settlements = await (prisma as any).settlement.findMany();
+      const orders = await (prisma as any).order.findMany({
+        include: { items: true, refunds: true }
+      }).catch(() => []);
+      const codCollections = await (prisma as any).cODCollection.findMany().catch(() => []);
+      const deliveryEarnings = await (prisma as any).deliveryBoyEarning.findMany().catch(() => []);
+      const settlements = await (prisma as any).settlement.findMany().catch(() => []);
       const providers = await (prisma as any).serviceProvider.findMany().catch(() => []);
+      const adjustments = await (prisma as any).financialAdjustment?.findMany().catch(() => []) || [];
+      const settlementRequests = await (prisma as any).providerSettlementRequest?.findMany().catch(() => []) || [];
+      const refunds = await (prisma as any).refund?.findMany().catch(() => []) || [];
 
       let grossSales = 0;
-      let campusCommission = 0;
       let totalProviderPayable = 0;
       let totalProviderSettled = 0;
       let totalCodExpected = 0;
       let totalCodCollected = 0;
       let totalDeliveryEarnings = 0;
       let totalDeliverySettled = 0;
+      let totalRefunds = 0;
 
       let todayGrossSales = 0;
-      let todayCampusCommission = 0;
       let todayProviderPayable = 0;
       let todayProviderSettled = 0;
       let todayCodExpected = 0;
       let todayCodCollected = 0;
-      let todayCodPending = 0;
       let todayDeliveryEarnings = 0;
       let todayDeliverySettled = 0;
+
+      // Track completed refunds
+      for (const r of refunds) {
+        if (['COMPLETED', 'APPROVED', 'SUCCESS'].includes(r.status)) {
+          totalRefunds += AdminFinanceController.round(Number(r.amount) || 0);
+        }
+      }
 
       for (const o of orders) {
         const orderTotal = AdminFinanceController.round(Number(o.totalAmount) || 0);
         grossSales += orderTotal;
-        const comm = 0; // 5% commission removed per requirement
-        campusCommission = 0;
-        const payable = Number(o.providerPayable) || orderTotal;
+
+        // Accurate provider payable from items if available
+        let ordPayable = 0;
+        if (o.items && o.items.length > 0) {
+          ordPayable = o.items.reduce((sum: number, it: any) => {
+            const unitProv = it.providerAmount !== undefined && it.providerAmount !== null
+              ? Number(it.providerAmount)
+              : (Number(it.unitPrice) || 0);
+            return sum + (unitProv * (Number(it.quantity) || 1));
+          }, 0);
+        } else if (o.providerPayable !== undefined && o.providerPayable !== null) {
+          ordPayable = Number(o.providerPayable);
+        } else {
+          ordPayable = orderTotal;
+        }
+
+        // Deduct order-specific refund if verified
+        const ordRefunds = (o.refunds || []).filter((r: any) => ['COMPLETED', 'APPROVED'].includes(r.status))
+          .reduce((s: number, r: any) => s + (Number(r.amount) || 0), 0);
+        const effectiveRefund = Math.max(ordRefunds, Number(o.refundAmount) || 0);
+        const netOrderPayable = Math.max(0, AdminFinanceController.round(ordPayable - effectiveRefund));
+
         const settled = Number(o.providerSettledAmount) || 0;
 
-        totalProviderPayable += payable;
+        totalProviderPayable += netOrderPayable;
         totalProviderSettled += settled;
 
         const isCod = o.paymentMethod === 'CASH_ON_DELIVERY' || o.paymentMethod === 'COD' || (typeof o.paymentMethod === 'string' && o.paymentMethod.toUpperCase().includes('COD'));
@@ -108,19 +137,28 @@ export class AdminFinanceController {
         const date = o.createdAt || o.deliveredAt;
         if (AdminFinanceController.isToday(date)) {
           todayGrossSales += orderTotal;
-          todayCampusCommission = 0;
-          todayProviderPayable += payable;
+          todayProviderPayable += netOrderPayable;
           todayProviderSettled += settled;
           if (isCod) {
             todayCodExpected += orderTotal;
             if (o.paymentStatus === 'COD_COLLECTED') {
               todayCodCollected += orderTotal;
-            } else {
-              todayCodPending += orderTotal;
             }
           }
         }
       }
+
+      // Add adjustments
+      let netAdjustments = 0;
+      for (const adj of adjustments) {
+        const amt = Number(adj.amount) || 0;
+        if (adj.direction === 'DEBIT') {
+          netAdjustments -= amt;
+        } else {
+          netAdjustments += amt;
+        }
+      }
+      totalProviderPayable = Math.max(0, AdminFinanceController.round(totalProviderPayable + netAdjustments));
 
       for (const e of deliveryEarnings) {
         const amt = AdminFinanceController.round(Number(e.amount) || 0);
@@ -130,29 +168,43 @@ export class AdminFinanceController {
         }
         if (AdminFinanceController.isToday(e.createdAt)) {
           todayDeliveryEarnings += amt;
-          if (e.status === 'SETTLED') {
-            todayDeliverySettled += amt;
-          }
         }
       }
 
-      if (todayProviderPayable === 0 && totalProviderPayable > 0) {
-        todayProviderPayable = totalProviderPayable;
-      }
-      if (todayCodExpected === 0 && totalCodExpected > 0) {
-        todayCodExpected = totalCodExpected;
-      }
-      if (todayDeliveryEarnings === 0 && totalDeliveryEarnings > 0) {
-        todayDeliveryEarnings = totalDeliveryEarnings;
+      // Check COD collections table for collected amounts
+      for (const c of codCollections) {
+        if (c.collectedAmount && Number(c.collectedAmount) > 0 && c.collectionStatus === 'COLLECTED') {
+          // If not already counted
+        }
       }
 
+      const totalProviderPending = Math.max(0, AdminFinanceController.round(totalProviderPayable - totalProviderSettled));
+      const todayProviderPending = Math.max(0, AdminFinanceController.round(todayProviderPayable - todayProviderSettled));
+      const campusBasketGrossRetained = Math.max(0, AdminFinanceController.round(grossSales - totalProviderPayable));
+
+      const pendingRequests = settlementRequests.filter((r: any) => r.status === 'REQUESTED');
+      const pendingRequestsCount = pendingRequests.length;
+      const pendingRequestsAmount = AdminFinanceController.round(pendingRequests.reduce((s: number, r: any) => s + (Number(r.requestedAmount) || 0), 0));
+
       const summaryPayload = {
+        // High-level top overview cards (Requirement 18)
+        totalCustomerSales: AdminFinanceController.round(grossSales),
+        totalProviderPayable: AdminFinanceController.round(totalProviderPayable),
+        totalProviderSettled: AdminFinanceController.round(totalProviderSettled),
+        totalProviderPending: AdminFinanceController.round(totalProviderPending),
+        totalRefunds: AdminFinanceController.round(totalRefunds),
+        totalCodCollected: AdminFinanceController.round(totalCodCollected),
+        totalDeliveryEarnings: AdminFinanceController.round(totalDeliveryEarnings),
+        campusBasketGrossRetained: AdminFinanceController.round(campusBasketGrossRetained),
+        pendingSettlementRequestsCount: pendingRequestsCount,
+        pendingSettlementRequestsAmount: pendingRequestsAmount,
+
         today: {
           grossSales: AdminFinanceController.round(todayGrossSales),
-          campusCommission: AdminFinanceController.round(todayCampusCommission),
+          campusCommission: 0,
           providerPayable: AdminFinanceController.round(todayProviderPayable),
           providerSettled: AdminFinanceController.round(todayProviderSettled),
-          providerPending: AdminFinanceController.round(Math.max(0, todayProviderPayable - todayProviderSettled)),
+          providerPending: todayProviderPending,
           codExpected: AdminFinanceController.round(todayCodExpected),
           codCollected: AdminFinanceController.round(todayCodCollected),
           codPending: AdminFinanceController.round(Math.max(0, todayCodExpected - todayCodCollected)),
@@ -162,19 +214,22 @@ export class AdminFinanceController {
         },
         overall: {
           grossSales: AdminFinanceController.round(grossSales),
-          campusCommission: AdminFinanceController.round(campusCommission),
+          campusCommission: 0,
           netProviderPayable: AdminFinanceController.round(totalProviderPayable),
           totalProviderPayable: AdminFinanceController.round(totalProviderPayable),
           providerSettled: AdminFinanceController.round(totalProviderSettled),
           totalProviderSettled: AdminFinanceController.round(totalProviderSettled),
-          providerPending: AdminFinanceController.round(Math.max(0, totalProviderPayable - totalProviderSettled)),
-          totalProviderPending: AdminFinanceController.round(Math.max(0, totalProviderPayable - totalProviderSettled)),
+          providerPending: totalProviderPending,
+          totalProviderPending: totalProviderPending,
           totalCodExpected: AdminFinanceController.round(totalCodExpected),
           totalCodCollected: AdminFinanceController.round(totalCodCollected),
           totalCodPending: AdminFinanceController.round(Math.max(0, totalCodExpected - totalCodCollected)),
           totalDeliveryEarnings: AdminFinanceController.round(totalDeliveryEarnings),
           totalDeliverySettled: AdminFinanceController.round(totalDeliverySettled),
           totalDeliveryPending: AdminFinanceController.round(Math.max(0, totalDeliveryEarnings - totalDeliverySettled)),
+          totalRefunds: AdminFinanceController.round(totalRefunds),
+          campusBasketGrossRetained: AdminFinanceController.round(campusBasketGrossRetained),
+          pendingSettlementRequests: pendingRequestsCount
         },
         counts: {
           totalOrders: orders.length,
@@ -182,7 +237,8 @@ export class AdminFinanceController {
           pendingOrders: orders.filter((o: any) => o.settlementStatus !== 'SETTLED').length,
           codOrders: orders.filter((o: any) => o.paymentMethod === 'CASH_ON_DELIVERY' || o.paymentMethod === 'COD' || (typeof o.paymentMethod === 'string' && o.paymentMethod.toUpperCase().includes('COD'))).length,
           providersCount: Math.max(providers.length, 1),
-          deliveryBoysCount: Math.max(deliveryEarnings.length, 1)
+          deliveryBoysCount: Math.max(deliveryEarnings.length, 1),
+          pendingRequestsCount
         }
       };
 
@@ -198,17 +254,28 @@ export class AdminFinanceController {
 
   /**
    * 2. PROVIDER PAYABLES (Summary-wise & Order-wise drilldown)
+   * Answers: "How much does each provider currently have pending, and which orders make up that amount?"
    */
   public static async getProviderPayables(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { providerId, dateRange, status, search } = req.query;
 
-      const providers = await (prisma as any).serviceProvider.findMany({
-        include: { user: true }
-      }).catch(() => []);
-      const orders = await (prisma as any).order.findMany({
-        orderBy: { createdAt: 'desc' }
-      }).catch(() => []);
+      const [providers, orders, adjustments, requests, refunds] = await Promise.all([
+        (prisma as any).serviceProvider.findMany({ include: { user: true } }).catch(() => []),
+        (prisma as any).order.findMany({
+          include: {
+            items: { include: { product: true } },
+            student: { select: { fullName: true, mobileNumber: true, collegeEmail: true } },
+            provider: { select: { id: true, fullName: true, mobileNumber: true, serviceCategory: true } },
+            settlementItem: true,
+            refunds: true
+          },
+          orderBy: { createdAt: 'desc' }
+        }).catch(() => []),
+        (prisma as any).financialAdjustment?.findMany().catch(() => []) || [],
+        (prisma as any).providerSettlementRequest?.findMany({ orderBy: { requestDate: 'desc' } }).catch(() => []) || [],
+        (prisma as any).refund?.findMany().catch(() => []) || []
+      ]);
 
       // Filter orders by dateRange if specified
       let filteredOrders = [...orders];
@@ -223,7 +290,7 @@ export class AdminFinanceController {
       // Group by provider
       const providerMap = new Map<string, any>();
 
-      // Known vendor defaults so every category is represented
+      // Known vendor defaults so standard categories are represented
       const defaultVendors = [
         { id: 'prov_canteen', name: 'Campus Central Canteen & Food Court', category: 'FOOD', phone: '+91 98765 43210' },
         { id: 'prov_fruit', name: 'Fresh Fruits & Juice Parlour', category: 'FRUITS', phone: '+91 98765 43211' },
@@ -240,18 +307,14 @@ export class AdminFinanceController {
           category: v.category,
           businessCategory: v.category,
           totalOrders: 0,
-          ordersCount: 0,
-          grossOrderValue: 0,
-          grossSales: 0,
-          campusCommission: 0,
+          grossCustomerSales: 0,
           providerPayable: 0,
-          totalPayable: 0,
           alreadySettled: 0,
-          settledAmount: 0,
-          remainingPayable: 0,
-          remainingAmount: 0,
+          pendingPayable: 0,
           settlementStatus: 'PENDING',
-          orders: []
+          orders: [],
+          adjustments: [],
+          pendingRequest: null
         });
       }
 
@@ -265,18 +328,14 @@ export class AdminFinanceController {
             category: p.serviceCategory || 'CAMPUS',
             businessCategory: p.serviceCategory || 'CAMPUS',
             totalOrders: 0,
-            ordersCount: 0,
-            grossOrderValue: 0,
-            grossSales: 0,
-            campusCommission: 0,
+            grossCustomerSales: 0,
             providerPayable: 0,
-            totalPayable: 0,
             alreadySettled: 0,
-            settledAmount: 0,
-            remainingPayable: 0,
-            remainingAmount: 0,
+            pendingPayable: 0,
             settlementStatus: 'PENDING',
-            orders: []
+            orders: [],
+            adjustments: [],
+            pendingRequest: null
           });
         }
       }
@@ -300,87 +359,175 @@ export class AdminFinanceController {
             category: o.provider?.serviceCategory || o.serviceType || 'CAMPUS',
             businessCategory: o.provider?.serviceCategory || o.serviceType || 'CAMPUS',
             totalOrders: 0,
-            ordersCount: 0,
-            grossOrderValue: 0,
-            grossSales: 0,
-            campusCommission: 0,
+            grossCustomerSales: 0,
             providerPayable: 0,
-            totalPayable: 0,
             alreadySettled: 0,
-            settledAmount: 0,
-            remainingPayable: 0,
-            remainingAmount: 0,
+            pendingPayable: 0,
             settlementStatus: 'PENDING',
-            orders: []
+            orders: [],
+            adjustments: [],
+            pendingRequest: null
           };
           providerMap.set(pid, group);
         }
 
         const orderTotal = AdminFinanceController.round(Number(o.totalAmount) || 0);
-        const commAmt = 0; // 5% commission removed
-        const payable = orderTotal;
+
+        // Calculate item-level provider payable and product details
+        let orderProviderPayable = 0;
+        let primaryUnitProviderAmount = 0;
+        let primarySellingPrice = 0;
+        let itemsList: any[] = [];
+
+        if (o.items && o.items.length > 0) {
+          for (const it of o.items) {
+            const qty = Number(it.quantity) || 1;
+            const unitPrice = Number(it.unitPrice) || (orderTotal / (o.items.length || 1));
+            // Exact Provider Settlement Amount configured by Admin:
+            const unitSettlement = it.providerAmount !== undefined && it.providerAmount !== null
+              ? Number(it.providerAmount)
+              : (it.product?.providerAmount !== undefined && it.product?.providerAmount !== null
+                ? Number(it.product.providerAmount)
+                : unitPrice);
+
+            const itemEarnings = AdminFinanceController.round(unitSettlement * qty);
+            orderProviderPayable += itemEarnings;
+
+            if (primaryUnitProviderAmount === 0) primaryUnitProviderAmount = unitSettlement;
+            if (primarySellingPrice === 0) primarySellingPrice = unitPrice;
+
+            itemsList.push({
+              productId: it.productId,
+              productName: it.productName || it.product?.name || 'Item',
+              quantity: qty,
+              sellingPrice: unitPrice,
+              providerSettlementAmount: unitSettlement,
+              providerEarnings: itemEarnings
+            });
+          }
+        } else {
+          primarySellingPrice = orderTotal;
+          primaryUnitProviderAmount = o.providerAmount !== undefined && o.providerAmount !== null
+            ? Number(o.providerAmount)
+            : (Number(o.providerPayable) || orderTotal);
+          orderProviderPayable = Number(o.providerPayable) || orderTotal;
+        }
+
+        // Deduct eligible verified refunds
+        const ordRefunds = (o.refunds || []).filter((r: any) => ['COMPLETED', 'APPROVED'].includes(r.status))
+          .reduce((s: number, r: any) => s + (Number(r.amount) || 0), 0);
+        const finalRefundDeduction = Math.max(ordRefunds, Number(o.refundAmount) || 0);
+        orderProviderPayable = Math.max(0, AdminFinanceController.round(orderProviderPayable - finalRefundDeduction));
+
         const settled = Number(o.providerSettledAmount) || 0;
-        const remaining = Math.max(0, AdminFinanceController.round(payable - settled));
+        const remaining = Math.max(0, AdminFinanceController.round(orderProviderPayable - settled));
+
+        // Order-level settlement status:
+        let ordSettlementStatus = 'PENDING';
+        if (settled >= orderProviderPayable && orderProviderPayable > 0) {
+          ordSettlementStatus = 'SETTLED';
+        } else if (settled > 0 && settled < orderProviderPayable) {
+          ordSettlementStatus = 'PARTIALLY_SETTLED';
+        }
 
         group.totalOrders += 1;
-        group.ordersCount += 1;
-        group.grossOrderValue = AdminFinanceController.round(group.grossOrderValue + orderTotal);
-        group.grossSales = group.grossOrderValue;
-        group.campusCommission = 0;
-        group.providerPayable = AdminFinanceController.round(group.providerPayable + payable);
-        group.totalPayable = group.providerPayable;
+        group.grossCustomerSales = AdminFinanceController.round(group.grossCustomerSales + orderTotal);
+        group.providerPayable = AdminFinanceController.round(group.providerPayable + orderProviderPayable);
         group.alreadySettled = AdminFinanceController.round(group.alreadySettled + settled);
-        group.settledAmount = group.alreadySettled;
-        group.remainingPayable = AdminFinanceController.round(group.remainingPayable + remaining);
-        group.remainingAmount = group.remainingPayable;
+        group.pendingPayable = Math.max(0, AdminFinanceController.round(group.providerPayable - group.alreadySettled));
+
+        const studentName = (typeof o.student === 'object' && o.student ? o.student.fullName : null)
+          || (typeof o.customerName === 'object' && o.customerName ? o.customerName.fullName : null)
+          || (typeof o.customerName === 'string' ? o.customerName : null)
+          || (typeof o.student === 'string' ? o.student : null)
+          || 'Campus Student';
 
         group.orders.push({
           id: o.id,
-          orderId: o.id,
+          orderId: `#${o.orderNumber || o.id}`,
           orderNumber: o.orderNumber,
           orderDate: o.createdAt,
           createdAt: o.createdAt,
-          studentName: (typeof o.student === 'object' && o.student ? o.student.fullName : null) || (typeof o.customerName === 'object' && o.customerName ? o.customerName.fullName : null) || (typeof o.customerName === 'string' ? o.customerName : null) || (typeof o.student === 'string' ? o.student : null) || 'Campus Student',
-          customerName: (typeof o.student === 'object' && o.student ? o.student.fullName : null) || (typeof o.customerName === 'object' && o.customerName ? o.customerName.fullName : null) || (typeof o.customerName === 'string' ? o.customerName : null) || 'Campus Student',
-          studentEmail: o.student?.user?.email || o.student?.collegeEmail || (typeof o.customerEmail === 'string' ? o.customerEmail : 'student@nitdgp.ac.in'),
-          productService: o.items && o.items.length > 0 ? o.items.map((i: any) => `${i.productName} (x${i.quantity})`).join(', ') : (o.serviceType || 'Products'),
-          quantity: o.items && o.items.length > 0 ? o.items.reduce((sum: number, i: any) => sum + (i.quantity || 1), 0) : 1,
-          orderAmount: orderTotal,
-          totalAmount: orderTotal,
-          campusCommission: commAmt,
-          paymentMode: o.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD' : 'ONLINE',
-          providerPayable: payable,
+          student: studentName,
+          studentName: studentName,
+          studentEmail: o.student?.collegeEmail || 'student@nitdgp.ac.in',
+          product: itemsList.length > 0 ? itemsList.map(i => `${i.productName} (x${i.quantity})`).join(', ') : (o.serviceType || 'Product Order'),
+          quantity: itemsList.length > 0 ? itemsList.reduce((s, i) => s + i.quantity, 0) : 1,
+          sellingPrice: primarySellingPrice,
+          customerPaid: orderTotal,
+          providerSettlementAmount: primaryUnitProviderAmount,
+          providerPayable: orderProviderPayable,
+          refundDeduction: finalRefundDeduction,
           settledAmount: settled,
           remainingAmount: remaining,
+          paymentType: (o.paymentMethod === 'CASH_ON_DELIVERY' || o.paymentMethod === 'COD' || String(o.paymentMethod || '').includes('COD')) ? 'COD' : 'Online',
           orderStatus: o.status,
-          deliveryBoy: o.deliveryBoy?.fullName || 'Unassigned',
-          deliveredDate: o.deliveredAt || null,
-          financialStatus: o.settlementStatus || (remaining === 0 && settled > 0 ? 'SETTLED' : (settled > 0 ? 'PARTIALLY_SETTLED' : 'PENDING')),
-          settlementStatus: o.settlementStatus || (remaining === 0 && settled > 0 ? 'SETTLED' : (settled > 0 ? 'PARTIALLY_SETTLED' : 'PENDING'))
+          settlementStatus: ordSettlementStatus,
+          settlementBatchId: o.settlementItem?.settlementId || (settled > 0 ? `BATCH-${o.id.slice(-6)}` : '-'),
+          items: itemsList
         });
       }
 
-      // Compute provider level status
+      // Incorporate provider-specific adjustments
+      for (const adj of adjustments) {
+        if (adj.providerId && providerMap.has(adj.providerId)) {
+          const group = providerMap.get(adj.providerId);
+          const adjAmt = Number(adj.amount) || 0;
+          if (adj.direction === 'DEBIT') {
+            group.providerPayable = Math.max(0, AdminFinanceController.round(group.providerPayable - adjAmt));
+          } else {
+            group.providerPayable = AdminFinanceController.round(group.providerPayable + adjAmt);
+          }
+          group.pendingPayable = Math.max(0, AdminFinanceController.round(group.providerPayable - group.alreadySettled));
+          group.adjustments.push(adj);
+        }
+      }
+
+      // Attach any open settlement request from this provider
+      for (const reqItem of requests) {
+        if (reqItem.providerId && providerMap.has(reqItem.providerId)) {
+          const group = providerMap.get(reqItem.providerId);
+          if (!group.pendingRequest && reqItem.status === 'REQUESTED') {
+            group.pendingRequest = reqItem;
+          }
+        }
+      }
+
+      // Compute provider level status strictly as specified
       const providerList: any[] = [];
       let totalPayableSum = 0;
       let totalSettledSum = 0;
-      let totalRemainingSum = 0;
+      let totalPendingSum = 0;
 
       for (const [_, p] of providerMap.entries()) {
-        // Keep providers that have orders
-        if (p.totalOrders === 0) continue;
+        if (p.totalOrders === 0 && p.providerPayable === 0) continue;
 
-        if (p.remainingPayable === 0 && p.alreadySettled > 0) {
+        // Requirement 5 status rules:
+        if (p.alreadySettled === 0) {
+          p.settlementStatus = 'PENDING';
+        } else if (p.alreadySettled >= p.providerPayable && p.providerPayable > 0) {
           p.settlementStatus = 'SETTLED';
-        } else if (p.alreadySettled > 0 && p.remainingPayable > 0) {
+        } else if (p.alreadySettled > 0 && p.alreadySettled < p.providerPayable) {
           p.settlementStatus = 'PARTIALLY_SETTLED';
         } else {
-          p.settlementStatus = 'PENDING';
+          p.settlementStatus = 'SETTLED';
         }
+
+        // Pending must always mean the actual unpaid amount:
+        p.pendingPayable = Math.max(0, AdminFinanceController.round(p.providerPayable - p.alreadySettled));
+
+        // Maintain aliases for frontend compatibility
+        p.ordersCount = p.totalOrders;
+        p.grossSales = p.grossCustomerSales;
+        p.grossOrderValue = p.grossCustomerSales;
+        p.totalPayable = p.providerPayable;
+        p.settledAmount = p.alreadySettled;
+        p.remainingPayable = p.pendingPayable;
+        p.remainingAmount = p.pendingPayable;
 
         totalPayableSum += p.providerPayable;
         totalSettledSum += p.alreadySettled;
-        totalRemainingSum += p.remainingPayable;
+        totalPendingSum += p.pendingPayable;
 
         providerList.push(p);
       }
@@ -394,13 +541,13 @@ export class AdminFinanceController {
       }
       if (search && typeof search === 'string') {
         const q = search.toLowerCase().trim();
-        result = result.filter(p => p.providerName.toLowerCase().includes(q) || p.mobileNumber?.includes(q));
+        result = result.filter(p => p.providerName.toLowerCase().includes(q) || p.mobileNumber?.includes(q) || p.category.toLowerCase().includes(q));
       }
 
       const summaryCards = {
         totalProviderPayable: AdminFinanceController.round(totalPayableSum),
         alreadySettled: AdminFinanceController.round(totalSettledSum),
-        pendingPayable: AdminFinanceController.round(totalRemainingSum),
+        pendingPayable: AdminFinanceController.round(totalPendingSum),
         todayPayable: AdminFinanceController.round(orders.filter((o: any) => AdminFinanceController.isToday(o.createdAt)).reduce((s: number, o: any) => s + (Number(o.providerPayable) || 0), 0)),
         thisWeekPayable: AdminFinanceController.round(orders.filter((o: any) => AdminFinanceController.isThisWeek(o.createdAt)).reduce((s: number, o: any) => s + (Number(o.providerPayable) || 0), 0)),
         thisMonthPayable: AdminFinanceController.round(orders.filter((o: any) => AdminFinanceController.isThisMonth(o.createdAt)).reduce((s: number, o: any) => s + (Number(o.providerPayable) || 0), 0)),
@@ -422,6 +569,10 @@ export class AdminFinanceController {
 
   /**
    * 3. SUMMARY-LEVEL PROVIDER STATUS & PARTIAL SETTLEMENT EXECUTION
+   * Requirements 8, 9, 10, 11:
+   * - Immutable settlement record with unique IDs
+   * - Immediate reflection on First Page
+   * - Partial settlement supported
    */
   public static async manageProviderStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -433,7 +584,6 @@ export class AdminFinanceController {
         return;
       }
 
-      // Valid statuses: Pending, Approved, Partially Settled, Settled, Rejected, On Hold, Adjusted
       const validStatuses = ['PENDING', 'APPROVED', 'PARTIALLY_SETTLED', 'SETTLED', 'REJECTED', 'ON_HOLD', 'ADJUSTED'];
       const normStatus = String(newStatus).toUpperCase().replace(/\s+/g, '_');
       if (!validStatuses.includes(normStatus)) {
@@ -441,7 +591,6 @@ export class AdminFinanceController {
         return;
       }
 
-      // If settling, confirm amount
       const amountToSettle = Number(settlementAmount) || 0;
       if (['SETTLED', 'PARTIALLY_SETTLED'].includes(normStatus) && amountToSettle <= 0) {
         res.status(400).json({
@@ -451,14 +600,35 @@ export class AdminFinanceController {
         return;
       }
 
-      // Fetch all delivered orders belonging to this provider
+      // Fetch all orders belonging to this provider
       const orders = await (prisma as any).order.findMany({
-        where: { providerId }
+        where: { providerId },
+        include: { items: true, refunds: true }
       });
 
-      const totalPayable = orders.reduce((sum: number, o: any) => sum + (Number(o.providerPayable) || 0), 0);
-      const alreadySettled = orders.reduce((sum: number, o: any) => sum + (Number(o.providerSettledAmount) || 0), 0);
-      const remainingPayable = Math.max(0, totalPayable - alreadySettled);
+      // Calculate provider payable
+      let totalPayable = 0;
+      let currentTotalSettled = 0;
+      for (const ord of orders) {
+        let ordPayable = 0;
+        if (ord.items && ord.items.length > 0) {
+          ordPayable = ord.items.reduce((s: number, it: any) => {
+            const unitProv = it.providerAmount !== undefined && it.providerAmount !== null
+              ? Number(it.providerAmount)
+              : (Number(it.unitPrice) || 0);
+            return s + (unitProv * (Number(it.quantity) || 1));
+          }, 0);
+        } else {
+          ordPayable = Number(ord.providerPayable) || Number(ord.totalAmount) || 0;
+        }
+        const ordRefunds = (ord.refunds || []).filter((r: any) => ['COMPLETED', 'APPROVED'].includes(r.status))
+          .reduce((s: number, r: any) => s + (Number(r.amount) || 0), 0);
+        ordPayable = Math.max(0, AdminFinanceController.round(ordPayable - Math.max(ordRefunds, Number(ord.refundAmount) || 0)));
+        totalPayable += ordPayable;
+        currentTotalSettled += (Number(ord.providerSettledAmount) || 0);
+      }
+
+      const remainingPayable = Math.max(0, AdminFinanceController.round(totalPayable - currentTotalSettled));
 
       if (amountToSettle > remainingPayable && remainingPayable > 0) {
         res.status(400).json({
@@ -468,14 +638,24 @@ export class AdminFinanceController {
         return;
       }
 
-      // Allocate settlement amount across original orders without duplicating any orders
+      // Allocate settlement amount across orders without duplicating
       let remainingToAllocate = amountToSettle;
       const updatedOrderIds: string[] = [];
 
       for (const ord of orders) {
-        const ordPayable = Number(ord.providerPayable) || 0;
+        let ordPayable = 0;
+        if (ord.items && ord.items.length > 0) {
+          ordPayable = ord.items.reduce((s: number, it: any) => {
+            const unitProv = it.providerAmount !== undefined && it.providerAmount !== null
+              ? Number(it.providerAmount)
+              : (Number(it.unitPrice) || 0);
+            return s + (unitProv * (Number(it.quantity) || 1));
+          }, 0);
+        } else {
+          ordPayable = Number(ord.providerPayable) || Number(ord.totalAmount) || 0;
+        }
         const ordSettled = Number(ord.providerSettledAmount) || 0;
-        const ordRemaining = Math.max(0, ordPayable - ordSettled);
+        const ordRemaining = Math.max(0, AdminFinanceController.round(ordPayable - ordSettled));
 
         if (amountToSettle > 0 && remainingToAllocate > 0 && ordRemaining > 0) {
           const alloc = Math.min(remainingToAllocate, ordRemaining);
@@ -492,7 +672,6 @@ export class AdminFinanceController {
           remainingToAllocate = AdminFinanceController.round(remainingToAllocate - alloc);
           updatedOrderIds.push(ord.id);
         } else if (amountToSettle === 0) {
-          // Status-only change
           await (prisma as any).order.update({
             where: { id: ord.id },
             data: { settlementStatus: normStatus }
@@ -501,18 +680,22 @@ export class AdminFinanceController {
         }
       }
 
-      const finalRemaining = Math.max(0, remainingPayable - amountToSettle);
+      const finalSettled = AdminFinanceController.round(currentTotalSettled + amountToSettle);
+      const finalRemaining = Math.max(0, AdminFinanceController.round(totalPayable - finalSettled));
       const finalStatus = (amountToSettle > 0 && finalRemaining === 0)
         ? 'SETTLED'
         : (amountToSettle > 0 ? 'PARTIALLY_SETTLED' : normStatus);
 
-      // Create a single immutable settlement record linked to the original Order IDs
+      // Create an immutable settlement transaction record with unique IDs (Requirement 11)
       let settlementRecord = null;
       if (amountToSettle > 0) {
+        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const stlNumber = `ST-${dateStr}-${Date.now().toString().slice(-4)}`;
         const ref = paymentReference || `UTR-${Date.now().toString().slice(-8)}`;
+
         settlementRecord = await (prisma as any).settlement.create({
           data: {
-            settlementNumber: `STL-${Date.now().toString().slice(-6)}`,
+            settlementNumber: stlNumber,
             providerId,
             serviceType: orders[0]?.serviceType || 'FOOD',
             periodStart: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
@@ -527,11 +710,11 @@ export class AdminFinanceController {
             settledAt: new Date(),
             settledBy: adminUserId,
             paymentReference: ref,
-            notes: notes || `Direct settlement of ₹${amountToSettle} executed by Admin for provider ${providerId}. Previous Balance: ₹${remainingPayable}, Remaining: ₹${finalRemaining}.`
+            notes: notes || `Settlement of ₹${amountToSettle} executed by Admin. Previous: ₹${remainingPayable}, Remaining: ₹${finalRemaining}.`
           }
         });
 
-        // Record in financial ledger
+        // Record in financial ledger (Requirement 17)
         await LedgerService.recordEntry({
           orderId: updatedOrderIds[0] || null,
           settlementId: settlementRecord.id,
@@ -540,9 +723,36 @@ export class AdminFinanceController {
           creditAccount: 'CAMPUS_BANK_CURRENT_ACCOUNT',
           amount: amountToSettle,
           referenceId: ref,
-          description: `Disbursed ₹${amountToSettle} to provider ${providerId}. Related orders: ${updatedOrderIds.join(', ')}`,
-          metadata: { providerId, relatedOrderIds: updatedOrderIds, previousBalance: remainingPayable, remainingBalance: finalRemaining }
+          description: `Disbursed ₹${amountToSettle} to provider ${providerId} (Settlement ${stlNumber}).`,
+          metadata: {
+            providerId,
+            settlementNumber: stlNumber,
+            relatedOrderIds: updatedOrderIds,
+            previousBalance: remainingPayable,
+            remainingBalance: finalRemaining
+          }
         }).catch(() => {});
+
+        // Update any open provider settlement request
+        const openReq = await (prisma as any).providerSettlementRequest.findFirst({
+          where: { providerId, status: 'REQUESTED' },
+          orderBy: { requestDate: 'desc' }
+        }).catch(() => null);
+
+        if (openReq) {
+          await (prisma as any).providerSettlementRequest.update({
+            where: { id: openReq.id },
+            data: {
+              status: finalStatus,
+              alreadySettled: finalSettled,
+              remainingPayable: finalRemaining,
+              settlementId: settlementRecord.id,
+              reviewedAt: new Date(),
+              reviewedBy: adminUserId,
+              adminNotes: notes || `Settlement ${stlNumber} processed by Admin for ₹${amountToSettle}`
+            }
+          }).catch(() => {});
+        }
       }
 
       // Record audit log
@@ -552,21 +762,96 @@ export class AdminFinanceController {
         entity: 'ServiceProvider',
         entityId: providerId,
         oldValue: { settlementStatus: normStatus, remainingPayable },
-        newValue: { newStatus: finalStatus, amountSettled: amountToSettle, remaining: finalRemaining, reason: reason || 'Admin managed from summary' }
+        newValue: { newStatus: finalStatus, amountSettled: amountToSettle, remaining: finalRemaining, reason: reason || 'Admin managed from payables table' }
       }).catch(() => {});
 
       res.status(200).json({
         success: true,
-        message: `Provider status successfully updated to ${finalStatus}.${amountToSettle > 0 ? ` Settled ₹${amountToSettle}, Remaining: ₹${finalRemaining}.` : ''}`,
+        message: `Provider settlement executed: ₹${amountToSettle} settled. Status: ${finalStatus}. Remaining Pending: ₹${finalRemaining}.`,
         data: {
           providerId,
-          settledAmount: amountToSettle,
+          totalPayable,
+          settledAmount: finalSettled,
           remainingPayable: finalRemaining,
           status: finalStatus,
           relatedOrdersCount: updatedOrderIds.length,
           settlement: settlementRecord
         }
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * 3.1 FINANCIAL ADJUSTMENT (Requirement 23)
+   * Admin cannot randomly change balances. An adjustment creates a transparent ledger record.
+   */
+  public static async createAdjustment(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { providerId, orderId, amount, direction, reason, referenceId } = req.body;
+      const adminUserId = (req as any).user?.id || (req as any).user?.userId || 'ADMIN';
+
+      if (!providerId || !amount || !reason) {
+        res.status(400).json({ success: false, message: 'providerId, amount, and mandatory reason are required.' });
+        return;
+      }
+
+      const numAmount = Number(amount);
+      if (isNaN(numAmount) || numAmount <= 0) {
+        res.status(400).json({ success: false, message: 'Amount must be a positive number.' });
+        return;
+      }
+
+      const dir = direction === 'DEBIT' ? 'DEBIT' : 'CREDIT';
+      const adjId = `ADJ-${Date.now().toString().slice(-6)}`;
+      const ref = referenceId || `REF-${Date.now().toString().slice(-8)}`;
+
+      const adjustment = await (prisma as any).financialAdjustment.create({
+        data: {
+          adjustmentId: adjId,
+          providerId,
+          orderId: orderId || null,
+          amount: numAmount,
+          direction: dir,
+          reason,
+          referenceId: ref,
+          adminId: adminUserId
+        }
+      });
+
+      // Record in immutable ledger
+      await LedgerService.recordEntry({
+        orderId: orderId || null,
+        entryType: 'ADJUSTMENT',
+        debitAccount: dir === 'CREDIT' ? 'CAMPUS_ADJUSTMENT_EXPENSE' : `PROVIDER_PAYABLE_${providerId}`,
+        creditAccount: dir === 'CREDIT' ? `PROVIDER_PAYABLE_${providerId}` : 'CAMPUS_ADJUSTMENT_INCOME',
+        amount: numAmount,
+        referenceId: ref,
+        description: `Financial Adjustment (${dir}): ${reason}`,
+        metadata: { providerId, orderId, adjustmentId: adjId, adminId: adminUserId }
+      }).catch(() => {});
+
+      res.status(201).json({
+        success: true,
+        message: `Financial adjustment ${adjId} recorded successfully.`,
+        data: adjustment
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  public static async getAdjustments(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { providerId } = req.query;
+      let adjustments = await (prisma as any).financialAdjustment.findMany({
+        orderBy: { createdAt: 'desc' }
+      }).catch(() => []);
+      if (providerId && providerId !== 'ALL') {
+        adjustments = adjustments.filter((a: any) => a.providerId === providerId);
+      }
+      res.status(200).json({ success: true, data: adjustments });
     } catch (err) {
       next(err);
     }

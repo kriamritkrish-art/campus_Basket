@@ -1596,7 +1596,7 @@ export class ProviderController {
   }
 
   /**
-   * Section 6: Provider Settlements & Request Center
+   * Section 6: Provider Settlements & Request Center (Requirements 3, 4, 12)
    */
   public static async getSettlements(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -1606,21 +1606,25 @@ export class ProviderController {
         return;
       }
 
-      const orders = await (prisma as any).order.findMany({
-        where: { providerId },
-        include: { student: true, items: true },
-        orderBy: { createdAt: 'desc' }
-      });
-
-      const settlements = await (prisma as any).settlement.findMany({
-        where: { providerId },
-        orderBy: { createdAt: 'desc' }
-      });
-
-      const requests = await (prisma as any).providerSettlementRequest.findMany({
-        where: { providerId },
-        orderBy: { requestDate: 'desc' }
-      });
+      const [orders, settlements, requests, adjustments, refunds] = await Promise.all([
+        (prisma as any).order.findMany({
+          where: { providerId },
+          include: { student: true, items: { include: { product: true } }, refunds: true },
+          orderBy: { createdAt: 'desc' }
+        }),
+        (prisma as any).settlement.findMany({
+          where: { providerId },
+          orderBy: { createdAt: 'desc' }
+        }),
+        (prisma as any).providerSettlementRequest.findMany({
+          where: { providerId },
+          orderBy: { requestDate: 'desc' }
+        }),
+        (prisma as any).financialAdjustment?.findMany({
+          where: { providerId }
+        }).catch(() => []) || [],
+        (prisma as any).refund?.findMany().catch(() => []) || []
+      ]);
 
       let totalGrossSales = 0;
       let totalPayable = 0;
@@ -1628,45 +1632,138 @@ export class ProviderController {
 
       const orderList = orders.map((o: any) => {
         const total = Math.round((Number(o.totalAmount) || 0) * 100) / 100;
-        const commAmt = 0; // 5% commission removed - providers receive 100%
-        const payable = o.providerPayable !== undefined ? Number(o.providerPayable) : total;
+        
+        let orderEarnings = 0;
+        let primaryUnitProvAmount = 0;
+        let primarySellingPrice = 0;
+        let primaryProductName = o.serviceType || 'Product Order';
+        let totalQuantity = 0;
+
+        const itemsBreakdown = (o.items || []).map((it: any) => {
+          const qty = Number(it.quantity) || 1;
+          const uPrice = Number(it.unitPrice) || 0;
+          const uProvAmt = it.providerAmount !== undefined && it.providerAmount !== null
+            ? Number(it.providerAmount)
+            : (it.product?.providerAmount !== undefined && it.product?.providerAmount !== null
+              ? Number(it.product.providerAmount)
+              : uPrice);
+
+          const earnings = Math.round(uProvAmt * qty * 100) / 100;
+          orderEarnings += earnings;
+          totalQuantity += qty;
+
+          if (primaryUnitProvAmount === 0) primaryUnitProvAmount = uProvAmt;
+          if (primarySellingPrice === 0) primarySellingPrice = uPrice;
+          if (primaryProductName === (o.serviceType || 'Product Order')) primaryProductName = it.productName;
+
+          return {
+            productName: it.productName,
+            sellingPrice: uPrice,
+            providerSettlementAmount: uProvAmt,
+            providerAmount: uProvAmt,
+            quantity: qty,
+            providerEarnings: earnings
+          };
+        });
+
+        if (itemsBreakdown.length === 0) {
+          primarySellingPrice = total;
+          primaryUnitProvAmount = o.providerAmount !== undefined && o.providerAmount !== null
+            ? Number(o.providerAmount)
+            : (Number(o.providerPayable) || total);
+          orderEarnings = Number(o.providerPayable) || total;
+          totalQuantity = 1;
+        }
+
+        // Deduct verified refunds if any
+        const ordRefunds = (o.refunds || []).filter((r: any) => ['COMPLETED', 'APPROVED'].includes(r.status))
+          .reduce((s: number, r: any) => s + (Number(r.amount) || 0), 0);
+        const finalRefundDeduction = Math.max(ordRefunds, Number(o.refundAmount) || 0);
+        const finalPayable = Math.max(0, Math.round((orderEarnings - finalRefundDeduction) * 100) / 100);
+
         const settled = Number(o.providerSettledAmount) || 0;
-        const remaining = Math.max(0, Math.round((payable - settled) * 100) / 100);
+        const remaining = Math.max(0, Math.round((finalPayable - settled) * 100) / 100);
+
+        let ordSettlementStatus = 'PENDING';
+        if (settled >= finalPayable && finalPayable > 0) {
+          ordSettlementStatus = 'SETTLED';
+        } else if (settled > 0 && settled < finalPayable) {
+          ordSettlementStatus = 'PARTIALLY_SETTLED';
+        }
 
         totalGrossSales += total;
-        totalPayable += payable;
+        totalPayable += finalPayable;
         alreadySettled += settled;
 
         return {
-          orderId: o.id,
+          orderId: `#${o.orderNumber || o.id}`,
+          rawId: o.id,
           orderNumber: o.orderNumber,
           date: o.createdAt,
-          studentName: o.student?.fullName || 'Student',
-          products: o.items?.map((i: any) => `${i.productName} (x${i.quantity})`).join(', ') || o.serviceType,
+          studentName: o.student?.fullName || 'Campus Student',
+          product: primaryProductName,
+          products: itemsBreakdown.length > 0 ? itemsBreakdown.map((i: any) => `${i.productName} (x${i.quantity})`).join(', ') : o.serviceType,
+          sellingPrice: primarySellingPrice,
+          providerAmount: primaryUnitProvAmount,
+          providerSettlementAmount: primaryUnitProvAmount,
+          quantity: totalQuantity,
+          providerEarnings: finalPayable,
+          customerPaid: total,
           orderAmount: total,
+          refundDeduction: finalRefundDeduction,
           paymentMode: o.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD' : 'ONLINE',
-          providerPayable: payable,
+          providerPayable: finalPayable,
           settledAmount: settled,
           remainingAmount: remaining,
           orderStatus: o.status,
-          settlementStatus: o.settlementStatus || (remaining === 0 && settled > 0 ? 'SETTLED' : (settled > 0 ? 'PARTIALLY_SETTLED' : 'PENDING'))
+          settlementStatus: o.settlementStatus || ordSettlementStatus,
+          items: itemsBreakdown
         };
       });
 
+      // Factor adjustments
+      let netAdjustments = 0;
+      for (const adj of adjustments) {
+        const amt = Number(adj.amount) || 0;
+        if (adj.direction === 'DEBIT') {
+          netAdjustments -= amt;
+        } else {
+          netAdjustments += amt;
+        }
+      }
+      totalPayable = Math.max(0, Math.round((totalPayable + netAdjustments) * 100) / 100);
       const remainingPayable = Math.max(0, Math.round((totalPayable - alreadySettled) * 100) / 100);
+
+      // Balances per Requirement 12:
+      const requestedAmt = requests
+        .filter((r: any) => r.status === 'REQUESTED')
+        .reduce((sum: number, r: any) => sum + (Number(r.requestedAmount) || 0), 0);
+
+      const processingAmt = requests
+        .filter((r: any) => ['APPROVED', 'PROCESSING', 'PARTIALLY_SETTLED'].includes(r.status))
+        .reduce((sum: number, r: any) => sum + (Number(r.requestedAmount) || 0), 0);
+
+      const availableForSettlement = Math.max(0, Math.round((remainingPayable - requestedAmt) * 100) / 100);
 
       res.status(200).json({
         success: true,
         summary: {
           totalGrossSales: Math.round(totalGrossSales * 100) / 100,
           totalProviderPayable: Math.round(totalPayable * 100) / 100,
+          totalProviderEarnings: Math.round(totalPayable * 100) / 100,
           alreadySettled: Math.round(alreadySettled * 100) / 100,
+          settledAmount: Math.round(alreadySettled * 100) / 100,
           remainingPayable: remainingPayable,
+          pendingAmount: remainingPayable,
+          requestedSettlement: Math.round(requestedAmt * 100) / 100,
+          processingAmount: Math.round(processingAmt * 100) / 100,
+          availableForSettlement: availableForSettlement,
           eligibleOrdersCount: orders.filter((o: any) => o.status === 'DELIVERED').length
         },
         orders: orderList,
         settlements,
-        requests
+        requests,
+        adjustments
       });
     } catch (err) {
       next(err);

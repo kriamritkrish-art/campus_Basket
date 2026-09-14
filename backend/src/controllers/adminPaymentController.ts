@@ -253,13 +253,25 @@ export class AdminPaymentController {
   }
 
   /**
-   * Section 4: Provider Settlements
+   * Section 4: Provider Settlement Transactions (Requirements 7 & 22)
+   * Redesigned to remove discounts and 5% commission, reflecting actual financial transactions.
    */
   public static async getSettlements(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { providerId, status } = req.query;
+      const { providerId, status, search } = req.query;
       let settlements = await (prisma as any).settlement.findMany({
         include: {
+          items: {
+            include: {
+              order: {
+                include: {
+                  items: true,
+                  student: true,
+                  refunds: true
+                }
+              }
+            }
+          },
           provider: {
             include: {
               settlementAccount: true
@@ -271,10 +283,17 @@ export class AdminPaymentController {
         return (prisma as any).settlement.findMany({ orderBy: { createdAt: 'desc' } });
       });
 
-      const [requests, accounts, providers] = await Promise.all([
+      const [requests, accounts, providers, allOrders] = await Promise.all([
         (prisma as any).providerSettlementRequest?.findMany().catch(() => []) || [],
         (prisma as any).providerSettlementAccount?.findMany().catch(() => []) || [],
-        (prisma as any).serviceProvider?.findMany().catch(() => []) || []
+        (prisma as any).serviceProvider?.findMany().catch(() => []) || [],
+        (prisma as any).order?.findMany({
+          include: {
+            items: true,
+            student: true,
+            refunds: true
+          }
+        }).catch(() => []) || []
       ]);
 
       if (providerId && providerId !== 'ALL') {
@@ -287,7 +306,7 @@ export class AdminPaymentController {
       const enriched = settlements.map((s: any) => {
         const prov = providers.find((p: any) => p.id === s.providerId) || s.provider;
         const provAcc = s.provider?.settlementAccount || accounts.find((a: any) => a.providerId === s.providerId);
-        const reqItem = requests.find((r: any) => r.providerId === s.providerId);
+        const reqItem = requests.find((r: any) => r.providerId === s.providerId && (r.settlementId === s.id || r.status === s.status));
 
         let accountDetails: any = null;
         if (reqItem?.accountDetails) {
@@ -307,23 +326,145 @@ export class AdminPaymentController {
           };
         }
 
+        // Format payment account string
+        let paymentAccountDisplay = 'Bank/UPI Pending';
+        if (accountDetails) {
+          if (accountDetails.upiId) {
+            paymentAccountDisplay = `UPI: ${accountDetails.upiId}`;
+          } else if (accountDetails.accountNumber) {
+            paymentAccountDisplay = `${accountDetails.bankName || 'Bank'} (${accountDetails.maskedAccountNumber || accountDetails.accountNumber})`;
+          }
+        }
+
+        // Resolve orders belonging to this settlement
+        let settlementOrders: any[] = [];
+        if (s.items && s.items.length > 0) {
+          settlementOrders = s.items.map((it: any) => it.order).filter(Boolean);
+        }
+        if (settlementOrders.length === 0) {
+          // Find provider orders within the settlement period or associated
+          settlementOrders = allOrders.filter((ord: any) => {
+            if (ord.providerId !== s.providerId) return false;
+            if (s.periodStart && s.periodEnd) {
+              const oDate = new Date(ord.createdAt).getTime();
+              return oDate >= new Date(s.periodStart).getTime() && oDate <= new Date(s.periodEnd).getTime();
+            }
+            return true;
+          });
+        }
+
+        const formattedOrders = settlementOrders.map((ord: any) => {
+          const custPaid = Number(ord.totalAmount) || 0;
+          let provAmount = 0;
+          let provPayable = 0;
+          let prodName = ord.serviceType || 'Product Order';
+          let quantity = 1;
+
+          if (ord.items && ord.items.length > 0) {
+            prodName = ord.items.map((i: any) => i.productName).join(', ');
+            quantity = ord.items.reduce((sum: number, i: any) => sum + (Number(i.quantity) || 1), 0);
+            const firstIt = ord.items[0];
+            provAmount = firstIt?.providerAmount !== undefined && firstIt?.providerAmount !== null
+              ? Number(firstIt.providerAmount)
+              : (Number(firstIt?.unitPrice) || 0);
+            provPayable = ord.items.reduce((sum: number, it: any) => {
+              const uAmt = it.providerAmount !== undefined && it.providerAmount !== null ? Number(it.providerAmount) : Number(it.unitPrice || 0);
+              return sum + (uAmt * (Number(it.quantity) || 1));
+            }, 0);
+          } else {
+            provAmount = Number(ord.providerAmount) || Number(ord.providerPayable) || custPaid;
+            provPayable = Number(ord.providerPayable) || custPaid;
+          }
+
+          const ordRefund = (ord.refunds || []).filter((r: any) => ['COMPLETED', 'APPROVED'].includes(r.status))
+            .reduce((s: number, r: any) => s + (Number(r.amount) || 0), 0);
+          const finalPayable = Math.max(0, Math.round((provPayable - ordRefund) * 100) / 100);
+
+          return {
+            orderId: `#${ord.orderNumber || ord.id}`,
+            id: ord.id,
+            orderNumber: ord.orderNumber,
+            date: ord.createdAt,
+            student: ord.student?.fullName || ord.customerName || 'Campus Student',
+            product: prodName,
+            quantity,
+            customerPaid: custPaid,
+            providerAmount: provAmount,
+            refund: ordRefund,
+            finalProviderPayable: finalPayable,
+            paymentMethod: ord.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD' : 'Online',
+            orderStatus: ord.status,
+            settlementStatus: ord.settlementStatus || s.status
+          };
+        });
+
+        const grossSales = Number(s.grossSales) || (formattedOrders.reduce((sum, o) => sum + o.customerPaid, 0)) || Number(s.netPayable);
+        const providerPayable = formattedOrders.length > 0
+          ? formattedOrders.reduce((sum, o) => sum + o.finalProviderPayable, 0)
+          : (Number(s.netPayable) || grossSales);
+
+        const currentSettlementAmount = Number(s.netPayable) || 0;
+        const previouslySettled = Math.max(0, Math.round(((Number(reqItem?.alreadySettled) || 0)) * 100) / 100);
+        const remainingPending = Math.max(0, Math.round((providerPayable - previouslySettled - currentSettlementAmount) * 100) / 100);
+
+        const periodStartStr = s.periodStart ? new Date(s.periodStart).toLocaleDateString('en-IN') : 'Start';
+        const periodEndStr = s.periodEnd ? new Date(s.periodEnd).toLocaleDateString('en-IN') : 'End';
+
         return {
-          ...s,
+          id: s.id,
+          settlementId: s.settlementNumber || s.id,
+          settlementNumber: s.settlementNumber || s.id,
+          providerId: s.providerId,
+          providerName: prov?.fullName || 'Campus Vendor',
+          providerCategory: prov?.serviceCategory || s.serviceType || 'FOOD',
           provider: {
             id: s.providerId,
             fullName: prov?.fullName || 'Campus Provider',
             mobileNumber: prov?.mobileNumber || 'N/A',
+            serviceCategory: prov?.serviceCategory || 'FOOD',
             settlementAccount: provAcc || null
           },
+          settlementPeriod: `${periodStartStr} – ${periodEndStr}`,
+          periodStart: s.periodStart,
+          periodEnd: s.periodEnd,
+          numberOfOrders: s.ordersCount || formattedOrders.length,
+          ordersCount: s.ordersCount || formattedOrders.length,
+          grossCustomerSales: grossSales,
+          grossSales,
+          providerPayable,
+          previouslySettled,
+          currentSettlementAmount,
+          netPayable: currentSettlementAmount,
+          remainingPending,
+          paymentAccount: paymentAccountDisplay,
           accountDetails,
-          providerAccount: provAcc || null
+          providerAccount: provAcc || null,
+          status: s.status || 'SETTLED',
+          requestedAt: reqItem?.requestDate || s.createdAt,
+          approvedSettledAt: s.settledAt || s.updatedAt || s.createdAt,
+          settledAt: s.settledAt,
+          payoutId: s.paymentReference || 'UTR-INSTITUTIONAL',
+          transactionId: s.paymentReference || 'UTR-INSTITUTIONAL',
+          paymentReference: s.paymentReference,
+          notes: s.notes,
+          orders: formattedOrders
         };
       });
 
+      let result = enriched;
+      if (search && typeof search === 'string') {
+        const q = search.toLowerCase().trim();
+        result = result.filter((r: any) =>
+          r.settlementId.toLowerCase().includes(q) ||
+          r.providerName.toLowerCase().includes(q) ||
+          r.payoutId.toLowerCase().includes(q)
+        );
+      }
+
       res.status(200).json({
         success: true,
-        count: enriched.length,
-        data: enriched
+        count: result.length,
+        data: result
       });
     } catch (err) {
       next(err);
@@ -2297,8 +2438,8 @@ export class AdminPaymentController {
     if (productId && productId !== 'ALL') {
       const pLower = String(productId).toLowerCase();
       filtered = filtered.filter((o) => {
-        if (Array.isArray(o.items)) {
-          return o.items.some((i: any) => i.productId === productId || (i.productName && i.productName.toLowerCase().includes(pLower)));
+        if (Array.isArray((o as any).items)) {
+          return (o as any).items.some((i: any) => i.productId === productId || (i.productName && i.productName.toLowerCase().includes(pLower)));
         }
         return o.product && o.product.toLowerCase().includes(pLower);
       });

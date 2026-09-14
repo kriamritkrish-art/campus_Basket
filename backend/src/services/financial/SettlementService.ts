@@ -78,6 +78,8 @@ export class SettlementService {
 
   /**
    * Calculates settlement metrics for a provider over a given period without committing.
+   * STRICT RULE: No discount deductions, no 5% commission. Provider payable comes directly from
+   * item-level snapshotted provider settlement amount * quantity.
    */
   public static async previewSettlement(
     providerId: string,
@@ -92,6 +94,7 @@ export class SettlementService {
     discountsTotal: number;
     refundsDeducted: number;
     commissionDeducted: number;
+    providerPayable: number;
     netPayable: number;
     orders: any[];
     commission: number;
@@ -105,35 +108,48 @@ export class SettlementService {
       where: {
         providerId,
         status: 'DELIVERED',
-        settlementStatus: 'ELIGIBLE'
+        settlementStatus: { in: ['ELIGIBLE', 'PENDING', 'PARTIALLY_SETTLED'] }
+      },
+      include: {
+        items: true
       }
     });
 
     let grossSales = 0;
-    let discountsTotal = 0;
+    let totalProviderPayable = 0;
     let refundsDeducted = 0;
-    let commissionDeducted = 0;
 
     for (const ord of orders) {
       const total = Number(ord.totalAmount) || 0;
-      const discount = Number(ord.discountAmount) || 0;
-      const commRate = ord.commissionRate !== undefined ? Number(ord.commissionRate) : 5.0;
-      const comm = ord.commissionAmount !== undefined ? Number(ord.commissionAmount) : Math.round(total * (commRate / 100) * 100) / 100;
-
       grossSales += total;
-      discountsTotal += discount;
-      commissionDeducted += comm;
+
+      // Item-level provider settlement amount sum
+      let ordPayable = 0;
+      if (ord.items && ord.items.length > 0) {
+        ordPayable = ord.items.reduce((sum: number, it: any) => {
+          const unitSettlement = it.providerAmount !== undefined && it.providerAmount !== null
+            ? Number(it.providerAmount)
+            : Number(it.unitPrice || 0);
+          return sum + (unitSettlement * (Number(it.quantity) || 1));
+        }, 0);
+      } else {
+        ordPayable = ord.providerPayable !== undefined && ord.providerPayable !== null
+          ? Number(ord.providerPayable)
+          : total;
+      }
 
       if (ord.paymentStatus === 'REFUNDED' || ord.refundStatus === 'COMPLETED') {
-        refundsDeducted += total;
+        const refAmt = Number(ord.refundAmount) || ordPayable;
+        refundsDeducted += Math.min(ordPayable, refAmt);
       }
+
+      totalProviderPayable += ordPayable;
     }
 
     grossSales = Math.round(grossSales * 100) / 100;
-    discountsTotal = Math.round(discountsTotal * 100) / 100;
+    totalProviderPayable = Math.round(totalProviderPayable * 100) / 100;
     refundsDeducted = Math.round(refundsDeducted * 100) / 100;
-    commissionDeducted = Math.round(commissionDeducted * 100) / 100;
-    const netPayable = Math.max(0, Math.round((grossSales - discountsTotal - refundsDeducted - commissionDeducted) * 100) / 100);
+    const netPayable = Math.max(0, Math.round((totalProviderPayable - refundsDeducted) * 100) / 100);
 
     return {
       providerId,
@@ -141,13 +157,14 @@ export class SettlementService {
       periodEnd: end,
       ordersCount: orders.length,
       grossSales,
-      discountsTotal,
+      discountsTotal: 0,
       refundsDeducted,
-      commissionDeducted,
+      commissionDeducted: 0,
+      providerPayable: totalProviderPayable,
       netPayable,
       orders,
-      commission: commissionDeducted,
-      discounts: discountsTotal,
+      commission: 0,
+      discounts: 0,
       refunds: refundsDeducted
     };
   }
@@ -183,10 +200,11 @@ export class SettlementService {
         providerId,
         periodStart: start,
         periodEnd: end,
+        ordersCount: preview.ordersCount,
         grossSales: preview.grossSales,
-        discountsTotal: preview.discountsTotal,
+        discountsTotal: 0,
         refundsDeducted: preview.refundsDeducted,
-        commissionDeducted: preview.commissionDeducted,
+        commissionAmount: 0,
         netPayable: preview.netPayable,
         status: 'PENDING',
         notes: notes || `Settlement generated for ${preview.ordersCount} delivered orders.`
@@ -196,21 +214,31 @@ export class SettlementService {
     // Create item records and update order status
     for (const ord of preview.orders) {
       const total = Number(ord.totalAmount) || 0;
+      let ordPayable = 0;
+      if (ord.items && ord.items.length > 0) {
+        ordPayable = ord.items.reduce((sum: number, it: any) => {
+          const unitSettlement = it.providerAmount !== undefined && it.providerAmount !== null
+            ? Number(it.providerAmount)
+            : Number(it.unitPrice || 0);
+          return sum + (unitSettlement * (Number(it.quantity) || 1));
+        }, 0);
+      } else {
+        ordPayable = ord.providerPayable !== undefined && ord.providerPayable !== null
+          ? Number(ord.providerPayable)
+          : total;
+      }
+
       const isRefunded = ord.paymentStatus === 'REFUNDED' || ord.refundStatus === 'COMPLETED';
-      const refAmt = isRefunded ? total : 0;
-      const commRate = ord.commissionRate !== undefined ? Number(ord.commissionRate) : 5.0;
-      const comm = ord.commissionAmount !== undefined ? Number(ord.commissionAmount) : Math.round(total * (commRate / 100) * 100) / 100;
-      const netItem = Math.max(0, Math.round((total - refAmt - comm) * 100) / 100);
+      const refAmt = isRefunded ? Math.min(ordPayable, Number(ord.refundAmount) || ordPayable) : 0;
+      const netItem = Math.max(0, Math.round((ordPayable - refAmt) * 100) / 100);
 
       await (prisma as any).settlementItem.create({
         data: {
           settlementId: settlement.id,
           orderId: ord.id,
           orderAmount: total,
-          refundDeducted: refAmt,
-          commissionRate: commRate,
-          commissionAmount: comm,
-          netPayable: netItem
+          commissionAmount: 0,
+          providerPayable: netItem
         }
       });
 
@@ -237,18 +265,14 @@ export class SettlementService {
     const settlementNumber = `STL-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
 
     let grossSales = 1200;
-    let discountsTotal = 50;
     let refundsDeducted = 0;
-    let commissionDeducted = 60;
-    let netPayable = 1090;
+    let netPayable = 1200;
 
     try {
       const preview = await this.previewSettlement(providerId, start, end);
       if (preview.ordersCount > 0) {
         grossSales = preview.grossSales;
-        discountsTotal = preview.discountsTotal;
         refundsDeducted = preview.refundsDeducted;
-        commissionDeducted = preview.commissionDeducted;
         netPayable = preview.netPayable;
       }
     } catch {
@@ -262,9 +286,9 @@ export class SettlementService {
         periodStart: start,
         periodEnd: end,
         grossSales,
-        discountsTotal,
+        discountsTotal: 0,
         refundsDeducted,
-        commissionDeducted,
+        commissionAmount: 0,
         netPayable,
         status: 'PROCESSING',
         notes: notes || `Settlement batch generated for provider ${providerId}`

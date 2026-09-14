@@ -48,6 +48,8 @@ router.post('/finance/provider-payables/settle', AdminFinanceController.managePr
 router.get('/finance/provider-requests', AdminFinanceController.getProviderRequests);
 router.post('/finance/provider-requests/:id/action', AdminFinanceController.handleProviderRequest);
 router.post('/finance/provider-requests/handle', AdminFinanceController.handleProviderRequest);
+router.post('/finance/adjustments', AdminFinanceController.createAdjustment);
+router.get('/finance/adjustments', AdminFinanceController.getAdjustments);
 
 router.get('/finance/cod', AdminFinanceController.getCodCollections);
 router.post('/finance/cod/manage-status', AdminFinanceController.manageCodStatus);

@@ -261,8 +261,8 @@ export default function FinancialEngineDocumentation({
                     Order marked <span className="font-bold text-emerald-700">DELIVERED</span>. Settlement status moves from <span className="font-mono text-[10px]">PENDING</span> to <span className="font-mono text-[10px] font-bold text-indigo-700">ELIGIBLE</span>.
                   </div>
                   <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                    <span className="font-bold text-slate-900 block mb-0.5">Platform Revenue (5% Commission)</span>
-                    Campus Basket retains standard 5% commission on items subtotal. Net provider payable = Subtotal - 5% Commission.
+                    <span className="font-bold text-slate-900 block mb-0.5">Product-Level Provider Settlement</span>
+                    Admin configures exact Provider Settlement Amount per product. Order snapshots this value. Provider Payable = ∑(Provider Settlement Amount × Quantity) − Verified Refunds ± Adjustments. Zero arbitrary percentage commissions.
                   </div>
                   <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
                     <span className="font-bold text-slate-900 block mb-0.5">Batch Disbursal</span>

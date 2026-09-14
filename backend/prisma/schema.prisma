@@ -306,6 +306,7 @@ model ServiceProvider {
   products           Product[]
   settlementAccount  ProviderSettlementAccount?
   settlements        Settlement[]
+  settlementRequests ProviderSettlementRequest[]
   laundryConfig      LaundryProviderConfig?
   laundryServiceConfigs LaundryServiceConfig[]
   laundryCodCollections LaundryCodCollection[]
@@ -1491,3 +1492,44 @@ model WalletTransaction {
   @@index([transactionId])
 }
 
+model ProviderSettlementRequest {
+  id              String          @id @default(cuid())
+  providerId      String
+  provider        ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  requestedAmount Decimal         @db.Decimal(10, 2)
+  eligiblePayable Decimal         @db.Decimal(10, 2)
+  alreadySettled  Decimal         @default(0.00) @db.Decimal(10, 2)
+  remainingPayable Decimal        @db.Decimal(10, 2)
+  status          String          @default("REQUESTED") // REQUESTED, APPROVED, PARTIALLY_SETTLED, SETTLED, REJECTED, ON_HOLD
+  notes           String?         @db.Text
+  adminNotes      String?         @db.Text
+  accountDetails  String?         @db.Text // JSON snapshot of settlement destination account
+  relatedOrderIds String?         @db.Text // JSON array or comma separated order IDs
+  requestDate     DateTime        @default(now())
+  reviewedAt      DateTime?
+  reviewedBy      String?
+  settlementId    String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([providerId])
+  @@index([status])
+  @@index([requestDate])
+}
+
+model FinancialAdjustment {
+  id            String   @id @default(cuid())
+  adjustmentId  String   @unique // e.g. CB-ADJ-2026-0001
+  providerId    String?
+  orderId       String?
+  amount        Decimal  @db.Decimal(10, 2) // positive or negative
+  direction     String   @default("CREDIT") // CREDIT (increases payable) or DEBIT (decreases payable)
+  reason        String   @db.Text // MANDATORY justification
+  referenceId   String?  // Audit/transaction reference
+  adminId       String   // Admin who made adjustment
+  createdAt     DateTime @default(now())
+
+  @@index([providerId])
+  @@index([orderId])
+  @@index([createdAt])
+}

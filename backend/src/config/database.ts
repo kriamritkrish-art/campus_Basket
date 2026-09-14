@@ -925,7 +925,7 @@ const fallbackHandlers: Record<string, any> = {
         return {
           ...p,
           category: cat || null,
-          provider: provUser?.provider ? { id: provUser.provider.id, fullName: provUser.provider.fullName, businessName: provUser.provider.fullName, mobileNumber: provUser.provider.mobileNumber, serviceCategory: provUser.provider.serviceCategory } : (p.provider || null),
+          provider: provUser?.provider ? { id: provUser.provider.id, fullName: provUser.provider.fullName, businessName: provUser.provider.fullName, mobileNumber: provUser.provider.mobileNumber, serviceCategory: provUser.provider.serviceCategory } : ((p as any).provider || null),
           images: p.images || [],
           reviews: (p as any).reviews || []
         };
@@ -942,7 +942,7 @@ const fallbackHandlers: Record<string, any> = {
       return JSON.parse(JSON.stringify({
         ...p,
         category: cat || null,
-        provider: provUser?.provider ? { id: provUser.provider.id, fullName: provUser.provider.fullName, businessName: provUser.provider.fullName, mobileNumber: provUser.provider.mobileNumber, serviceCategory: provUser.provider.serviceCategory } : (p.provider || null),
+        provider: provUser?.provider ? { id: provUser.provider.id, fullName: provUser.provider.fullName, businessName: provUser.provider.fullName, mobileNumber: provUser.provider.mobileNumber, serviceCategory: provUser.provider.serviceCategory } : ((p as any).provider || null),
         images: p.images || [],
         reviews: (p as any).reviews || []
       }));
@@ -2312,6 +2312,25 @@ const fallbackHandlers: Record<string, any> = {
         return JSON.parse(JSON.stringify(found));
       }
       return args.data;
+    }
+  },
+  financialAdjustment: {
+    findMany: async (args?: any) => {
+      let list = (global as any).__mockAdjustments || [];
+      if (args?.where?.providerId) list = list.filter((a: any) => a.providerId === args.where.providerId);
+      if (args?.where?.orderId) list = list.filter((a: any) => a.orderId === args.where.orderId);
+      return JSON.parse(JSON.stringify(list));
+    },
+    create: async (args: any) => {
+      if (!(global as any).__mockAdjustments) (global as any).__mockAdjustments = [];
+      const adj = {
+        id: `adj_${Date.now()}`,
+        adjustmentId: `CB-ADJ-${Date.now().toString().slice(-6)}`,
+        createdAt: new Date(),
+        ...args.data
+      };
+      (global as any).__mockAdjustments.unshift(adj);
+      return JSON.parse(JSON.stringify(adj));
     }
   },
   adminStatusOverride: {

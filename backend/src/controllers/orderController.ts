@@ -90,6 +90,11 @@ export class OrderController {
         quantity: number;
         unitPrice: number;
         totalPrice: number;
+        providerId?: string | null;
+        providerShareType?: string | null;
+        providerShareValue?: number | null;
+        providerAmount?: number | null;
+        cbGrossShare?: number | null;
       }> = [];
 
       for (const item of data.items) {
@@ -119,11 +124,15 @@ export class OrderController {
 
         const prodShareType = (prod as any).providerShareType || 'FIXED';
         const prodShareVal = (prod as any).providerShareValue !== undefined && (prod as any).providerShareValue !== null ? Number((prod as any).providerShareValue) : null;
+        
+        // Product-level Admin-configured Provider Settlement Amount
         let itemProviderUnitAmt: number;
-        if (prodShareType === 'PERCENTAGE' && prodShareVal !== null && prodShareVal >= 0) {
+        if ((prod as any).providerAmount !== undefined && (prod as any).providerAmount !== null && Number((prod as any).providerAmount) > 0) {
+          itemProviderUnitAmt = Math.min(effectivePrice, Number((prod as any).providerAmount));
+        } else if (prodShareType === 'PERCENTAGE' && prodShareVal !== null && prodShareVal >= 0) {
           itemProviderUnitAmt = Math.round((effectivePrice * (prodShareVal / 100)) * 100) / 100;
-        } else if (prodShareVal !== null && prodShareVal >= 0 && (prod as any).providerAmount !== undefined) {
-          itemProviderUnitAmt = Math.min(effectivePrice, Number((prod as any).providerAmount || prodShareVal));
+        } else if (prodShareVal !== null && prodShareVal > 0) {
+          itemProviderUnitAmt = Math.min(effectivePrice, prodShareVal);
         } else {
           itemProviderUnitAmt = effectivePrice;
         }
@@ -138,7 +147,7 @@ export class OrderController {
           providerId: prod.providerId || null,
           providerShareType: prodShareType,
           providerShareValue: prodShareVal,
-          providerAmount: itemProviderUnitAmt * item.quantity,
+          providerAmount: itemProviderUnitAmt,
           cbGrossShare: itemCbGrossShareUnit * item.quantity
         });
       }
@@ -396,13 +405,12 @@ export class OrderController {
         serviceType = 'FOOD';
       }
 
-      // Financial Snapshot Calculation
-      const totalRawItemProviderAmt = orderItemsData.reduce((acc, it) => acc + (Number(it.providerAmount) || 0), 0);
-      const netProductValue = Math.max(0, subtotal - discountAmount);
-      const providerPayable = Math.round(Math.min(netProductValue, totalRawItemProviderAmt) * 100) / 100;
-      const cbGrossShare = Math.max(0, Math.round((netProductValue - providerPayable) * 100) / 100);
+      // Financial Snapshot Calculation (Provider Payable = ∑(Provider Settlement Amount × Quantity))
+      const totalRawItemProviderAmt = orderItemsData.reduce((acc, it) => acc + ((Number(it.providerAmount) || 0) * (it.quantity || 1)), 0);
+      const providerPayable = Math.round(totalRawItemProviderAmt * 100) / 100;
+      const cbGrossShare = Math.max(0, Math.round((subtotal - providerPayable) * 100) / 100);
       const commissionRate = 0;
-      const commissionAmount = cbGrossShare;
+      const commissionAmount = 0;
 
       const primaryShareType = orderItemsData[0]?.providerShareType || 'FIXED';
       const primaryShareVal = orderItemsData[0]?.providerShareValue ?? null;
@@ -757,16 +765,15 @@ export class OrderController {
               product: {
                 include: {
                   images: true,
-                  provider: { select: { id: true, name: true, businessName: true } }
+                  provider: { select: { id: true, fullName: true, mobileNumber: true } }
                 }
-              },
-              provider: { select: { id: true, name: true, businessName: true } }
+              }
             }
           },
           statusHistory: { orderBy: { createdAt: 'asc' } },
           payment: true,
           receipt: true,
-          provider: { select: { id: true, name: true, businessName: true, fullName: true } },
+          provider: { select: { id: true, fullName: true, mobileNumber: true } },
           deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } }
         },
         orderBy: { createdAt: 'desc' }
@@ -864,17 +871,16 @@ export class OrderController {
               product: {
                 include: {
                   images: true,
-                  provider: { select: { id: true, name: true, businessName: true } }
+                  provider: { select: { id: true, fullName: true, mobileNumber: true } }
                 }
-              },
-              provider: { select: { id: true, name: true, businessName: true } }
+              }
             }
           },
           statusHistory: { orderBy: { createdAt: 'asc' } },
           payment: true,
           receipt: true,
           student: { select: { id: true, userId: true, fullName: true, rollNumber: true, collegeEmail: true } },
-          provider: { select: { id: true, fullName: true, name: true, businessName: true, mobileNumber: true, serviceCategory: true } },
+          provider: { select: { id: true, fullName: true, mobileNumber: true, serviceCategory: true } },
           deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } },
           produceDetails: true,
           stationeryDetails: true,
@@ -1032,7 +1038,7 @@ export class OrderController {
       const returnCheck = RefundService.evaluateReturnEligibility({ ...order, reasonType: 'PRODUCT_ISSUE' });
 
       const codPaidAdvance = (order.paymentMethod === 'CASH_ON_DELIVERY' && ['COD_PENDING', 'SUCCESS', 'PAID'].includes(order.paymentStatus))
-        ? Number(order.payment?.amount || 0)
+        ? Number((order as any).payment?.amount || 0)
         : 0;
       const codRemainingCash = order.paymentMethod === 'CASH_ON_DELIVERY'
         ? ((order as any).codCollection ? Number((order as any).codCollection.expectedAmount) : Math.max(0, Number(order.totalAmount) - codPaidAdvance))

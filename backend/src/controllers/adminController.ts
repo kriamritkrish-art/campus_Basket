@@ -538,20 +538,26 @@ export class AdminController {
       const cleanDietary = dietaryType && ['Pure Veg', 'Non-Veg', 'Not Applicable'].includes(dietaryType) ? dietaryType : 'Not Applicable';
 
       // Provider Settlement Configuration calculation
-      const finalShareType = providerShareType === 'PERCENTAGE' ? 'PERCENTAGE' : 'FIXED';
       let finalProviderAmt = 0;
-      let finalShareVal = 0;
-      if (finalShareType === 'PERCENTAGE') {
-        finalShareVal = providerShareValue !== undefined && providerShareValue !== '' ? parseFloat(providerShareValue) : 85;
-        finalProviderAmt = Math.round((sellPrice * (finalShareVal / 100)) * 100) / 100;
+      const rawVal = providerAmount !== undefined && providerAmount !== ''
+        ? providerAmount
+        : (providerShareValue !== undefined && providerShareValue !== '' ? providerShareValue : null);
+
+      if (rawVal !== null) {
+        finalProviderAmt = parseFloat(rawVal);
       } else {
-        const rawVal = providerAmount !== undefined && providerAmount !== '' ? providerAmount : providerShareValue;
-        finalProviderAmt = rawVal !== undefined && rawVal !== '' ? parseFloat(rawVal) : Math.round(sellPrice * 0.85 * 100) / 100;
-        finalShareVal = finalProviderAmt;
+        finalProviderAmt = Math.round(sellPrice * 0.80 * 100) / 100;
       }
-      const finalCbShare = cbGrossShare !== undefined && cbGrossShare !== ''
-        ? parseFloat(cbGrossShare)
-        : Math.max(0, Math.round((sellPrice - finalProviderAmt) * 100) / 100);
+
+      if (isNaN(finalProviderAmt) || finalProviderAmt <= 0) {
+        res.status(400).json({ success: false, message: 'Provider Settlement Amount must be greater than 0.' });
+        return;
+      }
+      if (finalProviderAmt > sellPrice) {
+        res.status(400).json({ success: false, message: 'Provider Settlement Amount cannot exceed Selling Price.' });
+        return;
+      }
+      const finalCbShare = Math.max(0, Math.round((sellPrice - finalProviderAmt) * 100) / 100);
 
       // Create product in MySQL or Fallback Engine
       const product = await prisma.product.create({
@@ -576,8 +582,8 @@ export class AdminController {
           isFeatured: isFeatured === 'true' || isFeatured === true,
           availableToday: availableToday === 'true' || availableToday === true,
           providerId: cleanProviderId,
-          providerShareType: finalShareType,
-          providerShareValue: finalShareVal,
+          providerShareType: (providerShareType as any) || 'FIXED',
+          providerShareValue: finalProviderAmt,
           providerAmount: finalProviderAmt,
           cbGrossShare: finalCbShare,
           approvalStatus: 'APPROVED',
@@ -744,37 +750,31 @@ export class AdminController {
 
       // Handle Provider Settlement Configuration updates
       if (
-        providerShareType !== undefined ||
-        providerShareValue !== undefined ||
         providerAmount !== undefined ||
+        providerShareValue !== undefined ||
+        providerShareType !== undefined ||
         cbGrossShare !== undefined ||
         newSellPrice !== currentSellPrice
       ) {
-        const shareType = providerShareType || (oldProduct as any).providerShareType || 'FIXED';
-        updateData.providerShareType = shareType;
         let provAmt = 0;
-        let shareVal = 0;
-        if (shareType === 'PERCENTAGE') {
-          shareVal = providerShareValue !== undefined && providerShareValue !== ''
-            ? parseFloat(providerShareValue)
-            : ((oldProduct as any).providerShareValue !== null && (oldProduct as any).providerShareValue !== undefined
-              ? Number((oldProduct as any).providerShareValue)
-              : 85);
-          provAmt = Math.round((newSellPrice * (shareVal / 100)) * 100) / 100;
+        const rawAmt = providerAmount !== undefined && providerAmount !== ''
+          ? providerAmount
+          : (providerShareValue !== undefined && providerShareValue !== '' ? providerShareValue : (oldProduct as any).providerAmount);
+        
+        if (rawAmt !== null && rawAmt !== undefined && rawAmt !== '') {
+          provAmt = parseFloat(rawAmt);
         } else {
-          const rawAmt = providerAmount !== undefined && providerAmount !== ''
-            ? providerAmount
-            : (providerShareValue !== undefined && providerShareValue !== '' ? providerShareValue : (oldProduct as any).providerAmount);
-          provAmt = rawAmt !== null && rawAmt !== undefined && rawAmt !== ''
-            ? parseFloat(rawAmt)
-            : Math.round(newSellPrice * 0.85 * 100) / 100;
-          shareVal = provAmt;
+          provAmt = Math.round(newSellPrice * 0.80 * 100) / 100;
         }
-        updateData.providerShareValue = shareVal;
+
+        if (provAmt > newSellPrice) {
+          provAmt = newSellPrice;
+        }
+
+        updateData.providerShareType = 'FIXED';
+        updateData.providerShareValue = provAmt;
         updateData.providerAmount = provAmt;
-        updateData.cbGrossShare = cbGrossShare !== undefined && cbGrossShare !== ''
-          ? parseFloat(cbGrossShare)
-          : Math.max(0, Math.round((newSellPrice - provAmt) * 100) / 100);
+        updateData.cbGrossShare = Math.max(0, Math.round((newSellPrice - provAmt) * 100) / 100);
       }
 
       const updated = await prisma.product.update({

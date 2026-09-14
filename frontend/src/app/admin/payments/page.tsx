@@ -81,6 +81,7 @@ export default function AdminPaymentsPage() {
   // Settlements State
   const [settlements, setSettlements] = useState<any[]>([]);
   const [selectedDisburseSettlement, setSelectedDisburseSettlement] = useState<any>(null);
+  const [selectedSettlementDetail, setSelectedSettlementDetail] = useState<any>(null);
   const [payoutReference, setPayoutReference] = useState('');
   const [disburseNotes, setDisburseNotes] = useState('');
   const [disbursing, setDisbursing] = useState(false);
@@ -1040,9 +1041,9 @@ export default function AdminPaymentsPage() {
               color="indigo"
             />
             <AdminKpiCard
-              title="Platform Commission (5%)"
+              title="CB Retained Margin"
               value={`₹${(overviewMetrics?.totalCommissionEarned || 0).toLocaleString('en-IN')}`}
-              subtitle="Recognized institutional revenue"
+              subtitle="Platform gross retained spread"
               icon={Percent}
               color="purple"
             />
@@ -1189,7 +1190,7 @@ export default function AdminPaymentsPage() {
                   <th className="py-3 px-3">Payment</th>
                   <th className="py-3 px-3">Refund</th>
                   <th className="py-3 px-3">Settlement</th>
-                  <th className="py-3 px-3">Comm (5%)</th>
+                  <th className="py-3 px-3">Provider Payable</th>
                   <th className="py-3 px-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -1207,14 +1208,14 @@ export default function AdminPaymentsPage() {
                         o.serviceType === 'FOOD' ? 'bg-amber-100 text-amber-800' :
                         o.serviceType === 'LAUNDRY' ? 'bg-sky-100 text-sky-800' :
                         o.serviceType === 'FRESH_PRODUCE' ? 'bg-emerald-100 text-emerald-800' :
-                        'bg-purple-100 text-purple-800'
+                        'bg-gray-100 text-gray-700'
                       }`}>
-                        {o.serviceType || 'FOOD'}
+                        {o.serviceType}
                       </span>
                     </td>
                     <td className="py-3 px-3">
                       <div className="font-semibold text-gray-900">{o.student?.fullName || 'Student'}</div>
-                      <div className="text-[10px] text-gray-400">{o.hallName}, Room {o.roomNumber}</div>
+                      <div className="text-[10px] text-gray-400">{o.student?.roomNumber || ''}</div>
                     </td>
                     <td className="py-3 px-3">
                       <div className="font-medium text-gray-800">{o.provider?.fullName || 'Campus Cell'}</div>
@@ -1250,8 +1251,8 @@ export default function AdminPaymentsPage() {
                         {o.settlementStatus || 'PENDING'}
                       </span>
                     </td>
-                    <td className="py-3 px-3 font-semibold text-purple-700">
-                      ₹{Number(o.commissionAmount || (o.totalAmount * 0.05)).toFixed(2)}
+                    <td className="py-3 px-3 font-semibold text-emerald-700">
+                      ₹{Number(o.providerPayable ?? (o.totalAmount - (o.cbGrossShare || 0))).toFixed(2)}
                     </td>
                     <td className="py-3 px-3 text-right">
                       <button
@@ -1347,77 +1348,158 @@ export default function AdminPaymentsPage() {
       )}
 
       {/* ======================================================== */}
-      {/* SECTION 4: PROVIDER SETTLEMENTS                          */}
+      {/* SECTION 4: PROVIDER SETTLEMENT TRANSACTIONS (Requirement 7) */}
       {/* ======================================================== */}
       {activeTab === 'SETTLEMENTS' && (
         <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-base font-bold text-gray-900">Provider Settlement Batches</h3>
-              <p className="text-xs text-gray-500">Gross sales, discounts, refunds, 5% commission, and net payable.</p>
+              <h3 className="text-base font-bold text-gray-900">Provider Settlement Transactions</h3>
+              <p className="text-xs text-gray-500">
+                Official institutional payout records and ledger reconciliation. Amounts snapshotted per product with zero generic percentages or discount deductions.
+              </p>
             </div>
+            <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+              Single Source of Truth
+            </span>
           </div>
 
           <div className="overflow-x-auto border border-gray-100 rounded-xl">
             <table className="w-full text-left text-xs text-gray-600">
               <thead className="bg-gray-50 text-gray-700 font-extrabold border-b border-gray-200 uppercase text-[10px]">
                 <tr>
-                  <th className="py-3 px-3">Batch Number</th>
+                  <th className="py-3 px-3">Settlement ID</th>
                   <th className="py-3 px-3">Provider</th>
-                  <th className="py-3 px-3">Payout Account</th>
-                  <th className="py-3 px-3">Gross Sales</th>
-                  <th className="py-3 px-3">Discounts</th>
-                  <th className="py-3 px-3">Refunds Deducted</th>
-                  <th className="py-3 px-3">Commission (5%)</th>
-                  <th className="py-3 px-3">Net Payable</th>
-                  <th className="py-3 px-3">Status</th>
+                  <th className="py-3 px-3">Settlement Period</th>
+                  <th className="py-3 px-3 text-center">Orders</th>
+                  <th className="py-3 px-3 text-right">Gross Sales</th>
+                  <th className="py-3 px-3 text-right">Provider Payable</th>
+                  <th className="py-3 px-3 text-right">Previously Settled</th>
+                  <th className="py-3 px-3 text-right">Current Settlement</th>
+                  <th className="py-3 px-3 text-right">Remaining Pending</th>
+                  <th className="py-3 px-3">Payment Account</th>
+                  <th className="py-3 px-3 text-center">Status</th>
+                  <th className="py-3 px-3">Requested At</th>
+                  <th className="py-3 px-3">Settled At</th>
+                  <th className="py-3 px-3">Payout ID / UTR</th>
                   <th className="py-3 px-3 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {settlements.map((s: any) => (
-                  <tr key={s.id} className="hover:bg-gray-50/80 transition-colors">
-                    <td className="py-3 px-3 font-mono font-bold text-gray-900">{s.settlementNumber}</td>
-                    <td className="py-3 px-3 font-medium text-gray-900">{s.provider?.fullName || 'Provider'}</td>
-                    <td className="py-3 px-3">
-                      {s.accountDetails ? (
-                        <div className="text-[11px] font-mono">
+                {settlements.length > 0 ? (
+                  settlements.map((s: any) => {
+                    const gross = Number(s.grossSales || 0);
+                    const payable = Number(s.providerPayable ?? s.netPayable ?? gross);
+                    const prev = Number(s.previouslySettled || 0);
+                    const current = Number(s.currentSettlement ?? s.netPayable ?? 0);
+                    const pending = Number(s.remainingPending ?? Math.max(0, payable - prev - current));
+
+                    return (
+                      <tr key={s.id} className="hover:bg-gray-50/80 transition-colors">
+                        <td className="py-3 px-3 font-mono font-bold text-gray-900">
+                          {s.settlementNumber || s.id}
+                        </td>
+                        <td className="py-3 px-3">
                           <div className="font-bold text-gray-900">
-                            {s.accountDetails.accountType === 'UPI' ? `UPI: ${s.accountDetails.upiId}` : s.accountDetails.bankName}
+                            {s.provider?.fullName || 'Vendor Partner'}
                           </div>
-                          <div className="text-gray-500">
-                            {s.accountDetails.accountType === 'UPI' ? s.accountDetails.accountHolderName : `${s.accountDetails.accountNumber} (${s.accountDetails.ifscCode})`}
+                          <div className="text-[10px] text-gray-400 font-mono">
+                            {s.provider?.serviceCategory || 'CAMPUS'}
                           </div>
-                        </div>
-                      ) : (
-                        <span className="text-gray-400 italic text-[11px]">Pending Account</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-3">₹{Number(s.grossSales).toFixed(2)}</td>
-                    <td className="py-3 px-3 text-amber-600">-₹{Number(s.discountsTotal).toFixed(2)}</td>
-                    <td className="py-3 px-3 text-red-600">-₹{Number(s.refundsDeducted).toFixed(2)}</td>
-                    <td className="py-3 px-3 text-purple-700 font-bold">-₹{Number(s.commissionDeducted || s.commissionAmount || 0).toFixed(2)}</td>
-                    <td className="py-3 px-3 font-black text-[#4F9D2F] text-sm">₹{Number(s.netPayable).toFixed(2)}</td>
-                    <td className="py-3 px-3">
-                      <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                        s.status === 'SETTLED' ? 'bg-emerald-100 text-emerald-800' :
-                        'bg-amber-100 text-amber-800'
-                      }`}>
-                        {s.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-right">
-                      {s.status !== 'SETTLED' && (
-                        <button
-                          onClick={() => setSelectedDisburseSettlement(s)}
-                          className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
-                        >
-                          Disburse
-                        </button>
-                      )}
+                        </td>
+                        <td className="py-3 px-3 text-gray-600 whitespace-nowrap text-[11px]">
+                          {s.settlementPeriod || 'Current Cycle'}
+                        </td>
+                        <td className="py-3 px-3 text-center font-mono font-bold text-gray-800">
+                          {s.ordersCount ?? (s.orders?.length || 0)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-gray-900">
+                          {formatCur(gross)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-black text-indigo-900">
+                          {formatCur(payable)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-gray-600">
+                          {formatCur(prev)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-black text-emerald-800 text-sm">
+                          {formatCur(current)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-amber-800">
+                          {formatCur(pending)}
+                        </td>
+                        <td className="py-3 px-3">
+                          {s.accountDetails ? (
+                            <div className="text-[11px] font-mono">
+                              <div className="font-bold text-gray-900">
+                                {s.accountDetails.accountType === 'UPI' ? `UPI: ${s.accountDetails.upiId}` : s.accountDetails.bankName}
+                              </div>
+                              <div className="text-gray-500 text-[10px]">
+                                {s.accountDetails.accountType === 'UPI' ? s.accountDetails.accountHolderName : `${s.accountDetails.accountNumber} (${s.accountDetails.ifscCode})`}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 italic text-[11px]">Pending Account</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              s.status === 'SETTLED'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                : s.status === 'PARTIALLY_SETTLED'
+                                ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                : 'bg-amber-100 text-amber-800 border border-amber-200'
+                            }`}
+                          >
+                            {s.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-gray-500 text-[11px] whitespace-nowrap">
+                          {s.requestedAt ? new Date(s.requestedAt).toLocaleDateString('en-IN') : '—'}
+                        </td>
+                        <td className="py-3 px-3 text-gray-500 text-[11px] whitespace-nowrap">
+                          {s.settledAt ? new Date(s.settledAt).toLocaleDateString('en-IN') : (s.status === 'SETTLED' ? 'Completed' : 'Pending')}
+                        </td>
+                        <td className="py-3 px-3 font-mono text-[11px]">
+                          {s.payoutReference ? (
+                            <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              {s.payoutReference}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 italic">Pending UTR</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => setSelectedSettlementDetail(s)}
+                              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                              title="View all orders included in this settlement"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Breakdown</span>
+                            </button>
+                            {s.status !== 'SETTLED' && (
+                              <button
+                                onClick={() => setSelectedDisburseSettlement(s)}
+                                className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
+                              >
+                                Disburse
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={15} className="py-12 text-center text-gray-400 text-xs">
+                      No provider settlement transactions found.
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -3107,6 +3189,182 @@ export default function AdminPaymentsPage() {
                 className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
               >
                 {disbursing ? 'Disbursing...' : 'Mark as Settled'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL: PAYMENT / SETTLEMENT DETAIL BREAKDOWN (Requirement 22) */}
+      {/* ======================================================== */}
+      {selectedSettlementDetail && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95">
+            {/* Header */}
+            <div className="p-5 border-b border-gray-100 flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                  <Receipt className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-lg font-black text-gray-900">
+                      Settlement #{selectedSettlementDetail.settlementNumber || selectedSettlementDetail.id}
+                    </h3>
+                    <span
+                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                        selectedSettlementDetail.status === 'SETTLED'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : selectedSettlementDetail.status === 'PARTIALLY_SETTLED'
+                          ? 'bg-blue-100 text-blue-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {selectedSettlementDetail.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5 font-medium">
+                    Provider: <strong className="text-gray-900">{selectedSettlementDetail.provider?.fullName || 'Vendor Partner'}</strong>
+                    {selectedSettlementDetail.payoutReference && ` • Reference / UTR: ${selectedSettlementDetail.payoutReference}`}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedSettlementDetail(null)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
+              {/* Financial Breakdown Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <div className="text-[10px] font-bold text-gray-400 uppercase">Orders Included</div>
+                  <div className="text-base font-black text-gray-900 font-mono mt-1">
+                    {selectedSettlementDetail.ordersCount ?? selectedSettlementDetail.orders?.length ?? 0}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <div className="text-[10px] font-bold text-gray-400 uppercase">Gross Customer Sales</div>
+                  <div className="text-base font-black text-gray-900 font-mono mt-1">
+                    {formatCur(selectedSettlementDetail.grossSales)}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100">
+                  <div className="text-[10px] font-bold text-indigo-700 uppercase">Provider Payable</div>
+                  <div className="text-base font-black text-indigo-950 font-mono mt-1">
+                    {formatCur(selectedSettlementDetail.providerPayable ?? selectedSettlementDetail.netPayable)}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <div className="text-[10px] font-bold text-gray-500 uppercase">Previously Settled</div>
+                  <div className="text-base font-black text-gray-700 font-mono mt-1">
+                    {formatCur(selectedSettlementDetail.previouslySettled || 0)}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200">
+                  <div className="text-[10px] font-bold text-emerald-700 uppercase">Current Settlement</div>
+                  <div className="text-base font-black text-emerald-800 font-mono mt-1">
+                    {formatCur(selectedSettlementDetail.currentSettlement ?? selectedSettlementDetail.netPayable)}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200">
+                  <div className="text-[10px] font-bold text-amber-700 uppercase">Remaining Pending</div>
+                  <div className="text-base font-black text-amber-900 font-mono mt-1">
+                    {formatCur(selectedSettlementDetail.remainingPending || 0)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Order Breakdown Table */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-black text-gray-900 uppercase tracking-wider">
+                  Reconciled Orders in this Settlement Batch ({selectedSettlementDetail.orders?.length || 0})
+                </h4>
+
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-black uppercase text-gray-500">
+                        <th className="py-2.5 px-3">Order ID</th>
+                        <th className="py-2.5 px-2">Student</th>
+                        <th className="py-2.5 px-2">Product</th>
+                        <th className="py-2.5 px-2 text-center">Qty</th>
+                        <th className="py-2.5 px-2 text-right">Customer Paid</th>
+                        <th className="py-2.5 px-2 text-right">Provider Amount</th>
+                        <th className="py-2.5 px-2 text-right">Refund</th>
+                        <th className="py-2.5 px-2 text-right">Final Provider Payable</th>
+                        <th className="py-2.5 px-2">Payment Method</th>
+                        <th className="py-2.5 px-2 text-center">Order Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {selectedSettlementDetail.orders && selectedSettlementDetail.orders.length > 0 ? (
+                        selectedSettlementDetail.orders.map((ord: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-gray-50/80 transition">
+                            <td className="py-2.5 px-3 font-mono font-bold text-gray-900">
+                              #{ord.orderNumber}
+                            </td>
+                            <td className="py-2.5 px-2 text-gray-800 font-medium">
+                              {ord.student}
+                            </td>
+                            <td className="py-2.5 px-2 text-gray-700 max-w-[150px] truncate" title={ord.product}>
+                              {ord.product}
+                            </td>
+                            <td className="py-2.5 px-2 text-center font-mono font-bold">
+                              {ord.quantity || 1}
+                            </td>
+                            <td className="py-2.5 px-2 text-right font-mono font-bold text-gray-900">
+                              {formatCur(ord.customerPaid)}
+                            </td>
+                            <td className="py-2.5 px-2 text-right font-mono text-indigo-800 font-bold">
+                              {formatCur(ord.providerAmount)}
+                            </td>
+                            <td className="py-2.5 px-2 text-right font-mono text-rose-600">
+                              {Number(ord.refund || 0) > 0 ? `-${formatCur(ord.refund)}` : '₹0.00'}
+                            </td>
+                            <td className="py-2.5 px-2 text-right font-mono font-black text-emerald-800">
+                              {formatCur(ord.finalProviderPayable)}
+                            </td>
+                            <td className="py-2.5 px-2 font-mono text-[10px] text-gray-600 uppercase">
+                              {ord.paymentMethod}
+                            </td>
+                            <td className="py-2.5 px-2 text-center">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                                {ord.orderStatus}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={10} className="py-8 text-center text-gray-400">
+                            No individual item breakdown attached to this batch.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-100 flex justify-end">
+              <button
+                onClick={() => setSelectedSettlementDetail(null)}
+                className="px-4 py-2 bg-gray-900 hover:bg-black text-white rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                Close
               </button>
             </div>
           </div>
