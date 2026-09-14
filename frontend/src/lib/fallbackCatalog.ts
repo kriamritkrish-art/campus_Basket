@@ -551,4 +551,38 @@ export const FALLBACK_STORE_PRODUCTS: Product[] = [
     rating: 4.8,
     reviewsCount: 52
   }
-];
+].map((p: any): Product => ({
+  ...p,
+  providerName:
+    p.providerName ||
+    (p.providerId === 'prov_abc'
+      ? 'ABC Provider'
+      : p.providerId === 'prov_canteen'
+      ? 'Campus Food & Cafeteria Vendor'
+      : p.providerId === 'prov_fruits'
+      ? 'Green Basket Campus Fresh Fruits'
+      : p.providerId === 'prov_general'
+      ? 'Campus Services Dispatch & Essentials Cell'
+      : p.providerId === 'prov_laundry'
+      ? 'Campus Laundry Cell'
+      : p.categoryId === 'cat_food'
+      ? 'Campus Night Canteen'
+      : p.categoryId === 'cat_fruits'
+      ? 'Green Basket Campus Fresh Fruits'
+      : p.categoryId === 'cat_stationery'
+      ? 'NIT Central Stationery'
+      : 'Campus Essentials Mart'),
+  provider: p.provider || {
+    id: p.providerId || 'prov_general',
+    fullName:
+      p.providerId === 'prov_abc'
+        ? 'ABC Provider'
+        : p.providerId === 'prov_canteen'
+        ? 'Campus Food & Cafeteria Vendor'
+        : p.providerId === 'prov_fruits'
+        ? 'Green Basket Campus Fresh Fruits'
+        : 'Campus Essentials Mart',
+    serviceCategory: p.categoryId === 'cat_food' ? 'Food & Meals' : 'General'
+  }
+}));
+

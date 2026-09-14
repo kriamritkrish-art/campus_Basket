@@ -20,7 +20,9 @@ import {
   Lock,
   ChevronRight,
   Check,
-  ShieldCheck
+  ShieldCheck,
+  Wallet,
+  Sparkles
 } from 'lucide-react';
 
 declare global {
@@ -51,7 +53,7 @@ interface LaundryCheckoutDraft {
   laundryBaseAmount: number;
   serviceChargeAmount: number;
   totalOrderAmount: number;
-  paymentMethod?: 'ONLINE' | 'COD';
+  paymentMethod?: 'ONLINE' | 'COD' | 'CAMPUS_BASKET_WALLET';
 }
 
 const ITEM_ICONS: Record<string, string> = {
@@ -72,8 +74,10 @@ export default function LaundryCheckoutPage() {
   const [draft, setDraft] = useState<LaundryCheckoutDraft | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(true);
 
-  // Payment Selection: ONLINE (full) vs COD (advance handling fee)
-  const [paymentMethod, setPaymentMethod] = useState<'ONLINE' | 'COD'>('ONLINE');
+  // Payment Selection: ONLINE (full) vs COD (advance handling fee) vs CAMPUS_BASKET_WALLET
+  const [paymentMethod, setPaymentMethod] = useState<'ONLINE' | 'COD' | 'CAMPUS_BASKET_WALLET'>('ONLINE');
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [isWalletLoading, setIsWalletLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -141,6 +145,29 @@ export default function LaundryCheckoutPage() {
       .catch(() => {});
   }, []);
 
+  // Fetch student Campus Basket Wallet balance
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchWallet() {
+      try {
+        setIsWalletLoading(true);
+        const res = await apiRequest(`/api/wallet?_t=${Date.now()}`);
+        if (isMounted && res?.success) {
+          const bal = typeof res.balance === 'number' ? res.balance : Number(res.wallet?.balance || 0);
+          setWalletBalance(bal);
+        }
+      } catch (err) {
+        console.warn('Could not fetch wallet balance', err);
+      } finally {
+        if (isMounted) setIsWalletLoading(false);
+      }
+    }
+    fetchWallet();
+    return () => {
+      isMounted = false;
+    };
+  }, [isAuthenticated]);
+
   // Dynamically load Razorpay SDK
   const loadRazorpayScript = (): Promise<boolean> => {
     return new Promise((resolve) => {
@@ -177,11 +204,12 @@ export default function LaundryCheckoutPage() {
   const totalOrderAmount = draft?.totalOrderAmount || (laundryBaseAmount + serviceChargeAmount);
 
   // Financial Breakdown:
+  // CAMPUS_BASKET_WALLET: Student pays full totalOrderAmount upfront from wallet
   // ONLINE: Student pays full totalOrderAmount now via Razorpay
   // COD: Mandatory ₹1/garment advance platform handling fee paid online via Razorpay now.
   // The remaining balance (laundryBaseAmount) is paid directly to dhobi on delivery/pickup (Cash or Provider QR Scanner).
-  const payOnlineNow = paymentMethod === 'ONLINE' ? totalOrderAmount : serviceChargeAmount;
-  const payOnDelivery = paymentMethod === 'ONLINE' ? 0 : laundryBaseAmount;
+  const payOnlineNow = paymentMethod === 'CAMPUS_BASKET_WALLET' ? totalOrderAmount : paymentMethod === 'ONLINE' ? totalOrderAmount : serviceChargeAmount;
+  const payOnDelivery = (paymentMethod === 'ONLINE' || paymentMethod === 'CAMPUS_BASKET_WALLET') ? 0 : laundryBaseAmount;
 
   // Format dates for pickup & return
   const pickupDateFormatted = draft?.pickupDate
@@ -202,6 +230,13 @@ export default function LaundryCheckoutPage() {
     if (!draft || totalGarments === 0) {
       setError('Your laundry booking basket is empty. Please select garments first.');
       return;
+    }
+
+    if (paymentMethod === 'CAMPUS_BASKET_WALLET') {
+      if (walletBalance !== null && walletBalance < totalOrderAmount) {
+        setError(`Insufficient Campus Basket Wallet balance (Available: ₹${walletBalance.toFixed(2)}, Required: ₹${totalOrderAmount}). Please top up your wallet or choose another payment method.`);
+        return;
+      }
     }
 
     setIsProcessing(true);
@@ -242,6 +277,15 @@ export default function LaundryCheckoutPage() {
       }
 
       const createdOrder = res.laundryOrder;
+
+      // Handle Campus Basket Wallet direct completion
+      if (paymentMethod === 'CAMPUS_BASKET_WALLET') {
+        sessionStorage.removeItem('CB_LAUNDRY_CHECKOUT_DRAFT');
+        sessionStorage.removeItem('laundry_checkout_draft');
+        setOrderConfirmed(createdOrder);
+        setIsProcessing(false);
+        return;
+      }
 
       // Handle Razorpay Payment
       if (res.razorpay) {
@@ -858,6 +902,57 @@ export default function LaundryCheckoutPage() {
               </div>
 
               <div className="space-y-2.5">
+                {/* OPTION: Campus Basket Wallet */}
+                <div
+                  onClick={() => {
+                    if (walletBalance !== null && walletBalance < totalOrderAmount) {
+                      setError(`Insufficient Campus Basket Wallet balance (Available: ₹${walletBalance.toFixed(2)}, Required: ₹${totalOrderAmount}). Please top up your wallet or choose UPI / COD.`);
+                      return;
+                    }
+                    setError(null);
+                    setPaymentMethod('CAMPUS_BASKET_WALLET');
+                  }}
+                  className={`p-3.5 rounded-xl border transition cursor-pointer ${
+                    paymentMethod === 'CAMPUS_BASKET_WALLET'
+                      ? 'border-[#2e7d32] bg-[#f1f8e9]/60 shadow-xs'
+                      : 'border-gray-200 hover:border-gray-300 bg-white'
+                  } ${walletBalance !== null && walletBalance < totalOrderAmount ? 'opacity-80 border-dashed' : ''}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex-shrink-0">
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        paymentMethod === 'CAMPUS_BASKET_WALLET' ? 'border-[#2e7d32] bg-[#2e7d32]' : 'border-gray-400'
+                      }`}>
+                        {paymentMethod === 'CAMPUS_BASKET_WALLET' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <Wallet className="w-3.5 h-3.5 text-[#2e7d32]" />
+                          <span className="font-bold text-gray-900 text-xs sm:text-sm">Campus Basket Wallet</span>
+                        </div>
+                        {isWalletLoading ? (
+                          <span className="text-[10px] text-gray-400">Checking...</span>
+                        ) : walletBalance !== null && walletBalance >= totalOrderAmount ? (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-[#e8f5e9] text-[#2e7d32] border border-[#c8e6c9] flex items-center gap-1">
+                            <Sparkles className="w-2.5 h-2.5" />
+                            ₹{walletBalance.toFixed(2)} Available
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-200">
+                            Available: ₹{(walletBalance ?? 0).toFixed(2)} (Short by ₹{Math.max(0, totalOrderAmount - (walletBalance ?? 0)).toFixed(2)})
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-600 mt-1 leading-relaxed">
+                        Instant 1-click debit from student wallet refund balance. 0 gateway delays or OTP.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* OPTION 1: Pay Online */}
                 <div
                   onClick={() => setPaymentMethod('ONLINE')}
@@ -983,6 +1078,8 @@ export default function LaundryCheckoutPage() {
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     <span>Processing Booking...</span>
                   </>
+                ) : paymentMethod === 'CAMPUS_BASKET_WALLET' ? (
+                  <span>⚡ PAY ₹{totalOrderAmount} VIA CAMPUS WALLET &amp; CONFIRM →</span>
                 ) : paymentMethod === 'ONLINE' ? (
                   <span>PAY ₹{payOnlineNow} &amp; CONFIRM BOOKING →</span>
                 ) : (
@@ -993,7 +1090,7 @@ export default function LaundryCheckoutPage() {
               {/* Single Reassuring Security Line */}
               <div className="text-center pt-1">
                 <p className="text-[11px] text-gray-500 flex items-center justify-center gap-1">
-                  <span>🔒 Secure payment • Razorpay • Dual-OTP protected</span>
+                  <span>🔒 Secure payment • Razorpay &amp; Campus Wallet • Dual-OTP protected</span>
                 </p>
               </div>
             </section>
@@ -1009,7 +1106,7 @@ export default function LaundryCheckoutPage() {
         <div className="flex items-center justify-between gap-3 max-w-lg mx-auto">
           <div>
             <div className="text-[11px] text-gray-500 font-medium leading-none">
-              {paymentMethod === 'ONLINE' ? 'Total' : 'Advance'}
+              {paymentMethod === 'CAMPUS_BASKET_WALLET' ? 'Wallet Pay' : paymentMethod === 'ONLINE' ? 'Total' : 'Advance'}
             </div>
             <div className="text-lg font-bold text-gray-900 mt-0.5">
               ₹{payOnlineNow}
@@ -1022,6 +1119,8 @@ export default function LaundryCheckoutPage() {
           >
             {isProcessing ? (
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : paymentMethod === 'CAMPUS_BASKET_WALLET' ? (
+              <span>Pay via Wallet →</span>
             ) : paymentMethod === 'ONLINE' ? (
               <span>Pay &amp; Confirm →</span>
             ) : (

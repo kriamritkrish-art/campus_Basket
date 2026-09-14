@@ -9,7 +9,7 @@ export default function OrderRedirectClient() {
 
   useEffect(() => {
     if (params?.id && params.id !== 'default') {
-      router.replace(`/orders/${params.id}/track`);
+      router.replace(`/orders/track?id=${params.id}`);
     } else {
       router.replace('/orders');
     }

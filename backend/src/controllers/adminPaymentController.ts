@@ -1964,6 +1964,9 @@ export class AdminPaymentController {
       paymentMethod,
       paymentStatus,
       refundStatus,
+      returnStatus,
+      settlementStatus,
+      productId,
       orderStatus,
       providerId,
       deliveryBoyId,
@@ -2251,12 +2254,71 @@ export class AdminPaymentController {
         },
         refundTotal,
         finalCampusBasketEarning,
-        netPlatformRevenue: finalCampusBasketEarning
+        netPlatformRevenue: finalCampusBasketEarning,
+        // ── Requirement 6 Explicit Gross Volume Columns ──
+        product: itemsList,
+        productName: itemsList,
+        provider: providerName,
+        sellingAmount: grossAmount,
+        providerAmount: Number(
+          o.providerAmount !== null && o.providerAmount !== undefined
+            ? o.providerAmount
+            : (o.providerPayable || Math.round(grossAmount * 0.85 * 100) / 100)
+        ),
+        cbGrossShare: Number(
+          o.cbGrossShare !== null && o.cbGrossShare !== undefined
+            ? o.cbGrossShare
+            : Math.max(
+                0,
+                Math.round(
+                  (grossAmount -
+                    (o.providerAmount !== null && o.providerAmount !== undefined
+                      ? o.providerAmount
+                      : (o.providerPayable || grossAmount * 0.85))) *
+                    100
+                ) / 100
+              )
+        ),
+        paymentMethodType: isCod ? 'COD' : 'ONLINE',
+        paidStatus: normalizedPayStatus,
+        isPaid: normalizedPayStatus === 'CAPTURED' || normalizedPayStatus === 'PAID',
+        returnStatus: o.returnStatus || (retReq ? retReq.status : 'No Return'),
+        cancellationStatus: isCancelled ? 'CANCELLED' : (o.cancellationRequest ? 'REQUESTED' : 'NONE'),
+        cancellationRefundAmount: cancelDistributedAmount,
+        returnRefundAmount: returnDistributedAmount,
+        finalGrossAmount: finalCampusBasketEarning
       };
     });
 
     // --- APPLY FILTERS ---
     let filtered = [...allMappedOrders];
+
+    // 0. Product Filter
+    if (productId && productId !== 'ALL') {
+      const pLower = String(productId).toLowerCase();
+      filtered = filtered.filter((o) => {
+        if (Array.isArray(o.items)) {
+          return o.items.some((i: any) => i.productId === productId || (i.productName && i.productName.toLowerCase().includes(pLower)));
+        }
+        return o.product && o.product.toLowerCase().includes(pLower);
+      });
+    }
+
+    // 0b. Return Status Filter
+    if (returnStatus && returnStatus !== 'ALL') {
+      if (returnStatus === 'RETURNED' || returnStatus === 'HAS_RETURNS') {
+        filtered = filtered.filter((o) => o.returnStatus && o.returnStatus !== 'NO_RETURN' && o.returnStatus !== 'No Return' && o.returnStatus !== 'NONE');
+      } else if (returnStatus === 'NO_RETURN' || returnStatus === 'NO_RETURNS') {
+        filtered = filtered.filter((o) => !o.returnStatus || o.returnStatus === 'NO_RETURN' || o.returnStatus === 'No Return' || o.returnStatus === 'NONE');
+      } else {
+        filtered = filtered.filter((o) => o.returnStatus === returnStatus);
+      }
+    }
+
+    // 0c. Settlement Status Filter
+    if (settlementStatus && settlementStatus !== 'ALL') {
+      filtered = filtered.filter((o) => o.settlementStatus === settlementStatus);
+    }
 
     // 1. Date filter
     if (startDate) {
@@ -2543,25 +2605,23 @@ export class AdminPaymentController {
       const headers = [
         'Order Date',
         'Order ID',
+        'Product',
+        'Provider',
         'Student Name',
+        'Gross/Selling Amount (INR)',
+        'Provider Amount (INR)',
+        'Campus Basket Gross Share (INR)',
+        'COD/Online',
+        'Paid Status',
+        'Return Status',
+        'Cancellation Status',
+        'Cancellation Refund (INR)',
+        'Return Refund (INR)',
+        'Final Gross Amount (INR)',
         'Student Email',
         'Student Roll No',
         'Room & Hall',
-        'Provider',
-        'Delivery Boy',
-        'Total Order Amount (INR)',
-        'Payment Method',
-        'Online Paid (INR)',
-        'COD Advance Paid (INR)',
-        'COD Cash Collected (INR)',
-        'Payment Status',
-        'Cancellation Refund Status',
-        'Cancellation Refund Amount (INR)',
-        'Return Refund Status',
-        'Return Refund Amount (INR)',
-        'Total Refund Distributed (INR)',
-        'Final Campus Basket Earning (INR)',
-        'Items Purchased'
+        'Delivery Boy'
       ];
 
       const escapeCsv = (val: any) => {
@@ -2574,25 +2634,23 @@ export class AdminPaymentController {
         csvRows.push([
           escapeCsv(o.orderDate),
           escapeCsv(o.orderNumber),
+          escapeCsv(o.product || o.itemsSummary),
+          escapeCsv(o.providerName || o.provider),
           escapeCsv(o.studentName),
+          (o.grossAmount || o.totalAmount || 0).toFixed(2),
+          (o.providerAmount || 0).toFixed(2),
+          (o.cbGrossShare || 0).toFixed(2),
+          escapeCsv(o.paymentMethodType || (o.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD' : 'ONLINE')),
+          escapeCsv(o.paidStatus || o.paymentStatus),
+          escapeCsv(o.returnStatus || o.returnRefund?.status || 'No Return'),
+          escapeCsv(o.cancellationStatus || o.cancellationRefund?.status || 'None'),
+          (o.cancellationRefundAmount || o.cancellationRefund?.distributedAmount || 0).toFixed(2),
+          (o.returnRefundAmount || o.returnRefund?.distributedAmount || 0).toFixed(2),
+          (o.finalGrossAmount || o.finalCampusBasketEarning || 0).toFixed(2),
           escapeCsv(o.studentEmail),
           escapeCsv(o.studentRoll),
           escapeCsv(`${o.studentRoom}, ${o.studentHall}`),
-          escapeCsv(o.providerName),
-          escapeCsv(o.deliveryBoyName),
-          o.totalAmount.toFixed(2),
-          escapeCsv(o.paymentMethod),
-          o.onlinePaid.toFixed(2),
-          o.codAdvance.toFixed(2),
-          o.codCash.toFixed(2),
-          escapeCsv(o.paymentStatus),
-          escapeCsv(o.cancellationRefund.status),
-          (o.cancellationRefund.distributedAmount || o.cancellationRefund.claimedAmount || 0).toFixed(2),
-          escapeCsv(o.returnRefund.status),
-          (o.returnRefund.distributedAmount || o.returnRefund.claimedAmount || 0).toFixed(2),
-          o.refundTotal.toFixed(2),
-          o.finalCampusBasketEarning.toFixed(2),
-          escapeCsv(o.itemsSummary)
+          escapeCsv(o.deliveryBoyName)
         ].join(','));
       }
 

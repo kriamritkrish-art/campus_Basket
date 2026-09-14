@@ -1045,6 +1045,7 @@ export default function AdminSettingsPage() {
                         <th className="p-3 font-black">Price (₹)</th>
                         <th className="p-3 font-black">COD Policy (Priority 1)</th>
                         <th className="p-3 font-black">Return Eligibility</th>
+                        <th className="p-3 font-black">Runner Auto-Assign</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 bg-white">
@@ -1059,6 +1060,7 @@ export default function AdminSettingsPage() {
                           const policy = getProductPolicy(p.id);
                           const isItemCodAllowed = policy.allowCod !== false;
                           const isItemReturnAllowed = policy.allowReturn !== false;
+                          const isItemAutoAssign = policy.autoAssignDelivery === true || (policy.autoAssignDelivery === undefined && p.provider?.autoAssignDelivery === true);
 
                           return (
                             <tr key={p.id} className="hover:bg-slate-50 transition">
@@ -1097,7 +1099,20 @@ export default function AdminSettingsPage() {
                                       : 'bg-slate-100 text-slate-700 border-slate-400 hover:bg-slate-200'
                                   }`}
                                 >
-                                  {isItemReturnAllowed ? '✓ Returnable' : '✕ Final Sale'}
+                                  {isItemReturnAllowed ? '✓ Returnable (Admin Review)' : '✕ Final Sale'}
+                                </button>
+                              </td>
+                              <td className="p-3">
+                                <button
+                                  type="button"
+                                  onClick={() => updateProductPolicy(p.id, { autoAssignDelivery: !isItemAutoAssign })}
+                                  className={`px-3 py-1.5 rounded-lg text-[11px] font-black border-2 transition cursor-pointer shadow-2xs ${
+                                    isItemAutoAssign
+                                      ? 'bg-amber-50 text-amber-900 border-amber-500 hover:bg-amber-100'
+                                      : 'bg-sky-50 text-sky-900 border-sky-400 hover:bg-sky-100'
+                                  }`}
+                                >
+                                  {isItemAutoAssign ? '⚡ Auto-Assign Runner' : '🛡️ Needs Provider'}
                                 </button>
                               </td>
                             </tr>

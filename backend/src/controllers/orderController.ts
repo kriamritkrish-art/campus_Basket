@@ -117,12 +117,29 @@ export class OrderController {
         const itemTotal = effectivePrice * item.quantity;
         subtotal += itemTotal;
 
+        const prodShareType = (prod as any).providerShareType || 'FIXED';
+        const prodShareVal = (prod as any).providerShareValue !== undefined && (prod as any).providerShareValue !== null ? Number((prod as any).providerShareValue) : null;
+        let itemProviderUnitAmt: number;
+        if (prodShareType === 'PERCENTAGE' && prodShareVal !== null && prodShareVal >= 0) {
+          itemProviderUnitAmt = Math.round((effectivePrice * (prodShareVal / 100)) * 100) / 100;
+        } else if (prodShareVal !== null && prodShareVal >= 0 && (prod as any).providerAmount !== undefined) {
+          itemProviderUnitAmt = Math.min(effectivePrice, Number((prod as any).providerAmount || prodShareVal));
+        } else {
+          itemProviderUnitAmt = effectivePrice;
+        }
+        const itemCbGrossShareUnit = Math.max(0, Math.round((effectivePrice - itemProviderUnitAmt) * 100) / 100);
+
         orderItemsData.push({
           productId: prod.id,
           productName: prod.name,
           quantity: item.quantity,
           unitPrice: effectivePrice,
-          totalPrice: itemTotal
+          totalPrice: itemTotal,
+          providerId: prod.providerId || null,
+          providerShareType: prodShareType,
+          providerShareValue: prodShareVal,
+          providerAmount: itemProviderUnitAmt * item.quantity,
+          cbGrossShare: itemCbGrossShareUnit * item.quantity
         });
       }
 
@@ -308,15 +325,15 @@ export class OrderController {
         } else if (catName.includes('laund') || catSlug.includes('laund')) {
           categoryKeyword = 'Laundry';
         } else if (catName.includes('station') || catName.includes('essential') || catSlug.includes('essential')) {
-          categoryKeyword = 'Essential';
+          categoryKeyword = 'Stationery';
         }
 
-        const matchProv = await prisma.serviceProvider.findFirst({
-          where: {
-            serviceCategory: { contains: categoryKeyword }
-          }
+        const matchingProvider = await prisma.serviceProvider.findFirst({
+          where: { serviceCategory: { contains: categoryKeyword } }
         });
-        if (matchProv) targetProviderId = matchProv.id;
+        if (matchingProvider) {
+          targetProviderId = matchingProvider.id;
+        }
       }
 
       let targetProvider: any = null;
@@ -379,11 +396,16 @@ export class OrderController {
         serviceType = 'FOOD';
       }
 
-      // Provider settlement must use the actual product value only.
-      // Delivery fee is not provider revenue and must not be added to the settlement amount.
-      const providerPayable = Math.round((subtotal - discountAmount) * 100) / 100;
+      // Financial Snapshot Calculation
+      const totalRawItemProviderAmt = orderItemsData.reduce((acc, it) => acc + (Number(it.providerAmount) || 0), 0);
+      const netProductValue = Math.max(0, subtotal - discountAmount);
+      const providerPayable = Math.round(Math.min(netProductValue, totalRawItemProviderAmt) * 100) / 100;
+      const cbGrossShare = Math.max(0, Math.round((netProductValue - providerPayable) * 100) / 100);
       const commissionRate = 0;
-      const commissionAmount = 0;
+      const commissionAmount = cbGrossShare;
+
+      const primaryShareType = orderItemsData[0]?.providerShareType || 'FIXED';
+      const primaryShareVal = orderItemsData[0]?.providerShareValue ?? null;
 
       // Transactionally deduct stock, create order, order items, status history
       const createdOrder = await prisma.$transaction(async (tx) => {
@@ -422,6 +444,10 @@ export class OrderController {
             commissionRate,
             commissionAmount,
             providerPayable,
+            providerShareType: primaryShareType,
+            providerShareValue: primaryShareVal,
+            providerAmount: providerPayable,
+            cbGrossShare,
             advancePaidAmount: isWalletPayment ? totalAmount : data.paymentMethod === 'CASH_ON_DELIVERY' ? advanceRequired : 0,
             providerAccepted: false,
             providerAcceptedAt: null,
@@ -440,7 +466,12 @@ export class OrderController {
                 productName: i.productName,
                 quantity: i.quantity,
                 unitPrice: i.unitPrice,
-                totalPrice: i.totalPrice
+                totalPrice: i.totalPrice,
+                providerId: i.providerId || targetProviderId,
+                providerShareType: i.providerShareType,
+                providerShareValue: i.providerShareValue,
+                providerAmount: i.providerAmount,
+                cbGrossShare: i.cbGrossShare
               }))
             },
             statusHistory: {
@@ -724,13 +755,18 @@ export class OrderController {
           items: {
             include: {
               product: {
-                include: { images: true }
-              }
+                include: {
+                  images: true,
+                  provider: { select: { id: true, name: true, businessName: true } }
+                }
+              },
+              provider: { select: { id: true, name: true, businessName: true } }
             }
           },
           statusHistory: { orderBy: { createdAt: 'asc' } },
           payment: true,
           receipt: true,
+          provider: { select: { id: true, name: true, businessName: true, fullName: true } },
           deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } }
         },
         orderBy: { createdAt: 'desc' }
@@ -756,6 +792,8 @@ export class OrderController {
           hallName: o.hallName,
           roomNumber: o.roomNumber,
           createdAt: o.createdAt,
+          provider: o.provider ? { id: o.provider.id, name: (o.provider as any).businessName || (o.provider as any).name || o.provider.fullName } : null,
+          providerName: (o as any).provider?.businessName || (o as any).provider?.name || o.provider?.fullName || null,
           deliveryBoy: o.deliveryBoy || null,
           items: o.items.map((i) => ({
             id: i.id,
@@ -763,7 +801,8 @@ export class OrderController {
             quantity: i.quantity,
             unitPrice: Number(i.unitPrice),
             totalPrice: Number(i.totalPrice),
-            image: i.product?.images?.[0]?.googleDriveUrl || null
+            image: i.product?.images?.[0]?.googleDriveUrl || null,
+            providerName: (i as any).provider?.businessName || (i as any).provider?.name || (i.product as any)?.provider?.businessName || (i.product as any)?.provider?.name || (o as any).provider?.businessName || (o as any).provider?.name || o.provider?.fullName || null
           })),
           statusHistory: o.statusHistory,
           receiptNumber: o.receipt?.receiptNumber || null
@@ -823,15 +862,19 @@ export class OrderController {
           items: {
             include: {
               product: {
-                include: { images: true }
-              }
+                include: {
+                  images: true,
+                  provider: { select: { id: true, name: true, businessName: true } }
+                }
+              },
+              provider: { select: { id: true, name: true, businessName: true } }
             }
           },
           statusHistory: { orderBy: { createdAt: 'asc' } },
           payment: true,
           receipt: true,
           student: { select: { id: true, userId: true, fullName: true, rollNumber: true, collegeEmail: true } },
-          provider: { select: { id: true, fullName: true, mobileNumber: true, serviceCategory: true } },
+          provider: { select: { id: true, fullName: true, name: true, businessName: true, mobileNumber: true, serviceCategory: true } },
           deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true, vehicleType: true } },
           produceDetails: true,
           stationeryDetails: true,
@@ -1024,37 +1067,64 @@ export class OrderController {
         }
       }).catch(() => null);
 
+      const isStudentUser = req.user?.role === 'STUDENT';
+      const orderAny = order as any;
+      const safeItems = (orderAny.items || []).map((i: any) => {
+        const itemCopy = {
+          ...i,
+          providerName: i.provider?.businessName || i.provider?.name || i.product?.provider?.businessName || i.product?.provider?.name || orderAny.provider?.businessName || orderAny.provider?.name || orderAny.provider?.fullName || null
+        };
+        if (isStudentUser) {
+          delete itemCopy.providerAmount;
+          delete itemCopy.cbGrossShare;
+          delete itemCopy.providerShareType;
+          delete itemCopy.providerShareValue;
+        }
+        return itemCopy;
+      });
+
+      const orderData: any = {
+        ...order,
+        items: safeItems,
+        providerName: orderAny.provider?.businessName || orderAny.provider?.name || orderAny.provider?.fullName || null,
+        refundStatus: returnReq?.status || order.refundStatus,
+        deliveryOtp: order.status === 'DELIVERED' || (order as any).deliveryOtpVerified ? null : customerOtp,
+        deliveryOtpVerified: (order as any).deliveryOtpVerified || false,
+        deliveredAt: (order as any).deliveredAt || null,
+        totalAmount: Number(order.totalAmount),
+        subtotal: Number(order.subtotal),
+        deliveryFee: Number(order.deliveryFee),
+        discountAmount: Number(order.discountAmount),
+        isAccepted,
+        isModifiable,
+        canCancel: cancelCheck.eligible,
+        cancellationMessage: cancelCheck.reason || null,
+        canReturn: returnCheck.eligible,
+        returnMessage: returnCheck.reason || null,
+        returnRequest: returnReq || (order as any).returnRequest || null,
+        returnPickupOtp: returnReq?.pickupOtp || returnReq?.otp || (order as any).returnPickupOtp || '739201',
+        codPaidAdvance,
+        codRemainingCash,
+        refundAccount: refundAccount || null,
+        isProduce: order.serviceType === 'FRESH_PRODUCE',
+        isStationery: order.serviceType === 'STATIONERY',
+        isFood: order.serviceType === 'FOOD',
+        produceDetails: (order as any).produceDetails || null,
+        stationeryDetails: (order as any).stationeryDetails || null,
+        foodDetails: (order as any).foodDetails || null,
+        codCollection: (order as any).codCollection || null
+      };
+
+      if (isStudentUser) {
+        delete orderData.providerAmount;
+        delete orderData.cbGrossShare;
+        delete orderData.providerShareType;
+        delete orderData.providerShareValue;
+      }
+
       res.status(200).json({
         success: true,
-        order: {
-          ...order,
-          refundStatus: returnReq?.status || order.refundStatus,
-          deliveryOtp: order.status === 'DELIVERED' || (order as any).deliveryOtpVerified ? null : customerOtp,
-          deliveryOtpVerified: (order as any).deliveryOtpVerified || false,
-          deliveredAt: (order as any).deliveredAt || null,
-          totalAmount: Number(order.totalAmount),
-          subtotal: Number(order.subtotal),
-          deliveryFee: Number(order.deliveryFee),
-          discountAmount: Number(order.discountAmount),
-          isAccepted,
-          isModifiable,
-          canCancel: cancelCheck.eligible,
-          cancellationMessage: cancelCheck.reason || null,
-          canReturn: returnCheck.eligible,
-          returnMessage: returnCheck.reason || null,
-          returnRequest: returnReq || (order as any).returnRequest || null,
-          returnPickupOtp: returnReq?.pickupOtp || returnReq?.otp || (order as any).returnPickupOtp || '739201',
-          codPaidAdvance,
-          codRemainingCash,
-          refundAccount: refundAccount || null,
-          isProduce: order.serviceType === 'FRESH_PRODUCE',
-          isStationery: order.serviceType === 'STATIONERY',
-          isFood: order.serviceType === 'FOOD',
-          produceDetails: (order as any).produceDetails || null,
-          stationeryDetails: (order as any).stationeryDetails || null,
-          foodDetails: (order as any).foodDetails || null,
-          codCollection: (order as any).codCollection || null
-        }
+        order: orderData
       });
     } catch (err) {
       next(err);

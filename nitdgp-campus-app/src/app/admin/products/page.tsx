@@ -35,6 +35,8 @@ export default function AdminProductsPage() {
   // Filters & Search
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [providerFilter, setProviderFilter] = useState('ALL');
+  const [providers, setProviders] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [stockFilter, setStockFilter] = useState('ALL');
   const [sortOrder, setSortOrder] = useState('newest');
@@ -49,12 +51,14 @@ export default function AdminProductsPage() {
       let query = `/api/admin/products?sort=${sortOrder}`;
       if (search) query += `&search=${encodeURIComponent(search)}`;
       if (categoryFilter !== 'ALL') query += `&category=${categoryFilter}`;
+      if (providerFilter !== 'ALL') query += `&providerId=${providerFilter}`;
       if (statusFilter !== 'ALL') query += `&status=${statusFilter}`;
       if (stockFilter !== 'ALL') query += `&stockStatus=${stockFilter}`;
 
-      const [prodRes, catRes] = await Promise.allSettled([
+      const [prodRes, catRes, provRes] = await Promise.allSettled([
         apiRequest(query),
-        apiRequest('/api/admin/categories')
+        apiRequest('/api/admin/categories'),
+        apiRequest('/api/admin/providers')
       ]);
 
       if (prodRes.status === 'fulfilled' && prodRes.value?.success && prodRes.value?.products) {
@@ -62,6 +66,9 @@ export default function AdminProductsPage() {
       }
       if (catRes.status === 'fulfilled' && catRes.value?.success && catRes.value?.categories) {
         setCategories(catRes.value.categories);
+      }
+      if (provRes.status === 'fulfilled' && provRes.value?.success && provRes.value?.providers) {
+        setProviders(provRes.value.providers);
       }
     } catch (err) {
       console.warn('Error fetching products:', err);
@@ -72,7 +79,7 @@ export default function AdminProductsPage() {
 
   useEffect(() => {
     fetchProducts();
-  }, [categoryFilter, statusFilter, stockFilter, sortOrder]);
+  }, [categoryFilter, providerFilter, statusFilter, stockFilter, sortOrder]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -240,6 +247,20 @@ export default function AdminProductsPage() {
         </form>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Provider Filter */}
+          <select
+            value={providerFilter}
+            onChange={(e) => setProviderFilter(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 font-semibold focus:outline-none focus:border-[#4F9D32] cursor-pointer"
+          >
+            <option value="ALL">All Providers</option>
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.fullName || p.businessName || 'Provider'}
+              </option>
+            ))}
+          </select>
+
           {/* Category Filter */}
           <select
             value={categoryFilter}
@@ -308,142 +329,168 @@ export default function AdminProductsPage() {
                     />
                   </th>
                   <th className="py-3.5 px-4">Image (4:3)</th>
-                  <th className="py-3.5 px-4">Product Details</th>
-                  <th className="py-3.5 px-4">Category</th>
+                  <th className="py-3.5 px-4">Product</th>
                   <th className="py-3.5 px-4">Provider</th>
-                  <th className="py-3.5 px-4">Price</th>
-                  <th className="py-3.5 px-4">Stock</th>
-                  <th className="py-3.5 px-4">Visibility</th>
+                  <th className="py-3.5 px-4">Selling Price</th>
+                  <th className="py-3.5 px-4">Provider Share Type</th>
+                  <th className="py-3.5 px-4">Provider Share</th>
+                  <th className="py-3.5 px-4">Provider Amount</th>
+                  <th className="py-3.5 px-4">Campus Basket Gross Share</th>
+                  <th className="py-3.5 px-4">Product Status</th>
                   <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {products.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4">
-                      <input
-                        type="checkbox"
-                        checked={selectedProductIds.includes(p.id)}
-                        onChange={() => handleToggleSelectOne(p.id)}
-                        className="rounded border-slate-300 text-[#4F9D32] focus:ring-[#4F9D32]"
-                      />
-                    </td>
+                {products.map((p) => {
+                  const sellPrice = p.sellingPrice ?? (p.discountPrice || p.price);
+                  const isPct = (p.providerShareType || 'PERCENTAGE') === 'PERCENTAGE';
+                  const shareVal = p.providerShareValue ?? (isPct ? 80 : p.providerAmount ?? 0);
+                  const provAmt = p.providerAmount ?? (isPct ? Math.round(sellPrice * (Number(shareVal) / 100) * 100) / 100 : Number(shareVal));
+                  const cbShare = p.cbGrossShare ?? Math.max(0, Math.round((sellPrice - provAmt) * 100) / 100);
 
-                    {/* Image with 4:3 aspect ratio */}
-                    <td className="py-3 px-4">
-                      <div className="w-16 h-12 aspect-[4/3] rounded-xl overflow-hidden bg-slate-100 border border-slate-200 relative flex items-center justify-center">
-                        {p.primaryImage ? (
-                          <img
-                            src={p.primaryImage}
-                            alt={p.name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src =
-                                'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=400';
-                            }}
-                          />
-                        ) : (
-                          <ImageIcon className="w-4 h-4 text-slate-400" />
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Details */}
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-[#17202A] text-xs flex items-center gap-1.5">
-                        <span>{p.name}</span>
-                        {p.isFeatured && (
-                          <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
-                        )}
-                      </div>
-                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                        {p.sku || `SKU-${p.id.slice(-4)}`} &bull; {p.unit}
-                      </div>
-                    </td>
-
-                    {/* Category */}
-                    <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-semibold border border-slate-200">
-                        {p.category?.name || 'General'}
-                      </span>
-                    </td>
-
-                    {/* Provider */}
-                    <td className="py-3 px-4 text-slate-600 text-[11px]">
-                      <span className="flex items-center gap-1 font-medium">
-                        <Store className="w-3 h-3 text-slate-400" />
-                        <span>{p.provider?.businessName || p.provider?.fullName || 'Unassigned provider'}</span>
-                      </span>
-                    </td>
-
-                    {/* Price */}
-                    <td className="py-3 px-4 font-mono">
-                      <div className="font-bold text-[#17202A]">₹{p.discountPrice || p.price}</div>
-                      {p.discountPrice && (
-                        <div className="text-[10px] text-slate-400 line-through">₹{p.price}</div>
-                      )}
-                    </td>
-
-                    {/* Stock */}
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            p.stock > 5 ? 'bg-[#4F9D32]' : p.stock > 0 ? 'bg-amber-500' : 'bg-red-500'
-                          }`}
+                  return (
+                    <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-3 px-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedProductIds.includes(p.id)}
+                          onChange={() => handleToggleSelectOne(p.id)}
+                          className="rounded border-slate-300 text-[#4F9D32] focus:ring-[#4F9D32]"
                         />
-                        <span className="font-mono font-bold text-[#17202A]">{p.stock}</span>
-                        <span className="text-[10px] text-slate-500">left</span>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Visibility */}
-                    <td className="py-3 px-4">
-                      <button
-                        onClick={() => handleToggleVisibility(p.id, p.availability)}
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
-                          p.availability
-                            ? 'bg-emerald-50 text-[#347A27] border-emerald-200'
-                            : 'bg-slate-100 text-slate-500 border-slate-200'
-                        }`}
-                      >
-                        {p.availability ? 'Active' : 'Hidden'}
-                      </button>
-                    </td>
+                      {/* Image with 4:3 aspect ratio */}
+                      <td className="py-3 px-4">
+                        <div className="w-16 h-12 aspect-[4/3] rounded-xl overflow-hidden bg-slate-100 border border-slate-200 relative flex items-center justify-center">
+                          {p.primaryImage ? (
+                            <img
+                              src={p.primaryImage}
+                              alt={p.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src =
+                                  'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=400';
+                              }}
+                            />
+                          ) : (
+                            <ImageIcon className="w-4 h-4 text-slate-400" />
+                          )}
+                        </div>
+                      </td>
 
-                    {/* Actions */}
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <Link
-                          href={`/admin/products/${p.id}/analytics`}
-                          title="View Product Sales Analytics"
-                          className="p-1.5 rounded-lg bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 transition-colors"
-                        >
-                          <BarChart2 className="w-3.5 h-3.5" />
-                        </Link>
+                      {/* Details */}
+                      <td className="py-3 px-4">
+                        <div className="font-bold text-[#17202A] text-xs flex items-center gap-1.5">
+                          <span>{p.name}</span>
+                          {p.isFeatured && (
+                            <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                          {p.sku || `SKU-${p.id.slice(-4)}`} &bull; {p.category?.name || 'General'}
+                        </div>
+                      </td>
 
-                        <button
-                          onClick={() => {
-                            setEditingProduct(p);
-                            setIsModalOpen(true);
-                          }}
-                          title="Edit Product"
-                          className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-[#4F9D32] border border-slate-200 transition-colors"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
+                      {/* Provider */}
+                      <td className="py-3 px-4 text-slate-700 text-xs">
+                        <div className="flex items-center gap-1.5 font-medium">
+                          <Store className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="font-semibold text-slate-900">
+                            {p.provider?.businessName || p.provider?.fullName || p.provider?.name || 'Provider information unavailable'}
+                          </span>
+                        </div>
+                        {p.provider?.serviceCategory && (
+                          <div className="text-[10px] text-slate-500 ml-5">{p.provider.serviceCategory}</div>
+                        )}
+                      </td>
 
-                        <button
-                          onClick={() => handleArchiveProduct(p.id)}
-                          title="Archive Product"
-                          className="p-1.5 rounded-lg bg-slate-50 hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 transition-colors"
-                        >
-                          <Archive className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      {/* Selling Price */}
+                      <td className="py-3 px-4 font-mono">
+                        <div className="font-bold text-[#17202A]">₹{sellPrice}</div>
+                        {p.originalPrice && p.originalPrice > sellPrice && (
+                          <div className="text-[10px] text-slate-400 line-through">₹{p.originalPrice}</div>
+                        )}
+                      </td>
+
+                      {/* Provider Share Type */}
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          isPct
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-purple-50 text-purple-700 border-purple-200'
+                        }`}>
+                          {isPct ? 'Percentage' : 'Fixed Amount'}
+                        </span>
+                      </td>
+
+                      {/* Provider Share */}
+                      <td className="py-3 px-4 font-mono font-semibold text-slate-700">
+                        {isPct ? `${shareVal}%` : `₹${shareVal}`}
+                      </td>
+
+                      {/* Provider Amount */}
+                      <td className="py-3 px-4 font-mono font-bold text-emerald-700">
+                        ₹{provAmt}
+                      </td>
+
+                      {/* Campus Basket Gross Share */}
+                      <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                        ₹{cbShare}
+                      </td>
+
+                      {/* Product Status */}
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col gap-1 items-start">
+                          <button
+                            onClick={() => handleToggleVisibility(p.id, p.availability)}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
+                              p.availability
+                                ? 'bg-emerald-50 text-[#347A27] border-emerald-200'
+                                : 'bg-slate-100 text-slate-500 border-slate-200'
+                            }`}
+                          >
+                            {p.availability ? 'Active' : 'Hidden'}
+                          </button>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            Stock: {p.stock ?? 0}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Link
+                            href={`/admin/products/${p.id}/analytics`}
+                            title="View Product Sales Analytics"
+                            className="p-1.5 rounded-lg bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 transition-colors"
+                          >
+                            <BarChart2 className="w-3.5 h-3.5" />
+                          </Link>
+
+                          <button
+                            onClick={() => {
+                              setEditingProduct(p);
+                              setIsModalOpen(true);
+                            }}
+                            title="Edit Product"
+                            className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-[#4F9D32] border border-slate-200 transition-colors cursor-pointer"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleArchiveProduct(p.id)}
+                            title="Archive Product"
+                            className="p-1.5 rounded-lg bg-slate-50 hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 transition-colors cursor-pointer"
+                          >
+                            <Archive className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

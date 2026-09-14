@@ -367,7 +367,26 @@ export class AdminController {
             isPopular: Boolean(p.isPopular),
             tags: p.tags || '',
             deliveryType: p.deliveryType || '10-15 mins',
-            primaryImage: (p as any).image || p.images?.find((img) => img.isPrimary)?.googleDriveUrl || p.images?.[0]?.googleDriveUrl || null
+            primaryImage: (p as any).image || p.images?.find((img) => img.isPrimary)?.googleDriveUrl || p.images?.[0]?.googleDriveUrl || null,
+            providerShareType: (p as any).providerShareType || 'FIXED',
+            providerShareValue: (p as any).providerShareValue !== null && (p as any).providerShareValue !== undefined
+              ? Number((p as any).providerShareValue)
+              : ((p as any).providerAmount ? Number((p as any).providerAmount) : Math.round(sellingPrice * 0.85 * 100) / 100),
+            providerAmount: (p as any).providerAmount !== null && (p as any).providerAmount !== undefined
+              ? Number((p as any).providerAmount)
+              : Math.round(sellingPrice * 0.85 * 100) / 100,
+            cbGrossShare: (p as any).cbGrossShare !== null && (p as any).cbGrossShare !== undefined
+              ? Number((p as any).cbGrossShare)
+              : Math.max(0, Math.round((sellingPrice - ((p as any).providerAmount !== null && (p as any).providerAmount !== undefined ? Number((p as any).providerAmount) : (sellingPrice * 0.85))) * 100) / 100),
+            provider: (p as any).provider ? {
+              id: (p as any).provider.id,
+              name: (p as any).provider.fullName || (p as any).provider.businessName || 'Service Provider',
+              fullName: (p as any).provider.fullName,
+              businessName: (p as any).provider.businessName,
+              email: (p as any).provider.user?.email || (p as any).provider.email,
+              mobileNumber: (p as any).provider.mobileNumber || (p as any).provider.phone,
+              serviceCategory: (p as any).provider.serviceCategory
+            } : null
           };
         }),
         pagination: {
@@ -407,7 +426,11 @@ export class AdminController {
         availableToday = true,
         deliveryTime,
         tags,
-        providerId
+        providerId,
+        providerShareType = 'FIXED',
+        providerShareValue,
+        providerAmount,
+        cbGrossShare
       } = req.body;
 
       const file = req.file;
@@ -514,6 +537,22 @@ export class AdminController {
       const isAvail = availability !== undefined ? (availability === 'true' || availability === true || availability === 'Available') : true;
       const cleanDietary = dietaryType && ['Pure Veg', 'Non-Veg', 'Not Applicable'].includes(dietaryType) ? dietaryType : 'Not Applicable';
 
+      // Provider Settlement Configuration calculation
+      const finalShareType = providerShareType === 'PERCENTAGE' ? 'PERCENTAGE' : 'FIXED';
+      let finalProviderAmt = 0;
+      let finalShareVal = 0;
+      if (finalShareType === 'PERCENTAGE') {
+        finalShareVal = providerShareValue !== undefined && providerShareValue !== '' ? parseFloat(providerShareValue) : 85;
+        finalProviderAmt = Math.round((sellPrice * (finalShareVal / 100)) * 100) / 100;
+      } else {
+        const rawVal = providerAmount !== undefined && providerAmount !== '' ? providerAmount : providerShareValue;
+        finalProviderAmt = rawVal !== undefined && rawVal !== '' ? parseFloat(rawVal) : Math.round(sellPrice * 0.85 * 100) / 100;
+        finalShareVal = finalProviderAmt;
+      }
+      const finalCbShare = cbGrossShare !== undefined && cbGrossShare !== ''
+        ? parseFloat(cbGrossShare)
+        : Math.max(0, Math.round((sellPrice - finalProviderAmt) * 100) / 100);
+
       // Create product in MySQL or Fallback Engine
       const product = await prisma.product.create({
         data: {
@@ -537,6 +576,10 @@ export class AdminController {
           isFeatured: isFeatured === 'true' || isFeatured === true,
           availableToday: availableToday === 'true' || availableToday === true,
           providerId: cleanProviderId,
+          providerShareType: finalShareType,
+          providerShareValue: finalShareVal,
+          providerAmount: finalProviderAmt,
+          cbGrossShare: finalCbShare,
           approvalStatus: 'APPROVED',
           approvedBy: req.user?.email || 'ADMIN',
           approvedAt: new Date(),
@@ -553,10 +596,11 @@ export class AdminController {
       // Sharp 4:3 (1200x900) Image Processing & Google Drive Upload
       if (file) {
         const processed = await ImageProcessingService.normalizeProductImage(file.buffer);
+        const ext = processed.format === 'png' ? 'png' : processed.format === 'webp' ? 'webp' : 'jpg';
 
         const uploadResult = await storageService.uploadFile(
           processed.buffer,
-          `${productSlug}.jpg`,
+          `${productSlug}.${ext}`,
           processed.mimeType,
           'General'
         );
@@ -624,7 +668,11 @@ export class AdminController {
         availableToday,
         deliveryTime,
         tags,
-        providerId
+        providerId,
+        providerShareType,
+        providerShareValue,
+        providerAmount,
+        cbGrossShare
       } = req.body;
 
       const oldProduct = await prisma.product.findUnique({ where: { id } });
@@ -694,6 +742,41 @@ export class AdminController {
         ? Math.max(0, Math.round(((newOrigPrice - newSellPrice) / newOrigPrice) * 100))
         : 0;
 
+      // Handle Provider Settlement Configuration updates
+      if (
+        providerShareType !== undefined ||
+        providerShareValue !== undefined ||
+        providerAmount !== undefined ||
+        cbGrossShare !== undefined ||
+        newSellPrice !== currentSellPrice
+      ) {
+        const shareType = providerShareType || (oldProduct as any).providerShareType || 'FIXED';
+        updateData.providerShareType = shareType;
+        let provAmt = 0;
+        let shareVal = 0;
+        if (shareType === 'PERCENTAGE') {
+          shareVal = providerShareValue !== undefined && providerShareValue !== ''
+            ? parseFloat(providerShareValue)
+            : ((oldProduct as any).providerShareValue !== null && (oldProduct as any).providerShareValue !== undefined
+              ? Number((oldProduct as any).providerShareValue)
+              : 85);
+          provAmt = Math.round((newSellPrice * (shareVal / 100)) * 100) / 100;
+        } else {
+          const rawAmt = providerAmount !== undefined && providerAmount !== ''
+            ? providerAmount
+            : (providerShareValue !== undefined && providerShareValue !== '' ? providerShareValue : (oldProduct as any).providerAmount);
+          provAmt = rawAmt !== null && rawAmt !== undefined && rawAmt !== ''
+            ? parseFloat(rawAmt)
+            : Math.round(newSellPrice * 0.85 * 100) / 100;
+          shareVal = provAmt;
+        }
+        updateData.providerShareValue = shareVal;
+        updateData.providerAmount = provAmt;
+        updateData.cbGrossShare = cbGrossShare !== undefined && cbGrossShare !== ''
+          ? parseFloat(cbGrossShare)
+          : Math.max(0, Math.round((newSellPrice - provAmt) * 100) / 100);
+      }
+
       const updated = await prisma.product.update({
         where: { id },
         data: updateData
@@ -746,10 +829,11 @@ export class AdminController {
       }
 
       const processed = await ImageProcessingService.normalizeProductImage(file.buffer);
+      const ext = processed.format === 'png' ? 'png' : processed.format === 'webp' ? 'webp' : 'jpg';
 
       const uploadResult = await storageService.uploadFile(
         processed.buffer,
-        `${product.slug}_${Date.now()}.jpg`,
+        `${product.slug}_${Date.now()}.${ext}`,
         processed.mimeType,
         'General'
       );

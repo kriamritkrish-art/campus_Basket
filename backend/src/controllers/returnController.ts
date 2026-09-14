@@ -693,6 +693,35 @@ export class ReturnController {
         }).catch(() => {});
       }
 
+      // 4. Provider Wallet Adjustment for Return
+      try {
+        const orderRecord = returnRequest.order || await prisma.order.findFirst({
+          where: { OR: [{ id: returnRequest.orderId }, { orderNumber: returnRequest.orderId }] },
+          include: { items: true }
+        });
+
+        const providerId = (returnRequest as any).providerId || orderRecord?.providerId || (orderRecord as any)?.items?.[0]?.providerId;
+        const provPayable = Number(orderRecord?.providerAmount || orderRecord?.providerPayable || (returnRequest as any).itemAmount || returnRequest.refundAmount || 0);
+
+        if (providerId && provPayable > 0) {
+          await WalletService.adjustProviderReturn({
+            providerId,
+            orderId: returnRequest.orderId,
+            amount: provPayable,
+            description: `Return Adjustment: -₹${provPayable.toFixed(2)} for returned order #${orderRecord?.orderNumber || returnRequest.orderId}`
+          }).catch((err) => console.warn('[ReturnController] Provider wallet return adjustment notice:', err));
+
+          if (orderRecord?.id) {
+            await (prisma as any).order.update({
+              where: { id: orderRecord.id },
+              data: { settlementStatus: 'ADJUSTED' }
+            }).catch(() => {});
+          }
+        }
+      } catch (provErr) {
+        console.warn('[ReturnController] Provider return adjustment non-fatal error:', provErr);
+      }
+
       res.status(200).json({
         success: true,
         message: isWalletRefund

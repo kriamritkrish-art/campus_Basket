@@ -344,9 +344,10 @@ export class ProviderController {
       if (file) {
         try {
           const processed = await ImageProcessingService.normalizeProductImage(file.buffer);
+          const ext = processed.format === 'png' ? 'png' : processed.format === 'webp' ? 'webp' : 'jpg';
           const uploadResult = await storageService.uploadFile(
             processed.buffer,
-            `${productSlug}.jpg`,
+            `${productSlug}.${ext}`,
             processed.mimeType,
             'General'
           );

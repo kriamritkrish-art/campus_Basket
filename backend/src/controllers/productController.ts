@@ -72,6 +72,7 @@ export class ProductController {
           where,
           include: {
             category: true,
+            provider: true,
             images: true,
             inventory: true,
             reviews: {
@@ -97,17 +98,17 @@ export class ProductController {
         if (provPolSetting?.value) providerPolicies = JSON.parse(provPolSetting.value);
       } catch {}
 
-      let formattedProducts: any[] = products.map((p) => {
+      let formattedProducts: any[] = (products as any[]).map((p: any) => {
         const reviews = p.reviews || [];
         const avgRating =
           reviews.length > 0
-            ? reviews.reduce((acc, r) => acc + (r.rating || 5), 0) / reviews.length
+            ? reviews.reduce((acc: number, r: any) => acc + (r.rating || 5), 0) / reviews.length
             : 5.0;
 
         const images = p.images || [];
         const primaryImage =
           (p as any).image ||
-          images.find((img) => img.isPrimary)?.googleDriveUrl ||
+          images.find((img: any) => img.isPrimary)?.googleDriveUrl ||
           images[0]?.googleDriveUrl ||
           (p as any).primaryImage ||
           null;
@@ -151,38 +152,66 @@ export class ProductController {
           allowReturn = provPol.allowReturn;
         }
 
-        return {
-          id: p.id,
-          name: p.name,
-          slug: p.slug,
-          description: p.description,
-          price: origPrice,
-          originalPrice: origPrice,
-          discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
-          sellingPrice: sellPrice,
-          discountPercentage: discountPct,
-          subcategory: p.subcategory || null,
-          dietaryType: p.dietaryType || 'Not Applicable',
-          isPopular: Boolean(p.isPopular),
-          tags: p.tags || '',
-          deliveryType: p.deliveryType || '10-15 mins',
-          unit: p.unit,
-          stock: p.stock,
-          availability: p.availability !== undefined ? p.availability : true,
-          isLowStock: p.stock <= (p.lowStockThreshold || 5) && p.stock > 0,
-          isOutOfStock: p.stock <= 0 || p.availability === false,
-          isFeatured: p.isFeatured,
-          availableToday: p.availableToday !== undefined ? p.availableToday : true,
-          category: p.category,
-          providerId: p.providerId || null,
-          allowCod,
-          allowReturn,
-          primaryImage,
-          images,
-          rating: Number(avgRating.toFixed(1)),
-          reviewsCount: reviews.length
-        };
-      });
+          const provName =
+            p.provider?.fullName ||
+            (p as any).providerName ||
+            (p.providerId === 'prov_abc'
+              ? 'ABC Provider'
+              : p.providerId === 'prov_canteen'
+              ? 'Campus Food & Cafeteria Vendor'
+              : p.providerId === 'prov_fruits'
+              ? 'Green Basket Campus Fresh Fruits'
+              : p.category?.slug === 'food'
+              ? 'Campus Night Canteen'
+              : p.category?.slug === 'fruits'
+              ? 'Campus Fresh Fruit Corner'
+              : p.category?.slug === 'stationery'
+              ? 'NIT Central Stationery'
+              : 'Campus Essentials Mart');
+          const provObj = p.provider ? {
+            id: p.provider.id,
+            fullName: p.provider.fullName,
+            serviceCategory: p.provider.serviceCategory
+          } : (p.providerId ? {
+            id: p.providerId,
+            fullName: provName,
+            serviceCategory: 'General'
+          } : null);
+
+          return {
+            id: p.id,
+            name: p.name,
+            slug: p.slug,
+            description: p.description,
+            price: origPrice,
+            originalPrice: origPrice,
+            discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
+            sellingPrice: sellPrice,
+            discountPercentage: discountPct,
+            subcategory: p.subcategory || null,
+            dietaryType: p.dietaryType || 'Not Applicable',
+            isPopular: Boolean(p.isPopular),
+            tags: p.tags || '',
+            deliveryType: p.deliveryType || '10-15 mins',
+            unit: p.unit,
+            stock: p.stock,
+            availability: p.availability !== undefined ? p.availability : true,
+            isLowStock: p.stock <= (p.lowStockThreshold || 5) && p.stock > 0,
+            isOutOfStock: p.stock <= 0 || p.availability === false,
+            isFeatured: p.isFeatured,
+            availableToday: p.availableToday !== undefined ? p.availableToday : true,
+            category: p.category,
+            providerId: p.providerId || null,
+            providerName: provName,
+            provider: provObj,
+            allowCod,
+            allowReturn,
+            primaryImage,
+            images,
+            rating: Number(avgRating.toFixed(1)),
+            reviewsCount: reviews.length
+          };
+        });
 
       let finalTotal = total;
 
@@ -239,35 +268,47 @@ export class ProductController {
               ? Math.max(0, Math.round(((origPrice - sellPrice) / origPrice) * 100))
               : 0;
 
-          return {
-            id: p.id,
-            name: p.name,
-            slug: p.slug,
-            description: p.description,
-            price: origPrice,
-            originalPrice: origPrice,
-            discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
-            sellingPrice: sellPrice,
-            discountPercentage: discountPct,
-            subcategory: p.subcategory || null,
-            dietaryType: p.dietaryType || 'Not Applicable',
-            isPopular: Boolean(p.isPopular),
-            tags: p.tags || '',
-            deliveryType: (p as any).deliveryType || (p as any).deliveryTime || '10-15 mins',
-            unit: p.unit,
-            stock: p.stock,
-            availability: p.availability !== undefined ? p.availability : true,
-            isLowStock: p.stock <= (p.lowStockThreshold || 5) && p.stock > 0,
-            isOutOfStock: p.stock <= 0 || p.availability === false,
-            isFeatured: p.isFeatured,
-            availableToday: true,
-            category: cat || { id: p.categoryId, name: 'Food & Meals', slug: (category as string) || 'food' },
-            primaryImage,
-            images,
-            rating: 4.8,
-            reviewsCount: 12
-          };
-        });
+            const provName =
+              (p as any).provider?.fullName ||
+              (p.providerId === 'prov_abc'
+                ? 'ABC Provider'
+                : p.providerId === 'prov_canteen'
+                ? 'Campus Food & Cafeteria Vendor'
+                : p.providerId === 'prov_fruits'
+                ? 'Green Basket Campus Fresh Fruits'
+                : 'Campus Essentials Mart');
+            return {
+              id: p.id,
+              name: p.name,
+              slug: p.slug,
+              description: p.description,
+              price: origPrice,
+              originalPrice: origPrice,
+              discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
+              sellingPrice: sellPrice,
+              discountPercentage: discountPct,
+              subcategory: p.subcategory || null,
+              dietaryType: p.dietaryType || 'Not Applicable',
+              isPopular: Boolean(p.isPopular),
+              tags: p.tags || '',
+              deliveryType: (p as any).deliveryType || (p as any).deliveryTime || '10-15 mins',
+              unit: p.unit,
+              stock: p.stock,
+              availability: p.availability !== undefined ? p.availability : true,
+              isLowStock: p.stock <= (p.lowStockThreshold || 5) && p.stock > 0,
+              isOutOfStock: p.stock <= 0 || p.availability === false,
+              isFeatured: p.isFeatured,
+              availableToday: true,
+              category: cat || { id: p.categoryId, name: 'Food & Meals', slug: (category as string) || 'food' },
+              providerId: p.providerId || null,
+              providerName: provName,
+              provider: p.providerId ? { id: p.providerId, fullName: provName, serviceCategory: 'General' } : null,
+              primaryImage,
+              images,
+              rating: 4.8,
+              reviewsCount: 12
+            };
+          });
       }
 
       res.status(200).json({
@@ -296,6 +337,9 @@ export class ProductController {
         where: { slug },
         include: {
           category: true,
+          provider: {
+            select: { id: true, fullName: true, mobileNumber: true, serviceCategory: true }
+          },
           images: true,
           inventory: true,
           reviews: {
@@ -317,6 +361,15 @@ export class ProductController {
           const cat = fallbackCategories.find((c) => c.id === fallback.categoryId);
           const images = fallback.images || [];
           const primaryImage = images[0]?.googleDriveUrl || (fallback as any).primaryImage || null;
+          const fallbackProvName =
+            (fallback as any).provider?.fullName ||
+            (fallback.providerId === 'prov_abc'
+              ? 'ABC Provider'
+              : fallback.providerId === 'prov_canteen'
+              ? 'Campus Food & Cafeteria Vendor'
+              : fallback.providerId === 'prov_fruits'
+              ? 'Green Basket Campus Fresh Fruits'
+              : 'Campus Essentials Mart');
           res.status(200).json({
             success: true,
             product: {
@@ -324,6 +377,9 @@ export class ProductController {
               price: Number(fallback.price),
               discountPrice: fallback.discountPrice ? Number(fallback.discountPrice) : null,
               category: cat,
+              providerId: fallback.providerId || null,
+              providerName: fallbackProvName,
+              provider: fallback.providerId ? { id: fallback.providerId, fullName: fallbackProvName, serviceCategory: 'General' } : null,
               primaryImage,
               rating: 4.8,
               reviewsCount: 15,
@@ -391,15 +447,44 @@ export class ProductController {
         allowReturn = provPol.allowReturn;
       }
 
+      const singleProvName =
+        (product as any).provider?.fullName ||
+        ((product as any).providerName) ||
+        (product.providerId === 'prov_abc'
+          ? 'ABC Provider'
+          : product.providerId === 'prov_canteen'
+          ? 'Campus Food & Cafeteria Vendor'
+          : product.providerId === 'prov_fruits'
+          ? 'Green Basket Campus Fresh Fruits'
+          : 'Campus Essentials Mart');
+      const singleProvObj = (product as any).provider ? {
+        id: (product as any).provider.id,
+        fullName: (product as any).provider.fullName,
+        serviceCategory: (product as any).provider.serviceCategory
+      } : (product.providerId ? {
+        id: product.providerId,
+        fullName: singleProvName,
+        serviceCategory: 'General'
+      } : null);
+
+      // Sanitize internal financial settlement fields for students
+      const sanitizedProduct = { ...product };
+      delete (sanitizedProduct as any).providerAmount;
+      delete (sanitizedProduct as any).cbGrossShare;
+      delete (sanitizedProduct as any).providerShareType;
+      delete (sanitizedProduct as any).providerShareValue;
+
       res.status(200).json({
         success: true,
         product: {
-          ...product,
+          ...sanitizedProduct,
           price: Number(product.price),
           discountPrice: product.discountPrice ? Number(product.discountPrice) : null,
           isLowStock: product.stock <= (product.lowStockThreshold || 5) && product.stock > 0,
           isOutOfStock: product.stock <= 0,
           providerId: product.providerId || null,
+          providerName: singleProvName,
+          provider: singleProvObj,
           allowCod,
           allowReturn,
           primaryImage,

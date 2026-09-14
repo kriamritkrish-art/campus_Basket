@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   LayoutDashboard,
   ShoppingBag,
+  Sparkles,
   Layers,
   Boxes,
   ClipboardList,
@@ -123,7 +124,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       title: 'PEOPLE',
       items: [
         { label: 'Students', href: '/admin/students', icon: Users },
-        { label: 'Service Providers', href: '/admin/providers', icon: Store },
+        { label: 'Providers', href: '/admin/providers', icon: Store },
         { label: 'Delivery Boys', href: '/admin/delivery-boys', icon: Truck },
         { label: 'Residence Halls', href: '/admin/halls', icon: Building2 }
       ]
@@ -178,6 +179,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     {
       title: 'SYSTEM',
       items: [
+        { label: 'AI Shopping Assistant', href: '/admin/system/ai-assistant', icon: Sparkles },
         { label: 'Support Tickets', href: '/admin/system/tickets', icon: HelpCircle },
         { label: 'Settings', href: '/admin/system/settings', icon: Settings },
         { label: 'Audit Logs', href: '/admin/system/audit', icon: ShieldAlert }

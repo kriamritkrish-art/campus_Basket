@@ -11,6 +11,7 @@ import { LaundryBookingDrawer } from '../components/laundry/LaundryBookingDrawer
 import { Footer } from '../components/layout/Footer';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
+import { getOptimizedImageUrl } from '../lib/imageUtils';
 import {
   Utensils,
   Apple,
@@ -722,9 +723,10 @@ export default function HomePage() {
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div className="w-12 h-12 bg-[#F7F8F6] rounded-xl flex items-center justify-center p-1 shrink-0 overflow-hidden">
                       <img
-                        src={prod.primaryImage || prod.images?.[0]?.googleDriveUrl || prod.images?.[0]?.url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=120'}
+                        src={getOptimizedImageUrl(prod.primaryImage || prod.images?.[0]?.googleDriveUrl || prod.images?.[0]?.url, 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400')}
                         alt={prod.name}
-                        className="max-h-full max-w-full object-contain"
+                        className="max-h-full max-w-full object-contain product-img-high-res"
+                        loading="lazy"
                       />
                     </div>
                     <div className="min-w-0 flex-1">

@@ -38,7 +38,8 @@ import {
   ChevronDown,
   ChevronUp,
   AlertCircle,
-  LifeBuoy
+  LifeBuoy,
+  Wallet
 } from 'lucide-react';
 
 interface OrderItem {
@@ -48,6 +49,9 @@ interface OrderItem {
   unitPrice: number;
   totalPrice: number;
   image?: string | null;
+  providerName?: string | null;
+  provider?: { id: string; name?: string; businessName?: string } | null;
+  product?: { provider?: { name?: string; businessName?: string } } | null;
 }
 
 interface OrderData {
@@ -66,6 +70,7 @@ interface OrderData {
   advancePaidAmount?: number;
   refundAmount?: number;
   refundStatus?: string;
+  refundMethod?: string;
   cancellationType?: string;
   cancellationReason?: string;
   deliveryOtp?: string | null;
@@ -87,10 +92,13 @@ interface OrderData {
   } | null;
   provider?: {
     id?: string;
-    fullName: string;
+    fullName?: string;
+    name?: string;
+    businessName?: string;
     mobileNumber?: string;
     serviceCategory?: string;
   } | null;
+  providerName?: string | null;
   refundAccount?: {
     accountType: string;
     accountHolderName: string;
@@ -139,11 +147,20 @@ export default function OrderTrackClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Modals
+  // Modals & Quote State
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState('Change of plan / placed by mistake');
   const [cancelSuccessMsg, setCancelSuccessMsg] = useState<string | null>(null);
+  const [cancelQuote, setCancelQuote] = useState<any>(null);
+  const [cancelQuoteLoading, setCancelQuoteLoading] = useState(false);
+  const [cancelRefundMethod, setCancelRefundMethod] = useState<'CAMPUS_BASKET_WALLET' | 'ORIGINAL_PAYMENT'>('CAMPUS_BASKET_WALLET');
+  const [cancelResult, setCancelResult] = useState<any>(null);
+
+  // Return Quote & Method selection
+  const [returnQuote, setReturnQuote] = useState<any>(null);
+  const [returnQuoteLoading, setReturnQuoteLoading] = useState(false);
+  const [returnRefundMethod, setReturnRefundMethod] = useState<'CAMPUS_BASKET_WALLET' | 'ORIGINAL_PAYMENT'>('CAMPUS_BASKET_WALLET');
 
   const [modifyModalOpen, setModifyModalOpen] = useState(false);
   const [modifying, setModifying] = useState(false);
@@ -322,6 +339,69 @@ export default function OrderTrackClient() {
     return () => clearInterval(timer);
   }, [currentOrderId]);
 
+  const handleOpenCancelModal = async () => {
+    const idToUse = activeOrderId || currentOrderId;
+    setCancelModalOpen(true);
+    setCancelQuoteLoading(true);
+    setCancelResult(null);
+    setCancelSuccessMsg(null);
+    try {
+      const res = await apiRequest(`/api/orders/${idToUse}/cancellation-quote`);
+      if (res && res.calculation) {
+        setCancelQuote(res);
+        if (res.refundMethods?.length > 0) {
+          setCancelRefundMethod(res.refundMethods[0].id);
+        }
+      } else {
+        // Fallback calculation from order data
+        const orderAmt = Number(order?.totalAmount || 0);
+        const isCodOrder = order?.paymentMethod === 'CASH_ON_DELIVERY';
+        const advPaid = isCodOrder ? Number(order?.advancePaidAmount || 0) : orderAmt;
+        const refundAmt = Math.max(0, advPaid);
+        setCancelQuote({
+          eligible: true,
+          canCancel: true,
+          refundMethods: [
+            { id: 'CAMPUS_BASKET_WALLET', name: 'Campus Basket Wallet', speed: 'Instant', recommended: true },
+            { id: 'ORIGINAL_PAYMENT', name: 'Original Payment Method', speed: '3–5 business days' }
+          ],
+          calculation: {
+            orderAmount: orderAmt,
+            amountActuallyPaid: advPaid,
+            codAmountDue: isCodOrder ? Math.max(0, orderAmt - advPaid) : 0,
+            nonRefundableAmount: 0,
+            refundEligible: refundAmt
+          }
+        });
+        setCancelRefundMethod('CAMPUS_BASKET_WALLET');
+      }
+    } catch {
+      // Fallback calculation from order data
+      const orderAmt = Number(order?.totalAmount || 0);
+      const isCodOrder = order?.paymentMethod === 'CASH_ON_DELIVERY';
+      const advPaid = isCodOrder ? Number(order?.advancePaidAmount || 0) : orderAmt;
+      const refundAmt = Math.max(0, advPaid);
+      setCancelQuote({
+        eligible: true,
+        canCancel: true,
+        refundMethods: [
+          { id: 'CAMPUS_BASKET_WALLET', name: 'Campus Basket Wallet', speed: 'Instant', recommended: true },
+          { id: 'ORIGINAL_PAYMENT', name: 'Original Payment Method', speed: '3–5 business days' }
+        ],
+        calculation: {
+          orderAmount: orderAmt,
+          amountActuallyPaid: advPaid,
+          codAmountDue: isCodOrder ? Math.max(0, orderAmt - advPaid) : 0,
+          nonRefundableAmount: 0,
+          refundEligible: refundAmt
+        }
+      });
+      setCancelRefundMethod('CAMPUS_BASKET_WALLET');
+    } finally {
+      setCancelQuoteLoading(false);
+    }
+  };
+
   const handleCancelOrder = async () => {
     const idToUse = activeOrderId || currentOrderId;
     if (!idToUse) return;
@@ -329,15 +409,15 @@ export default function OrderTrackClient() {
     try {
       const res = await apiRequest(`/api/orders/${idToUse}/cancel`, {
         method: 'POST',
-        body: JSON.stringify({ reason: cancelReason })
+        body: JSON.stringify({
+          reason: cancelReason,
+          refundMethod: cancelRefundMethod
+        })
       });
       if (res.success) {
+        setCancelResult(res);
         setCancelSuccessMsg(res.explanation || res.message || 'Order cancelled successfully.');
         fetchOrder();
-        setTimeout(() => {
-          setCancelModalOpen(false);
-          setCancelSuccessMsg(null);
-        }, 2000);
       } else {
         showToast(res.message || 'Unable to cancel order');
       }
@@ -346,6 +426,32 @@ export default function OrderTrackClient() {
     } finally {
       setCancelling(false);
     }
+  };
+
+  const handleOpenReturnModal = async (type = returnReasonType) => {
+    const idToUse = activeOrderId || currentOrderId;
+    setReturnModalOpen(true);
+    setReturnQuoteLoading(true);
+    try {
+      const res = await apiRequest(`/api/orders/${idToUse}/return-quote?reasonType=${type}`);
+      setReturnQuote(res);
+      if (res?.refundMethods?.length > 0) {
+        setReturnRefundMethod(res.refundMethods[0].id);
+      }
+    } catch {
+      setReturnQuote(null);
+    } finally {
+      setReturnQuoteLoading(false);
+    }
+  };
+
+  const handleChangeReturnReasonType = async (type: 'PRODUCT_ISSUE' | 'MIND_CHANGE') => {
+    setReturnReasonType(type);
+    const idToUse = activeOrderId || currentOrderId;
+    try {
+      const res = await apiRequest(`/api/orders/${idToUse}/return-quote?reasonType=${type}`);
+      setReturnQuote(res);
+    } catch {}
   };
 
   const handleModifyOrder = async (e: React.FormEvent) => {
@@ -579,7 +685,8 @@ export default function OrderTrackClient() {
         body: JSON.stringify({
           reasonType: returnReasonType,
           reasonDetails: returnReasonDetails,
-          proofImageUrl: returnProofImageUrl.trim() || undefined
+          proofImageUrl: returnProofImageUrl.trim() || undefined,
+          refundMethod: returnRefundMethod
         })
       });
       if (res.success) {
@@ -762,43 +869,58 @@ export default function OrderTrackClient() {
   // Current Status Headline & Explanation
   const getStatusBanner = () => {
     if (currentReturn && currentReturn.status !== 'REJECTED') {
-      if (currentReturn.status === 'REFUNDED') {
-        return {
-          title: 'Return Completed & Refund Disbursed',
-          desc: `Full refund of ₹${Number(currentReturn.refundAmount || 0).toFixed(2)} has been credited to your destination account.`,
-          colorClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-          dotClass: 'bg-emerald-500'
-        };
-      }
-      if (isPickupCompleted || currentReturn.status === 'COMPLETED' || currentReturn.status === 'PICKED_UP' || currentReturn.status === 'PROCESSING' || currentReturn.pickupOtpVerified || (order as any)?.refundStatus === 'PICKED_UP' || (order as any)?.refundStatus === 'PROCESSING') {
-        return {
-          title: 'Hostel Room Pickup Verified — Awaiting Admin Refund',
-          desc: 'Product physically collected and 6-digit OTP verified by campus runner. Refund disbursement will be released by Campus Basket Admin.',
-          colorClass: 'bg-emerald-50 text-emerald-900 border-emerald-200',
-          dotClass: 'bg-emerald-500'
-        };
-      }
-      if (['APPROVED', 'ACCEPTED', 'PICKUP_ASSIGNED'].includes(currentReturn.status)) {
-        return {
-          title: currentReturn.deliveryBoy ? 'Return Approved & Runner Assigned' : 'Return Approved — Broadcast to Campus Runners',
-          desc: currentReturn.deliveryBoy
-            ? `Runner ${currentReturn.deliveryBoy.fullName} assigned for hostel room pickup. Share your 6-digit Return OTP at handover.`
-            : 'Return authorized by Campus Admin. Pickup open to campus runners. Keep your 6-digit Return OTP ready.',
-          colorClass: 'bg-blue-50 text-blue-900 border-blue-200',
-          dotClass: 'bg-blue-500 animate-pulse'
-        };
+      const isWallet = (currentReturn as any).refundMethod === 'CAMPUS_BASKET_WALLET' || (order as any).refundMethod === 'CAMPUS_BASKET_WALLET';
+      const isPickedUp = isPickupCompleted || ['COMPLETED', 'PICKED_UP', 'PROCESSING', 'REFUNDED'].includes(currentReturn.status) || Boolean(currentReturn.pickupOtpVerified) || ['PICKED_UP', 'PROCESSING', 'COMPLETED', 'REFUND_CREDITED'].includes((order as any)?.refundStatus || '');
+
+      if (isPickedUp) {
+        if (isWallet) {
+          return {
+            title: 'RETURN PICKUP COMPLETED',
+            desc: `Refund: ₹${Number(currentReturn.refundAmount || order.refundAmount || 0).toFixed(2)} — Refund Status: Refund Credited to Campus Basket Wallet`,
+            colorClass: 'bg-emerald-50 text-emerald-900 border-emerald-300',
+            dotClass: 'bg-emerald-500',
+            isWalletRefund: true
+          };
+        } else {
+          return {
+            title: 'RETURN PICKUP COMPLETED',
+            desc: `Refund: ₹${Number(currentReturn.refundAmount || order.refundAmount || 0).toFixed(2)} — Refund Method: Original Payment Method | Refund Status: Refund Processing (Expected: 3–5 business days)`,
+            colorClass: 'bg-emerald-50 text-emerald-900 border-emerald-300',
+            dotClass: 'bg-emerald-500'
+          };
+        }
       }
       return {
-        title: 'Return Under Review',
-        desc: 'Return request submitted. Under review by Campus Basket Admin with defect proof & delivery history.',
-        colorClass: 'bg-amber-50 text-amber-900 border-amber-200',
+        title: 'RETURN REQUESTED',
+        desc: `Refund: ₹${Number(currentReturn.refundAmount || order.refundAmount || 0).toFixed(2)} — Refund Method: ${isWallet ? 'Campus Basket Wallet' : 'Original Payment Method'} | Refund Status: Waiting for successful return pickup`,
+        colorClass: 'bg-amber-50 text-amber-900 border-amber-300',
         dotClass: 'bg-amber-500 animate-pulse'
       };
     }
     if (isCancelled) {
+      const isWallet = (order as any).refundMethod === 'CAMPUS_BASKET_WALLET';
+      const refAmt = Number(order.refundAmount ?? (isPrepaid ? totalAmount : advancePaid));
+      if (refAmt > 0) {
+        if (isWallet) {
+          return {
+            title: 'ORDER CANCELLED',
+            desc: `Refund: ₹${refAmt.toFixed(2)} — Refund Method: Campus Basket Wallet | Status: Refund Credited`,
+            colorClass: 'bg-emerald-50 text-emerald-900 border-emerald-300',
+            dotClass: 'bg-emerald-500',
+            isWalletRefund: true
+          };
+        } else {
+          return {
+            title: 'ORDER CANCELLED',
+            desc: `Refund: ₹${refAmt.toFixed(2)} — Refund Method: Original Payment Method | Status: Refund Processing (Expected: 3–5 business days)`,
+            colorClass: 'bg-red-50 text-red-900 border-red-300',
+            dotClass: 'bg-red-500'
+          };
+        }
+      }
       return {
-        title: 'Order Cancelled',
-        desc: order.cancellationReason || 'This order was cancelled before fulfillment.',
+        title: 'ORDER CANCELLED',
+        desc: order.cancellationReason || 'This order was cancelled. No payment was collected (₹0.00 refund).',
         colorClass: 'bg-red-50 text-red-800 border-red-200',
         dotClass: 'bg-red-500'
       };
@@ -924,16 +1046,27 @@ export default function OrderTrackClient() {
           <div className="mt-1">
             <span className={`w-2.5 h-2.5 rounded-full inline-block ${statusBanner.dotClass}`} />
           </div>
-          <div className="space-y-0.5 flex-1">
+          <div className="space-y-1.5 flex-1">
             <div className="text-xs font-extrabold uppercase tracking-wider opacity-70">
               Current Status
             </div>
             <h2 className="text-sm sm:text-base font-black">
               {statusBanner.title}
             </h2>
-            <p className="text-xs opacity-85 leading-relaxed">
+            <p className="text-xs opacity-90 leading-relaxed">
               {statusBanner.desc}
             </p>
+            {statusBanner.isWalletRefund && (
+              <div className="pt-2">
+                <Link
+                  href="/wallet"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-xs transition"
+                >
+                  <Wallet className="w-3.5 h-3.5" />
+                  <span>View Wallet</span>
+                </Link>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1009,6 +1142,92 @@ export default function OrderTrackClient() {
           {/* ==================== A. RETURN & REFUND ACTIVE ==================== */}
           {currentReturn && currentReturn.status !== 'REJECTED' ? (
             <div className="space-y-5">
+              {/* Section 14 Status Card */}
+              {(() => {
+                const isWallet = (currentReturn as any).refundMethod === 'CAMPUS_BASKET_WALLET' || (order as any).refundMethod === 'CAMPUS_BASKET_WALLET';
+                const isPickedUpState = isPickupCompleted || ['COMPLETED', 'PICKED_UP', 'PROCESSING', 'REFUNDED'].includes(currentReturn.status) || Boolean(currentReturn.pickupOtpVerified) || ['PICKED_UP', 'PROCESSING', 'COMPLETED', 'REFUND_CREDITED'].includes((order as any)?.refundStatus || '');
+                const refAmt = Number(currentReturn.refundAmount || order.refundAmount || 0);
+
+                if (isPickedUpState) {
+                  return (
+                    <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-5 h-5 text-emerald-700" />
+                          <div>
+                            <div className="text-xs font-black uppercase tracking-wider text-emerald-950">RETURN PICKUP COMPLETED</div>
+                            <div className="text-[11px] text-emerald-700">Item collected & OTP verified at doorstep</div>
+                          </div>
+                        </div>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          {isWallet ? 'Refund Credited' : 'Refund Processing'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-emerald-200/70 text-xs">
+                        <div>
+                          <span className="text-slate-500 block text-[11px]">Refund:</span>
+                          <span className="font-mono text-base font-black text-emerald-900">₹{refAmt.toFixed(2)}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[11px]">Refund Status:</span>
+                          <span className="font-bold text-emerald-950">
+                            {isWallet ? 'Refund Credited to Campus Basket Wallet' : 'Refund Processing (3–5 business days)'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isWallet && (
+                        <div className="pt-2 border-t border-emerald-200/70 flex items-center justify-between">
+                          <span className="text-[11px] text-emerald-800 font-medium">Credited to your Campus Basket Wallet</span>
+                          <Link
+                            href="/wallet"
+                            className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg shadow-xs transition"
+                          >
+                            <Wallet className="w-3.5 h-3.5" />
+                            <span>View Wallet</span>
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <RotateCcw className="w-5 h-5 text-amber-700" />
+                          <div>
+                            <div className="text-xs font-black uppercase tracking-wider text-amber-950">RETURN REQUESTED</div>
+                            <div className="text-[11px] text-amber-700">Awaiting runner pickup & OTP verification</div>
+                          </div>
+                        </div>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                          Pickup Pending
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-amber-200/70 text-xs">
+                        <div>
+                          <span className="text-slate-500 block text-[11px]">Refund:</span>
+                          <span className="font-mono text-base font-black text-slate-900">₹{refAmt.toFixed(2)}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[11px]">Refund Method:</span>
+                          <span className="font-bold text-slate-800">
+                            {isWallet ? 'Campus Basket Wallet' : 'Original Payment Method'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[11px]">Refund Status:</span>
+                          <span className="font-semibold text-amber-900">Waiting for successful return pickup</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+              })()}
+
               {/* Vertical Return & Refund Progress Timeline */}
               <div className="space-y-4 relative pl-2">
                 {[
@@ -1292,6 +1511,78 @@ export default function OrderTrackClient() {
             </div>
           ) : isCancelled ? (
             <div className="space-y-4">
+              {/* Section 13 Cancellation Status Card */}
+              {refundableAmount > 0 && (
+                (order as any).refundMethod === 'CAMPUS_BASKET_WALLET' ? (
+                  <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Wallet className="w-5 h-5 text-emerald-700" />
+                        <div>
+                          <div className="text-xs font-black uppercase tracking-wider text-emerald-950">ORDER CANCELLED</div>
+                          <div className="text-[11px] text-emerald-700">Refund Credited to Campus Basket Wallet</div>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        Refund Credited
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-emerald-200/70 text-xs">
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Refund:</span>
+                        <span className="font-mono text-base font-black text-emerald-900">₹{refundableAmount.toFixed(2)}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Refund Method:</span>
+                        <span className="font-bold text-slate-800">Campus Basket Wallet</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-emerald-200/70 flex items-center justify-between">
+                      <span className="text-[11px] text-emerald-800 font-medium">Instant credit available for next order</span>
+                      <Link
+                        href="/wallet"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-xs transition"
+                      >
+                        <Wallet className="w-3.5 h-3.5" />
+                        <span>View Wallet</span>
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="w-5 h-5 text-slate-700" />
+                        <div>
+                          <div className="text-xs font-black uppercase tracking-wider text-slate-900">ORDER CANCELLED</div>
+                          <div className="text-[11px] text-slate-500">Refund Method: Original Payment Method</div>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+                        Refund Processing
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200 text-xs">
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Refund:</span>
+                        <span className="font-mono text-base font-black text-slate-900">₹{refundableAmount.toFixed(2)}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Refund Method:</span>
+                        <span className="font-bold text-slate-800">Original Payment Method</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Expected:</span>
+                        <span className="font-bold text-amber-800">3–5 business days</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              )}
+
               {/* Case A: Online Prepaid (Full refund) */}
               {isPrepaid && (
                 <div className="space-y-3">
@@ -1584,16 +1875,24 @@ export default function OrderTrackClient() {
           </div>
 
           <div className="space-y-2 text-xs">
-            {order.items?.map((item) => (
-              <div key={item.id} className="flex justify-between items-center text-slate-800">
-                <span>
-                  {item.productName} <span className="text-slate-400">× {item.quantity}</span>
-                </span>
-                <span className="font-mono font-semibold text-slate-900">
-                  ₹{Number(item.totalPrice).toFixed(2)}
-                </span>
-              </div>
-            ))}
+            {order.items?.map((item) => {
+              const pName = item.providerName || item.provider?.businessName || item.provider?.name || item.product?.provider?.businessName || item.product?.provider?.name || order.providerName || order.provider?.businessName || order.provider?.fullName || order.provider?.name || 'Provider information unavailable';
+              return (
+                <div key={item.id} className="flex justify-between items-start text-slate-800 gap-2">
+                  <div className="space-y-0.5">
+                    <span className="font-medium">
+                      {item.productName} <span className="text-slate-400 font-normal">× {item.quantity}</span>
+                    </span>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Provider: <span className="text-slate-700 font-semibold">{pName}</span>
+                    </p>
+                  </div>
+                  <span className="font-mono font-semibold text-slate-900 shrink-0">
+                    ₹{Number(item.totalPrice).toFixed(2)}
+                  </span>
+                </div>
+              );
+            })}
 
             <div className="pt-2 border-t border-slate-100 space-y-1 text-slate-500 text-[11px]">
               <div className="flex justify-between">
@@ -1740,7 +2039,7 @@ export default function OrderTrackClient() {
                 </button>
 
                 <button
-                  onClick={() => setCancelModalOpen(true)}
+                  onClick={handleOpenCancelModal}
                   className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold rounded-xl transition cursor-pointer"
                 >
                   Cancel Order
@@ -1752,7 +2051,7 @@ export default function OrderTrackClient() {
             {isDelivered && (
               <>
                 <button
-                  onClick={() => setReturnModalOpen(true)}
+                  onClick={() => handleOpenReturnModal()}
                   disabled={Boolean(currentReturn && currentReturn.status !== 'REJECTED')}
                   className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                     currentReturn && currentReturn.status !== 'REJECTED'
@@ -1793,30 +2092,244 @@ export default function OrderTrackClient() {
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl border border-slate-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Cancel Order #{order.orderNumber}</h3>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Cancel Order #{order.orderNumber}</h3>
+                <p className="text-[11px] text-slate-500">Official Cancellation &amp; Refund Evaluation</p>
+              </div>
               <button onClick={() => setCancelModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {cancelSuccessMsg ? (
-              <div className="p-4 bg-emerald-50 text-emerald-800 text-xs font-semibold rounded-xl border border-emerald-200 text-center">
-                {cancelSuccessMsg}
+            {cancelQuoteLoading ? (
+              <div className="py-8 text-center space-y-3">
+                <div className="w-8 h-8 border-3 border-red-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                <p className="text-xs font-semibold text-slate-600">Evaluating cancellation rules &amp; calculating refund...</p>
               </div>
-            ) : (
+            ) : cancelResult ? (
+              <div className="space-y-4 text-xs">
+                {cancelRefundMethod === 'CAMPUS_BASKET_WALLET' && (Number(cancelResult.refundableAmount || cancelResult.amount || 0)) > 0 ? (
+                  <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-3">
+                    <div className="flex items-center gap-2 text-emerald-800">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                      <h4 className="font-bold text-sm">Refund Credited to Campus Basket Wallet</h4>
+                    </div>
+                    <div className="space-y-1.5 pt-1 text-slate-700">
+                      <div className="flex justify-between">
+                        <span>Refund Amount:</span>
+                        <span className="font-mono font-bold text-emerald-700 text-sm">₹{Number(cancelResult.refundableAmount || cancelResult.amount || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Refund Method:</span>
+                        <span className="font-bold text-slate-900">Campus Basket Wallet</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Status:</span>
+                        <span className="font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded text-[10px]">Refund Credited</span>
+                      </div>
+                      {cancelResult.walletBalance !== undefined && (
+                        <div className="flex justify-between pt-1 border-t border-emerald-200">
+                          <span>Wallet Balance:</span>
+                          <span className="font-mono font-bold text-slate-900">₹{Number(cancelResult.walletBalance).toFixed(2)}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="pt-2 flex items-center justify-between gap-2">
+                      <Link
+                        href="/wallet"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition"
+                      >
+                        <Wallet className="w-3.5 h-3.5" />
+                        <span>View Wallet</span>
+                      </Link>
+                      <button
+                        onClick={() => setCancelModalOpen(false)}
+                        className="px-3.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                ) : (Number(cancelResult.refundableAmount || cancelResult.amount || 0)) > 0 ? (
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                    <div className="flex items-center gap-2 text-slate-800">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                      <h4 className="font-bold text-sm">Refund Processing</h4>
+                    </div>
+                    <div className="space-y-1.5 pt-1 text-slate-700">
+                      <div className="flex justify-between">
+                        <span>Refund Amount:</span>
+                        <span className="font-mono font-bold text-slate-900 text-sm">₹{Number(cancelResult.refundableAmount || cancelResult.amount || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Refund Method:</span>
+                        <span className="font-bold text-slate-900">Original Payment Method</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Expected Processing:</span>
+                        <span className="font-bold text-amber-700">3–5 business days</span>
+                      </div>
+                    </div>
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        onClick={() => setCancelModalOpen(false)}
+                        className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl cursor-pointer"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-center">
+                    <div className="text-xs font-bold text-slate-800">Order Cancelled</div>
+                    <p className="text-slate-500 text-[11px]">{cancelResult.explanation || 'No payment was collected, so ₹0.00 refund is due.'}</p>
+                    <button
+                      onClick={() => setCancelModalOpen(false)}
+                      className="mt-2 px-4 py-1.5 bg-slate-800 text-white text-xs font-bold rounded-xl cursor-pointer"
+                    >
+                      Close
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : cancelQuote && !cancelQuote.eligible ? (
+              <div className="p-4 bg-rose-50 rounded-2xl border border-rose-200 space-y-3 text-xs">
+                <div className="flex items-center gap-2 text-rose-800 font-bold text-sm">
+                  <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+                  <span>Cancellation Not Available</span>
+                </div>
+                <p className="text-rose-900 leading-relaxed">
+                  {cancelQuote.reason || 'Per Campus Basket cancellation rules, orders cannot be cancelled once provider acceptance or preparation has begun.'}
+                </p>
+                <div className="pt-2 flex justify-end">
+                  <button
+                    onClick={() => setCancelModalOpen(false)}
+                    className="px-4 py-1.5 bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    Understood / Keep Order
+                  </button>
+                </div>
+              </div>
+            ) : cancelQuote && cancelQuote.eligible ? (
               <div className="space-y-3 text-xs">
-                {/* Policy preview notice */}
-                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 space-y-1">
-                  <div className="font-bold">Refund Policy for this Cancellation:</div>
-                  {isPrepaid && (
-                    <p>Order has not been accepted by provider yet. Your full payment of <strong>₹{totalAmount.toFixed(2)}</strong> will be refunded.</p>
-                  )}
-                  {isCod && !isCodWithAdvance && (
-                    <p>This is a standard COD order with zero advance. No payment was collected, so no refund is applicable.</p>
-                  )}
-                  {isCodWithAdvance && (
-                    <p>Your online advance of <strong>₹{advancePaid.toFixed(2)}</strong> will be refunded. Doorstep COD cash (₹{codCashDue.toFixed(2)}) was never paid and will not be refunded.</p>
-                  )}
+                {/* Cancellation Refund Calculation */}
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <div className="font-bold text-slate-800 text-xs uppercase tracking-wider border-b border-slate-200/70 pb-1.5">
+                    Cancellation Refund Calculation
+                  </div>
+                  <div className="space-y-1 text-slate-600">
+                    <div className="flex justify-between">
+                      <span>Order Amount:</span>
+                      <span className="font-mono font-medium text-slate-800">₹{Number(cancelQuote.calculation.orderAmount).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Amount Actually Paid Online:</span>
+                      <span className="font-mono font-medium text-emerald-700">₹{Number(cancelQuote.calculation.amountActuallyPaid).toFixed(2)}</span>
+                    </div>
+                    {Number(cancelQuote.calculation.codAmountDue) > 0 && (
+                      <div className="flex justify-between text-amber-800">
+                        <span>COD Amount (Unpaid):</span>
+                        <span className="font-mono">₹{Number(cancelQuote.calculation.codAmountDue).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {Number(cancelQuote.calculation.nonRefundableAmount) > 0 && (
+                      <div className="flex justify-between text-rose-600">
+                        <span>Non-refundable Amount:</span>
+                        <span className="font-mono">-₹{Number(cancelQuote.calculation.nonRefundableAmount).toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="pt-1.5 border-t border-slate-200 flex justify-between font-bold text-slate-900 text-sm">
+                      <span>Refund Eligible:</span>
+                      <span className="font-mono text-emerald-700 font-black">
+                        ₹{Number(cancelQuote.calculation.refundEligible).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Refund Method Radio Options (Only if refund > 0) */}
+                {Number(cancelQuote.calculation.refundEligible) > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-700 block">Select Refund Method *</label>
+                    <div className="space-y-2">
+                      <label
+                        className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition ${
+                          cancelRefundMethod === 'CAMPUS_BASKET_WALLET'
+                            ? 'bg-emerald-50 border-emerald-400 text-emerald-950 ring-1 ring-emerald-400'
+                            : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="cancelRefundMethod"
+                          value="CAMPUS_BASKET_WALLET"
+                          checked={cancelRefundMethod === 'CAMPUS_BASKET_WALLET'}
+                          onChange={() => setCancelRefundMethod('CAMPUS_BASKET_WALLET')}
+                          className="mt-0.5 accent-emerald-600"
+                        />
+                        <div className="flex-1">
+                          <div className="font-bold flex items-center justify-between">
+                            <span>Campus Basket Wallet</span>
+                            <span className="text-[10px] font-black bg-emerald-200/80 text-emerald-900 px-2 py-0.5 rounded-md">
+                              Instant
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Eligible refund credited immediately after cancellation confirmed.
+                          </p>
+                        </div>
+                      </label>
+
+                      <label
+                        className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition ${
+                          cancelRefundMethod === 'ORIGINAL_PAYMENT'
+                            ? 'bg-blue-50 border-blue-400 text-blue-950 ring-1 ring-blue-400'
+                            : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="cancelRefundMethod"
+                          value="ORIGINAL_PAYMENT"
+                          checked={cancelRefundMethod === 'ORIGINAL_PAYMENT'}
+                          onChange={() => setCancelRefundMethod('ORIGINAL_PAYMENT')}
+                          className="mt-0.5 accent-blue-600"
+                        />
+                        <div className="flex-1">
+                          <div className="font-bold flex items-center justify-between">
+                            <span>Original Payment Method</span>
+                            <span className="text-[10px] font-bold bg-slate-200 text-slate-800 px-2 py-0.5 rounded-md">
+                              3–5 business days
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Sent back through original payment gateway or bank account.
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {/* Cancellation Review Card */}
+                <div className="p-3 bg-slate-100 rounded-xl border border-slate-200 space-y-1 text-[11px]">
+                  <div className="font-bold text-slate-800 uppercase tracking-wider text-[10px]">Review Cancellation</div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Cancellation:</span>
+                    <span className="font-semibold text-emerald-700">Eligible</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Refund Eligible:</span>
+                    <span className="font-mono font-bold text-slate-900">₹{Number(cancelQuote.calculation.refundEligible).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Refund Method:</span>
+                    <span className="font-semibold text-slate-800">{cancelRefundMethod === 'CAMPUS_BASKET_WALLET' ? 'Campus Basket Wallet' : 'Original Payment Method'}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Refund Speed:</span>
+                    <span className="font-bold text-emerald-700">{cancelRefundMethod === 'CAMPUS_BASKET_WALLET' ? 'Instant' : '3–5 business days'}</span>
+                  </div>
                 </div>
 
                 <div>
@@ -1836,20 +2349,20 @@ export default function OrderTrackClient() {
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                   <button
                     onClick={() => setCancelModalOpen(false)}
-                    className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                    className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
                   >
                     Keep Order
                   </button>
                   <button
                     onClick={handleCancelOrder}
                     disabled={cancelling}
-                    className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition disabled:opacity-50"
+                    className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition disabled:opacity-50 cursor-pointer shadow-xs"
                   >
                     {cancelling ? 'Cancelling...' : 'Confirm Cancellation'}
                   </button>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       )}
@@ -2222,143 +2735,270 @@ export default function OrderTrackClient() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Request Product Return &amp; Refund</h3>
-                <p className="text-[11px] text-slate-500">Order #{order.orderNumber} • Requires Admin Approval</p>
+                <p className="text-[11px] text-slate-500">Order #{order.orderNumber} • Policy &amp; Settlement Evaluation</p>
               </div>
               <button onClick={() => setReturnModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmitReturn} className="space-y-4 text-xs">
-              {/* Return Category Selector */}
-              <div>
-                <label className="font-bold text-slate-800 block mb-1.5">Choose Return Reason Category *</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {returnQuoteLoading ? (
+              <div className="py-8 text-center space-y-3">
+                <div className="w-8 h-8 border-3 border-amber-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                <p className="text-xs font-semibold text-slate-600">Evaluating return eligibility &amp; calculating refund...</p>
+              </div>
+            ) : returnQuote && !returnQuote.eligible ? (
+              <div className="p-4 bg-rose-50 rounded-2xl border border-rose-200 space-y-3 text-xs">
+                <div className="flex items-center gap-2 text-rose-800 font-bold text-sm">
+                  <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+                  <span>Return Not Available</span>
+                </div>
+                <p className="text-rose-900 leading-relaxed">
+                  {returnQuote.reason || 'This order or product is not eligible for return under current Campus Basket return rules.'}
+                </p>
+                <div className="pt-2 flex justify-end">
                   <button
-                    type="button"
-                    onClick={() => setReturnReasonType('PRODUCT_ISSUE')}
-                    className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
-                      returnReasonType === 'PRODUCT_ISSUE'
-                        ? 'bg-emerald-50 border-emerald-500 text-emerald-950 ring-1 ring-emerald-500'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
-                    }`}
+                    onClick={() => setReturnModalOpen(false)}
+                    className="px-4 py-1.5 bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold rounded-xl cursor-pointer"
                   >
-                    <div className="font-bold text-xs flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-600" />
-                      <span>Product Related Issue</span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Defective, damaged, spoiled, or incorrect item received.
-                    </p>
-                    <div className="mt-2 text-[10px] font-bold text-emerald-700 bg-white/80 px-2 py-0.5 rounded border border-emerald-200 inline-block">
-                      100% Full Refund (₹0 Fee)
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setReturnReasonType('MIND_CHANGE')}
-                    className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
-                      returnReasonType === 'MIND_CHANGE'
-                        ? 'bg-indigo-50 border-indigo-500 text-indigo-950 ring-1 ring-indigo-500'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
-                    }`}
-                  >
-                    <div className="font-bold text-xs flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-indigo-600" />
-                      <span>Customer Mind Change</span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Decided not to keep it / ordered by mistake.
-                    </p>
-                    <div className="mt-2 text-[10px] font-bold text-indigo-700 bg-white/80 px-2 py-0.5 rounded border border-indigo-200 inline-block">
-                      Delivery Charge Deducted (-₹15)
-                    </div>
+                    Close
                   </button>
                 </div>
               </div>
+            ) : returnQuote && returnQuote.eligible ? (
+              <form onSubmit={handleSubmitReturn} className="space-y-4 text-xs">
+                {/* Return Category Selector */}
+                <div>
+                  <label className="font-bold text-slate-800 block mb-1.5">Choose Return Reason Category *</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => handleChangeReturnReasonType('PRODUCT_ISSUE')}
+                      className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                        returnReasonType === 'PRODUCT_ISSUE'
+                          ? 'bg-emerald-50 border-emerald-500 text-emerald-950 ring-1 ring-emerald-500'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="font-bold text-xs flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                        <span>Product Related Issue</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Defective, damaged, spoiled, or incorrect item received.
+                      </p>
+                      <div className="mt-2 text-[10px] font-bold text-emerald-700 bg-white/80 px-2 py-0.5 rounded border border-emerald-200 inline-block">
+                        100% Full Refund (₹0 Fee)
+                      </div>
+                    </button>
 
-              {/* Dynamic Live Refund Calculator */}
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                <div className="font-bold text-slate-700 text-[11px] uppercase tracking-wider">
-                  Live Refund Amount Estimate:
+                    <button
+                      type="button"
+                      onClick={() => handleChangeReturnReasonType('MIND_CHANGE')}
+                      className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                        returnReasonType === 'MIND_CHANGE'
+                          ? 'bg-indigo-50 border-indigo-500 text-indigo-950 ring-1 ring-indigo-500'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="font-bold text-xs flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                        <span>Customer Mind Change</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Decided not to keep it / ordered by mistake.
+                      </p>
+                      <div className="mt-2 text-[10px] font-bold text-indigo-700 bg-white/80 px-2 py-0.5 rounded border border-indigo-200 inline-block">
+                        Delivery Charge Deducted (-₹15)
+                      </div>
+                    </button>
+                  </div>
                 </div>
-                <div className="space-y-1 text-xs">
-                  <div className="flex justify-between text-slate-600">
-                    <span>Eligible Product Value:</span>
-                    <span className="font-mono">₹{Number(order.subtotal || totalAmount).toFixed(2)}</span>
+
+                {/* Return Refund Calculation (Section 5) */}
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <div className="font-bold text-slate-800 text-xs uppercase tracking-wider border-b border-slate-200/70 pb-1.5">
+                    Return Refund Calculation
                   </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>Return Pickup Delivery Fee:</span>
-                    <span className={`font-mono font-bold ${returnReasonType === 'MIND_CHANGE' ? 'text-rose-600' : 'text-emerald-700'}`}>
-                      {returnReasonType === 'MIND_CHANGE' ? '-₹15.00' : '₹0.00 (Waived for Defect)'}
-                    </span>
-                  </div>
-                  <div className="pt-1.5 border-t border-slate-200 flex justify-between font-black text-slate-900 text-sm">
-                    <span>Net Estimated Refund:</span>
-                    <span className="font-mono text-emerald-700 text-base">
-                      ₹{Math.max(0, Number(order.subtotal || totalAmount) - (returnReasonType === 'MIND_CHANGE' ? 15 : 0)).toFixed(2)}
-                    </span>
+                  <div className="space-y-1 text-slate-600">
+                    <div className="flex justify-between">
+                      <span>Original Order Amount:</span>
+                      <span className="font-mono font-medium text-slate-800">₹{Number(returnQuote.calculation.originalOrderAmount).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Amount Actually Paid:</span>
+                      <span className="font-mono font-medium text-emerald-700">₹{Number(returnQuote.calculation.amountActuallyPaid).toFixed(2)}</span>
+                    </div>
+                    {Number(returnQuote.calculation.codAmountDue) > 0 && (
+                      <div className="flex justify-between text-amber-800">
+                        <span>COD Amount (Unpaid):</span>
+                        <span className="font-mono">₹{Number(returnQuote.calculation.codAmountDue).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {Number(returnQuote.calculation.nonRefundableAmount) > 0 && (
+                      <div className="flex justify-between text-rose-600">
+                        <span>Non-refundable Amount:</span>
+                        <span className="font-mono">-₹{Number(returnQuote.calculation.nonRefundableAmount).toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="pt-1.5 border-t border-slate-200 flex justify-between font-bold text-slate-900 text-sm">
+                      <span>Eligible Return Refund:</span>
+                      <span className="font-mono text-emerald-700 font-black">
+                        ₹{Number(returnQuote.calculation.eligibleReturnRefund).toFixed(2)}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Reason Details */}
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">
-                  {returnReasonType === 'PRODUCT_ISSUE' ? 'Describe the Issue with Product *' : 'Reason for Changing Mind *'}
-                </label>
-                <textarea
-                  value={returnReasonDetails}
-                  onChange={(e) => setReturnReasonDetails(e.target.value)}
-                  placeholder={
-                    returnReasonType === 'PRODUCT_ISSUE'
-                      ? 'e.g. The item arrived expired/broken seal. Please inspect...'
-                      : 'e.g. I accidentally ordered duplicate stationery notebooks...'
-                  }
-                  rows={2}
-                  className="w-full border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#4F9D2F]"
-                  required
-                />
-              </div>
+                {/* Refund Method Selection (Section 5 & 11) */}
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-700 block">Select Refund Method *</label>
+                  <div className="space-y-2">
+                    <label
+                      className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition ${
+                        returnRefundMethod === 'CAMPUS_BASKET_WALLET'
+                          ? 'bg-emerald-50 border-emerald-400 text-emerald-950 ring-1 ring-emerald-400'
+                          : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="returnRefundMethod"
+                        value="CAMPUS_BASKET_WALLET"
+                        checked={returnRefundMethod === 'CAMPUS_BASKET_WALLET'}
+                        onChange={() => setReturnRefundMethod('CAMPUS_BASKET_WALLET')}
+                        className="mt-0.5 accent-emerald-600"
+                      />
+                      <div className="flex-1">
+                        <div className="font-bold flex items-center justify-between">
+                          <span>Campus Basket Wallet</span>
+                          <span className="text-[10px] font-black bg-emerald-200/80 text-emerald-900 px-2 py-0.5 rounded-md">
+                            Instant after pickup
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Campus Basket Wallet — Refund credited after successful pickup.
+                        </p>
+                      </div>
+                    </label>
 
-              {/* Proof Photo Upload / Link (Mandatory for Product Issue) */}
-              {returnReasonType === 'PRODUCT_ISSUE' && (
-                <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 space-y-2">
-                  <label className="font-bold text-amber-900 block text-xs flex items-center gap-1.5">
-                    <Camera className="w-3.5 h-3.5 text-amber-700" />
-                    <span>Proof Image / Photo URL *</span>
+                    <label
+                      className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition ${
+                        returnRefundMethod === 'ORIGINAL_PAYMENT'
+                          ? 'bg-blue-50 border-blue-400 text-blue-950 ring-1 ring-blue-400'
+                          : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="returnRefundMethod"
+                        value="ORIGINAL_PAYMENT"
+                        checked={returnRefundMethod === 'ORIGINAL_PAYMENT'}
+                        onChange={() => setReturnRefundMethod('ORIGINAL_PAYMENT')}
+                        className="mt-0.5 accent-blue-600"
+                      />
+                      <div className="flex-1">
+                        <div className="font-bold flex items-center justify-between">
+                          <span>Original Payment Method</span>
+                          <span className="text-[10px] font-bold bg-slate-200 text-slate-800 px-2 py-0.5 rounded-md">
+                            3–5 business days
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Sent back through original payment gateway or bank account after pickup.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Critical Pickup Trigger Notice (Section 6 & 8) */}
+                <div className="p-3 bg-amber-50 rounded-xl border border-amber-300 text-amber-950 flex items-start gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                  <div className="text-[11px] leading-relaxed">
+                    <strong>Pickup Trigger:</strong> Submitting this request does <strong>NOT</strong> credit the refund yet.
+                    Per Campus Basket policy, refund is credited only <strong>after</strong> the campus runner physically collects the item and verifies your 6-digit OTP at your room door.
+                  </div>
+                </div>
+
+                {/* Review Return (Section 12) */}
+                <div className="p-3 bg-slate-100 rounded-xl border border-slate-200 space-y-1 text-[11px]">
+                  <div className="font-bold text-slate-800 uppercase tracking-wider text-[10px]">Review Return</div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Return:</span>
+                    <span className="font-semibold text-emerald-700">Eligible</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Refund Eligible:</span>
+                    <span className="font-mono font-bold text-slate-900">₹{Number(returnQuote.calculation.eligibleReturnRefund).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Refund Method:</span>
+                    <span className="font-semibold text-slate-800">{returnRefundMethod === 'CAMPUS_BASKET_WALLET' ? 'Campus Basket Wallet' : 'Original Payment Method'}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Refund Trigger:</span>
+                    <span className="font-bold text-amber-800">After successful return pickup</span>
+                  </div>
+                </div>
+
+                {/* Reason Details */}
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    {returnReasonType === 'PRODUCT_ISSUE' ? 'Describe the Issue with Product *' : 'Reason for Changing Mind *'}
                   </label>
-                  <input
-                    type="text"
-                    value={returnProofImageUrl}
-                    onChange={(e) => setReturnProofImageUrl(e.target.value)}
-                    placeholder="e.g. https://drive.google.com/... or image URL showing the defect"
-                    className="w-full border border-amber-200 rounded-xl p-2 text-xs text-slate-800 bg-white"
+                  <textarea
+                    value={returnReasonDetails}
+                    onChange={(e) => setReturnReasonDetails(e.target.value)}
+                    placeholder={
+                      returnReasonType === 'PRODUCT_ISSUE'
+                        ? 'e.g. The item arrived expired/broken seal. Please inspect...'
+                        : 'e.g. I accidentally ordered duplicate stationery notebooks...'
+                    }
+                    rows={2}
+                    className="w-full border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#4F9D2F]"
+                    required
                   />
-                  <p className="text-[10px] text-amber-800">
-                    💡 Per platform policy, product defect claims must be verified with proof before Admin approval.
-                  </p>
                 </div>
-              )}
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setReturnModalOpen(false)}
-                  className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={returnSubmitting}
-                  className="px-4 py-1.5 bg-[#4F9D2F] hover:bg-[#3d7c24] text-white text-xs font-bold rounded-xl transition disabled:opacity-50 cursor-pointer shadow-xs"
-                >
-                  {returnSubmitting ? 'Submitting...' : 'Submit Return Request'}
-                </button>
-              </div>
-            </form>
+                {/* Proof Photo Upload / Link (Mandatory for Product Issue) */}
+                {returnReasonType === 'PRODUCT_ISSUE' && (
+                  <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 space-y-2">
+                    <label className="font-bold text-amber-900 block text-xs flex items-center gap-1.5">
+                      <Camera className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Proof Image / Photo URL *</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={returnProofImageUrl}
+                      onChange={(e) => setReturnProofImageUrl(e.target.value)}
+                      placeholder="e.g. https://drive.google.com/... or image URL showing the defect"
+                      className="w-full border border-amber-200 rounded-xl p-2 text-xs text-slate-800 bg-white"
+                    />
+                    <p className="text-[10px] text-amber-800">
+                      💡 Per platform policy, product defect claims must be verified with proof before Admin approval.
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setReturnModalOpen(false)}
+                    className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={returnSubmitting}
+                    className="px-4 py-1.5 bg-[#4F9D2F] hover:bg-[#3d7c24] text-white text-xs font-bold rounded-xl transition disabled:opacity-50 cursor-pointer shadow-xs"
+                  >
+                    {returnSubmitting ? 'Submitting...' : 'Confirm Return'}
+                  </button>
+                </div>
+              </form>
+            ) : null}
           </div>
         </div>
       )}

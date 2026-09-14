@@ -417,7 +417,7 @@ const fallbackHandlers: Record<string, any> = {
     findUnique: async (args: any) => {
       const userId = args?.where?.userId;
       const id = args?.where?.id;
-      const user = fallbackUsers.find((u: any) => u.provider && (u.provider.userId === userId || u.provider.id === id));
+      const user = fallbackUsers.find((u: any) => u.provider && (u.provider.userId === userId || u.provider.id === id || (id && u.id === id)));
       if (!user?.provider) return null;
       return JSON.parse(JSON.stringify({
         ...user.provider,
@@ -427,7 +427,7 @@ const fallbackHandlers: Record<string, any> = {
     findFirst: async (args: any) => {
       const userId = args?.where?.userId;
       const id = args?.where?.id;
-      const user = fallbackUsers.find((u: any) => u.provider && (u.provider.userId === userId || u.provider.id === id));
+      const user = fallbackUsers.find((u: any) => u.provider && (u.provider.userId === userId || u.provider.id === id || (id && u.id === id)));
       if (!user?.provider) return null;
       return JSON.parse(JSON.stringify({
         ...user.provider,
@@ -444,21 +444,42 @@ const fallbackHandlers: Record<string, any> = {
     count: async () => fallbackUsers.filter((u: any) => u.provider).length,
     create: async (args: any) => {
       const newSp = {
-        id: `prov_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        userId: args.data.userId,
+        id: args.data.id || `prov_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        userId: args.data.userId || `user_prov_${Date.now()}`,
         fullName: args.data.fullName,
-        mobileNumber: args.data.mobileNumber,
-        serviceCategory: args.data.serviceCategory,
+        mobileNumber: args.data.mobileNumber || '9876543210',
+        serviceCategory: args.data.serviceCategory || 'FOOD',
         assignedZones: args.data.assignedZones || 'ALL',
         activeStatus: args.data.activeStatus ?? true,
         autoAssignDelivery: args.data.autoAssignDelivery ?? false,
         plainPassword: args.data.plainPassword || null,
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
+        ...args.data
       };
-      const user = fallbackUsers.find((u) => u.id === args.data.userId);
-      if (user) (user as any).provider = newSp;
+      let user = fallbackUsers.find((u) => u.id === newSp.userId);
+      if (!user) {
+        user = {
+          id: newSp.userId,
+          email: `${newSp.fullName.toLowerCase().replace(/\s+/g, '')}@campusbasket.in`,
+          role: 'SERVICE_PROVIDER',
+          isActive: true,
+          provider: newSp
+        } as any;
+        fallbackUsers.push(user as any);
+      } else {
+        (user as any).provider = newSp;
+      }
       return JSON.parse(JSON.stringify(newSp));
+    },
+    upsert: async (args: any) => {
+      const id = args?.where?.id;
+      const existing = fallbackUsers.find((u: any) => u.provider && (u.provider.id === id || (args?.where?.userId && u.provider.userId === args.where.userId)));
+      if (existing?.provider) {
+        return fallbackHandlers.serviceProvider.update({ where: { id: existing.provider.id }, data: args.update });
+      } else {
+        return fallbackHandlers.serviceProvider.create({ data: { id, ...args.create } });
+      }
     },
     update: async (args: any) => {
       const id = args?.where?.id;
@@ -477,6 +498,16 @@ const fallbackHandlers: Record<string, any> = {
       }
       return { id };
     }
+  },
+  provider: {
+    findUnique: async (args: any) => fallbackHandlers.serviceProvider.findUnique(args),
+    findFirst: async (args: any) => fallbackHandlers.serviceProvider.findFirst(args),
+    findMany: async (args: any) => fallbackHandlers.serviceProvider.findMany(args),
+    count: async (args: any) => fallbackHandlers.serviceProvider.count(args),
+    create: async (args: any) => fallbackHandlers.serviceProvider.create(args),
+    upsert: async (args: any) => fallbackHandlers.serviceProvider.upsert(args),
+    update: async (args: any) => fallbackHandlers.serviceProvider.update(args),
+    delete: async (args: any) => fallbackHandlers.serviceProvider.delete(args)
   },
   deliveryBoy: {
     findUnique: async (args: any) => {
@@ -890,9 +921,11 @@ const fallbackHandlers: Record<string, any> = {
       const take = args?.take || prods.length;
       const mapped = prods.slice(skip, skip + take).map((p) => {
         const cat = fallbackCategories.find((c) => c.id === p.categoryId);
+        const provUser = fallbackUsers.find((u: any) => u.provider?.id === p.providerId);
         return {
           ...p,
           category: cat || null,
+          provider: provUser?.provider ? { id: provUser.provider.id, fullName: provUser.provider.fullName, businessName: provUser.provider.fullName, mobileNumber: provUser.provider.mobileNumber, serviceCategory: provUser.provider.serviceCategory } : (p.provider || null),
           images: p.images || [],
           reviews: (p as any).reviews || []
         };
@@ -905,9 +938,11 @@ const fallbackHandlers: Record<string, any> = {
       const p = fallbackProducts.find((item) => item.slug === slug || item.id === id);
       if (!p) return null;
       const cat = fallbackCategories.find((c) => c.id === p.categoryId);
+      const provUser = fallbackUsers.find((u: any) => u.provider?.id === p.providerId);
       return JSON.parse(JSON.stringify({
         ...p,
         category: cat || null,
+        provider: provUser?.provider ? { id: provUser.provider.id, fullName: provUser.provider.fullName, businessName: provUser.provider.fullName, mobileNumber: provUser.provider.mobileNumber, serviceCategory: provUser.provider.serviceCategory } : (p.provider || null),
         images: p.images || [],
         reviews: (p as any).reviews || []
       }));
@@ -916,10 +951,18 @@ const fallbackHandlers: Record<string, any> = {
       const prods = await fallbackHandlers.product.findMany(args);
       return prods[0] || null;
     },
-    upsert: async (args: any) => args.create,
+    upsert: async (args: any) => {
+      const id = args?.where?.id;
+      const existing = fallbackProducts.find((p: any) => (id && p.id === id) || (args?.where?.slug && p.slug === args.where.slug));
+      if (existing) {
+        return fallbackHandlers.product.update({ where: { id: existing.id }, data: args.update });
+      } else {
+        return fallbackHandlers.product.create({ data: { id, ...args.create } });
+      }
+    },
     create: async (args: any) => {
       const prodData = args?.data || {};
-      const newId = `prod_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+      const newId = prodData.id || `prod_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
       const priceNum = Number(prodData.price) || 0;
       const discountNum = prodData.discountPrice ? Number(prodData.discountPrice) : null;
       const discPct =
@@ -952,6 +995,10 @@ const fallbackHandlers: Record<string, any> = {
         isPopular: Boolean(prodData.isPopular),
         availableToday: prodData.availableToday !== undefined ? Boolean(prodData.availableToday) : true,
         providerId: prodData.providerId || null,
+        providerShareType: prodData.providerShareType || 'FIXED',
+        providerShareValue: prodData.providerShareValue !== undefined ? Number(prodData.providerShareValue) : 0,
+        providerAmount: prodData.providerAmount !== undefined ? Number(prodData.providerAmount) : (prodData.providerShareType === 'PERCENTAGE' ? Math.round((priceNum * (Number(prodData.providerShareValue || 0) / 100)) * 100) / 100 : Number(prodData.providerShareValue || 0)),
+        cbGrossShare: prodData.cbGrossShare !== undefined ? Number(prodData.cbGrossShare) : Math.max(0, priceNum - (prodData.providerAmount !== undefined ? Number(prodData.providerAmount) : (prodData.providerShareType === 'PERCENTAGE' ? Math.round((priceNum * (Number(prodData.providerShareValue || 0) / 100)) * 100) / 100 : Number(prodData.providerShareValue || 0)))),
         approvalStatus: prodData.approvalStatus || 'APPROVED',
         approvedBy: prodData.approvedBy || 'ADMIN',
         approvedAt: new Date(),
@@ -1103,6 +1150,10 @@ const fallbackHandlers: Record<string, any> = {
           commissionRate: commRate,
           commissionAmount: commAmt,
           providerPayable: payable,
+          providerShareType: o.providerShareType || 'FIXED',
+          providerShareValue: o.providerShareValue !== undefined ? Number(o.providerShareValue) : null,
+          providerAmount: o.providerAmount !== undefined ? Number(o.providerAmount) : payable,
+          cbGrossShare: o.cbGrossShare !== undefined ? Number(o.cbGrossShare) : commAmt,
           student: studentUser?.student
             ? {
                 id: studentUser.student.id || studentUser.id || o.studentId,
@@ -1220,9 +1271,18 @@ const fallbackHandlers: Record<string, any> = {
         })()
       }));
     },
+    upsert: async (args: any) => {
+      const id = args?.where?.id;
+      const existing = persistentOrders.find((o: any) => (id && o.id === id) || (args?.where?.orderNumber && o.orderNumber === args.where.orderNumber));
+      if (existing) {
+        return fallbackHandlers.order.update({ where: { id: existing.id }, data: args.update });
+      } else {
+        return fallbackHandlers.order.create({ data: { id, ...args.create } });
+      }
+    },
     create: async (args: any) => {
       const itemsData = args.data.items?.create || [];
-      const orderId = `ord_${Date.now()}`;
+      const orderId = args.data.id || `ord_${Date.now()}`;
       const totalAmount = args.data.totalAmount || 100;
       const commRate = args.data.commissionRate !== undefined ? args.data.commissionRate : 5.0;
       const commAmt = args.data.commissionAmount !== undefined ? args.data.commissionAmount : Math.round(totalAmount * (commRate / 100) * 100) / 100;
@@ -1247,6 +1307,10 @@ const fallbackHandlers: Record<string, any> = {
         commissionRate: commRate,
         commissionAmount: commAmt,
         providerPayable: payable,
+        providerShareType: args.data.providerShareType || 'FIXED',
+        providerShareValue: args.data.providerShareValue !== undefined ? Number(args.data.providerShareValue) : null,
+        providerAmount: args.data.providerAmount !== undefined ? Number(args.data.providerAmount) : payable,
+        cbGrossShare: args.data.cbGrossShare !== undefined ? Number(args.data.cbGrossShare) : commAmt,
         hallName: args.data.hallName || 'Hall 11',
         hallNumber: args.data.hallNumber || null,
         roomNumber: args.data.roomNumber || '123',
@@ -1256,10 +1320,16 @@ const fallbackHandlers: Record<string, any> = {
         deliveredAt: args.data.deliveredAt || null,
         items: itemsData.map((i: any, idx: number) => ({
           id: `item_${Date.now()}_${idx}`,
+          productId: i.productId || `prod_${idx}`,
           productName: i.productName || 'Product Item',
           quantity: i.quantity || 1,
           unitPrice: i.unitPrice || 50,
-          totalPrice: i.totalPrice || 50
+          totalPrice: i.totalPrice || 50,
+          providerId: i.providerId || args.data.providerId || null,
+          providerShareType: i.providerShareType || args.data.providerShareType || null,
+          providerShareValue: i.providerShareValue !== undefined ? Number(i.providerShareValue) : null,
+          providerAmount: i.providerAmount !== undefined ? Number(i.providerAmount) : null,
+          cbGrossShare: i.cbGrossShare !== undefined ? Number(i.cbGrossShare) : null
         })),
         statusHistory: [
           {
@@ -2547,26 +2617,58 @@ const fallbackHandlers: Record<string, any> = {
   wallet: {
     findUnique: async (args: any) => {
       const studentId = args?.where?.studentId;
+      const providerId = args?.where?.providerId;
       const id = args?.where?.id;
-      const w = persistentWallets.find(item => (studentId && item.studentId === studentId) || (id && item.id === id));
+      const w = persistentWallets.find(item => 
+        (studentId && item.studentId === studentId) || 
+        (providerId && item.providerId === providerId) ||
+        (id && item.id === id)
+      );
       if (!w) return null;
-      const txns = persistentWalletTransactions.filter(t => t.walletId === w.id || t.studentId === w.studentId);
-      return JSON.parse(JSON.stringify({ ...w, transactions: txns }));
+      const txns = persistentWalletTransactions.filter(t => 
+        t.walletId === w.id || 
+        (w.studentId && t.studentId === w.studentId) ||
+        (w.providerId && t.providerId === w.providerId)
+      );
+      return JSON.parse(JSON.stringify({ ...w, balance: Number(w.balance || 0), transactions: txns }));
     },
     findFirst: async (args: any) => {
       const studentId = args?.where?.studentId;
+      const providerId = args?.where?.providerId;
       const id = args?.where?.id;
-      const w = persistentWallets.find(item => (studentId && item.studentId === studentId) || (id && item.id === id));
+      const w = persistentWallets.find(item => 
+        (studentId && item.studentId === studentId) || 
+        (providerId && item.providerId === providerId) ||
+        (id && item.id === id)
+      );
       if (!w) return null;
-      const txns = persistentWalletTransactions.filter(t => t.walletId === w.id || t.studentId === w.studentId);
-      return JSON.parse(JSON.stringify({ ...w, transactions: txns }));
+      const txns = persistentWalletTransactions.filter(t => 
+        t.walletId === w.id || 
+        (w.studentId && t.studentId === w.studentId) ||
+        (w.providerId && t.providerId === w.providerId)
+      );
+      return JSON.parse(JSON.stringify({ ...w, balance: Number(w.balance || 0), transactions: txns }));
+    },
+    findMany: async (args?: any) => {
+      let list = [...persistentWallets];
+      if (args?.where?.providerId?.in && Array.isArray(args.where.providerId.in)) {
+        list = list.filter(w => args.where.providerId.in.includes(w.providerId));
+      } else if (args?.where?.providerId) {
+        list = list.filter(w => w.providerId === args.where.providerId);
+      }
+      if (args?.where?.studentId?.in && Array.isArray(args.where.studentId.in)) {
+        list = list.filter(w => args.where.studentId.in.includes(w.studentId));
+      } else if (args?.where?.studentId) {
+        list = list.filter(w => w.studentId === args.where.studentId);
+      }
+      return JSON.parse(JSON.stringify(list.map(w => ({ ...w, balance: Number(w.balance || 0) }))));
     },
     create: async (args: any) => {
       const newW = {
         id: args.data?.id || `wlt_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
         createdAt: new Date(),
         updatedAt: new Date(),
-        balance: 0.00,
+        balance: Number(args.data?.balance || 0),
         currency: 'INR',
         status: 'ACTIVE',
         ...args.data
@@ -2578,9 +2680,27 @@ const fallbackHandlers: Record<string, any> = {
     update: async (args: any) => {
       const id = args?.where?.id;
       const studentId = args?.where?.studentId;
-      const w = persistentWallets.find(item => (id && item.id === id) || (studentId && item.studentId === studentId));
+      const providerId = args?.where?.providerId;
+      const w = persistentWallets.find(item => 
+        (id && item.id === id) || 
+        (studentId && item.studentId === studentId) ||
+        (providerId && item.providerId === providerId)
+      );
       if (w) {
-        Object.assign(w, args.data, { updatedAt: new Date() });
+        let newBalance = Number(w.balance || 0);
+        if (args.data.balance !== undefined) {
+          if (typeof args.data.balance === 'object' && args.data.balance.increment !== undefined) {
+            newBalance += Number(args.data.balance.increment);
+          } else if (typeof args.data.balance === 'object' && args.data.balance.decrement !== undefined) {
+            newBalance -= Number(args.data.balance.decrement);
+          } else {
+            newBalance = Number(args.data.balance);
+          }
+        }
+        Object.assign(w, args.data, {
+          balance: Math.round(newBalance * 100) / 100,
+          updatedAt: new Date()
+        });
         saveList('mock_wallets.json', persistentWallets);
         return JSON.parse(JSON.stringify(w));
       }
@@ -2591,6 +2711,7 @@ const fallbackHandlers: Record<string, any> = {
     findMany: async (args?: any) => {
       let list = [...persistentWalletTransactions];
       if (args?.where?.studentId) list = list.filter(t => t.studentId === args.where.studentId);
+      if (args?.where?.providerId) list = list.filter(t => t.providerId === args.where.providerId);
       if (args?.where?.walletId) list = list.filter(t => t.walletId === args.where.walletId);
       if (args?.where?.orderId) list = list.filter(t => t.orderId === args.where.orderId);
       return JSON.parse(JSON.stringify(list));
@@ -2600,6 +2721,7 @@ const fallbackHandlers: Record<string, any> = {
         if (args?.where?.transactionId && item.transactionId !== args.where.transactionId) return false;
         if (args?.where?.id && item.id !== args.where.id) return false;
         if (args?.where?.studentId && item.studentId !== args.where.studentId) return false;
+        if (args?.where?.providerId && item.providerId !== args.where.providerId) return false;
         if (args?.where?.orderId && item.orderId !== args.where.orderId) return false;
         if (args?.where?.triggerEvent && item.triggerEvent !== args.where.triggerEvent) return false;
         if (args?.where?.refundType && item.refundType !== args.where.refundType) return false;
@@ -2616,6 +2738,8 @@ const fallbackHandlers: Record<string, any> = {
         id: args.data?.id || `wt_${Date.now()}_${Math.floor(100 + Math.random() * 900)}`,
         createdAt: new Date(),
         status: 'COMPLETED',
+        type: args.data?.type || 'CREDIT',
+        direction: args.data?.direction || args.data?.type || 'CREDIT',
         ...args.data
       };
       persistentWalletTransactions.unshift(newT);

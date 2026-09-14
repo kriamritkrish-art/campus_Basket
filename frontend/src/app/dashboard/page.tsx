@@ -42,8 +42,10 @@ import {
   MessageSquare,
   LifeBuoy,
   Search,
-  Sparkles
+  Sparkles,
+  Store
 } from 'lucide-react';
+import { getOptimizedImageUrl } from '../../lib/imageUtils';
 
 type DashboardTab =
   | 'profile'
@@ -1096,14 +1098,14 @@ function DashboardContent() {
             </div>
 
             {/* Campus Basket Refund & Cancellation Rules — Authoritative Governance */}
-            <div className="bg-slate-50/90 rounded-2xl p-6 border border-slate-200 space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+            <div className="rule-container space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/90 pb-3">
                 <div className="flex items-center gap-2.5">
                   <ShieldCheck className="w-5 h-5 text-[#4F9D2F]" />
                   <h3 className="text-sm font-black text-slate-900 tracking-tight">
                     Campus Basket Refund &amp; Cancellation Rules
                   </h3>
-                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  <span className="rule-badge bg-emerald-100 text-emerald-800 border border-emerald-200">
                     Source of Truth
                   </span>
                 </div>
@@ -1119,13 +1121,13 @@ function DashboardContent() {
               {/* Two Primary Pillars: Cancellation vs Return */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* 1. Cancellation Flow */}
-                <div className="bg-white rounded-xl p-4 border border-slate-200 space-y-3 shadow-xs">
+                <div className="rule-card space-y-3 shadow-xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 font-black text-slate-900 text-xs">
                       <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
                       <span>1. Cancellation Rules (Pre-Acceptance)</span>
                     </div>
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200">
+                    <span className="rule-badge bg-sky-50 text-sky-800 border border-sky-200">
                       Before Vendor Cooking
                     </span>
                   </div>
@@ -1148,13 +1150,13 @@ function DashboardContent() {
                 </div>
 
                 {/* 2. Return Flow */}
-                <div className="bg-white rounded-xl p-4 border border-slate-200 space-y-3 shadow-xs">
+                <div className="rule-card space-y-3 shadow-xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 font-black text-slate-900 text-xs">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                       <span>2. Return Rules &amp; Pickup Trigger</span>
                     </div>
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    <span className="rule-badge bg-emerald-50 text-emerald-800 border border-emerald-200">
                       Physical Pickup Required
                     </span>
                   </div>
@@ -1550,46 +1552,60 @@ function DashboardContent() {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {wishlistProducts.map((p) => (
-                  <div
-                    key={p.id}
-                    className="p-4 rounded-2xl border border-gray-200 bg-white hover:shadow-md transition-all flex flex-col justify-between space-y-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-16 h-16 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center p-1 shrink-0 overflow-hidden">
-                        <img
-                          src={p.primaryImage || 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=300'}
-                          alt={p.name}
-                          className="max-h-full max-w-full object-contain"
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h4 className="text-xs sm:text-sm font-bold text-gray-900 leading-snug line-clamp-1">{p.name}</h4>
-                        <div className="text-xs font-extrabold text-gray-900 mt-1">₹{p.price}</div>
-                        <div className="text-[10px] text-emerald-700 font-semibold">In Stock</div>
-                      </div>
-                    </div>
+                {wishlistProducts.map((p) => {
+                  const wishlistImg = getOptimizedImageUrl(p.primaryImage || p.images?.[0]?.googleDriveUrl);
+                  const provName =
+                    p.providerName ||
+                    p.provider?.businessName ||
+                    p.provider?.fullName ||
+                    (p.category?.name || 'Campus Provider');
 
-                    <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-                      <button
-                        onClick={() => {
-                          addItem(p, 1);
-                          showToast(`"${p.name}" added to basket.`);
-                        }}
-                        className="flex-1 py-2 bg-[#689f38] hover:bg-[#5b8c30] text-white text-xs font-bold rounded-xl transition-colors text-center"
-                      >
-                        Add to Basket
-                      </button>
-                      <button
-                        onClick={() => handleRemoveWishlist(p.id)}
-                        className="p-2 text-gray-400 hover:text-red-600 rounded-xl hover:bg-gray-100 transition-colors"
-                        title="Remove"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                  return (
+                    <div
+                      key={p.id}
+                      className="p-4 rounded-2xl border border-gray-200 bg-white hover:shadow-md transition-all flex flex-col justify-between space-y-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-16 h-16 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center p-1 shrink-0 overflow-hidden">
+                          <img
+                            src={wishlistImg}
+                            alt={p.name}
+                            className="max-h-full max-w-full object-contain product-img-high-res"
+                            loading="lazy"
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-xs sm:text-sm font-bold text-gray-900 leading-snug line-clamp-1">{p.name}</h4>
+                          <div className="flex items-center gap-1 mt-0.5 text-[10.5px] text-slate-600 truncate">
+                            <Store className="w-3 h-3 text-[#4F9D2F] shrink-0" />
+                            <span className="truncate font-medium">{provName}</span>
+                          </div>
+                          <div className="text-xs font-extrabold text-gray-900 mt-1">₹{p.price}</div>
+                          <div className="text-[10px] text-emerald-700 font-semibold">In Stock</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                        <button
+                          onClick={() => {
+                            addItem(p, 1);
+                            showToast(`"${p.name}" added to basket.`);
+                          }}
+                          className="flex-1 py-2 bg-[#689f38] hover:bg-[#5b8c30] text-white text-xs font-bold rounded-xl transition-colors text-center"
+                        >
+                          Add to Basket
+                        </button>
+                        <button
+                          onClick={() => handleRemoveWishlist(p.id)}
+                          className="p-2 text-gray-400 hover:text-red-600 rounded-xl hover:bg-gray-100 transition-colors"
+                          title="Remove"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

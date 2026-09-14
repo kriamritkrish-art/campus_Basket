@@ -1,5 +1,6 @@
 import { prisma } from '../../config/database';
 import { LedgerService } from './LedgerService';
+import { WalletService } from './WalletService';
 
 export class SettlementService {
   /**
@@ -329,6 +330,17 @@ export class SettlementService {
       description: `Provider settlement payout disbursed for ${settlement.settlementNumber}`,
       metadata: { settlementNumber: settlement.settlementNumber, providerId: settlement.providerId }
     });
+
+    // Record Provider Wallet Settlement Payout Debit
+    if (settlement.providerId && Number(settlement.netPayable) > 0) {
+      await WalletService.disburseProviderSettlement({
+        providerId: settlement.providerId,
+        settlementId: settlement.id,
+        amount: Number(settlement.netPayable),
+        referenceId: payoutReference,
+        description: `Provider Settlement Payout: -₹${Number(settlement.netPayable).toFixed(2)} (Ref: ${payoutReference})`
+      }).catch((err) => console.warn('[SettlementService] Wallet settlement payout entry notice:', err));
+    }
 
     return {
       ...updated,

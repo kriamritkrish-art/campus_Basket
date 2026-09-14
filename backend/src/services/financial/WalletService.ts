@@ -285,4 +285,335 @@ export class WalletService {
       newBalance: balanceAfter
     };
   }
+
+  /**
+   * Fetch or initialize provider wallet.
+   */
+  public static async getOrCreateProviderWallet(providerId: string): Promise<any> {
+    if (!providerId) {
+      throw new Error('providerId is required to retrieve or create provider wallet');
+    }
+
+    let wallet = await (prisma as any).wallet.findFirst({
+      where: { providerId },
+      include: {
+        transactions: {
+          orderBy: { createdAt: 'desc' }
+        }
+      }
+    }).catch(() => null);
+
+    if (!wallet) {
+      wallet = await (prisma as any).wallet.create({
+        data: {
+          providerId,
+          balance: 0.00,
+          currency: 'INR',
+          status: 'ACTIVE'
+        },
+        include: {
+          transactions: true
+        }
+      });
+    }
+
+    return wallet;
+  }
+
+  /**
+   * Get provider wallet along with recent ledger transactions.
+   */
+  public static async getProviderWallet(providerId: string): Promise<any> {
+    const wallet = await this.getOrCreateProviderWallet(providerId);
+    const transactions = await (prisma as any).walletTransaction.findMany({
+      where: { providerId },
+      orderBy: { createdAt: 'desc' }
+    }).catch(() => wallet.transactions || []);
+
+    const numBalance = Number(wallet.balance || 0);
+    return {
+      id: wallet.id,
+      providerId: wallet.providerId,
+      balance: numBalance,
+      currency: wallet.currency || 'INR',
+      createdAt: wallet.createdAt,
+      updatedAt: wallet.updatedAt,
+      wallet: {
+        ...wallet,
+        balance: numBalance
+      },
+      transactions: (transactions || []).map((t: any) => ({
+        ...t,
+        amount: Number(t.amount || 0),
+        balanceBefore: Number(t.balanceBefore || 0),
+        balanceAfter: Number(t.balanceAfter || 0)
+      }))
+    };
+  }
+
+  /**
+   * Credit provider wallet when order completes/becomes eligible.
+   */
+  public static async creditProviderOrder(params: {
+    providerId: string;
+    orderId: string;
+    amount: number;
+    description?: string;
+  }): Promise<any> {
+    const { providerId, orderId, amount, description } = params;
+    const numAmount = Math.max(0, Math.round(Number(amount || 0) * 100) / 100);
+    if (!providerId || numAmount <= 0) return null;
+
+    // Check for existing credit for this order
+    const existing = await (prisma as any).walletTransaction.findFirst({
+      where: {
+        providerId,
+        orderId,
+        triggerEvent: 'ORDER_COMPLETED'
+      }
+    }).catch(() => null);
+
+    if (existing) {
+      return { success: true, transaction: existing, alreadyProcessed: true };
+    }
+
+    const wallet = await this.getOrCreateProviderWallet(providerId);
+    const balanceBefore = Number(wallet.balance || 0);
+    const balanceAfter = Math.round((balanceBefore + numAmount) * 100) / 100;
+    const txnSeq = Math.floor(100000 + Math.random() * 900000);
+    const transactionId = `WLT-PRV-${Date.now().toString().slice(-6)}-${txnSeq}`;
+
+    await (prisma as any).wallet.update({
+      where: { id: wallet.id },
+      data: {
+        balance: balanceAfter,
+        updatedAt: new Date()
+      }
+    });
+
+    const transaction = await (prisma as any).walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        providerId,
+        orderId,
+        transactionId,
+        type: 'CREDIT',
+        direction: 'CREDIT',
+        refundType: 'PROVIDER_EARNING',
+        amount: numAmount,
+        balanceBefore,
+        balanceAfter,
+        triggerEvent: 'ORDER_COMPLETED',
+        status: 'COMPLETED',
+        description: description || `Order Completed: Earnings for order #${orderId}`,
+        createdAt: new Date()
+      }
+    });
+
+    return {
+      success: true,
+      wallet,
+      transaction,
+      balanceAfter
+    };
+  }
+
+  /**
+   * Record a return adjustment debit on provider wallet.
+   */
+  public static async adjustProviderReturn(params: {
+    providerId: string;
+    orderId: string;
+    amount: number;
+    description?: string;
+  }): Promise<any> {
+    const { providerId, orderId, amount, description } = params;
+    const numAmount = Math.max(0, Math.round(Number(amount || 0) * 100) / 100);
+    if (!providerId || numAmount <= 0) return null;
+
+    const existing = await (prisma as any).walletTransaction.findFirst({
+      where: {
+        providerId,
+        orderId,
+        triggerEvent: 'RETURN_ADJUSTMENT'
+      }
+    }).catch(() => null);
+
+    if (existing) {
+      return { success: true, transaction: existing, alreadyProcessed: true };
+    }
+
+    const wallet = await this.getOrCreateProviderWallet(providerId);
+    const balanceBefore = Number(wallet.balance || 0);
+    const balanceAfter = Math.round((balanceBefore - numAmount) * 100) / 100;
+    const txnSeq = Math.floor(100000 + Math.random() * 900000);
+    const transactionId = `WLT-RET-${Date.now().toString().slice(-6)}-${txnSeq}`;
+
+    await (prisma as any).wallet.update({
+      where: { id: wallet.id },
+      data: {
+        balance: balanceAfter,
+        updatedAt: new Date()
+      }
+    });
+
+    const transaction = await (prisma as any).walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        providerId,
+        orderId,
+        transactionId,
+        type: 'DEBIT',
+        direction: 'DEBIT',
+        refundType: 'RETURN_ADJUSTMENT',
+        amount: numAmount,
+        balanceBefore,
+        balanceAfter,
+        triggerEvent: 'RETURN_ADJUSTMENT',
+        status: 'COMPLETED',
+        description: description || `Return Adjustment: -₹${numAmount.toFixed(2)} for order #${orderId}`,
+        createdAt: new Date()
+      }
+    });
+
+    return {
+      success: true,
+      wallet,
+      transaction,
+      balanceAfter
+    };
+  }
+
+  /**
+   * Record a cancellation adjustment debit on provider wallet.
+   */
+  public static async adjustProviderCancellation(params: {
+    providerId: string;
+    orderId: string;
+    amount: number;
+    description?: string;
+  }): Promise<any> {
+    const { providerId, orderId, amount, description } = params;
+    const numAmount = Math.max(0, Math.round(Number(amount || 0) * 100) / 100);
+    if (!providerId || numAmount <= 0) return null;
+
+    const existing = await (prisma as any).walletTransaction.findFirst({
+      where: {
+        providerId,
+        orderId,
+        triggerEvent: 'CANCELLATION_ADJUSTMENT'
+      }
+    }).catch(() => null);
+
+    if (existing) {
+      return { success: true, transaction: existing, alreadyProcessed: true };
+    }
+
+    const wallet = await this.getOrCreateProviderWallet(providerId);
+    const balanceBefore = Number(wallet.balance || 0);
+    const balanceAfter = Math.round((balanceBefore - numAmount) * 100) / 100;
+    const txnSeq = Math.floor(100000 + Math.random() * 900000);
+    const transactionId = `WLT-CAN-${Date.now().toString().slice(-6)}-${txnSeq}`;
+
+    await (prisma as any).wallet.update({
+      where: { id: wallet.id },
+      data: {
+        balance: balanceAfter,
+        updatedAt: new Date()
+      }
+    });
+
+    const transaction = await (prisma as any).walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        providerId,
+        orderId,
+        transactionId,
+        type: 'DEBIT',
+        direction: 'DEBIT',
+        refundType: 'CANCELLATION_ADJUSTMENT',
+        amount: numAmount,
+        balanceBefore,
+        balanceAfter,
+        triggerEvent: 'CANCELLATION_ADJUSTMENT',
+        status: 'COMPLETED',
+        description: description || `Cancellation Adjustment: -₹${numAmount.toFixed(2)} for order #${orderId}`,
+        createdAt: new Date()
+      }
+    });
+
+    return {
+      success: true,
+      wallet,
+      transaction,
+      balanceAfter
+    };
+  }
+
+  /**
+   * Record a settlement payout debit on provider wallet.
+   */
+  public static async disburseProviderSettlement(params: {
+    providerId: string;
+    settlementId: string;
+    amount: number;
+    referenceId: string;
+    description?: string;
+  }): Promise<any> {
+    const { providerId, settlementId, amount, referenceId, description } = params;
+    const numAmount = Math.max(0, Math.round(Number(amount || 0) * 100) / 100);
+    if (!providerId || numAmount <= 0) return null;
+
+    const existing = await (prisma as any).walletTransaction.findFirst({
+      where: {
+        providerId,
+        referenceId: settlementId,
+        triggerEvent: 'SETTLEMENT_PAYOUT'
+      }
+    }).catch(() => null);
+
+    if (existing) {
+      return { success: true, transaction: existing, alreadyProcessed: true };
+    }
+
+    const wallet = await this.getOrCreateProviderWallet(providerId);
+    const balanceBefore = Number(wallet.balance || 0);
+    const balanceAfter = Math.round((balanceBefore - numAmount) * 100) / 100;
+    const txnSeq = Math.floor(100000 + Math.random() * 900000);
+    const transactionId = `WLT-SET-${Date.now().toString().slice(-6)}-${txnSeq}`;
+
+    await (prisma as any).wallet.update({
+      where: { id: wallet.id },
+      data: {
+        balance: balanceAfter,
+        updatedAt: new Date()
+      }
+    });
+
+    const transaction = await (prisma as any).walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        providerId,
+        referenceId: settlementId,
+        transactionId,
+        type: 'DEBIT',
+        direction: 'DEBIT',
+        refundType: 'PROVIDER_SETTLEMENT',
+        amount: numAmount,
+        balanceBefore,
+        balanceAfter,
+        triggerEvent: 'SETTLEMENT_PAYOUT',
+        status: 'COMPLETED',
+        description: description || `Provider Settlement Payout: -₹${numAmount.toFixed(2)} (Ref: ${referenceId})`,
+        createdAt: new Date()
+      }
+    });
+
+    return {
+      success: true,
+      wallet,
+      transaction,
+      balanceAfter
+    };
+  }
 }

@@ -35,6 +35,9 @@ interface OrderItem {
   unitPrice: number;
   totalPrice: number;
   image?: string | null;
+  providerName?: string | null;
+  provider?: { id: string; name?: string; businessName?: string } | null;
+  product?: { provider?: { name?: string; businessName?: string } } | null;
 }
 
 interface OrderData {
@@ -56,6 +59,13 @@ interface OrderData {
   roomNumber: string;
   createdAt: string;
   items: OrderItem[];
+  provider?: {
+    id: string;
+    name?: string;
+    fullName?: string;
+    businessName?: string;
+  } | null;
+  providerName?: string | null;
   deliveryBoy?: {
     id: string;
     fullName: string;
@@ -478,12 +488,20 @@ export default function MyOrdersPage() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="space-y-1">
                       {order.items && order.items.length > 0 ? (
-                        <div className="space-y-0.5">
-                          {order.items.slice(0, 2).map((item) => (
-                            <p key={item.id} className="text-xs sm:text-sm font-semibold text-slate-800">
-                              {item.productName} <span className="text-slate-400 font-normal">× {item.quantity}</span>
-                            </p>
-                          ))}
+                        <div className="space-y-1.5">
+                          {order.items.slice(0, 2).map((item) => {
+                            const pName = item.providerName || item.provider?.businessName || item.provider?.name || item.product?.provider?.businessName || item.product?.provider?.name || order.providerName || order.provider?.businessName || order.provider?.fullName || order.provider?.name || 'Provider information unavailable';
+                            return (
+                              <div key={item.id} className="space-y-0.5">
+                                <p className="text-xs sm:text-sm font-semibold text-slate-800">
+                                  {item.productName} <span className="text-slate-400 font-normal">× {item.quantity}</span>
+                                </p>
+                                <p className="text-[11px] text-slate-500 font-medium">
+                                  Provider: <span className="text-slate-700 font-semibold">{pName}</span>
+                                </p>
+                              </div>
+                            );
+                          })}
                           {order.items.length > 2 && (
                             <p className="text-[11px] text-slate-400">
                               +{order.items.length - 2} more item(s)

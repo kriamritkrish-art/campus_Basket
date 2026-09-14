@@ -140,11 +140,13 @@ router.get('/reports/export-csv', AdminReportController.exportCsv);
 
 // 7. People: Students, Providers, Delivery Boys, Halls
 router.get('/students', AdminPeopleController.getStudents);
+router.get('/students/:id', AdminPeopleController.getStudentDetails);
 router.patch('/students/:id/status', AdminPeopleController.toggleStudentActive);
 router.delete('/students/:id', AdminPeopleController.deleteStudent);
 
 router.get('/providers', AdminPeopleController.getProviders);
 router.post('/providers', AdminPeopleController.createProvider);
+router.get('/providers/:id', AdminPeopleController.getProviderDetails);
 router.put('/providers/:id', AdminPeopleController.updateProvider);
 router.patch('/providers/:id', AdminPeopleController.updateProvider);
 router.delete('/providers/:id', AdminPeopleController.deleteProvider);

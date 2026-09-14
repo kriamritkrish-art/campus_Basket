@@ -309,6 +309,8 @@ model ServiceProvider {
   laundryConfig      LaundryProviderConfig?
   laundryServiceConfigs LaundryServiceConfig[]
   laundryCodCollections LaundryCodCollection[]
+  wallet             Wallet?
+  walletTransactions WalletTransaction[]
 
   @@index([serviceCategory])
 }
@@ -422,6 +424,10 @@ model Product {
   discountPercentage Int?                  @default(0)
   providerId         String?
   provider           ServiceProvider?      @relation(fields: [providerId], references: [id])
+  providerShareType  String                @default("FIXED") // "FIXED" | "PERCENTAGE"
+  providerShareValue Decimal               @default(0.00) @db.Decimal(10, 2)
+  providerAmount     Decimal               @default(0.00) @db.Decimal(10, 2)
+  cbGrossShare       Decimal               @default(0.00) @db.Decimal(10, 2)
   availableToday     Boolean               @default(true)
   startTime          String?               // e.g. "12:00"
   endTime            String?               // e.g. "22:00"
@@ -522,17 +528,21 @@ model Order {
   discountAmount      Decimal              @default(0.00) @db.Decimal(10, 2)
   commissionRate      Decimal              @default(5.00) @db.Decimal(5, 2)
   commissionAmount    Decimal              @default(0.00) @db.Decimal(10, 2)
-  providerPayable     Decimal              @default(0.00) @db.Decimal(10, 2)
-  cancellationReason  String?              @db.Text
-  cancelledBy         String?
-  cancelledAt         DateTime?
-  deliveredAt         DateTime?
-  providerAccepted    Boolean              @default(false)
-  providerAcceptedAt  DateTime?
-  advancePaidAmount   Decimal              @default(0.00) @db.Decimal(10, 2)
-  refundAmount        Decimal              @default(0.00) @db.Decimal(10, 2)
-  deliveryOtp         String?
-  deliveryOtpVerified Boolean              @default(false)
+  providerPayable       Decimal              @default(0.00) @db.Decimal(10, 2)
+  providerShareType     String?
+  providerShareValue    Decimal?             @db.Decimal(10, 2)
+  providerAmount        Decimal?             @db.Decimal(10, 2)
+  cbGrossShare          Decimal?             @default(0.00) @db.Decimal(10, 2)
+  cancellationReason    String?              @db.Text
+  cancelledBy           String?
+  cancelledAt           DateTime?
+  deliveredAt           DateTime?
+  providerAccepted      Boolean              @default(false)
+  providerAcceptedAt    DateTime?
+  advancePaidAmount     Decimal              @default(0.00) @db.Decimal(10, 2)
+  refundAmount          Decimal              @default(0.00) @db.Decimal(10, 2)
+  deliveryOtp           String?
+  deliveryOtpVerified   Boolean              @default(false)
   hallName            String
   hallNumber          String?
   roomNumber          String
@@ -628,18 +638,24 @@ model StationeryOrderDetails {
 }
 
 model OrderItem {
-  id          String   @id @default(cuid())
-  orderId     String
-  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id])
-  productName String
-  quantity    Int
-  unitPrice   Decimal  @db.Decimal(10, 2)
-  totalPrice  Decimal  @db.Decimal(10, 2)
-  createdAt   DateTime @default(now())
+  id                 String   @id @default(cuid())
+  orderId            String
+  order              Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId          String
+  product            Product  @relation(fields: [productId], references: [id])
+  productName        String
+  quantity           Int
+  unitPrice          Decimal  @db.Decimal(10, 2)
+  totalPrice         Decimal  @db.Decimal(10, 2)
+  providerId         String?
+  providerShareType  String?
+  providerShareValue Decimal? @db.Decimal(10, 2)
+  providerAmount     Decimal? @db.Decimal(10, 2)
+  cbGrossShare       Decimal? @db.Decimal(10, 2)
+  createdAt          DateTime @default(now())
 
   @@index([orderId])
+  @@index([productId])
 }
 
 model OrderStatusHistory {
@@ -1431,8 +1447,10 @@ model ReturnRequest {
 
 model Wallet {
   id           String              @id @default(cuid())
-  studentId    String              @unique
-  student      Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId    String?             @unique
+  student      Student?            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  providerId   String?             @unique
+  provider     ServiceProvider?    @relation(fields: [providerId], references: [id], onDelete: Cascade)
   balance      Decimal             @default(0.00) @db.Decimal(10, 2)
   currency     String              @default("INR")
   status       String              @default("ACTIVE")
@@ -1441,28 +1459,33 @@ model Wallet {
   transactions WalletTransaction[]
 
   @@index([studentId])
+  @@index([providerId])
 }
 
 model WalletTransaction {
-  id            String   @id @default(cuid())
+  id            String           @id @default(cuid())
   walletId      String
-  wallet        Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  studentId     String
+  wallet        Wallet           @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  studentId     String?
+  providerId    String?
+  provider      ServiceProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
   orderId       String?
   refundId      String?
-  transactionId String   @unique
-  refundType    String   // CANCELLATION | RETURN | ORDER_PAYMENT
-  amount        Decimal  @db.Decimal(10, 2)
-  balanceBefore Decimal  @db.Decimal(10, 2)
-  balanceAfter  Decimal  @db.Decimal(10, 2)
-  refundMethod  String   // CAMPUS_BASKET_WALLET
-  triggerEvent  String   // CANCELLATION_CONFIRMED | RETURN_PICKUP_COMPLETED | CHECKOUT_DEBIT
-  status        String   @default("COMPLETED")
-  description   String?  @db.Text
-  createdAt     DateTime @default(now())
+  transactionId String           @unique
+  refundType    String           // CANCELLATION | RETURN | ORDER_PAYMENT | PROVIDER_EARNING | SETTLEMENT_PAYOUT | RETURN_ADJUSTMENT | CANCELLATION_ADJUSTMENT
+  direction     String           @default("CREDIT") // CREDIT | DEBIT
+  amount        Decimal          @db.Decimal(10, 2)
+  balanceBefore Decimal          @db.Decimal(10, 2)
+  balanceAfter  Decimal          @db.Decimal(10, 2)
+  refundMethod  String           // CAMPUS_BASKET_WALLET | SETTLEMENT_DISBURSAL | ADJUSTMENT
+  triggerEvent  String           // CANCELLATION_CONFIRMED | RETURN_PICKUP_COMPLETED | CHECKOUT_DEBIT | ORDER_COMPLETED | SETTLEMENT_BATCH | RETURN_ADJUSTMENT
+  status        String           @default("COMPLETED")
+  description   String?          @db.Text
+  createdAt     DateTime         @default(now())
 
   @@index([walletId])
   @@index([studentId])
+  @@index([providerId])
   @@index([orderId])
   @@index([refundId])
   @@index([transactionId])

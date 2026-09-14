@@ -6,7 +6,8 @@ import { CartItem, Product } from '../../types';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../lib/api';
-import { Plus, Minus, Heart, Zap, Star } from 'lucide-react';
+import { getOptimizedImageUrl, getGoogleDriveFallbackUrl } from '../../lib/imageUtils';
+import { Plus, Minus, Heart, Zap, Star, Store } from 'lucide-react';
 
 interface ProductCardProps {
   product: Product;
@@ -82,10 +83,33 @@ export function ProductCard({ product }: ProductCardProps) {
     }
   };
 
-  const displayImage =
+  const resolvedProviderName =
+    product.providerName ||
+    product.provider?.businessName ||
+    product.provider?.fullName ||
+    (product.providerId === 'prov_abc'
+      ? 'ABC Provider'
+      : product.providerId === 'prov_canteen'
+      ? 'Campus Food & Cafeteria'
+      : product.providerId === 'prov_fruits'
+      ? 'Green Basket Fresh Fruits'
+      : product.providerId === 'prov_general'
+      ? 'Campus Essentials Cell'
+      : product.providerId === 'prov_laundry'
+      ? 'Campus Laundry Cell'
+      : product.category?.slug === 'food' || product.category?.name === 'Food & Meals' || product.categoryId === 'cat_food'
+      ? 'Campus Night Canteen'
+      : product.category?.slug === 'fruits' || product.category?.name === 'Fresh Produce' || product.categoryId === 'cat_fruits'
+      ? 'Campus Fresh Fruit Corner'
+      : product.category?.slug === 'stationery' || product.category?.name === 'Stationery' || product.categoryId === 'cat_stationery'
+      ? 'NIT Central Stationery'
+      : 'Campus Essentials Mart');
+
+  const rawImage =
     product.primaryImage ||
     product.images?.[0]?.googleDriveUrl ||
-    'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=600';
+    'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=1200';
+  const displayImage = getOptimizedImageUrl(rawImage);
 
   const origPrice = product.originalPrice ?? product.price;
   const sellPrice = product.sellingPrice ?? product.discountPrice ?? product.price;
@@ -145,8 +169,17 @@ export function ProductCard({ product }: ProductCardProps) {
           <img
             src={displayImage}
             alt={product.name}
-            className={`max-h-full max-w-full object-contain ${isOutOfStock ? 'grayscale-50' : 'group-hover:scale-104'} transition-transform duration-200`}
+            className={`max-h-full max-w-full object-contain product-img-high-res ${isOutOfStock ? 'grayscale-50' : 'group-hover:scale-104'} transition-transform duration-200`}
             loading="lazy"
+            onError={(e) => {
+              const target = e.currentTarget;
+              const fallbackUrl = getGoogleDriveFallbackUrl(target.src);
+              if (fallbackUrl && target.src !== fallbackUrl) {
+                target.src = fallbackUrl;
+              } else if (!target.src.includes('unsplash')) {
+                target.src = 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=1200';
+              }
+            }}
           />
           {/* Out of Stock overlay badge or delivery time tag */}
           {isOutOfStock ? (
@@ -172,7 +205,14 @@ export function ProductCard({ product }: ProductCardProps) {
               {product.name}
             </h3>
           </Link>
-          <p className="text-[11px] text-gray-500 line-clamp-1 mt-0.5">
+          <div
+            className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-700 bg-slate-50 border border-slate-200/90 rounded-md px-2 py-0.5 w-fit max-w-full shadow-3xs"
+            title={`Sold by ${resolvedProviderName}`}
+          >
+            <Store className="w-3 h-3 text-[#4F9D2F] shrink-0" />
+            <span className="truncate font-semibold text-slate-800">{resolvedProviderName}</span>
+          </div>
+          <p className="text-[11px] text-gray-500 line-clamp-1 mt-1">
             {product.subcategory ? `${product.subcategory} • ` : ''}{product.description || `1 ${product.unit || 'pc'} • Campus Basket`}
           </p>
         </div>

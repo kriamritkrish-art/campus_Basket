@@ -255,7 +255,7 @@ export function Navbar() {
                       {activeOrder && (
                         <div className="p-1">
                           <Link
-                            href={`/orders/${activeOrder.id}/track?id=${activeOrder.id}`}
+                            href={`/orders/track?id=${activeOrder.id}`}
                             onClick={() => setProfileDropdownOpen(false)}
                             className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#EEF7E9] text-xs font-bold text-[#36751F] border border-[#dcedc8]"
                           >
@@ -384,7 +384,7 @@ export function Navbar() {
                   Orders
                 </Link>
                 <Link
-                  href={activeOrder ? `/orders/${activeOrder.id}/track?id=${activeOrder.id}` : '/orders/track'}
+                  href={activeOrder ? `/orders/track?id=${activeOrder.id}` : '/orders/track'}
                   className="text-gray-600 hover:text-[#172033] transition-colors py-1 flex items-center gap-1"
                 >
                   <span>Track Order</span>
@@ -449,7 +449,7 @@ export function Navbar() {
                 My Orders
               </Link>
               <Link
-                href={activeOrder ? `/orders/${activeOrder.id}/track?id=${activeOrder.id}` : '/orders/track'}
+                href={activeOrder ? `/orders/track?id=${activeOrder.id}` : '/orders/track'}
                 onClick={() => setMobileMenuOpen(false)}
                 className="block p-2 rounded-lg hover:bg-gray-50 text-[#4F9D2F]"
               >

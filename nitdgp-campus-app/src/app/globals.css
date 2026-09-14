@@ -664,3 +664,75 @@
   }
 }
 
+
+/* ======================================================== */
+/* High Definition Product Image Rendering & Presentation   */
+/* ======================================================== */
+.product-img-high-res {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: auto;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  object-fit: contain;
+  object-position: center;
+}
+
+/* Provider Store Identification Badge */
+.provider-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #1e293b;
+  font-weight: 600;
+  font-size: 0.725rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.5rem;
+  max-width: 100%;
+  transition: all 0.2s ease;
+}
+
+.provider-badge:hover {
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+/* ======================================================== */
+/* Campus Operational & Cancellation Rules Design System    */
+/* ======================================================== */
+.rule-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  padding: 1.25rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  transition: all 0.2s ease-in-out;
+}
+
+.rule-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+.rule-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+}
+
+.rule-container {
+  border-radius: 1.25rem;
+  background: linear-gradient(to bottom, #fcfdfc, #f8faf8);
+  border: 1px solid #e2e8f0;
+  padding: 1.5rem;
+}
+

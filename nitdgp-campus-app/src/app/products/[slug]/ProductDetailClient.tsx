@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { apiRequest } from '../../../lib/api';
 import { getOptimizedImageUrl, getGoogleDriveFallbackUrl } from '../../../lib/imageUtils';
 import { Product } from '../../../types';
+import { FALLBACK_STORE_PRODUCTS } from '../../../lib/fallbackCatalog';
+import { ProductCard } from '../../../components/products/ProductCard';
 import { useCart } from '../../../context/CartContext';
 import { useAuth } from '../../../context/AuthContext';
 import {
@@ -16,7 +18,9 @@ import {
   ShieldCheck,
   AlertTriangle,
   ArrowLeft,
-  Truck
+  Truck,
+  Store,
+  Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -27,6 +31,7 @@ export default function ProductDetailPage() {
   const { user, isAuthenticated } = useAuth();
 
   const [product, setProduct] = useState<Product | null>(null);
+  const [moreProducts, setMoreProducts] = useState<Product[]>(FALLBACK_STORE_PRODUCTS);
   const [loading, setLoading] = useState(true);
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
@@ -49,7 +54,40 @@ export default function ProductDetailPage() {
       }
     }
     loadProduct();
+
+    async function loadCatalog() {
+      try {
+        const res = await apiRequest('/api/products?limit=24');
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          setMoreProducts(res.data);
+        } else {
+          setMoreProducts(FALLBACK_STORE_PRODUCTS);
+        }
+      } catch {
+        setMoreProducts(FALLBACK_STORE_PRODUCTS);
+      }
+    }
+    loadCatalog();
   }, [slug]);
+
+  const relatedProducts = useMemo(() => {
+    const catalog = moreProducts.length > 0 ? moreProducts : FALLBACK_STORE_PRODUCTS;
+    const others = catalog.filter((p) => p.id !== product?.id && p.slug !== slug);
+    if (!product) return others.slice(0, 8);
+
+    const sameCategory = others.filter(
+      (p) =>
+        (product.categoryId && p.categoryId === product.categoryId) ||
+        (product.category?.slug && p.category?.slug === product.category.slug)
+    );
+    const otherCategory = others.filter(
+      (p) =>
+        (!product.categoryId || p.categoryId !== product.categoryId) &&
+        (!product.category?.slug || p.category?.slug !== product.category.slug)
+    );
+
+    return [...sameCategory, ...otherCategory].slice(0, 12);
+  }, [moreProducts, product, slug]);
 
   const handleAddToCart = () => {
     if (!product || product.stock <= 0) return;
@@ -179,6 +217,20 @@ export default function ProductDetailPage() {
               {product.name}
             </h1>
 
+            {/* Real Provider Name Display (Requirement 3 & 21) */}
+            <div className="mt-2.5 inline-flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium text-gray-700">
+              <Store className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>Provider:</span>
+              <span className="font-semibold text-gray-900">
+                {product.provider?.fullName || product.provider?.businessName || product.providerName || 'Provider information unavailable'}
+              </span>
+              {(product.provider?.fullName || product.providerName) && (
+                <span className="ml-1 text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1.5 py-0.5 rounded-full">
+                  Verified
+                </span>
+              )}
+            </div>
+
             <div className="flex items-baseline gap-3 mt-2 sm:mt-3">
               <span className="text-2xl sm:text-3xl font-black text-[#212121]">
                 ₹{product.discountPrice || product.price}
@@ -303,6 +355,38 @@ export default function ProductDetailPage() {
           </div>
         )}
       </div>
+
+      {/* ==================================================== */}
+      {/* RELATED / MORE CAMPUS PRODUCTS IN NORMAL GRID        */}
+      {/* ==================================================== */}
+      {relatedProducts.length > 0 && (
+        <section className="space-y-4 pt-2">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-1.5 text-[#4F9D2F] text-xs font-bold uppercase tracking-wider">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Explore More</span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-black text-[#172033]">
+                More Products on Campus
+              </h2>
+            </div>
+            <Link
+              href="/"
+              className="text-xs font-bold text-[#4F9D2F] hover:text-[#36751F] hover:underline flex items-center gap-1"
+            >
+              <span>View All</span>
+              <span>&rarr;</span>
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 w-full min-w-0">
+            {relatedProducts.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Mobile Sticky Add to Basket Bar */}
       <div className="sm:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-gray-200 p-3 shadow-lg z-40 flex items-center justify-between pb-safe">

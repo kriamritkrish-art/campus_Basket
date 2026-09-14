@@ -185,6 +185,9 @@ export default function OrderPaymentSettlementLedgerPage() {
   const [reconciliationStatusFilter, setReconciliationStatusFilter] = useState('ALL');
   const [paymentFailureReasonFilter, setPaymentFailureReasonFilter] = useState('ALL');
   const [providerFilter, setProviderFilter] = useState('ALL');
+  const [productFilter, setProductFilter] = useState('');
+  const [returnStatusFilter, setReturnStatusFilter] = useState('ALL');
+  const [settlementStatusFilter, setSettlementStatusFilter] = useState('ALL');
 
   const [deliveryBoyFilter, setDeliveryBoyFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('date_desc');
@@ -259,7 +262,9 @@ export default function OrderPaymentSettlementLedgerPage() {
     setReconciliationStatusFilter('ALL');
     setPaymentFailureReasonFilter('ALL');
     setProviderFilter('ALL');
-
+    setProductFilter('');
+    setReturnStatusFilter('ALL');
+    setSettlementStatusFilter('ALL');
     setDeliveryBoyFilter('ALL');
     setSortBy('date_desc');
     setCurrentPage(1);
@@ -280,6 +285,9 @@ export default function OrderPaymentSettlementLedgerPage() {
       if (reconciliationStatusFilter !== 'ALL') params.append('reconciliationStatus', reconciliationStatusFilter);
       if (paymentFailureReasonFilter !== 'ALL') params.append('paymentFailureReason', paymentFailureReasonFilter);
       if (providerFilter !== 'ALL') params.append('providerId', providerFilter);
+      if (productFilter.trim()) params.append('productId', productFilter.trim());
+      if (returnStatusFilter !== 'ALL') params.append('returnStatus', returnStatusFilter);
+      if (settlementStatusFilter !== 'ALL') params.append('settlementStatus', settlementStatusFilter);
       if (deliveryBoyFilter !== 'ALL') params.append('deliveryBoyId', deliveryBoyFilter);
       if (searchQuery.trim()) params.append('search', searchQuery.trim());
       if (sortBy) params.append('sortBy', sortBy);
@@ -323,6 +331,9 @@ export default function OrderPaymentSettlementLedgerPage() {
     reconciliationStatusFilter,
     paymentFailureReasonFilter,
     providerFilter,
+    productFilter,
+    returnStatusFilter,
+    settlementStatusFilter,
     deliveryBoyFilter,
     sortBy
   ]);
@@ -436,6 +447,9 @@ export default function OrderPaymentSettlementLedgerPage() {
       if (refundStatusFilter !== 'ALL') params.append('refundStatus', refundStatusFilter);
       if (orderStatusFilter !== 'ALL') params.append('orderStatus', orderStatusFilter);
       if (providerFilter !== 'ALL') params.append('providerId', providerFilter);
+      if (productFilter.trim()) params.append('productId', productFilter.trim());
+      if (returnStatusFilter !== 'ALL') params.append('returnStatus', returnStatusFilter);
+      if (settlementStatusFilter !== 'ALL') params.append('settlementStatus', settlementStatusFilter);
       if (deliveryBoyFilter !== 'ALL') params.append('deliveryBoyId', deliveryBoyFilter);
       if (searchQuery.trim()) params.append('search', searchQuery.trim());
 
@@ -475,51 +489,51 @@ export default function OrderPaymentSettlementLedgerPage() {
       'Order Date',
       'Order ID',
       'Student Name',
-      'Student Email',
       'Student Roll',
-      'Student Room & Hall',
+      'Product',
       'Provider',
-      'Delivery Boy',
-      'Total Order Amount (INR)',
-      'Payment Method',
-      'Online Paid (INR)',
-      'COD Advance Paid (INR)',
-      'COD Cash Collected (INR)',
-      'Payment Status',
-      'Cancellation Refund Status',
-      'Cancellation Refund Amount (INR)',
-      'Return Refund Status',
-      'Return Refund Amount (INR)',
-      'Total Refund Distributed (INR)',
-      'Final Campus Basket Earning (INR)',
-      'Items Summary'
+      'Gross Selling Amount (INR)',
+      'Provider Amount (INR)',
+      'Campus Basket Gross Share (INR)',
+      'COD or Online',
+      'Paid Status',
+      'Return Status',
+      'Cancellation Status',
+      'Cancellation Refund (INR)',
+      'Return Refund (INR)',
+      'Final Gross Amount (INR)'
     ];
 
     const escapeCsv = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
 
-    const rows = orders.map((o) => [
-      escapeCsv(o.orderDate),
-      escapeCsv(o.orderNumber),
-      escapeCsv(o.studentName),
-      escapeCsv(o.studentEmail),
-      escapeCsv(o.studentRoll),
-      escapeCsv(`${o.studentRoom}, ${o.studentHall}`),
-      escapeCsv(o.providerName),
-      escapeCsv(o.deliveryBoyName),
-      o.totalAmount.toFixed(2),
-      escapeCsv(o.paymentMethod),
-      o.onlinePaid.toFixed(2),
-      o.codAdvance.toFixed(2),
-      o.codCash.toFixed(2),
-      escapeCsv(o.paymentStatus),
-      escapeCsv(o.cancellationRefund.status),
-      (o.cancellationRefund.distributedAmount || o.cancellationRefund.claimedAmount || 0).toFixed(2),
-      escapeCsv(o.returnRefund.status),
-      (o.returnRefund.distributedAmount || o.returnRefund.claimedAmount || 0).toFixed(2),
-      o.refundTotal.toFixed(2),
-      o.finalCampusBasketEarning.toFixed(2),
-      escapeCsv(o.itemsSummary)
-    ]);
+    const rows = orders.map((o) => {
+      const provAmt = o.providerPayable ?? (o as any).providerAmount ?? 0;
+      const cbShare = (o as any).cbGrossShare ?? Math.max(0, o.totalAmount - provAmt);
+      const retStatus = (o as any).returnStatus || (o.returnRefund?.status !== 'NOT_APPLICABLE' ? o.returnRefund?.status : 'NO_RETURN');
+      const canStatus = (o as any).cancellationStatus || (o.cancellationRefund?.status !== 'NOT_APPLICABLE' ? o.cancellationRefund?.status : (o.status === 'CANCELLED' ? 'CANCELLED' : 'NONE'));
+      const canRefund = (o.cancellationRefund?.distributedAmount || o.cancellationRefund?.claimedAmount || 0);
+      const retRefund = (o.returnRefund?.distributedAmount || o.returnRefund?.claimedAmount || 0);
+      const finalAmt = o.finalCampusBasketEarning || (o.totalAmount - (o.refundTotal || 0));
+
+      return [
+        escapeCsv(o.orderDate || o.formattedDate),
+        escapeCsv(o.orderNumber),
+        escapeCsv(o.studentName),
+        escapeCsv(o.studentRoll),
+        escapeCsv(o.itemsSummary || (o as any).productName || 'Product'),
+        escapeCsv(o.providerName),
+        o.totalAmount.toFixed(2),
+        Number(provAmt).toFixed(2),
+        Number(cbShare).toFixed(2),
+        escapeCsv(o.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD' : 'ONLINE'),
+        escapeCsv(o.paymentStatus),
+        escapeCsv(retStatus),
+        escapeCsv(canStatus),
+        Number(canRefund).toFixed(2),
+        Number(retRefund).toFixed(2),
+        Number(finalAmt).toFixed(2)
+      ];
+    });
 
     const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1241,6 +1255,59 @@ export default function OrderPaymentSettlementLedgerPage() {
               </select>
             </div>
 
+            {/* 6b. Product Filter */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">PRODUCT</label>
+              <input
+                type="text"
+                placeholder="Product name..."
+                value={productFilter}
+                onChange={(e) => {
+                  setProductFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-slate-400"
+              />
+            </div>
+
+            {/* 6c. Return Status Filter */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">RETURN STATUS</label>
+              <select
+                value={returnStatusFilter}
+                onChange={(e) => {
+                  setReturnStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-slate-400 cursor-pointer"
+              >
+                <option value="ALL">All Return Statuses</option>
+                <option value="NO_RETURN">No Return</option>
+                <option value="RETURN_REQUESTED">Return Requested</option>
+                <option value="RETURN_APPROVED">Return Approved</option>
+                <option value="PICKED_UP">Picked Up</option>
+                <option value="RETURNED">Return Completed</option>
+              </select>
+            </div>
+
+            {/* 6d. Settlement Status Filter */}
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">SETTLEMENT STATUS</label>
+              <select
+                value={settlementStatusFilter}
+                onChange={(e) => {
+                  setSettlementStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-800 focus:outline-none focus:border-slate-400 cursor-pointer"
+              >
+                <option value="ALL">All Settlements</option>
+                <option value="PENDING">Pending Settlement</option>
+                <option value="SETTLED">Settled</option>
+                <option value="ADJUSTED">Adjusted</option>
+              </select>
+            </div>
+
             {/* 7. Delivery Boy */}
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">DELIVERY BOY</label>
@@ -1337,20 +1404,18 @@ export default function OrderPaymentSettlementLedgerPage() {
                   <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">ORDER DATE</th>
                   <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">ORDER ID</th>
                   <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">STUDENT</th>
+                  <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">PRODUCT</th>
                   <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">PROVIDER</th>
-                  <th className="py-3.5 px-3.5 whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">DELIVERY BOY</th>
-                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">TOTAL AMOUNT</th>
-                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">PAYMENT METHOD</th>
-                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">ONLINE PAID</th>
-                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">COD ADVANCE</th>
-                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">COD CASH</th>
-                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">PAYMENT STATUS</th>
-                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">FAILURE REASON</th>
-                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">RECONCILIATION</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">GROSS AMOUNT</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">PROVIDER AMOUNT</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">CB GROSS SHARE</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">COD / ONLINE</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">PAID STATUS</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">RETURN STATUS</th>
+                  <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">CANCEL STATUS</th>
                   <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">CANCEL REFUND</th>
                   <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">RETURN REFUND</th>
-                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">REFUND TOTAL</th>
-                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">NET CB RECEIVED</th>
+                  <th className="py-3.5 px-3.5 text-right whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">FINAL AMOUNT</th>
                   <th className="py-3.5 px-3.5 text-center whitespace-nowrap sticky top-0 z-20 bg-[#0F172A]">ACTIONS</th>
                 </tr>
               </thead>
@@ -1358,7 +1423,7 @@ export default function OrderPaymentSettlementLedgerPage() {
               <tbody className="divide-y divide-slate-200 text-slate-800 font-medium">
                 {loading ? (
                   <tr>
-                    <td colSpan={17} className="py-16 text-center text-slate-500">
+                    <td colSpan={16} className="py-16 text-center text-slate-500">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <RefreshCw className="w-6 h-6 animate-spin text-slate-400" />
                         <span className="text-xs font-semibold">Loading ledger records...</span>
@@ -1367,7 +1432,7 @@ export default function OrderPaymentSettlementLedgerPage() {
                   </tr>
                 ) : currentOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={17} className="py-16 text-center">
+                    <td colSpan={16} className="py-16 text-center">
                       <div className="flex flex-col items-center justify-center gap-2 max-w-sm mx-auto">
                         <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
                           <AlertCircle className="w-5 h-5" />
@@ -1388,6 +1453,12 @@ export default function OrderPaymentSettlementLedgerPage() {
                 ) : (
                   currentOrders.map((ord, idx) => {
                     const isEven = idx % 2 === 0;
+                    const provAmt = ord.providerPayable ?? (ord as any).providerAmount ?? 0;
+                    const cbShare = (ord as any).cbGrossShare ?? Math.max(0, ord.totalAmount - provAmt);
+                    const retStatus = (ord as any).returnStatus || (ord.returnRefund?.status !== 'NOT_APPLICABLE' ? ord.returnRefund?.status : 'NO_RETURN');
+                    const canStatus = (ord as any).cancellationStatus || (ord.cancellationRefund?.status !== 'NOT_APPLICABLE' ? ord.cancellationRefund?.status : (ord.status === 'CANCELLED' ? 'CANCELLED' : 'NONE'));
+                    const finalAmt = ord.finalCampusBasketEarning || (ord.totalAmount - (ord.refundTotal || 0));
+
                     return (
                       <tr
                         key={ord.id}
@@ -1431,30 +1502,37 @@ export default function OrderPaymentSettlementLedgerPage() {
                           </div>
                         </td>
 
-                        {/* 4. Provider */}
+                        {/* 4. Product */}
+                        <td className="py-3 px-3.5">
+                          <div className="font-bold text-slate-900 max-w-[180px] truncate" title={ord.itemsSummary}>
+                            {ord.itemsSummary || (ord as any).productName || 'Product'}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            {ord.itemsCount ? `${ord.itemsCount} items` : '1 item'}
+                          </div>
+                        </td>
+
+                        {/* 5. Provider */}
                         <td className="py-3 px-3.5 whitespace-nowrap">
                           <span className="font-semibold text-slate-800">{ord.providerName}</span>
                         </td>
 
-                        {/* 5. Delivery Boy */}
-                        <td className="py-3 px-3.5 whitespace-nowrap">
-                          <span
-                            className={
-                              ord.deliveryBoyName === 'Not Assigned'
-                                ? 'text-slate-400 italic text-[11px]'
-                                : 'font-semibold text-slate-800'
-                            }
-                          >
-                            {ord.deliveryBoyName}
-                          </span>
-                        </td>
-
-                        {/* 6. Total Order Amount */}
+                        {/* 6. Gross Amount */}
                         <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono font-black text-slate-900 text-sm">
                           ₹{ord.totalAmount.toFixed(2)}
                         </td>
 
-                        {/* 7. Payment Method */}
+                        {/* 7. Provider Amount */}
+                        <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono font-bold text-emerald-700">
+                          ₹{Number(provAmt).toFixed(2)}
+                        </td>
+
+                        {/* 8. Campus Basket Gross Share */}
+                        <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono font-bold text-slate-900">
+                          ₹{Number(cbShare).toFixed(2)}
+                        </td>
+
+                        {/* 9. COD / Online */}
                         <td className="py-3 px-3.5 text-center whitespace-nowrap">
                           {ord.paymentMethod === 'CASH_ON_DELIVERY' ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-black bg-purple-100 text-purple-800 border border-purple-200">
@@ -1467,62 +1545,26 @@ export default function OrderPaymentSettlementLedgerPage() {
                           )}
                         </td>
 
-                        {/* 8. Online Paid */}
-                        <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono font-semibold text-[#0284C7]">
-                          {ord.onlinePaid > 0 ? `₹${ord.onlinePaid.toFixed(2)}` : '₹0.00'}
-                        </td>
-
-                        {/* 9. COD Advance Paid */}
-                        <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono font-semibold">
-                          {ord.paymentMethod === 'ONLINE' ? (
-                            <span className="text-slate-300 font-normal text-xs">N/A</span>
-                          ) : ord.codAdvance > 0 ? (
-                            <span className="text-[#6366F1] font-bold">₹{ord.codAdvance.toFixed(2)}</span>
-                          ) : (
-                            <span className="text-slate-400">₹0.00</span>
-                          )}
-                        </td>
-
-                        {/* 10. COD Cash */}
-                        <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono font-semibold">
-                          {ord.paymentMethod === 'ONLINE' ? (
-                            <span className="text-slate-300 font-normal text-xs">N/A</span>
-                          ) : ord.codCash > 0 ? (
-                            <span className="text-[#8B5CF6] font-bold">₹{ord.codCash.toFixed(2)}</span>
-                          ) : (
-                            <span className="text-slate-400">₹0.00</span>
-                          )}
-                        </td>
-
-                        {/* 11. Payment Status */}
+                        {/* 10. Paid Status */}
                         <td className="py-3 px-3.5 text-center whitespace-nowrap">
                           {renderPaymentBadge(ord.paymentStatus)}
                         </td>
 
-                        {/* 11b. Payment Failure Reason */}
+                        {/* 11. Return Status */}
                         <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                          {renderFailureReasonBadge(
-                            ord.paymentFailureReason || ord.failureReason,
-                            ord.paymentFailureCode || ord.failureCode
-                          )}
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-slate-100 text-slate-700">
+                            {retStatus}
+                          </span>
                         </td>
 
-                        {/* 11c. Reconciliation Status */}
+                        {/* 12. Cancellation Status */}
                         <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                          {(() => {
-                            const rs = ord.reconciliationStatus || 'NOT_REQUIRED';
-                            if (rs === 'NOT_REQUIRED') return <span className="text-slate-300 text-[10px] font-medium">—</span>;
-                            if (rs === 'AUTO_RECONCILED') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">AUTO ✓</span>;
-                            if (rs === 'MANUALLY_RECONCILED') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">MANUAL ✓</span>;
-                            if (rs === 'PENDING') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-300 animate-pulse">PENDING</span>;
-                            if (rs === 'AMOUNT_MISMATCH') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700 border border-red-300">⚠ MISMATCH</span>;
-                            if (rs === 'PAYMENT_NOT_FOUND') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-700 border border-red-300">NOT FOUND</span>;
-                            if (rs === 'CUSTOMER_DEBIT_REVIEW') return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-50 text-orange-700 border border-orange-300">DEBIT REVIEW</span>;
-                            return <span className="text-[10px] text-slate-500">{rs}</span>;
-                          })()}
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-slate-100 text-slate-700">
+                            {canStatus}
+                          </span>
                         </td>
 
-                        {/* 12. Cancellation Refund */}
+                        {/* 13. Cancellation Refund */}
                         <td className="py-3 px-3.5 text-center whitespace-nowrap">
                           {renderRefundStatusBadge(
                             ord.cancellationRefund.status,
@@ -1530,7 +1572,7 @@ export default function OrderPaymentSettlementLedgerPage() {
                           )}
                         </td>
 
-                        {/* 13. Return Refund */}
+                        {/* 14. Return Refund */}
                         <td className="py-3 px-3.5 text-center whitespace-nowrap">
                           {renderRefundStatusBadge(
                             ord.returnRefund.status,
@@ -1538,22 +1580,15 @@ export default function OrderPaymentSettlementLedgerPage() {
                           )}
                         </td>
 
-                        {/* 14. Refund Total */}
-                        <td className="py-3 px-3.5 text-right whitespace-nowrap font-mono font-bold text-slate-800">
-                          {ord.refundTotal > 0 ? (
-                            <span className="text-amber-700">₹{ord.refundTotal.toFixed(2)}</span>
-                          ) : (
-                            <span className="text-slate-400">₹0.00</span>
-                          )}
-                        </td>
-
-                        {/* 15. Net Campus Basket Received */}
+                        {/* 15. Final Gross Amount after adjustments */}
                         <td className="py-3 px-3.5 text-right whitespace-nowrap">
                           <div className="flex flex-col items-end">
-                            <span className="font-mono font-black text-emerald-700 text-sm">₹{ord.finalCampusBasketEarning.toFixed(2)}</span>
+                            <span className="font-mono font-black text-emerald-700 text-sm">
+                              ₹{Number(finalAmt).toFixed(2)}
+                            </span>
                             {ord.refundTotal > 0 && (
                               <span className="text-[9px] text-slate-400 font-medium">
-                                ₹{ord.totalAmount.toFixed(2)} − ₹{ord.refundTotal.toFixed(2)}
+                                -₹{ord.refundTotal.toFixed(2)} ref
                               </span>
                             )}
                           </div>

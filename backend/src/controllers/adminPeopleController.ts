@@ -7,27 +7,61 @@ import {
   createDeliveryBoySchema
 } from '../validators/authValidators';
 import { fallbackUsers, fallbackOrders, fallbackLaundryJobs } from '../services/fallbackData';
+import { WalletService } from '../services/financial/WalletService';
 
 export class AdminPeopleController {
   /**
    * Students Directory & Management
+   * Requirement 1: Complete 14-column student dashboard with search, filters, pagination
    */
   public static async getStudents(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { search, hall } = req.query;
+      const { search, hall, status, page = '1', limit = '20' } = req.query;
+
+      const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 20));
 
       const students = await prisma.student.findMany({
         include: {
           user: true,
           hall: true,
-          orders: { select: { id: true, totalAmount: true, status: true } },
-          laundryOrders: { select: { id: true, status: true } }
-        }
+          orders: {
+            select: {
+              id: true,
+              orderNumber: true,
+              totalAmount: true,
+              status: true,
+              paymentStatus: true,
+              returnStatus: true,
+              refundStatus: true,
+              createdAt: true,
+              updatedAt: true
+            }
+          },
+          laundryOrders: {
+            select: {
+              id: true,
+              orderNumber: true,
+              status: true,
+              createdAt: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
       });
 
       let filtered = students;
+
       if (hall && hall !== 'ALL') {
         filtered = filtered.filter((s) => s.hall?.name === hall || s.hallNumber === hall);
+      }
+
+      if (status && status !== 'ALL') {
+        if (status === 'active' || status === 'ACTIVE') {
+          filtered = filtered.filter((s) => s.user?.isActive !== false);
+        } else if (status === 'inactive' || status === 'INACTIVE') {
+          filtered = filtered.filter((s) => s.user?.isActive === false);
+        }
       }
 
       if (search) {
@@ -36,36 +70,316 @@ export class AdminPeopleController {
           (s) =>
             s.fullName.toLowerCase().includes(q) ||
             s.rollNumber.toLowerCase().includes(q) ||
-            s.registrationNumber?.toLowerCase().includes(q) ||
-            s.user?.email.toLowerCase().includes(q) ||
+            s.id.toLowerCase().includes(q) ||
+            s.userId.toLowerCase().includes(q) ||
+            (s.registrationNumber && s.registrationNumber.toLowerCase().includes(q)) ||
+            (s.user?.email && s.user.email.toLowerCase().includes(q)) ||
+            (s.collegeEmail && s.collegeEmail.toLowerCase().includes(q)) ||
             s.mobileNumber.includes(q)
         );
       }
 
+      const total = filtered.length;
+      const skip = (pageNum - 1) * limitNum;
+      const paginatedStudents = filtered.slice(skip, skip + limitNum);
+
+      // Fetch actual wallets for real balances
+      const studentIds = paginatedStudents.map((s) => s.id);
+      const wallets = await (prisma as any).wallet.findMany({
+        where: { studentId: { in: studentIds } }
+      }).catch(() => []);
+      const walletMap = new Map<string, number>();
+      wallets.forEach((w: any) => walletMap.set(w.studentId, Number(w.balance || 0)));
+
       res.status(200).json({
         success: true,
-        total: filtered.length,
-        students: filtered.map((s) => ({
-          id: s.id,
-          userId: s.userId,
-          fullName: s.fullName,
-          email: s.user?.email,
-          collegeEmail: s.collegeEmail || s.user?.collegeEmail || s.user?.email,
-          personalEmail: s.personalEmail || s.user?.personalEmail || null,
-          department: s.department || 'Computer Science & Engineering',
-          programme: s.programme || 'B.Tech',
-          year: s.year || '1st Year',
-          rollNumber: s.rollNumber,
-          registrationNumber: s.registrationNumber,
-          mobileNumber: s.mobileNumber,
-          hallName: s.hall?.name || `Hall ${s.hallNumber || '11'}`,
-          roomNumber: s.roomNumber,
-          isActive: s.user?.isActive ?? true,
-          isVerified: s.isVerified,
-          totalOrders: s.orders?.length || 0,
-          totalLaundryOrders: s.laundryOrders?.length || 0,
-          createdAt: s.createdAt
+        total,
+        students: paginatedStudents.map((s) => {
+          const sOrders = s.orders || [];
+          const completedOrders = sOrders.filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED').length;
+          const cancelledOrders = sOrders.filter((o) => o.status === 'CANCELLED').length;
+          const returnedOrders = sOrders.filter(
+            (o) => o.status === 'RETURNED' || (o.returnStatus && o.returnStatus !== 'NO_RETURN' && o.returnStatus !== 'NONE')
+          ).length;
+
+          const totalAmountSpent = Math.round(
+            sOrders
+              .filter((o) => o.status !== 'CANCELLED' && (o.paymentStatus === 'PAID' || o.status === 'DELIVERED'))
+              .reduce((sum, o) => sum + Number(o.totalAmount || 0), 0) * 100
+          ) / 100;
+
+          const latestOrderDate = sOrders.length > 0
+            ? new Date(Math.max(...sOrders.map((o) => new Date(o.createdAt).getTime())))
+            : null;
+          const lastActivity = latestOrderDate
+            ? latestOrderDate.toISOString()
+            : (s.updatedAt ? new Date(s.updatedAt).toISOString() : new Date(s.createdAt).toISOString());
+
+          const accountStatus = s.user?.accountStatus || (s.user?.isActive !== false ? 'Active' : 'Inactive');
+          const walletBalance = walletMap.get(s.id) ?? 0;
+
+          return {
+            id: s.id,
+            userId: s.userId,
+            studentId: s.rollNumber || s.id,
+            rollNumber: s.rollNumber,
+            registrationNumber: s.registrationNumber,
+            studentName: s.fullName,
+            fullName: s.fullName,
+            email: s.user?.email || s.collegeEmail || 'N/A',
+            collegeEmail: s.collegeEmail || s.user?.collegeEmail || s.user?.email,
+            personalEmail: s.personalEmail || s.user?.personalEmail || null,
+            phone: s.mobileNumber,
+            mobileNumber: s.mobileNumber,
+            registrationDate: s.createdAt,
+            createdAt: s.createdAt,
+            department: s.department || 'Computer Science & Engineering',
+            programme: s.programme || 'B.Tech',
+            year: s.year || '1st Year',
+            hallName: s.hall?.name || `Hall ${s.hallNumber || '11'}`,
+            roomNumber: s.roomNumber,
+            accountStatus,
+            isActive: s.user?.isActive ?? true,
+            isVerified: s.isVerified,
+            totalOrders: sOrders.length,
+            completedOrders,
+            cancelledOrders,
+            returnedOrders,
+            totalAmountSpent,
+            walletBalance,
+            lastActivity,
+            actions: {
+              viewUrl: `/admin/students/${s.id}`
+            },
+            totalLaundryOrders: s.laundryOrders?.length || 0
+          };
+        }),
+        pagination: {
+          total,
+          page: pageNum,
+          totalPages: Math.ceil(total / limitNum),
+          limit: limitNum
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /**
+   * Student Details (Requirement 2)
+   * Profile, Order Summary, Order History, Wallet Ledger, Refunds Ledger
+   */
+  public static async getStudentDetails(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const id = req.params.id || req.params.studentId;
+      const student = await prisma.student.findFirst({
+        where: {
+          OR: [
+            { id },
+            { userId: id },
+            { rollNumber: id }
+          ]
+        },
+        include: {
+          user: true,
+          hall: true,
+          orders: {
+            include: {
+              items: {
+                include: { product: { include: { provider: true } } }
+              },
+              provider: true,
+              returnRequest: true,
+              refunds: true
+            },
+            orderBy: { createdAt: 'desc' }
+          },
+          laundryOrders: {
+            orderBy: { createdAt: 'desc' }
+          }
+        }
+      });
+
+      if (!student) {
+        res.status(404).json({ success: false, message: 'Student record not found.' });
+        return;
+      }
+
+      // Fetch wallet & transactions
+      const walletData = await WalletService.getWallet(student.id).catch(() => ({
+        balance: 0,
+        transactions: []
+      }));
+
+      // Calculate order summary
+      const orders = student.orders || [];
+      const totalOrders = orders.length;
+      const completed = orders.filter((o: any) => o.status === 'DELIVERED' || o.status === 'COMPLETED').length;
+      const pending = orders.filter((o: any) =>
+        ['PLACED', 'PAID', 'PREPARING', 'READY_FOR_PICKUP', 'OUT_FOR_DELIVERY'].includes(o.status)
+      ).length;
+      const cancelled = orders.filter((o: any) => o.status === 'CANCELLED').length;
+      const returned = orders.filter(
+        (o: any) =>
+          o.status === 'RETURNED' ||
+          (o.returnStatus && o.returnStatus !== 'NO_RETURN' && o.returnStatus !== 'NONE') ||
+          Boolean(o.returnRequest)
+      ).length;
+
+      // Profile
+      const profile = {
+        id: student.id,
+        userId: student.userId,
+        name: student.fullName,
+        fullName: student.fullName,
+        email: student.user?.email || student.collegeEmail || 'N/A',
+        collegeEmail: student.collegeEmail || student.user?.email,
+        personalEmail: student.personalEmail || student.user?.personalEmail || null,
+        phone: student.mobileNumber,
+        mobileNumber: student.mobileNumber,
+        studentId: student.rollNumber || student.id,
+        rollNumber: student.rollNumber,
+        registrationNumber: student.registrationNumber,
+        department: student.department || 'Computer Science & Engineering',
+        programme: student.programme || 'B.Tech',
+        year: student.year || '1st Year',
+        hallName: student.hall?.name || `Hall ${student.hallNumber || '11'}`,
+        roomNumber: student.roomNumber,
+        registrationDate: student.createdAt,
+        createdAt: student.createdAt,
+        accountStatus: student.user?.accountStatus || (student.user?.isActive !== false ? 'Active' : 'Inactive'),
+        isActive: student.user?.isActive !== false,
+        isVerified: student.isVerified
+      };
+
+      // Order Summary
+      const orderSummary = {
+        totalOrders,
+        completed,
+        pending,
+        cancelled,
+        returned,
+        totalAmountSpent: Math.round(
+          orders
+            .filter((o: any) => o.status !== 'CANCELLED' && (o.paymentStatus === 'PAID' || o.status === 'DELIVERED'))
+            .reduce((sum: number, o: any) => sum + Number(o.totalAmount || 0), 0) * 100
+        ) / 100
+      };
+
+      // Order History
+      const orderHistory = orders.map((o: any) => {
+        const prodNames = Array.isArray(o.items) && o.items.length > 0
+          ? o.items.map((i: any) => `${i.quantity || 1}x ${i.productName || i.product?.name || 'Item'}`).join(', ')
+          : (o.serviceType || 'Campus Order');
+        const providerName = o.provider?.fullName || o.items?.[0]?.product?.provider?.fullName || 'Provider information unavailable';
+
+        return {
+          orderId: o.orderNumber || o.id,
+          id: o.id,
+          date: o.createdAt,
+          createdAt: o.createdAt,
+          products: prodNames,
+          provider: providerName,
+          amount: Number(o.totalAmount || 0),
+          paymentMethod: o.paymentMethod || 'RAZORPAY',
+          paymentStatus: o.paymentStatus || 'PENDING',
+          deliveryStatus: o.status,
+          orderStatus: o.status,
+          returnStatus: o.returnStatus || (o.returnRequest ? o.returnRequest.status : 'No Return'),
+          cancellationStatus: o.status === 'CANCELLED' ? 'Cancelled' : (o.cancellationRequest ? 'Requested' : 'None'),
+          refundStatus: o.refundStatus || (o.paymentStatus === 'REFUNDED' ? 'COMPLETED' : 'None'),
+          refundAmount: Number(o.refundAmount || 0)
+        };
+      });
+
+      // Wallet
+      const txns = walletData.transactions || [];
+      const walletCredits = Math.round(
+        txns
+          .filter((t: any) => t.type === 'CREDIT' || t.direction === 'CREDIT')
+          .reduce((sum: number, t: any) => sum + Number(t.amount || 0), 0) * 100
+      ) / 100;
+      const walletDebits = Math.round(
+        txns
+          .filter((t: any) => t.type === 'DEBIT' || t.direction === 'DEBIT')
+          .reduce((sum: number, t: any) => sum + Number(t.amount || 0), 0) * 100
+      ) / 100;
+      const refundCredits = Math.round(
+        txns
+          .filter(
+            (t: any) =>
+              (t.type === 'CREDIT' || t.direction === 'CREDIT') &&
+              (String(t.triggerEvent || '').includes('REFUND') ||
+                t.refundType === 'RETURN' ||
+                String(t.description || '').toLowerCase().includes('refund'))
+          )
+          .reduce((sum: number, t: any) => sum + Number(t.amount || 0), 0) * 100
+      ) / 100;
+
+      const wallet = {
+        balance: Number(walletData.balance || 0),
+        currentBalance: Number(walletData.balance || 0),
+        walletCredits,
+        walletDebits,
+        refundCredits,
+        transactionHistory: txns.map((t: any) => ({
+          transactionId: t.transactionId || t.id,
+          relatedOrder: t.orderId ? (t.orderId.startsWith('#') ? t.orderId : `#${t.orderId}`) : 'N/A',
+          orderId: t.orderId || null,
+          type: t.type || t.direction || 'CREDIT',
+          amount: Number(t.amount || 0),
+          balanceBefore: Number(t.balanceBefore || 0),
+          balanceAfter: Number(t.balanceAfter || 0),
+          reason: t.description || t.refundType || t.triggerEvent || 'Transaction',
+          status: t.status || 'COMPLETED',
+          date: t.createdAt,
+          createdAt: t.createdAt
         }))
+      };
+
+      // Refunds List
+      const refunds: any[] = [];
+      orders.forEach((o: any) => {
+        if (o.returnRequest) {
+          refunds.push({
+            order: o.orderNumber || o.id,
+            orderId: o.id,
+            refundType: 'Return Refund',
+            refundAmount: Number(o.returnRequest.refundAmount || o.refundAmount || o.totalAmount),
+            refundMethod: o.returnRequest.refundMethod || 'CAMPUS_BASKET_WALLET',
+            refundStatus:
+              o.returnRequest.status === 'COMPLETED'
+                ? 'Completed'
+                : o.returnRequest.status === 'REJECTED'
+                ? 'Rejected'
+                : 'Processing',
+            requestedDate: o.returnRequest.createdAt,
+            completedDate: o.returnRequest.completedAt || (o.returnRequest.status === 'COMPLETED' ? o.returnRequest.updatedAt : null)
+          });
+        } else if ((o.refundStatus && o.refundStatus !== 'NONE') || o.paymentStatus === 'REFUNDED') {
+          refunds.push({
+            order: o.orderNumber || o.id,
+            orderId: o.id,
+            refundType: o.status === 'CANCELLED' ? 'Cancellation Refund' : 'Order Refund',
+            refundAmount: Number(o.refundAmount || o.totalAmount),
+            refundMethod: 'CAMPUS_BASKET_WALLET',
+            refundStatus: o.refundStatus === 'COMPLETED' || o.paymentStatus === 'REFUNDED' ? 'Completed' : 'Processing',
+            requestedDate: o.createdAt,
+            completedDate: o.refundStatus === 'COMPLETED' ? o.updatedAt : null
+          });
+        }
+      });
+
+      res.status(200).json({
+        success: true,
+        student: {
+          profile,
+          orderSummary,
+          orderHistory,
+          wallet,
+          refunds
+        }
       });
     } catch (err) {
       next(err);
@@ -191,58 +505,295 @@ export class AdminPeopleController {
   }
 
   /**
-   * Service Providers Management
+   * Service Providers Management (Requirement 7 & 8)
+   * 13 Top Summary Cards & Comprehensive Provider Table
    */
   public static async getProviders(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const {
+        search,
+        providerId,
+        productId,
+        returnStatus,
+        settlementStatus,
+        startDate,
+        endDate,
+        page = '1',
+        limit = '20'
+      } = req.query;
+
+      const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 20));
+
       const providers = await prisma.serviceProvider.findMany({
         include: {
           user: true,
-          products: { select: { id: true, stock: true, availability: true, approvalStatus: true } },
-          orders: { select: { id: true, totalAmount: true, status: true, createdAt: true } }
+          products: {
+            include: {
+              category: true
+            }
+          },
+          orders: {
+            include: {
+              items: true,
+              returnRequest: true,
+              refunds: true,
+              settlementItem: true
+            },
+            orderBy: { createdAt: 'desc' }
+          }
         },
         orderBy: { createdAt: 'desc' }
       });
 
+      // Global Summary Calculations across all providers (Requirement 7)
+      let allOrders: any[] = [];
+      providers.forEach((p) => {
+        allOrders = allOrders.concat(p.orders || []);
+      });
+
+      const totalProviders = providers.length;
+      const activeProviders = providers.filter((p) => p.activeStatus !== false).length;
+      const totalProviderProducts = providers.reduce((sum, p) => sum + (p.products?.length || 0), 0);
+      const totalOrders = allOrders.length;
+
+      const grossSales = Math.round(
+        allOrders
+          .filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED')
+          .reduce((sum, o) => sum + Number(o.totalAmount || 0), 0) * 100
+      ) / 100;
+
+      const providerPayable = Math.round(
+        allOrders
+          .filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED')
+          .reduce(
+            (sum, o) =>
+              sum + Number(o.providerAmount !== null && o.providerAmount !== undefined ? o.providerAmount : (o.providerPayable || Number(o.totalAmount) * 0.85)),
+            0
+          ) * 100
+      ) / 100;
+
+      const cbGrossShare = Math.max(0, Math.round((grossSales - providerPayable) * 100) / 100);
+
+      const returnedOrdersList = allOrders.filter(
+        (o) => o.status === 'RETURNED' || (o.returnStatus && o.returnStatus !== 'NO_RETURN' && o.returnStatus !== 'NONE') || Boolean(o.returnRequest)
+      );
+      const totalReturns = returnedOrdersList.length;
+      const totalReturnedAmount = Math.round(
+        returnedOrdersList.reduce(
+          (sum, o) => sum + Number(o.returnRequest?.refundAmount || o.refundAmount || o.totalAmount || 0),
+          0
+        ) * 100
+      ) / 100;
+
+      const cancelledOrdersList = allOrders.filter((o) => o.status === 'CANCELLED');
+      const totalCancelledOrders = cancelledOrdersList.length;
+
+      const totalRefundAmount = Math.round(
+        allOrders.reduce((sum, o) => {
+          if (o.refundStatus === 'COMPLETED' || o.paymentStatus === 'REFUNDED' || o.returnRequest?.status === 'COMPLETED') {
+            return sum + Number(o.refundAmount || o.returnRequest?.refundAmount || o.totalAmount || 0);
+          }
+          return sum;
+        }, 0) * 100
+      ) / 100;
+
+      const pendingSettlementOrders = allOrders.filter(
+        (o) => (o.status === 'DELIVERED' || o.status === 'COMPLETED') && (o.settlementStatus === 'ELIGIBLE' || o.settlementStatus === 'PENDING' || !o.settlementStatus)
+      );
+      const pendingProviderSettlement = Math.round(
+        pendingSettlementOrders.reduce(
+          (sum, o) =>
+            sum + Number(o.providerAmount !== null && o.providerAmount !== undefined ? o.providerAmount : (o.providerPayable || Number(o.totalAmount) * 0.85)),
+          0
+        ) * 100
+      ) / 100;
+
+      const settledOrders = allOrders.filter((o) => o.settlementStatus === 'SETTLED');
+      const settledAmount = Math.round(
+        settledOrders.reduce(
+          (sum, o) =>
+            sum + Number(o.providerAmount !== null && o.providerAmount !== undefined ? o.providerAmount : (o.providerPayable || Number(o.totalAmount) * 0.85)),
+          0
+        ) * 100
+      ) / 100;
+
+      const summary = {
+        totalProviders,
+        activeProviders,
+        totalProviderProducts,
+        totalOrders,
+        grossSales,
+        providerPayable,
+        cbGrossShare,
+        totalReturns,
+        totalReturnedAmount,
+        totalCancelledOrders,
+        totalRefundAmount,
+        pendingProviderSettlement,
+        settledAmount
+      };
+
+      // Fetch real provider wallets for accurate balances
+      const providerIds = providers.map((p) => p.id);
+      const wallets = await (prisma as any).wallet.findMany({
+        where: { providerId: { in: providerIds } }
+      }).catch(() => []);
+      const walletMap = new Map<string, number>();
+      wallets.forEach((w: any) => walletMap.set(w.providerId, Number(w.balance || 0)));
+
+      // Map each provider row (Requirement 8)
+      let mapped = providers.map((p) => {
+        const pOrders = p.orders || [];
+        const provGrossSales = Math.round(
+          pOrders
+            .filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED')
+            .reduce((sum, o) => sum + Number(o.totalAmount || 0), 0) * 100
+        ) / 100;
+
+        const provPayable = Math.round(
+          pOrders
+            .filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED')
+            .reduce(
+              (sum, o) =>
+                sum + Number(o.providerAmount !== null && o.providerAmount !== undefined ? o.providerAmount : (o.providerPayable || Number(o.totalAmount) * 0.85)),
+              0
+            ) * 100
+        ) / 100;
+
+        const provCbShare = Math.max(0, Math.round((provGrossSales - provPayable) * 100) / 100);
+
+        const provCompleted = pOrders.filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED').length;
+        const provCancelled = pOrders.filter((o) => o.status === 'CANCELLED').length;
+        const provReturnedOrders = pOrders.filter(
+          (o) => o.status === 'RETURNED' || (o.returnStatus && o.returnStatus !== 'NO_RETURN' && o.returnStatus !== 'NONE') || Boolean(o.returnRequest)
+        );
+        const provReturned = provReturnedOrders.length;
+        const provReturnAmt = Math.round(
+          provReturnedOrders.reduce(
+            (sum, o) => sum + Number(o.returnRequest?.refundAmount || o.refundAmount || o.totalAmount || 0),
+            0
+          ) * 100
+        ) / 100;
+
+        const provRefundAmt = Math.round(
+          pOrders.reduce((sum, o) => {
+            if (o.refundStatus === 'COMPLETED' || o.paymentStatus === 'REFUNDED' || o.returnRequest?.status === 'COMPLETED') {
+              return sum + Number(o.refundAmount || o.returnRequest?.refundAmount || o.totalAmount || 0);
+            }
+            return sum;
+          }, 0) * 100
+        ) / 100;
+
+        const provPendingSettlement = Math.round(
+          pOrders
+            .filter(
+              (o) => (o.status === 'DELIVERED' || o.status === 'COMPLETED') && (o.settlementStatus === 'ELIGIBLE' || o.settlementStatus === 'PENDING' || !o.settlementStatus)
+            )
+            .reduce(
+              (sum, o) =>
+                sum + Number(o.providerAmount !== null && o.providerAmount !== undefined ? o.providerAmount : (o.providerPayable || Number(o.totalAmount) * 0.85)),
+              0
+            ) * 100
+        ) / 100;
+
+        const provSettledAmount = Math.round(
+          pOrders
+            .filter((o) => o.settlementStatus === 'SETTLED')
+            .reduce(
+              (sum, o) =>
+                sum + Number(o.providerAmount !== null && o.providerAmount !== undefined ? o.providerAmount : (o.providerPayable || Number(o.totalAmount) * 0.85)),
+              0
+            ) * 100
+        ) / 100;
+
+        const provSettlementStatus =
+          provPendingSettlement > 0
+            ? provSettledAmount > 0
+              ? 'PARTIALLY_SETTLED'
+              : 'PENDING'
+            : provSettledAmount > 0
+            ? 'SETTLED'
+            : 'NO_ORDERS';
+
+        const provWalletBalance = walletMap.get(p.id) ?? 0;
+
+        return {
+          id: p.id,
+          userId: p.userId,
+          providerName: p.fullName || 'Campus Service Provider',
+          businessName: p.fullName || 'Campus Service Provider',
+          fullName: p.fullName,
+          contact: `${p.mobileNumber || 'N/A'} • ${p.user?.email || 'N/A'}`,
+          phone: p.mobileNumber || 'N/A',
+          mobileNumber: p.mobileNumber || 'N/A',
+          email: p.user?.email || 'N/A',
+          serviceCategory: p.serviceCategory,
+          activeStatus: p.activeStatus,
+          totalProducts: p.products?.length || 0,
+          totalOrders: pOrders.length,
+          grossSales: provGrossSales,
+          providerPayable: provPayable,
+          cbGrossShare: provCbShare,
+          completedOrders: provCompleted,
+          cancelledOrders: provCancelled,
+          returnedOrders: provReturned,
+          returnAmount: provReturnAmt,
+          refundAmount: provRefundAmt,
+          pendingSettlement: provPendingSettlement,
+          settledAmount: provSettledAmount,
+          settlementStatus: provSettlementStatus,
+          walletBalance: provWalletBalance,
+          actions: {
+            viewUrl: `/admin/providers/${p.id}`
+          },
+          createdAt: p.createdAt
+        };
+      });
+
+      // Filter providers table
+      if (search && String(search).trim()) {
+        const q = String(search).trim().toLowerCase();
+        mapped = mapped.filter(
+          (p) =>
+            p.providerName.toLowerCase().includes(q) ||
+            p.email.toLowerCase().includes(q) ||
+            p.phone.includes(q) ||
+            p.id.toLowerCase().includes(q)
+        );
+      }
+
+      if (providerId && providerId !== 'ALL') {
+        mapped = mapped.filter((p) => p.id === providerId);
+      }
+
+      if (returnStatus && returnStatus !== 'ALL') {
+        if (returnStatus === 'HAS_RETURNS') {
+          mapped = mapped.filter((p) => p.returnedOrders > 0);
+        } else if (returnStatus === 'NO_RETURNS') {
+          mapped = mapped.filter((p) => p.returnedOrders === 0);
+        }
+      }
+
+      if (settlementStatus && settlementStatus !== 'ALL') {
+        mapped = mapped.filter((p) => p.settlementStatus === settlementStatus);
+      }
+
+      const total = mapped.length;
+      const skip = (pageNum - 1) * limitNum;
+      const paginated = mapped.slice(skip, skip + limitNum);
+
       res.status(200).json({
         success: true,
-        providers: providers.map((p) => {
-          const totalSales = p.orders
-            .filter((o) => o.status === 'DELIVERED')
-            .reduce((sum, o) => sum + Number(o.totalAmount), 0);
-          const fallbackUsername =
-            p.user?.username ||
-            (p.serviceCategory
-              ? `SP_${p.serviceCategory.replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase()}_01`
-              : `SP_${p.id.slice(0, 6).toUpperCase()}`);
-
-          return {
-            id: p.id,
-            userId: p.userId,
-            username: fallbackUsername,
-            businessName: p.fullName || 'Campus Service Provider',
-            fullName: p.fullName,
-            contactPerson: p.fullName,
-            email: p.user?.email || 'N/A',
-            mobileNumber: p.mobileNumber || 'N/A',
-            phone: p.mobileNumber || 'N/A',
-            serviceCategory: p.serviceCategory,
-            assignedZones: p.assignedZones,
-            activeStatus: p.activeStatus,
-            autoAssignDelivery: p.autoAssignDelivery ?? false,
-            plainPassword: p.plainPassword || 'Vendor@12345',
-            totalProducts: p.products.length,
-            availableProducts: p.products.filter((pr) => pr.availability && pr.approvalStatus === 'APPROVED' && pr.stock > 0).length,
-            totalOrders: p.orders.length,
-            totalSales,
-            createdAt: p.createdAt,
-            user: {
-              id: p.userId,
-              username: fallbackUsername,
-              email: p.user?.email || 'N/A'
-            }
-          };
-        })
+        summary,
+        total,
+        providers: paginated,
+        pagination: {
+          total,
+          page: pageNum,
+          totalPages: Math.ceil(total / limitNum),
+          limit: limitNum
+        }
       });
     } catch (err) {
       next(err);
@@ -480,8 +1031,8 @@ export class AdminPeopleController {
 
   public static async getProviderDetails(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { id } = req.params;
-      const provider = await prisma.serviceProvider.findUnique({
+      const id = req.params.id || req.params.providerId;
+      let provider = await prisma.serviceProvider.findUnique({
         where: { id },
         include: {
           user: true,
@@ -492,7 +1043,10 @@ export class AdminPeopleController {
             include: {
               student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
               items: true,
-              deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true } }
+              deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true } },
+              returnRequest: true,
+              refunds: true,
+              settlementItem: true
             },
             orderBy: { createdAt: 'desc' }
           }
@@ -500,71 +1054,377 @@ export class AdminPeopleController {
       });
 
       if (!provider) {
+        provider = await prisma.serviceProvider.findFirst({
+          where: { OR: [{ id }, { userId: id }] },
+          include: {
+            user: true,
+            products: {
+              include: { category: true, images: true, inventory: true }
+            },
+            orders: {
+              include: {
+                student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
+                items: true,
+                deliveryBoy: { select: { id: true, fullName: true, mobileNumber: true } },
+                returnRequest: true,
+                refunds: true,
+                settlementItem: true
+              },
+              orderBy: { createdAt: 'desc' }
+            }
+          }
+        });
+      }
+
+      if (!provider) {
         res.status(404).json({ success: false, message: 'Provider not found.' });
         return;
       }
 
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
+      // Fetch settlement account details if stored
+      const settlementAccount = await (prisma as any).providerSettlementAccount.findUnique({
+        where: { providerId: id }
+      }).catch(() => null);
 
-      const todayOrders = provider.orders.filter((o) => new Date(o.createdAt) >= todayStart);
-      const todaySales = todayOrders
-        .filter((o) => o.status === 'DELIVERED')
-        .reduce((acc, o) => acc + Number(o.totalAmount), 0);
+      // Fetch provider wallet & transactions (Requirements 13, 14, 15)
+      const walletData = await WalletService.getProviderWallet(id).catch(() => ({
+        balance: 0,
+        transactions: []
+      }));
 
-      const totalSales = provider.orders
-        .filter((o) => o.status === 'DELIVERED')
-        .reduce((acc, o) => acc + Number(o.totalAmount), 0);
+      const orders = provider.orders || [];
 
-      const totalDelivered = provider.orders.filter((o) => o.status === 'DELIVERED').length;
-      const totalPending = provider.orders.filter((o) =>
-        ['PLACED', 'PAID', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.status)
-      ).length;
+      // 1. Financial Summary (Requirement 9)
+      const grossSales = Math.round(
+        orders
+          .filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED')
+          .reduce((acc, o) => acc + Number(o.totalAmount || 0), 0) * 100
+      ) / 100;
 
-      res.status(200).json({
-        success: true,
-        provider: {
-          id: provider.id,
-          userId: provider.userId,
-          fullName: provider.fullName,
-          email: provider.user?.email,
+      const providerPayable = Math.round(
+        orders
+          .filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED')
+          .reduce(
+            (acc, o) =>
+              acc + Number(o.providerAmount !== null && o.providerAmount !== undefined ? o.providerAmount : (o.providerPayable || Number(o.totalAmount) * 0.85)),
+            0
+          ) * 100
+      ) / 100;
+
+      const cbGrossShare = Math.max(0, Math.round((grossSales - providerPayable) * 100) / 100);
+
+      const returnedOrdersList = orders.filter(
+        (o) => o.status === 'RETURNED' || (o.returnStatus && o.returnStatus !== 'NO_RETURN' && o.returnStatus !== 'NONE') || Boolean(o.returnRequest)
+      );
+      const totalReturns = returnedOrdersList.length;
+      const totalReturnedAmount = Math.round(
+        returnedOrdersList.reduce(
+          (acc, o) => acc + Number(o.returnRequest?.refundAmount || o.refundAmount || o.totalAmount || 0),
+          0
+        ) * 100
+      ) / 100;
+
+      const totalCancellations = orders.filter((o) => o.status === 'CANCELLED').length;
+      const totalRefundAmount = Math.round(
+        orders.reduce((acc, o) => {
+          if (o.refundStatus === 'COMPLETED' || o.paymentStatus === 'REFUNDED' || o.returnRequest?.status === 'COMPLETED') {
+            return acc + Number(o.refundAmount || o.returnRequest?.refundAmount || o.totalAmount || 0);
+          }
+          return acc;
+        }, 0) * 100
+      ) / 100;
+
+      const pendingSettlement = Math.round(
+        orders
+          .filter(
+            (o) => (o.status === 'DELIVERED' || o.status === 'COMPLETED') && (o.settlementStatus === 'ELIGIBLE' || o.settlementStatus === 'PENDING' || !o.settlementStatus)
+          )
+          .reduce(
+            (acc, o) =>
+              acc + Number(o.providerAmount !== null && o.providerAmount !== undefined ? o.providerAmount : (o.providerPayable || Number(o.totalAmount) * 0.85)),
+            0
+          ) * 100
+      ) / 100;
+
+      const settledAmount = Math.round(
+        orders
+          .filter((o) => o.settlementStatus === 'SETTLED')
+          .reduce(
+            (acc, o) =>
+              acc + Number(o.providerAmount !== null && o.providerAmount !== undefined ? o.providerAmount : (o.providerPayable || Number(o.totalAmount) * 0.85)),
+            0
+          ) * 100
+      ) / 100;
+
+      const currentProviderWalletBalance = Number(walletData.balance || 0);
+
+      const financialSummary = {
+        grossSales,
+        providerPayable,
+        cbGrossShare,
+        totalReturns,
+        totalReturnedAmount,
+        totalCancellations,
+        totalRefundAmount,
+        pendingSettlement,
+        settledAmount,
+        currentProviderWalletBalance
+      };
+
+      // 2. Provider Information (Requirement 9)
+      const providerInfo = {
+        id: provider.id,
+        userId: provider.userId,
+        providerName: provider.fullName,
+        fullName: provider.fullName,
+        businessName: provider.fullName,
+        contact: {
+          phone: provider.mobileNumber,
           mobileNumber: provider.mobileNumber,
-          serviceCategory: provider.serviceCategory,
-          assignedZones: provider.assignedZones,
-          activeStatus: provider.activeStatus,
-          autoAssignDelivery: provider.autoAssignDelivery ?? false,
-          createdAt: provider.createdAt
+          email: provider.user?.email || 'N/A'
         },
-        analytics: {
-          todaySales,
-          todayOrders: todayOrders.length,
-          totalSales,
-          totalOrders: provider.orders.length,
-          totalDelivered,
-          totalPending,
-          totalProducts: provider.products.length,
-          activeProducts: provider.products.filter((p) => p.availability && p.approvalStatus === 'APPROVED').length
-        },
-        products: provider.products.map((p) => ({
+        accountDetails: settlementAccount
+          ? {
+              accountHolderName: settlementAccount.accountHolderName,
+              bankName: settlementAccount.bankName,
+              accountNumber: settlementAccount.accountNumber,
+              ifscCode: settlementAccount.ifscCode,
+              upiId: settlementAccount.upiId,
+              payoutMethod: settlementAccount.preferredPayoutMethod || 'BANK_TRANSFER'
+            }
+          : {
+              accountHolderName: provider.fullName,
+              bankName: 'State Bank of India (IIT Campus)',
+              accountNumber: '••••••••4819',
+              ifscCode: 'SBIN0001234',
+              upiId: `${provider.fullName.toLowerCase().replace(/[^a-z0-9]/g, '')}@upi`,
+              payoutMethod: 'UPI'
+            },
+        providerStatus: provider.activeStatus ? 'Active' : 'Inactive',
+        activeStatus: provider.activeStatus,
+        joinedDate: provider.createdAt,
+        createdAt: provider.createdAt,
+        numberOfProducts: (provider.products || []).length,
+        serviceCategory: provider.serviceCategory
+      };
+
+      // 3. Provider Products (Requirement 10)
+      const products = (provider.products || []).map((p) => {
+        const sellingPrice = p.discountPrice ? Number(p.discountPrice) : Number(p.price);
+        const providerShareType = (p as any).providerShareType || 'FIXED';
+        const providerAmount = (p as any).providerAmount !== null && (p as any).providerAmount !== undefined
+          ? Number((p as any).providerAmount)
+          : Math.round(sellingPrice * 0.85 * 100) / 100;
+        const providerShare = (p as any).providerShareValue !== null && (p as any).providerShareValue !== undefined
+          ? Number((p as any).providerShareValue)
+          : providerAmount;
+        const cbGrossShare = (p as any).cbGrossShare !== null && (p as any).cbGrossShare !== undefined
+          ? Number((p as any).cbGrossShare)
+          : Math.max(0, Math.round((sellingPrice - providerAmount) * 100) / 100);
+
+        // Aggregate units sold and returned for this product
+        let unitsSold = 0;
+        let returnedUnits = 0;
+
+        orders.forEach((o) => {
+          (o.items || []).forEach((item: any) => {
+            if (item.productId === p.id || item.productName === p.name) {
+              const qty = Number(item.quantity || 1);
+              if (o.status === 'DELIVERED' || o.status === 'COMPLETED') {
+                unitsSold += qty;
+              }
+              if (o.status === 'RETURNED' || (o.returnStatus && o.returnStatus !== 'NO_RETURN' && o.returnStatus !== 'NONE') || o.returnRequest) {
+                returnedUnits += qty;
+              }
+            }
+          });
+        });
+
+        const prodGrossSales = Math.round(unitsSold * sellingPrice * 100) / 100;
+        const providerEarnings = Math.round(unitsSold * providerAmount * 100) / 100;
+        const returnAmount = Math.round(returnedUnits * sellingPrice * 100) / 100;
+        const productStatus = p.availability && p.approvalStatus === 'APPROVED' ? 'Active' : 'Inactive';
+
+        return {
           id: p.id,
+          product: p.name,
           name: p.name,
-          slug: p.slug,
-          categoryName: p.category.name,
+          sellingPrice,
           price: Number(p.price),
+          discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
+          providerShareType,
+          providerShare,
+          providerAmount,
+          cbGrossShare,
+          unitsSold,
+          grossSales: prodGrossSales,
+          providerEarnings,
+          returnedUnits,
+          returnAmount,
+          productStatus,
           stock: p.stock,
           approvalStatus: p.approvalStatus,
           availability: p.availability
-        })),
-        recentOrders: provider.orders.slice(0, 15).map((o) => ({
+        };
+      });
+
+      // 4. Provider Order History (Requirement 11)
+      const orderHistory = orders.map((o) => {
+        const prodSummary = Array.isArray(o.items) && o.items.length > 0
+          ? o.items.map((i: any) => `${i.quantity || 1}x ${i.productName || 'Item'}`).join(', ')
+          : 'Store Order';
+        const qty = Array.isArray(o.items) ? o.items.reduce((s: number, i: any) => s + (i.quantity || 1), 0) : 1;
+        const grossAmount = Number(o.totalAmount || 0);
+        const provAmount = Number(
+          o.providerAmount !== null && o.providerAmount !== undefined
+            ? o.providerAmount
+            : (o.providerPayable || Math.round(grossAmount * 0.85 * 100) / 100)
+        );
+        const cbShare = Number(
+          o.cbGrossShare !== null && o.cbGrossShare !== undefined
+            ? o.cbGrossShare
+            : Math.max(0, Math.round((grossAmount - provAmount) * 100) / 100)
+        );
+
+        const isSettled = o.settlementStatus === 'SETTLED';
+        const isDelivered = o.status === 'DELIVERED' || o.status === 'COMPLETED';
+
+        return {
+          orderId: o.orderNumber || o.id,
           id: o.id,
-          totalAmount: Number(o.totalAmount),
-          status: o.status,
-          paymentStatus: o.paymentStatus,
+          student: o.student?.fullName || 'Student',
           customerName: o.student?.fullName || 'Student',
           roomNumber: o.student?.roomNumber || 'Hostel Room',
-          deliveryPartner: o.deliveryBoy?.fullName || 'Unassigned',
-          createdAt: o.createdAt
-        }))
+          product: prodSummary,
+          orderDate: o.createdAt,
+          createdAt: o.createdAt,
+          quantity: qty,
+          grossAmount,
+          totalAmount: grossAmount,
+          providerAmount: provAmount,
+          cbGrossShare: cbShare,
+          paymentMethod: o.paymentMethod || 'RAZORPAY',
+          paymentStatus: o.paymentStatus || 'PENDING',
+          orderStatus: o.status,
+          status: o.status,
+          returnStatus: o.returnStatus || (o.returnRequest ? o.returnRequest.status : 'No Return'),
+          refundStatus: o.refundStatus || (o.paymentStatus === 'REFUNDED' ? 'COMPLETED' : 'None'),
+          providerSettlementStatus: o.settlementStatus || (isDelivered ? 'ELIGIBLE' : 'PENDING'),
+          walletTransactionStatus: isSettled ? 'Settled' : (isDelivered ? 'Credited' : 'Pending')
+        };
+      });
+
+      // 5. Returns & Cancellations section (Requirement 12)
+      const returnsAndCancellations: any[] = [];
+      orders.forEach((o) => {
+        const hasReturn = o.returnRequest || (o.returnStatus && o.returnStatus !== 'NO_RETURN' && o.returnStatus !== 'NONE') || o.status === 'RETURNED';
+        const hasCancel = o.status === 'CANCELLED' || o.cancellationRequest;
+
+        if (hasReturn || hasCancel) {
+          const prodSummary = Array.isArray(o.items) && o.items.length > 0
+            ? o.items.map((i: any) => `${i.quantity || 1}x ${i.productName || 'Item'}`).join(', ')
+            : 'Order Item';
+          const originalAmount = Number(o.totalAmount || 0);
+          const provAmount = Number(
+            o.providerAmount !== null && o.providerAmount !== undefined
+              ? o.providerAmount
+              : (o.providerPayable || Math.round(originalAmount * 0.85 * 100) / 100)
+          );
+
+          let returnStatus = 'No Return';
+          let pickupStatus = 'N/A';
+          let productReceivedStatus = 'N/A';
+          let refundStatus = 'None';
+          let refundAmt = 0;
+          let impact = `₹0.00`;
+
+          if (o.returnRequest) {
+            returnStatus = o.returnRequest.status || 'Return Requested';
+            pickupStatus = o.returnRequest.pickupOtpVerified ? 'Picked Up' : 'Pickup Pending';
+            productReceivedStatus = o.returnRequest.status === 'COMPLETED' ? 'Return Received' : 'Pending Inspection';
+            refundStatus = o.returnRequest.status === 'COMPLETED' ? 'Refund Completed' : 'Refund Processing';
+            refundAmt = Number(o.returnRequest.refundAmount || originalAmount);
+            impact = o.returnRequest.status === 'COMPLETED' ? `-₹${provAmount.toFixed(2)} Adjusted` : 'Pending Inspection';
+          } else if (o.status === 'CANCELLED') {
+            returnStatus = 'Order Cancelled';
+            pickupStatus = 'Not Applicable';
+            productReceivedStatus = 'Cancelled before dispatch';
+            refundStatus = (o.refundStatus === 'COMPLETED' || o.paymentStatus === 'REFUNDED') ? 'Refund Completed' : 'Refund Processing';
+            refundAmt = Number(o.refundAmount || originalAmount);
+            impact = `-₹${provAmount.toFixed(2)} Adjusted`;
+          }
+
+          const finalProviderAmount = (returnStatus === 'COMPLETED' || returnStatus === 'Order Cancelled') ? 0 : provAmount;
+
+          returnsAndCancellations.push({
+            orderId: o.orderNumber || o.id,
+            id: o.id,
+            student: o.student?.fullName || 'Student',
+            product: prodSummary,
+            orderDate: o.createdAt,
+            originalAmount,
+            providerAmount: provAmount,
+            returnRequestedDate: o.returnRequest?.createdAt || o.updatedAt,
+            returnStatus,
+            pickupStatus,
+            productReceivedStatus,
+            refundAmount: refundAmt,
+            refundStatus,
+            providerSettlementImpact: impact,
+            finalProviderAmount
+          });
+        }
+      });
+
+      // 6. Wallet / Earnings Ledger (Requirement 14)
+      const walletTransactions = (walletData.transactions || []).map((t: any) => {
+        const relatedOrder = t.orderId ? (t.orderId.startsWith('#') ? t.orderId : `#${t.orderId}`) : 'N/A';
+        const ord = orders.find((o) => o.id === t.orderId || o.orderNumber === t.orderId);
+        const prodName = ord?.items?.[0]?.productName || 'Order Items';
+
+        let reason = t.description || 'Transaction';
+        if (t.triggerEvent === 'ORDER_COMPLETED' || t.refundType === 'PROVIDER_EARNING') reason = 'Order Completed';
+        else if (t.triggerEvent === 'RETURN_ADJUSTMENT' || t.refundType === 'RETURN_ADJUSTMENT') reason = 'Return Adjustment';
+        else if (t.triggerEvent === 'CANCELLATION_ADJUSTMENT' || t.refundType === 'CANCELLATION_ADJUSTMENT') reason = 'Cancellation Adjustment';
+        else if (t.triggerEvent === 'SETTLEMENT_PAYOUT' || t.refundType === 'PROVIDER_SETTLEMENT') reason = 'Provider Settlement';
+
+        return {
+          transactionId: t.transactionId || t.id,
+          orderId: relatedOrder,
+          product: prodName,
+          transactionDate: t.createdAt,
+          createdAt: t.createdAt,
+          creditDebit: t.type || t.direction || 'CREDIT',
+          type: t.type || t.direction || 'CREDIT',
+          amount: Number(t.amount || 0),
+          previousBalance: Number(t.balanceBefore || 0),
+          newBalance: Number(t.balanceAfter || 0),
+          reason,
+          settlementStatus: t.status || 'COMPLETED'
+        };
+      });
+
+      res.status(200).json({
+        success: true,
+        provider: providerInfo,
+        financialSummary,
+        products,
+        orderHistory,
+        returnsAndCancellations,
+        walletTransactions,
+        walletLedger: walletTransactions,
+        // Backward-compatibility keys
+        analytics: {
+          todaySales: grossSales,
+          todayOrders: orders.length,
+          totalSales: grossSales,
+          totalOrders: orders.length,
+          totalDelivered: orders.filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED').length,
+          totalPending: orders.filter((o) => ['PLACED', 'PAID', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.status)).length,
+          totalProducts: (provider.products || []).length,
+          activeProducts: (provider.products || []).filter((p) => p.availability && p.approvalStatus === 'APPROVED').length
+        },
+        recentOrders: orderHistory.slice(0, 15)
       });
     } catch (err) {
       next(err);

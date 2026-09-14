@@ -49,6 +49,9 @@ interface OrderItem {
   unitPrice: number;
   totalPrice: number;
   image?: string | null;
+  providerName?: string | null;
+  provider?: { id: string; name?: string; businessName?: string } | null;
+  product?: { provider?: { name?: string; businessName?: string } } | null;
 }
 
 interface OrderData {
@@ -89,10 +92,13 @@ interface OrderData {
   } | null;
   provider?: {
     id?: string;
-    fullName: string;
+    fullName?: string;
+    name?: string;
+    businessName?: string;
     mobileNumber?: string;
     serviceCategory?: string;
   } | null;
+  providerName?: string | null;
   refundAccount?: {
     accountType: string;
     accountHolderName: string;
@@ -1869,16 +1875,24 @@ export default function OrderTrackClient() {
           </div>
 
           <div className="space-y-2 text-xs">
-            {order.items?.map((item) => (
-              <div key={item.id} className="flex justify-between items-center text-slate-800">
-                <span>
-                  {item.productName} <span className="text-slate-400">× {item.quantity}</span>
-                </span>
-                <span className="font-mono font-semibold text-slate-900">
-                  ₹{Number(item.totalPrice).toFixed(2)}
-                </span>
-              </div>
-            ))}
+            {order.items?.map((item) => {
+              const pName = item.providerName || item.provider?.businessName || item.provider?.name || item.product?.provider?.businessName || item.product?.provider?.name || order.providerName || order.provider?.businessName || order.provider?.fullName || order.provider?.name || 'Provider information unavailable';
+              return (
+                <div key={item.id} className="flex justify-between items-start text-slate-800 gap-2">
+                  <div className="space-y-0.5">
+                    <span className="font-medium">
+                      {item.productName} <span className="text-slate-400 font-normal">× {item.quantity}</span>
+                    </span>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Provider: <span className="text-slate-700 font-semibold">{pName}</span>
+                    </p>
+                  </div>
+                  <span className="font-mono font-semibold text-slate-900 shrink-0">
+                    ₹{Number(item.totalPrice).toFixed(2)}
+                  </span>
+                </div>
+              );
+            })}
 
             <div className="pt-2 border-t border-slate-100 space-y-1 text-slate-500 text-[11px]">
               <div className="flex justify-between">

@@ -188,6 +188,9 @@ export default function CartPage() {
                           <div className="text-[11px] text-gray-500 mt-0.5">
                             ₹{item.unitPrice} each &bull; 10–15 min delivery
                           </div>
+                          <div className="text-[10px] text-emerald-800 font-semibold mt-0.5">
+                            Provider: {(item as any).providerName || (item as any).provider?.fullName || 'Campus Vendor'}
+                          </div>
                         </div>
                       </div>
 

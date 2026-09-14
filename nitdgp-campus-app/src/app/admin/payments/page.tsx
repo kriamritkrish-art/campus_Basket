@@ -267,6 +267,14 @@ export default function AdminPaymentsPage() {
     codReconciliationStatusFilter
   ]);
 
+  useEffect(() => {
+    if (activeTab !== 'COD') return;
+    const refreshTimer = window.setInterval(() => {
+      loadData();
+    }, 5000);
+    return () => window.clearInterval(refreshTimer);
+  }, [activeTab, codDateFilter, codRunnerFilter, codProviderFilter, codReconciliationStatusFilter]);
+
   // Load Delivery Boy Operational Orders (Tab 2 - Operational Visibility Only)
   const loadOperationalOrders = async (overrideRunnerId?: string) => {
     setLoadingOperationalOrders(true);
@@ -478,19 +486,11 @@ export default function AdminPaymentsPage() {
 
     setReconcilingOrderId(orderUniqueId);
     try {
-      const expectedCod = Number(c.codAmountDue ?? c.expectedAmount ?? c.amountExpected ?? 0);
-      const collectedAmt = Number(c.cashCollectedAmount ?? c.collectedAmount ?? c.amountCollected ?? expectedCod);
-      const diff = Math.max(0, expectedCod - collectedAmt);
-
       const res = await apiRequest('/api/admin/payments/cod/reconcile', {
         method: 'POST',
         body: JSON.stringify({
           collectionId: targetId,
           orderId: targetOrderId,
-          amountCollected: collectedAmt,
-          cashCollected: collectedAmt,
-          collectionStatus: 'COLLECTED',
-          reconciliationStatus: 'RECONCILED',
           deliveryBoyId: selectedCodRunner?.deliveryBoyId,
           notes: `Reconciled order #${c.orderNumber || targetOrderId}`
         })
@@ -510,9 +510,7 @@ export default function AdminPaymentsPage() {
                 ...o,
                 collectionStatus: 'COLLECTED',
                 reconciliationStatus: 'RECONCILED',
-                collectedAmount: collectedAmt,
-                cashCollectedAmount: collectedAmt,
-                difference: diff,
+                difference: Number(o.expectedAmount || o.codAmountDue || 0) - Number(o.collectedAmount || o.cashCollectedAmount || 0),
                 isEligibleForReconcile: false
               };
             }
@@ -549,9 +547,7 @@ export default function AdminPaymentsPage() {
                     ...o,
                     collectionStatus: 'COLLECTED',
                     reconciliationStatus: 'RECONCILED',
-                    collectedAmount: collectedAmt,
-                    cashCollectedAmount: collectedAmt,
-                    difference: diff,
+                    difference: Number(o.expectedAmount || o.codAmountDue || 0) - Number(o.collectedAmount || o.cashCollectedAmount || 0),
                     isEligibleForReconcile: false
                   };
                 }
@@ -590,7 +586,6 @@ export default function AdminPaymentsPage() {
     setBulkReconciling(true);
     try {
       const runnerId = runner.deliveryBoyId;
-      const runnerPhone = runner.phone;
       const res = await apiRequest('/api/admin/payments/cod/bulk-reconcile', {
         method: 'POST',
         body: JSON.stringify({
@@ -605,57 +600,6 @@ export default function AdminPaymentsPage() {
         setShowBulkReconcileModal(false);
         setBulkReconcileRunner(null);
         setBulkReconcileNotes('');
-
-        const reconciledIdSet = new Set(res.reconciledOrderIds || []);
-
-        // Immediately update selected runner in state
-        setSelectedCodRunner((prev: any) => {
-          if (!prev) return prev;
-          if (prev.deliveryBoyId === runnerId || (runnerPhone && prev.phone === runnerPhone)) {
-            const updatedOrders = (prev.orders || []).map((o: any) => ({
-              ...o,
-              collectionStatus: 'COLLECTED',
-              reconciliationStatus: 'RECONCILED',
-              difference: 0,
-              isEligibleForReconcile: false
-            }));
-            const totalOrders = prev.codOrdersCount || updatedOrders.length;
-            return {
-              ...prev,
-              orders: updatedOrders,
-              pendingOrdersCount: 0,
-              reconciledOrdersCount: totalOrders,
-              eligibleOrdersCount: 0,
-              status: 'RECONCILED'
-            };
-          }
-          return prev;
-        });
-
-        // Immediately update codDeliveryBoys list
-        setCodDeliveryBoys((prevRunners: any[]) =>
-          prevRunners.map((r: any) => {
-            if (r.deliveryBoyId === runnerId || (runnerPhone && r.phone === runnerPhone)) {
-              const updatedOrders = (r.orders || []).map((o: any) => ({
-                ...o,
-                collectionStatus: 'COLLECTED',
-                reconciliationStatus: 'RECONCILED',
-                difference: 0,
-                isEligibleForReconcile: false
-              }));
-              const totalOrders = r.codOrdersCount || updatedOrders.length;
-              return {
-                ...r,
-                orders: updatedOrders,
-                reconciledOrdersCount: totalOrders,
-                pendingOrdersCount: 0,
-                eligibleOrdersCount: 0,
-                status: 'RECONCILED'
-              };
-            }
-            return r;
-          })
-        );
 
         await loadData();
       } else {
@@ -1104,10 +1048,26 @@ export default function AdminPaymentsPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-gradient-to-br from-[#17202A] to-slate-800 text-white border border-slate-700 rounded-2xl p-5 shadow-xs">
+              <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                <span>Total Admin Balance (Net)</span>
+                <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/30">Live Platform</span>
+              </div>
+              <div className="text-2xl font-black text-emerald-400 mt-2 font-mono">
+                ₹{(overviewMetrics?.totalAdminBalance !== undefined
+                  ? overviewMetrics.totalAdminBalance
+                  : Math.max(0, (Number(overviewMetrics?.totalOnlinePayments || 0) + Number(overviewMetrics?.totalCodCollected || 0)) - (Number(overviewMetrics?.settledPayoutsAmount || 0) + Number(overviewMetrics?.completedRefundsAmount || 0)))
+                ).toLocaleString('en-IN')}
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Net funds held: Inflows minus provider payouts &amp; completed refunds
+              </p>
+            </div>
+
             <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
               <div className="text-xs font-bold text-gray-500 uppercase">Provider Settlements Disbursed</div>
-              <div className="text-2xl font-black text-gray-900 mt-2">
+              <div className="text-2xl font-black text-gray-900 mt-2 font-mono">
                 ₹{(overviewMetrics?.settledPayoutsAmount || 0).toLocaleString('en-IN')}
               </div>
               <p className="text-xs text-gray-500 mt-1">Transferred via NEFT / UPI to verified accounts</p>
@@ -1115,7 +1075,7 @@ export default function AdminPaymentsPage() {
 
             <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
               <div className="text-xs font-bold text-gray-500 uppercase">Pending Provider Payable</div>
-              <div className="text-2xl font-black text-amber-600 mt-2">
+              <div className="text-2xl font-black text-amber-600 mt-2 font-mono">
                 ₹{(overviewMetrics?.pendingSettlementsAmount || 0).toLocaleString('en-IN')}
               </div>
               <p className="text-xs text-gray-500 mt-1">Awaiting next disbursement cycle</p>
@@ -1123,10 +1083,10 @@ export default function AdminPaymentsPage() {
 
             <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
               <div className="text-xs font-bold text-gray-500 uppercase">Total Completed Refunds</div>
-              <div className="text-2xl font-black text-emerald-600 mt-2">
-                ₹{(overviewMetrics?.completedRefundsAmount || 0).toLocaleString('en-IN')}
+              <div className="text-2xl font-black text-rose-600 mt-2 font-mono">
+                -₹{(overviewMetrics?.completedRefundsAmount || 0).toLocaleString('en-IN')}
               </div>
-              <p className="text-xs text-gray-500 mt-1">{overviewMetrics?.completedRefundsCount || 0} student claims completed</p>
+              <p className="text-xs text-gray-500 mt-1">{overviewMetrics?.completedRefundsCount || 0} student claims completed (Deducted from balance)</p>
             </div>
           </div>
         </div>
@@ -1904,7 +1864,7 @@ export default function AdminPaymentsPage() {
                     <option value="ALL">All Statuses</option>
                     <option value="READY TO RECONCILE">Ready to Reconcile</option>
                     <option value="RECONCILED">Fully Reconciled</option>
-                    <option value="PENDING">Pending Audit</option>
+                    <option value="PENDING">Pending Reconciliation</option>
                     <option value="MISMATCH">Cash Discrepancy</option>
                   </select>
                 </div>
@@ -2164,7 +2124,7 @@ export default function AdminPaymentsPage() {
                       <span className="text-lg font-black text-emerald-700 mt-1 block">
                         {selectedCodRunner.reconciledOrdersCount}
                       </span>
-                      <span className="text-[10px] text-emerald-600 mt-0.5 block">Audited Orders</span>
+                      <span className="text-[10px] text-emerald-600 mt-0.5 block">Completed Reconciliation</span>
                     </div>
 
                     <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200">
@@ -2172,7 +2132,7 @@ export default function AdminPaymentsPage() {
                       <span className="text-lg font-black text-amber-700 mt-1 block">
                         {selectedCodRunner.pendingOrdersCount}
                       </span>
-                      <span className="text-[10px] text-amber-600 mt-0.5 block">Pending Audit</span>
+                      <span className="text-[10px] text-amber-600 mt-0.5 block">Awaiting Reconciliation</span>
                     </div>
                   </div>
                 ) : (
@@ -2906,9 +2866,56 @@ export default function AdminPaymentsPage() {
                 <span className="text-gray-500">Student:</span>{' '}
                 <strong className="text-gray-900">{selectedRefundOrder.student?.fullName}</strong>
               </div>
-              <div>
-                <span className="text-gray-500">Refund Amount:</span>{' '}
-                <strong className="text-red-600 font-bold text-sm">₹{Number(selectedRefundOrder.refundAmount ?? (selectedRefundOrder.refunds?.[0]?.amount || selectedRefundOrder.totalAmount)).toFixed(2)}</strong>
+              {/* Section 15: Admin Refund Calculation Breakdown */}
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <div className="font-bold text-slate-800 text-xs uppercase tracking-wider border-b border-slate-200/80 pb-1.5 flex items-center justify-between">
+                  <span>Refund Calculation Breakdown</span>
+                  <span className="text-[10px] font-mono text-slate-500">#{selectedRefundOrder.orderNumber}</span>
+                </div>
+                <div className="space-y-1 text-slate-600 text-xs">
+                  <div className="flex justify-between">
+                    <span>Order Total:</span>
+                    <span className="font-mono font-medium text-slate-900">₹{Number(selectedRefundOrder.totalAmount || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Online Amount Paid:</span>
+                    <span className="font-mono font-medium text-emerald-700">
+                      ₹{(selectedRefundOrder.paymentMethod === 'CASH_ON_DELIVERY' ? Number(selectedRefundOrder.advancePaidAmount || 0) : Number(selectedRefundOrder.totalAmount || 0)).toFixed(2)}
+                    </span>
+                  </div>
+                  {selectedRefundOrder.paymentMethod === 'CASH_ON_DELIVERY' && (
+                    <div className="flex justify-between text-amber-800">
+                      <span>COD Amount (Unpaid):</span>
+                      <span className="font-mono font-medium">
+                        ₹{Math.max(0, Number(selectedRefundOrder.totalAmount || 0) - Number(selectedRefundOrder.advancePaidAmount || 0)).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span>Refund Method:</span>
+                    <span className="font-bold text-slate-800">
+                      {selectedRefundOrder.refundMethod === 'CAMPUS_BASKET_WALLET' ? 'Campus Basket Wallet' : 'Original Payment Method'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Refund Trigger:</span>
+                    <span className="font-medium text-slate-700">
+                      {selectedRefundOrder.status === 'CANCELLED' ? 'Cancellation confirmed' : 'Successful return pickup'}
+                    </span>
+                  </div>
+                  <div className="pt-1.5 border-t border-slate-200 flex justify-between font-bold text-slate-900 text-sm">
+                    <span>Refund Eligible:</span>
+                    <span className="font-mono text-red-600 font-black">
+                      ₹{Number(selectedRefundOrder.refundAmount ?? (selectedRefundOrder.refunds?.[0]?.amount || selectedRefundOrder.totalAmount)).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[11px] text-slate-500">
+                    <span>Status:</span>
+                    <span className="font-bold text-emerald-700">
+                      {selectedRefundOrder.refundStatus || 'Completed'}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {selectedRefundOrder.refundAccount && (

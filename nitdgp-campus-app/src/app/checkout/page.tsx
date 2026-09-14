@@ -23,7 +23,8 @@ import {
   ArrowRight,
   CreditCard,
   Banknote,
-  AlertCircle
+  AlertCircle,
+  Wallet
 } from 'lucide-react';
 
 declare global {
@@ -45,7 +46,9 @@ export default function CheckoutPage() {
   const [specialInstructions, setSpecialInstructions] = useState<string>('');
 
   // Payment
-  const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'CASH_ON_DELIVERY'>('RAZORPAY');
+  const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'CASH_ON_DELIVERY' | 'CAMPUS_BASKET_WALLET'>('RAZORPAY');
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [isWalletLoading, setIsWalletLoading] = useState<boolean>(true);
   const [isCodAllowed, setIsCodAllowed] = useState<boolean>(true);
   const [globalCodAdvance, setGlobalCodAdvance] = useState<number>(0);
   const [codAdvanceAmount, setCodAdvanceAmount] = useState<number>(0);
@@ -122,6 +125,29 @@ export default function CheckoutPage() {
     }
     fetchPlatformSettings();
   }, []);
+
+  // Fetch student Campus Basket Wallet balance
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchWalletBalance() {
+      try {
+        setIsWalletLoading(true);
+        const res = await apiRequest(`/api/wallet?_t=${Date.now()}`);
+        if (isMounted && res?.success) {
+          const bal = typeof res.balance === 'number' ? res.balance : Number(res.wallet?.balance || 0);
+          setWalletBalance(bal);
+        }
+      } catch (err) {
+        console.warn('Could not fetch wallet balance', err);
+      } finally {
+        if (isMounted) setIsWalletLoading(false);
+      }
+    }
+    fetchWalletBalance();
+    return () => {
+      isMounted = false;
+    };
+  }, [isAuthenticated]);
 
   // Load and sync location
   useEffect(() => {
@@ -284,6 +310,19 @@ export default function CheckoutPage() {
 
       const order = res.order;
 
+      // CAMPUS BASKET WALLET FLOW (Instant 1-Click Payment)
+      if (paymentMethod === 'CAMPUS_BASKET_WALLET') {
+        clearCart();
+        setOrderConfirmed(order);
+        if (typeof window !== 'undefined' && order?.id) {
+          localStorage.setItem('cb_active_order_id', order.id);
+        }
+        setTimeout(() => {
+          router.push(`/orders/track?id=${order.id}&placed=true`);
+        }, 1000);
+        return;
+      }
+
       // CASH ON DELIVERY FLOW
       if (paymentMethod === 'CASH_ON_DELIVERY') {
         if (res.requiresAdvance && res.razorpay && (res.advanceRequired > 0 || (res.razorpay.amount && res.razorpay.amount > 0))) {
@@ -336,7 +375,7 @@ export default function CheckoutPage() {
                     localStorage.setItem('cb_active_order_id', order.id);
                   }
                   setTimeout(() => {
-                    router.push(`/orders/${order.id}/track?id=${order.id}&placed=true`);
+                    router.push(`/orders/track?id=${order.id}&placed=true`);
                   }, 1200);
                 } else {
                   setError('Advance payment verification failed. Please contact campus support.');
@@ -388,7 +427,7 @@ export default function CheckoutPage() {
           localStorage.setItem('cb_active_order_id', order.id);
         }
         setTimeout(() => {
-          router.push(`/orders/${order.id}/track?id=${order.id}&placed=true`);
+          router.push(`/orders/track?id=${order.id}&placed=true`);
         }, 1200);
         return;
       }
@@ -443,7 +482,7 @@ export default function CheckoutPage() {
                   localStorage.setItem('cb_active_order_id', order.id);
                 }
                 setTimeout(() => {
-                  router.push(`/orders/${order.id}/track?id=${order.id}&placed=true`);
+                  router.push(`/orders/track?id=${order.id}&placed=true`);
                 }, 1200);
               } else {
                 setError('Payment verification failed. Please contact campus support.');
@@ -790,7 +829,93 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
-                {/* OPTION 1: UPI / ONLINE PAYMENT */}
+                {/* OPTION 1: CAMPUS BASKET WALLET */}
+                <div
+                  onClick={() => {
+                    if (walletBalance !== null && walletBalance < total) {
+                      setError(`Insufficient Campus Basket Wallet balance (Available: ₹${walletBalance.toFixed(2)}, Required: ₹${total.toFixed(2)}). Please top up your wallet or choose UPI / COD.`);
+                      return;
+                    }
+                    setError(null);
+                    setPaymentMethod('CAMPUS_BASKET_WALLET');
+                  }}
+                  className={`payment-option ${
+                    paymentMethod === 'CAMPUS_BASKET_WALLET' ? 'selected' : ''
+                  } ${
+                    walletBalance !== null && walletBalance < total ? 'opacity-85 border-dashed hover:border-amber-400' : ''
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5">
+                      <div
+                        className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                          paymentMethod === 'CAMPUS_BASKET_WALLET'
+                            ? 'border-[#4F9D2F] bg-[#4F9D2F]'
+                            : 'border-gray-300 bg-white'
+                        }`}
+                      >
+                        {paymentMethod === 'CAMPUS_BASKET_WALLET' && (
+                          <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex-1 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="font-bold text-sm text-[#172033] flex items-center gap-1.5">
+                          <Wallet className="w-4 h-4 text-[#4F9D2F]" />
+                          Campus Basket Wallet
+                        </span>
+                        {isWalletLoading ? (
+                          <span className="text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded animate-pulse">
+                            Checking balance...
+                          </span>
+                        ) : walletBalance !== null && walletBalance >= total ? (
+                          <span className="text-[10px] font-extrabold text-[#397A22] bg-[#EFF8EA] px-2 py-0.5 rounded border border-[#d6eed0] flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-[#4F9D2F]" />
+                            ⚡ 1-Click Instant Pay (₹{walletBalance.toFixed(2)} Available)
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                            Available: ₹{(walletBalance ?? 0).toFixed(2)} • Short by ₹{Math.max(0, total - (walletBalance ?? 0)).toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-[#667085]">
+                        {walletBalance !== null && walletBalance >= total
+                          ? 'Deduct directly from your Campus Basket Wallet. Zero gateway redirects, 100% instant confirmation.'
+                          : 'Instant 1-click payment using student refund & deposit balance. No bank OTP needed.'}
+                      </p>
+
+                      {walletBalance !== null && walletBalance < total && (
+                        <div className="mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center justify-between">
+                          <span className="text-[11px]">
+                            Insufficient wallet balance for this ₹{total.toFixed(2)} order.
+                          </span>
+                          <Link
+                            href="/dashboard?tab=wallet"
+                            target="_blank"
+                            className="text-[11px] font-bold text-[#4F9D2F] underline hover:text-[#397A22] ml-2 shrink-0"
+                          >
+                            Add Money &rarr;
+                          </Link>
+                        </div>
+                      )}
+
+                      {paymentMethod === 'CAMPUS_BASKET_WALLET' && walletBalance !== null && walletBalance >= total && (
+                        <div className="mt-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-[#4F9D2F] shrink-0" />
+                          <span className="text-[11px] font-medium">
+                            ₹{total.toFixed(2)} will be debited from your wallet. Remaining balance after order: <strong className="font-mono text-emerald-800">₹{(walletBalance - total).toFixed(2)}</strong>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* OPTION 2: UPI / ONLINE PAYMENT */}
                 <div
                   onClick={() => setPaymentMethod('RAZORPAY')}
                   className={`payment-option ${paymentMethod === 'RAZORPAY' ? 'selected' : ''}`}
@@ -1071,6 +1196,24 @@ export default function CheckoutPage() {
                 </span>
               </div>
 
+              {/* CAMPUS BASKET WALLET Breakdown */}
+              {paymentMethod === 'CAMPUS_BASKET_WALLET' && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs space-y-1">
+                  <div className="flex justify-between font-bold text-emerald-950">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                      Paid via Campus Basket Wallet:
+                    </span>
+                    <span className="font-mono text-sm text-emerald-900 font-black">
+                      ₹{total.toFixed(2)}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-emerald-800">
+                    Instant 1-click checkout debited from student wallet balance. No gateway redirects or OTP.
+                  </p>
+                </div>
+              )}
+
               {/* COD Partial Advance Breakdown */}
               {paymentMethod === 'CASH_ON_DELIVERY' && codAdvanceAmount === 0 && (
                 <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs space-y-1">
@@ -1122,6 +1265,11 @@ export default function CheckoutPage() {
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                       <span>Processing payment...</span>
                     </>
+                  ) : paymentMethod === 'CAMPUS_BASKET_WALLET' ? (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>⚡ PAY ₹{total.toFixed(2)} VIA CAMPUS BASKET WALLET</span>
+                    </>
                   ) : paymentMethod === 'RAZORPAY' ? (
                     <>
                       <Lock className="w-4 h-4" />
@@ -1144,7 +1292,7 @@ export default function CheckoutPage() {
               <div className="pt-2 text-center space-y-1 text-[11px] text-[#667085]">
                 <div className="flex items-center justify-center gap-1.5 font-medium">
                   <Lock className="w-3 h-3 text-[#4F9D2F]" />
-                  <span>🔒 Secure payment &bull; Powered by Razorpay</span>
+                  <span>🔒 Secure payment &bull; Powered by Razorpay &amp; Campus Basket</span>
                 </div>
                 <div className="text-[10px] text-gray-400">
                   Direct hostel delivery across campus residence halls
@@ -1161,7 +1309,11 @@ export default function CheckoutPage() {
       <div className="sm:hidden fixed bottom-0 inset-x-0 bg-white border-t border-[#E4E7EC] p-3 z-40 shadow-lg flex items-center justify-between gap-3 pb-safe">
         <div>
           <div className="text-[10px] text-[#667085] uppercase font-bold tracking-wider">
-            {paymentMethod === 'CASH_ON_DELIVERY' && codAdvanceAmount > 0 ? 'Pay Advance' : 'Total'}
+            {paymentMethod === 'CASH_ON_DELIVERY' && codAdvanceAmount > 0
+              ? 'Pay Advance'
+              : paymentMethod === 'CAMPUS_BASKET_WALLET'
+              ? 'Wallet Pay'
+              : 'Total'}
           </div>
           <div className="text-xl font-black text-[#172033] font-mono leading-none">
             ₹{paymentMethod === 'CASH_ON_DELIVERY' && codAdvanceAmount > 0
@@ -1178,6 +1330,11 @@ export default function CheckoutPage() {
         >
           {isProcessing ? (
             <span>Processing...</span>
+          ) : paymentMethod === 'CAMPUS_BASKET_WALLET' ? (
+            <>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>PAY ₹{total.toFixed(2)} VIA WALLET</span>
+            </>
           ) : paymentMethod === 'RAZORPAY' ? (
             <>
               <Lock className="w-3.5 h-3.5" />

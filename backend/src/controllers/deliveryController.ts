@@ -4,6 +4,7 @@ import { AuditService } from '../services/audit/AuditService';
 import { DeliverySettlementPdfService } from '../services/pdf/DeliverySettlementPdfService';
 import { LedgerService } from '../services/financial/LedgerService';
 import { CodReconciliationService } from '../services/codReconciliationService';
+import { WalletService } from '../services/financial/WalletService';
 
 async function resolveDeliveryBoyProfile(user?: any) {
   if (!user) return null;
@@ -1083,6 +1084,18 @@ export class DeliveryController {
               walletBalance: { increment: earningAmount }
             }
           });
+        }
+
+        // 2.1 Credit Provider Wallet for eligible delivered order
+        const provId = order.providerId || (order as any).items?.[0]?.providerId;
+        const provPayable = Number((updatedOrder as any).providerPayable || order.providerAmount || order.providerPayable || 0);
+        if (provId && provPayable > 0) {
+          await WalletService.creditProviderOrder({
+            providerId: provId,
+            orderId: order.id,
+            amount: provPayable,
+            description: `Order Completed: Earnings for order #${order.orderNumber || order.id}`
+          }).catch((err) => console.warn('[DeliveryController] Provider wallet credit error:', err));
         }
 
         return { updatedOrder, createdEarning };

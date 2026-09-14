@@ -1,0 +1,1996 @@
+'use client';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
+import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
+import { Product, Order } from '../types';
+import { FALLBACK_STORE_PRODUCTS, FALLBACK_PROVIDERS, ProviderInfo } from '../lib/fallbackCatalog';
+import { apiRequest } from '../lib/api';
+
+export type AssistantState = 'IDLE' | 'LISTENING' | 'UNDERSTANDING' | 'WORKING' | 'SPEAKING';
+
+export interface ChatMessage {
+  id: string;
+  sender: 'student' | 'ai';
+  text: string;
+  timestamp: Date;
+  suggestedProducts?: Product[];
+  actionType?:
+    | 'SEARCH'
+    | 'FILTER'
+    | 'CART_ADD'
+    | 'CART_UPDATE'
+    | 'CART_OPEN'
+    | 'NAVIGATE_CHECKOUT'
+    | 'ORDER_CONFIRM'
+    | 'ORDER_PLACED'
+    | 'CLARIFY'
+    | 'LAUNDRY_BOOK'
+    | 'LAUNDRY_TRACK'
+    | 'TRACK_ORDER'
+    | 'ORDER_HISTORY'
+    | 'ORDER_DETAIL'
+    | 'CANCEL_PROMPT'
+    | 'CANCEL_SUCCESS'
+    | 'REFUND_VIEW'
+    | 'COMPLAINT_OPEN'
+    | 'PROFILE_VIEW';
+  actionData?: any;
+}
+
+// Helper to extract numbers (words or digits)
+function parseNumberFromText(text: string): number | null {
+  const digitMatch = text.match(/\b\d+\b/);
+  if (digitMatch) return parseInt(digitMatch[0], 10);
+
+  const wordMap: Record<string, number> = {
+    one: 1, a: 1, an: 1, single: 1,
+    two: 2, double: 2, couple: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+    twelve: 12,
+  };
+
+  const words = text.toLowerCase().split(/\s+/);
+  for (const w of words) {
+    if (wordMap[w] !== undefined) return wordMap[w];
+  }
+  return null;
+}
+
+// Extract ordinal index (e.g. "the second one", "first one", "third")
+function parseOrdinalIndex(text: string): number | null {
+  const t = text.toLowerCase();
+  if (t.includes('first') || t.includes('1st')) return 0;
+  if (t.includes('second') || t.includes('2nd')) return 1;
+  if (t.includes('third') || t.includes('3rd')) return 2;
+  if (t.includes('fourth') || t.includes('4th')) return 3;
+  if (t.includes('fifth') || t.includes('5th')) return 4;
+  if (t.includes('last')) return -1;
+  return null;
+}
+
+export function useAIAssistant() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { user, role, isAuthenticated } = useAuth();
+  const {
+    items: cartItems,
+    addItem,
+    updateQuantity,
+    removeItem,
+    clearCart,
+    subtotal,
+    deliveryFee,
+    total,
+    setIsCartOpen,
+  } = useCart();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [state, setState] = useState<AssistantState>('IDLE');
+  const [statusMessage, setStatusMessage] = useState<string>('Ready');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isVoiceMuted, setIsVoiceMuted] = useState(false);
+  const [isAiEnabled, setIsAiEnabled] = useState(true);
+  const [aiMode, setAiMode] = useState<'HYBRID' | 'UI_ONLY' | 'FULL_AI'>('HYBRID');
+
+  // Conversational Context Memory
+  const [displayedProducts, setDisplayedProducts] = useState<Product[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<ProviderInfo | null>(null);
+  const [awaitingContext, setAwaitingContext] = useState<
+    | 'NONE'
+    | 'PRODUCT_CHOICE'
+    | 'QUANTITY'
+    | 'PROVIDER_CHOICE'
+    | 'CHECKOUT_CONFIRM'
+    | 'ADDRESS_CHOICE'
+    | 'CANCEL_CONFIRM'
+    | 'LAUNDRY_CONFIRM'
+  >('NONE');
+
+  const [pendingCancelOrderId, setPendingCancelOrderId] = useState<string | null>(null);
+
+  const [liveTranscript, setLiveTranscript] = useState<string>('');
+  const [micSupported, setMicSupported] = useState<boolean>(true);
+  const [micPermission, setMicPermission] = useState<'granted' | 'prompt' | 'denied' | 'unknown'>('unknown');
+  const recognitionRef = useRef<any>(null);
+  const hasGreetedRef = useRef<boolean>(false);
+  const isSpeakingRef = useRef<boolean>(false);
+  const lastTranscriptRef = useRef<string>('');
+  const handleStudentInputRef = useRef<(text: string) => Promise<void>>(async () => {});
+
+  const isOpenRef = useRef<boolean>(isOpen);
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
+
+  const isVoiceSessionActiveRef = useRef<boolean>(false);
+  const isEndingRef = useRef<boolean>(false);
+  const startListeningRef = useRef<() => void>(() => {});
+  const displayedProductsIndexRef = useRef<number>(0);
+  const lastCategoryOrPoolRef = useRef<Product[]>([]);
+
+  // Student first name extraction from logged in session
+  const studentFirstName =
+    user?.student?.fullName?.split(' ')[0] ||
+    user?.username ||
+    (user?.email ? user.email.split('@')[0] : null);
+
+  // Saved student delivery address
+  const getSavedAddress = useCallback(() => {
+    const hall =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('cb_selected_hall') || user?.student?.hall?.name || (user?.student as any)?.hallNumber || 'Hall 11'
+        : 'Hall 11';
+    const room =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('cb_room_number') || user?.student?.roomNumber || 'Room 304'
+        : 'Room 304';
+    return { hall, room, fullAddress: `${hall}, ${room}` };
+  }, [user]);
+
+  // Check remote AI Agent Status from admin config
+  useEffect(() => {
+    if (isAuthenticated && role === 'STUDENT') {
+      apiRequest('/api/ai/config')
+        .then((res) => {
+          if (res && res.success) {
+            setIsAiEnabled(res.enabled !== false);
+            if (res.mode) setAiMode(res.mode);
+          }
+        })
+        .catch(() => {
+          setIsAiEnabled(true);
+        });
+    }
+  }, [isAuthenticated, role]);
+
+  // Active product catalog state (initialized with fallback products, then synced with live database)
+  const [allProducts, setAllProducts] = useState<Product[]>(FALLBACK_STORE_PRODUCTS);
+  const allProductsRef = useRef<Product[]>(FALLBACK_STORE_PRODUCTS);
+
+  // Dynamic categories discovered from database
+  const [availableCategories, setAvailableCategories] = useState<any[]>([]);
+
+  // Cached student records for zero-latency read-only voice replies
+  const [cachedOrders, setCachedOrders] = useState<any[]>([]);
+  const [cachedLaundryOrders, setCachedLaundryOrders] = useState<any[]>([]);
+  const [cachedTickets, setCachedTickets] = useState<any[]>([]);
+  const [cachedRefundAccount, setCachedRefundAccount] = useState<any | null>(null);
+
+  // Sync ref whenever allProducts updates
+  useEffect(() => {
+    allProductsRef.current = allProducts;
+  }, [allProducts]);
+
+  // Dynamic discovery: Load live products and categories from database on mount
+  useEffect(() => {
+    let isMounted = true;
+    apiRequest('/api/products?limit=100')
+      .then((res) => {
+        if (!isMounted) return;
+        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+          // Merge with fallback products ensuring no duplicates by ID
+          const existingIds = new Set(res.data.map((p: any) => p.id));
+          const uniqueFallbacks = FALLBACK_STORE_PRODUCTS.filter((p) => !existingIds.has(p.id));
+          const combined = [...res.data, ...uniqueFallbacks];
+          setAllProducts(combined);
+          allProductsRef.current = combined;
+        }
+      })
+      .catch(() => {});
+
+    // Dynamically discover all existing and future categories created in database
+    apiRequest('/api/products/categories')
+      .then((res) => {
+        if (!isMounted) return;
+        if (res && res.success && Array.isArray(res.categories)) {
+          setAvailableCategories(res.categories);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Prefetch student read-only records in background (Orders, Laundry, Tickets, Refund Account)
+  useEffect(() => {
+    if (isAuthenticated && role === 'STUDENT') {
+      // 1. Food and store orders
+      apiRequest('/api/orders')
+        .then((res) => {
+          if (res && res.success && Array.isArray(res.orders)) {
+            setCachedOrders(res.orders);
+          }
+        })
+        .catch(() => {});
+
+      // 2. Laundry facility bookings
+      apiRequest('/api/laundry/orders')
+        .then((res) => {
+          if (res && res.success && Array.isArray(res.orders)) {
+            setCachedLaundryOrders(res.orders);
+          }
+        })
+        .catch(() => {});
+
+      // 3. Student support tickets and complaints
+      apiRequest('/api/campus/support/tickets')
+        .then((res) => {
+          if (res && (Array.isArray(res.tickets) || Array.isArray(res.data))) {
+            setCachedTickets(res.tickets || res.data || []);
+          }
+        })
+        .catch(() => {});
+
+      // 4. Student refund account details
+      apiRequest('/api/orders/refund-account')
+        .then((res) => {
+          if (res && res.success && res.data) {
+            setCachedRefundAccount(res.data);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isAuthenticated, role]);
+
+  // Helper to discover and select Indian female voice across all operating systems & browsers
+  const findIndianFemaleVoice = useCallback((): SpeechSynthesisVoice | null => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices || voices.length === 0) return null;
+
+    // Priority 1: Indian English / Hindi Female Voices by known names and language tags
+    // Windows: "Microsoft Heera", "Microsoft Neerja", "Microsoft Swara"
+    // Chrome / Android: "Google हिन्दी", "Google en-IN", "en-IN-Wavenet-A", "en-IN-Standard-A"
+    // macOS / iOS: "Veena", "Lekha", "Kaveri", "Aditi", "Raveena", "Sangeeta"
+    const femaleIndianVoice = voices.find((v) => {
+      const name = v.name.toLowerCase();
+      const lang = (v.lang || '').toLowerCase().replace(/_/g, '-');
+      const isIndian =
+        lang === 'en-in' ||
+        lang.startsWith('en-in') ||
+        lang === 'hi-in' ||
+        lang.startsWith('hi-in') ||
+        name.includes('india') ||
+        name.includes('hindi');
+      const isFemale =
+        name.includes('heera') ||
+        name.includes('neerja') ||
+        name.includes('swara') ||
+        name.includes('aditi') ||
+        name.includes('raveena') ||
+        name.includes('veena') ||
+        name.includes('lekha') ||
+        name.includes('kaveri') ||
+        name.includes('sangeeta') ||
+        name.includes('kalpana') ||
+        name.includes('female') ||
+        name.includes('girl') ||
+        name.includes('woman') ||
+        name.includes('natural');
+      return isIndian && isFemale;
+    });
+    if (femaleIndianVoice) return femaleIndianVoice;
+
+    // Priority 2: Any Indian Voice (en-IN or hi-IN)
+    const anyIndianVoice = voices.find((v) => {
+      const lang = (v.lang || '').toLowerCase().replace(/_/g, '-');
+      const name = v.name.toLowerCase();
+      return (
+        lang === 'en-in' ||
+        lang.startsWith('en-in') ||
+        lang === 'hi-in' ||
+        name.includes('india') ||
+        name.includes('hindi')
+      );
+    });
+    if (anyIndianVoice) return anyIndianVoice;
+
+    // Priority 3: Any English Female Voice
+    const femaleVoice = voices.find((v) => {
+      const name = v.name.toLowerCase();
+      const lang = (v.lang || '').toLowerCase();
+      return (
+        (lang.startsWith('en') || !lang) &&
+        (name.includes('female') ||
+          name.includes('zira') ||
+          name.includes('jenny') ||
+          name.includes('samantha') ||
+          name.includes('victoria') ||
+          name.includes('karen') ||
+          name.includes('siri') ||
+          name.includes('aria'))
+      );
+    });
+    if (femaleVoice) return femaleVoice;
+
+    return voices[0] || null;
+  }, []);
+
+  // Text-To-Speech (TTS) Voice output - Female Indian Accent
+  const speakVoice = useCallback(
+    (text: string) => {
+      if (typeof window === 'undefined' || isVoiceMuted) return;
+
+      try {
+        window.speechSynthesis.cancel();
+
+        // Clean speech of emojis and symbols
+        const cleanText = text
+          .replace(/[👋🎤🛒📦₹✓↩📍🥟👔👕👖🛏️🧖🛋️⚠️🚚🔒🔓]/g, '')
+          .replace(/[*_~`#]/g, '')
+          .replace(/ABC Provider/gi, 'A B C Provider')
+          .trim();
+
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+
+        // Select Indian Female voice
+        const femaleVoice = findIndianFemaleVoice();
+        if (femaleVoice) {
+          utterance.voice = femaleVoice;
+          utterance.lang = femaleVoice.lang || 'en-IN';
+        } else {
+          utterance.lang = 'en-IN';
+        }
+
+        // Young, pleasant feminine pitch and friendly Indian-oriented pacing
+        utterance.pitch = 1.18; // Distinctly female, warm and polite
+        utterance.rate = 1.0;
+
+        utterance.onstart = () => {
+          isSpeakingRef.current = true;
+          setState('SPEAKING');
+          setStatusMessage('Speaking...');
+        };
+
+        utterance.onend = () => {
+          isSpeakingRef.current = false;
+          setState('IDLE');
+          setStatusMessage('Ready');
+
+          // Continuous conversation loop: automatically reactivate microphone hands-free
+          if (
+            isVoiceSessionActiveRef.current &&
+            isOpenRef.current &&
+            !isEndingRef.current
+          ) {
+            setTimeout(() => {
+              if (
+                isVoiceSessionActiveRef.current &&
+                isOpenRef.current &&
+                !isSpeakingRef.current &&
+                !isEndingRef.current
+              ) {
+                startListeningRef.current();
+              }
+            }, 350);
+          }
+        };
+
+        utterance.onerror = () => {
+          isSpeakingRef.current = false;
+          setState('IDLE');
+          setStatusMessage('Ready');
+        };
+
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        console.warn('[TTS Error]', err);
+        isSpeakingRef.current = false;
+        setState('IDLE');
+        setStatusMessage('Ready');
+      }
+    },
+    [isVoiceMuted, findIndianFemaleVoice]
+  );
+
+  // Helper to append AI message, update status and speak
+  const addAiMessage = useCallback(
+    (
+      text: string,
+      actionType?: ChatMessage['actionType'],
+      actionData?: any
+    ) => {
+      const aiMsg: ChatMessage = {
+        id: `msg_ai_${Date.now()}`,
+        sender: 'ai',
+        text,
+        timestamp: new Date(),
+        actionType,
+        actionData,
+        suggestedProducts: Array.isArray(actionData) ? actionData : undefined,
+      };
+
+      setMessages((prev) => [...prev, aiMsg]);
+      setState('SPEAKING');
+      setStatusMessage('Speaking...');
+      speakVoice(text);
+    },
+    [speakVoice]
+  );
+
+  // Detect browser speech capability, query mic permissions, and preload voices
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    setMicSupported(!!SpeechRecognition);
+
+    // Query microphone permission state if available
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions
+        .query({ name: 'microphone' as any })
+        .then((status) => {
+          setMicPermission(status.state as any);
+          status.onchange = () => {
+            setMicPermission(status.state as any);
+          };
+        })
+        .catch(() => {});
+    }
+
+    // Preload system voices
+    if (window.speechSynthesis) {
+      window.speechSynthesis.getVoices();
+      const onVoicesChanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+      window.speechSynthesis.onvoiceschanged = onVoicesChanged;
+      return () => {
+        if (window.speechSynthesis) {
+          window.speechSynthesis.onvoiceschanged = null;
+        }
+      };
+    }
+  }, []);
+
+  // Cleanup speech resources on component unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {}
+      }
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  // Proactively request microphone permission
+  const requestMicPermission = useCallback(async () => {
+    if (typeof window === 'undefined') return false;
+
+    // Cross-browser getUserMedia detection including vendor prefixes
+    const getMedia =
+      (navigator.mediaDevices && navigator.mediaDevices.getUserMedia
+        ? (constraints: MediaStreamConstraints) => navigator.mediaDevices.getUserMedia(constraints)
+        : null) ||
+      ((navigator as any).getUserMedia
+        ? (constraints: MediaStreamConstraints) =>
+            new Promise<MediaStream>((resolve, reject) => {
+              (navigator as any).getUserMedia(constraints, resolve, reject);
+            })
+        : null) ||
+      ((navigator as any).webkitGetUserMedia
+        ? (constraints: MediaStreamConstraints) =>
+            new Promise<MediaStream>((resolve, reject) => {
+              (navigator as any).webkitGetUserMedia(constraints, resolve, reject);
+            })
+        : null);
+
+    if (!getMedia) {
+      if (typeof window !== 'undefined' && window.isSecureContext === false) {
+        setStatusMessage('Mic requires HTTPS or localhost (Chrome security policy).');
+        addAiMessage(
+          'Microphone permission requires a secure origin (HTTPS or http://localhost:3000). Please ensure you are accessing via http://localhost:3000, or type your message below.'
+        );
+      } else {
+        setStatusMessage('Microphone access is not supported by your browser.');
+      }
+      return false;
+    }
+
+    try {
+      const stream = await getMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setMicPermission('granted');
+      setStatusMessage('Microphone access granted! Click mic to speak.');
+      addAiMessage(
+        'Microphone permission is granted! You can now speak to me by clicking the green microphone button.'
+      );
+      return true;
+    } catch (err: any) {
+      console.warn('[Mic Permission Request Error]', err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setMicPermission('denied');
+        setStatusMessage('Microphone blocked. Please allow mic in browser address bar.');
+      } else {
+        setStatusMessage('Microphone device error: ' + (err.message || err.name));
+      }
+      return false;
+    }
+  }, [addAiMessage]);
+
+  // Trigger Personalized Greeting when first opened
+  useEffect(() => {
+    if (isOpen && !hasGreetedRef.current) {
+      hasGreetedRef.current = true;
+      isVoiceSessionActiveRef.current = true;
+      const greeting = studentFirstName
+        ? `Hello ${studentFirstName}, how can I help you?`
+        : `Hello, how can I help you?`;
+
+      setMessages([
+        {
+          id: `msg_${Date.now()}`,
+          sender: 'ai',
+          text: greeting,
+          timestamp: new Date(),
+        },
+      ]);
+      speakVoice(greeting);
+    }
+  }, [isOpen, studentFirstName, speakVoice]);
+
+  // Stop Voice Recording or Speaking
+  const stopListening = useCallback(() => {
+    isVoiceSessionActiveRef.current = false;
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch {}
+      recognitionRef.current = null;
+    }
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    isSpeakingRef.current = false;
+    setLiveTranscript('');
+    lastTranscriptRef.current = '';
+    setState('IDLE');
+    setStatusMessage('Ready');
+  }, []);
+
+  // Start Voice Recording with mic permission check and interim transcription
+  const startListening = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+    isVoiceSessionActiveRef.current = true;
+
+    // 1. Immediately cancel active TTS output so microphone doesn't capture assistant's voice
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    isSpeakingRef.current = false;
+
+    // 2. Abort existing recognition instance to avoid InvalidStateError
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch {}
+      recognitionRef.current = null;
+    }
+
+    // 3. Detect browser Web Speech API
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setMicSupported(false);
+      setStatusMessage('Voice recognition is not supported in this browser.');
+      addAiMessage(
+        'Voice recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge for voice features, or type your message in the chat box.'
+      );
+      return;
+    }
+
+    // 4. If mic permission has not been granted yet, request it once
+    if (micPermission !== 'granted') {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          setMicPermission('granted');
+          stream.getTracks().forEach((track) => track.stop());
+          // Wait for OS audio driver to clean up stream before starting speech recognition
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        } catch (err: any) {
+          console.warn('[Microphone Permission Error]', err);
+          setState('IDLE');
+          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            setMicPermission('denied');
+            setStatusMessage('Mic blocked. Allow microphone in browser address bar.');
+            addAiMessage(
+              'Microphone access is blocked by your browser. Please click the lock/camera icon in your browser address bar to allow microphone access, or click the Grant Permission button.'
+            );
+          } else {
+            setStatusMessage('Could not access microphone hardware. Please check your mic settings.');
+          }
+          return;
+        }
+      }
+    }
+
+    // 5. Instantiate fresh SpeechRecognition object
+    try {
+      const rec = new SpeechRecognition();
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      rec.lang = 'en-IN'; // Indian English tailored for campus students
+
+      lastTranscriptRef.current = '';
+      setLiveTranscript('');
+
+      rec.onstart = () => {
+        setState('LISTENING');
+        setStatusMessage('Listening to your voice... Speak now');
+      };
+
+      rec.onspeechstart = () => {
+        setStatusMessage('Listening...');
+      };
+
+      rec.onresult = (event: any) => {
+        let interimText = '';
+        let finalText = '';
+
+        // Accumulate across all speech result chunks
+        for (let i = 0; i < event.results.length; ++i) {
+          const result = event.results[i];
+          const transcript = result[0]?.transcript || '';
+          if (result.isFinal) {
+            finalText += transcript;
+          } else {
+            interimText += transcript;
+          }
+        }
+
+        const heard = (finalText || interimText).trim();
+        if (heard) {
+          lastTranscriptRef.current = heard;
+          setLiveTranscript(heard);
+        }
+
+        if (finalText.trim()) {
+          const toProcess = finalText.trim();
+          lastTranscriptRef.current = '';
+          setLiveTranscript('');
+          try {
+            rec.stop();
+          } catch {}
+          handleStudentInputRef.current(toProcess);
+        }
+      };
+
+      rec.onerror = (event: any) => {
+        console.warn('[AI Assistant Speech Error]', event.error);
+        const heardSoFar = lastTranscriptRef.current.trim();
+        if ((event.error === 'no-speech' || event.error === 'network') && heardSoFar) {
+          // If we heard speech before timeout or error, process it!
+          lastTranscriptRef.current = '';
+          setLiveTranscript('');
+          handleStudentInputRef.current(heardSoFar);
+          return;
+        }
+
+        if (event.error === 'not-allowed') {
+          setMicPermission('denied');
+          setStatusMessage('Mic blocked. Allow microphone in browser address bar.');
+        } else if (event.error === 'no-speech') {
+          setStatusMessage('No speech detected. Click mic to speak again.');
+        } else if (event.error === 'network') {
+          setStatusMessage('Network issue with speech recognition. Please try again or type.');
+        } else if (event.error !== 'aborted') {
+          setStatusMessage(`Voice notice: ${event.error}`);
+        }
+        setLiveTranscript('');
+        lastTranscriptRef.current = '';
+        setState('IDLE');
+      };
+
+      rec.onend = () => {
+        const remaining = lastTranscriptRef.current.trim();
+        lastTranscriptRef.current = '';
+        setLiveTranscript('');
+
+        if (remaining) {
+          handleStudentInputRef.current(remaining);
+        } else if (!isSpeakingRef.current) {
+          setState('IDLE');
+          setStatusMessage('Ready');
+        }
+      };
+
+      recognitionRef.current = rec;
+      rec.start();
+    } catch (err) {
+      console.warn('[Start Listening Exception]', err);
+      setStatusMessage('Failed to activate microphone.');
+      setState('IDLE');
+    }
+  }, [addAiMessage]);
+
+  // Keep startListeningRef synchronized
+  useEffect(() => {
+    startListeningRef.current = startListening;
+  }, [startListening]);
+
+  // Main Conversational NLU Logic (UI-FIRST, Multi-Facility Support)
+  const handleStudentInput = async (inputText: string) => {
+    const text = inputText.trim();
+    if (!text) return;
+
+    // Add student message to transcript
+    const studentMsg: ChatMessage = {
+      id: `msg_st_${Date.now()}`,
+      sender: 'student',
+      text,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, studentMsg]);
+
+    setState('UNDERSTANDING');
+    setStatusMessage('Understanding...');
+
+    const lower = text.toLowerCase();
+    const studentName = studentFirstName || '';
+    const { hall: savedHall, room: savedRoom, fullAddress } = getSavedAddress();
+
+    // ==========================================
+    // 1. CONTEXTUAL REPLIES (AWAITING PROMPTS)
+    // ==========================================
+
+    // Case A: Awaiting Cancellation Confirmation
+    if (awaitingContext === 'CANCEL_CONFIRM' && pendingCancelOrderId) {
+      if (
+        lower.includes('yes') ||
+        lower.includes('cancel') ||
+        lower.includes('confirm') ||
+        lower.includes('sure') ||
+        lower.includes('do it')
+      ) {
+        setState('WORKING');
+        setStatusMessage('Cancelling order...');
+        try {
+          const res = await apiRequest(`/api/orders/${pendingCancelOrderId}/cancel`, {
+            method: 'POST',
+            body: JSON.stringify({ reason: 'Cancelled by student via AI Voice Assistant' }),
+          });
+
+          if (res.success) {
+            addAiMessage(
+              res.explanation || res.message || 'Order cancelled successfully. Any eligible refund has been initiated to your student refund account.',
+              'CANCEL_SUCCESS'
+            );
+          } else {
+            addAiMessage(res.message || 'Unable to cancel order at this stage.');
+          }
+        } catch (err: any) {
+          addAiMessage(err.message || 'Failed to cancel order.');
+        }
+        setAwaitingContext('NONE');
+        setPendingCancelOrderId(null);
+        return;
+      }
+
+      if (lower.includes('no') || lower.includes('wait') || lower.includes('keep') || lower.includes('stop')) {
+        addAiMessage('Order cancellation aborted. Your order remains active and safe.');
+        setAwaitingContext('NONE');
+        setPendingCancelOrderId(null);
+        return;
+      }
+    }
+
+    // Case B: Awaiting Order Placement Confirmation
+    if (awaitingContext === 'CHECKOUT_CONFIRM') {
+      if (
+        lower.includes('yes') ||
+        lower.includes('confirm') ||
+        lower.includes('place') ||
+        lower.includes('order') ||
+        lower.includes('sure') ||
+        lower.includes('do it')
+      ) {
+        setState('WORKING');
+        setStatusMessage('Working...');
+
+        if (pathname !== '/checkout') {
+          router.push('/checkout');
+        }
+
+        // Trigger order placement via standard campus checkout mechanism
+        setTimeout(() => {
+          const checkoutBtn = document.querySelector('button[type="submit"]') as HTMLButtonElement;
+          if (checkoutBtn && !checkoutBtn.disabled) {
+            checkoutBtn.click();
+          }
+        }, 800);
+
+        const aiReply = `Placing your order now using your saved delivery address: ${fullAddress}. Your order is being confirmed via Campus Basket!`;
+        addAiMessage(aiReply, 'ORDER_PLACED');
+        setAwaitingContext('NONE');
+        return;
+      }
+
+      if (
+        lower.includes('no') ||
+        lower.includes('wait') ||
+        lower.includes('stop') ||
+        lower.includes('change') ||
+        lower.includes('not this') ||
+        lower.includes('cancel')
+      ) {
+        addAiMessage(`No problem. What would you like instead?`);
+        setAwaitingContext('NONE');
+        return;
+      }
+    }
+
+    // Case C: Awaiting Quantity for Selected Product
+    if (awaitingContext === 'QUANTITY' && selectedProduct) {
+      const qty = parseNumberFromText(lower);
+      if (qty && qty > 0) {
+        addItem(selectedProduct, qty, false);
+        const providerName = selectedProvider ? selectedProvider.name : 'Campus Basket';
+        const aiReply = `You have ${qty} ${selectedProduct.name} from ${providerName}. Would you like to continue to checkout?`;
+        addAiMessage(aiReply, 'CART_ADD', { product: selectedProduct, quantity: qty });
+        setAwaitingContext('CHECKOUT_CONFIRM');
+        return;
+      }
+    }
+
+    // Case D: Awaiting Product Choice between options (e.g. "Veg" or "Chicken")
+    if (awaitingContext === 'PRODUCT_CHOICE' && displayedProducts.length > 0) {
+      let chosen: Product | undefined;
+      const ordinalIdx = parseOrdinalIndex(lower);
+
+      if (ordinalIdx !== null) {
+        chosen =
+          ordinalIdx === -1
+            ? displayedProducts[displayedProducts.length - 1]
+            : displayedProducts[ordinalIdx];
+      } else if (lower.includes('chicken')) {
+        chosen = displayedProducts.find((p) => p.name.toLowerCase().includes('chicken'));
+      } else if (lower.includes('veg') && !lower.includes('non-veg')) {
+        chosen = displayedProducts.find((p) => p.name.toLowerCase().includes('veg'));
+      } else {
+        chosen = displayedProducts.find((p) =>
+          lower.split(' ').some((w) => p.name.toLowerCase().includes(w))
+        );
+      }
+
+      if (chosen) {
+        setSelectedProduct(chosen);
+        const aiReply = `How many plates would you like?`;
+        addAiMessage(aiReply, 'CLARIFY', { product: chosen });
+        setAwaitingContext('QUANTITY');
+        return;
+      }
+    }
+
+    // ==========================================
+    // 2. STOP / GRACEFUL EXIT (WHEN STUDENT SAYS NO OR STOP)
+    // ==========================================
+    const EXIT_WORDS = [
+      'no',
+      'nothing',
+      "that's all",
+      'that is all',
+      "i'm done",
+      'im done',
+      'stop',
+      'bye',
+      'goodbye',
+      'no more',
+      "thank you that's all",
+      "thank you, that's all",
+      'thanks that is all',
+      'thanks that is it',
+      "that's it",
+      'that is it',
+      'no thanks',
+      'no thank you',
+      'exit',
+      'quit',
+    ];
+
+    const cleanInput = lower.replace(/[.,!?;:]/g, '').trim();
+    const isExplicitExit =
+      awaitingContext !== 'CANCEL_CONFIRM' &&
+      awaitingContext !== 'CHECKOUT_CONFIRM' &&
+      EXIT_WORDS.some(
+        (w) => cleanInput === w || cleanInput.startsWith(w + ' ') || cleanInput.endsWith(' ' + w)
+      );
+
+    if (isExplicitExit) {
+      isVoiceSessionActiveRef.current = false;
+      isEndingRef.current = true;
+      stopListening();
+      setAwaitingContext('NONE');
+      const exitReply = studentName
+        ? `Sure, ${studentName}. I'm here whenever you need me.`
+        : `Sure. I'm here whenever you need me.`;
+      addAiMessage(exitReply);
+      setTimeout(() => {
+        isEndingRef.current = false;
+      }, 3000);
+      return;
+    }
+
+    const currentPool = allProductsRef.current.length > 0 ? allProductsRef.current : FALLBACK_STORE_PRODUCTS;
+
+    // ==========================================
+    // 3. CHEAPEST ITEM LOOKUP (CONTINUOUS CONTEXT)
+    // ==========================================
+    if (lower.includes('cheapest') || lower.includes('lowest price') || lower.includes('most affordable')) {
+      const pool =
+        displayedProducts.length > 0
+          ? displayedProducts
+          : lastCategoryOrPoolRef.current.length > 0
+          ? lastCategoryOrPoolRef.current
+          : currentPool;
+      const sorted = [...pool].sort((a, b) => a.price - b.price);
+      const cheapest = sorted[0];
+      if (cheapest) {
+        setSelectedProduct(cheapest);
+        setDisplayedProducts([cheapest]);
+        addAiMessage(
+          `The cheapest option is ${cheapest.name} at ₹${cheapest.price}. Would you like me to add it to your basket?`,
+          'SEARCH',
+          cheapest
+        );
+        setAwaitingContext('QUANTITY');
+        return;
+      }
+    }
+
+    // ==========================================
+    // 4. SHOW ME MORE (PAGINATION IN ACTIVE CONTEXT)
+    // ==========================================
+    if (
+      lower.includes('show me more') ||
+      lower.includes('show more') ||
+      lower.includes('what else') ||
+      lower === 'more' ||
+      lower === 'next'
+    ) {
+      const pool = lastCategoryOrPoolRef.current.length > 0 ? lastCategoryOrPoolRef.current : currentPool;
+      if (pool.length > 0) {
+        displayedProductsIndexRef.current = (displayedProductsIndexRef.current + 3) % pool.length;
+        const nextSlice = pool.slice(displayedProductsIndexRef.current, displayedProductsIndexRef.current + 3);
+        if (nextSlice.length > 0) {
+          setDisplayedProducts(nextSlice);
+          const names = nextSlice.map((p) => `${p.name} (₹${p.price})`).join(', ');
+          addAiMessage(`Here are more options: ${names}. Which one would you like?`, 'SEARCH', nextSlice);
+          setAwaitingContext('PRODUCT_CHOICE');
+          return;
+        }
+      }
+    }
+
+    // ==========================================
+    // 5. DYNAMIC PRICE RANGE FILTER (e.g. "under 100", "below 150", "meals under 100")
+    // ==========================================
+    const priceMatch = lower.match(/(?:under|below|less than|within|max(?:imum)?)\s*(?:rs\.?|inr|₹)?\s*(\d+)/i);
+    if (priceMatch) {
+      const maxPrice = parseInt(priceMatch[1], 10);
+      let pool = currentPool;
+
+      if (lower.includes('food') || lower.includes('meal') || lower.includes('snack')) {
+        pool = pool.filter(
+          (p) =>
+            p.categoryId === 'cat_food' ||
+            p.category?.slug === 'food' ||
+            p.category?.name?.toLowerCase().includes('food') ||
+            p.subcategory?.toLowerCase() === 'meals' ||
+            p.subcategory?.toLowerCase() === 'snacks'
+        );
+      } else if (lower.includes('fruit')) {
+        pool = pool.filter((p) => p.categoryId === 'cat_fruits' || p.category?.slug === 'fruits');
+      } else if (lower.includes('stationery')) {
+        pool = pool.filter((p) => p.categoryId === 'cat_stationery' || p.category?.slug === 'stationery');
+      } else if (lower.includes('essential')) {
+        pool = pool.filter((p) => p.categoryId === 'cat_essentials' || p.category?.slug === 'essentials');
+      }
+
+      const underBudget = pool.filter((p) => p.price <= maxPrice);
+
+      if (underBudget.length > 0) {
+        lastCategoryOrPoolRef.current = underBudget;
+        displayedProductsIndexRef.current = 0;
+        setDisplayedProducts(underBudget);
+
+        if (underBudget.length === 1) {
+          const item = underBudget[0];
+          setSelectedProduct(item);
+          addAiMessage(
+            `I found ${item.name} available for ₹${item.price}. How many would you like?`,
+            'SEARCH',
+            [item]
+          );
+          setAwaitingContext('QUANTITY');
+          return;
+        }
+
+        const top3Names = underBudget.slice(0, 3).map((p) => `${p.name} (₹${p.price})`).join(', ');
+        addAiMessage(
+          `I found ${underBudget.length} available items under ₹${maxPrice}, including ${top3Names}. Would you like to see them?`,
+          'SEARCH',
+          underBudget
+        );
+        setAwaitingContext('PRODUCT_CHOICE');
+        return;
+      } else {
+        addAiMessage(
+          `There are currently no available products matching that request under ₹${maxPrice}. Would you like me to help with anything else?`
+        );
+        return;
+      }
+    }
+
+    // ==========================================
+    // 6. LAUNDRY SUPPORT (FULL FACILITY CONTROL & STATUS)
+    // ==========================================
+    if (
+      lower.includes('laundry') ||
+      lower.includes('clothes') ||
+      lower.includes('dhobi') ||
+      lower.includes('wash clothes') ||
+      lower.includes('wash shirts') ||
+      lower.includes('steam press')
+    ) {
+      // 6A. Track Laundry / Status
+      if (
+        lower.includes('track') ||
+        lower.includes('status') ||
+        lower.includes('where') ||
+        lower.includes('what is my laundry') ||
+        lower.includes('laundry status')
+      ) {
+        setState('WORKING');
+        setStatusMessage('Checking laundry status...');
+
+        let laundryOrders = cachedLaundryOrders;
+        if (laundryOrders.length === 0) {
+          try {
+            const res = await apiRequest('/api/laundry/orders');
+            if (res.success && Array.isArray(res.orders)) {
+              laundryOrders = res.orders;
+              setCachedLaundryOrders(res.orders);
+            }
+          } catch {}
+        }
+
+        const activeJob = laundryOrders.find(
+          (j: any) => !['COMPLETED', 'CANCELLED'].includes(j.status)
+        );
+
+        if (activeJob) {
+          const otpInfo = activeJob.pickupOtp
+            ? ` Pickup OTP: ${activeJob.pickupOtp}.`
+            : activeJob.deliveryOtp
+            ? ` Delivery OTP: ${activeJob.deliveryOtp}.`
+            : '';
+
+          const isReady =
+            activeJob.status === 'READY_FOR_DELIVERY' ||
+            activeJob.status === 'DELIVERY_ASSIGNED' ||
+            activeJob.status === 'READY';
+
+          const aiReply = isReady
+            ? `Your laundry order is ready for return.${otpInfo} Would you like me to show the order details?`
+            : `Your laundry order #${activeJob.orderNumber || activeJob.trackingNumber} is currently ${activeJob.status.replace(/_/g, ' ').toLowerCase()}.${otpInfo} Would you like me to show the order details?`;
+
+          router.push('/laundry');
+          addAiMessage(aiReply, 'LAUNDRY_TRACK', activeJob);
+          return;
+        } else if (laundryOrders.length > 0) {
+          const lastJob = laundryOrders[0];
+          const aiReply = `Your previous laundry order #${lastJob.orderNumber || lastJob.trackingNumber} was completed. Would you like to schedule a new room pickup?`;
+          router.push('/laundry');
+          addAiMessage(aiReply, 'LAUNDRY_TRACK', lastJob);
+          return;
+        } else {
+          const aiReply = `You have no active laundry bookings. Would you like to schedule a room pickup now?`;
+          router.push('/laundry/book');
+          addAiMessage(aiReply, 'LAUNDRY_BOOK');
+          return;
+        }
+      }
+
+      // 6B. Laundry Complaint / Issue
+      if (
+        lower.includes('complaint') ||
+        lower.includes('complain') ||
+        lower.includes('late') ||
+        lower.includes('lost') ||
+        lower.includes('damaged')
+      ) {
+        const aiReply = `I'm opening the Campus Laundry complaint section so you can submit your issue directly to the supervisor. Would you like me to help with anything else?`;
+        router.push('/laundry');
+        addAiMessage(aiReply, 'COMPLAINT_OPEN');
+        return;
+      }
+
+      // 6C. Book Laundry with Garment Selection (e.g. "Book laundry for 5 shirts")
+      const qty = parseNumberFromText(lower) || 5;
+      let garmentType = 'Shirt';
+      if (lower.includes('pant')) garmentType = 'Pants';
+      if (lower.includes('jean')) garmentType = 'Jeans';
+      if (lower.includes('t-shirt') || lower.includes('tshirt')) garmentType = 'T-Shirt';
+      if (lower.includes('towel')) garmentType = 'Towel';
+      if (lower.includes('bedsheet')) garmentType = 'Bedsheet';
+
+      const unitRate = garmentType === 'Jeans' ? 25 : garmentType === 'Pants' ? 20 : 15;
+      const sub = unitRate * qty;
+      const totalAmount = sub + qty * 1; // + ₹1 service fee per garment
+
+      // Set identical address and draft across entire booking & tracking flow
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+      const laundryDraft = {
+        items: [{ itemType: garmentType, quantity: qty, unitPrice: unitRate }],
+        hallName: savedHall,
+        roomNumber: savedRoom,
+        pickupDate: tomorrow,
+        preferredPickupTime: '08:00 AM - 10:00 AM (Morning Slot)',
+        preferredReturnTime: 'Tomorrow • 05:00 PM - 07:00 PM (24h Express)',
+        clothPhotos: [],
+      };
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('cb_laundry_draft', JSON.stringify(laundryDraft));
+      }
+
+      const aiReply = `Sure ${studentName}. I have prepared a laundry booking for ${qty} ${garmentType}s (₹${totalAmount} total) using your saved address: ${fullAddress}. Opening Laundry checkout for you to review. Would you like me to help with anything else?`;
+      router.push('/laundry/checkout');
+      addAiMessage(aiReply, 'LAUNDRY_BOOK', laundryDraft);
+      return;
+    }
+
+    // ==========================================
+    // 7. ORDER TRACKING, STATUS & PENDING ORDERS
+    // ==========================================
+    if (
+      lower.includes('track') ||
+      lower.includes('where is my order') ||
+      lower.includes('status of my order') ||
+      lower.includes('live tracking') ||
+      lower.includes('track my order') ||
+      lower.includes('do i have any pending orders') ||
+      lower.includes('pending orders') ||
+      lower.includes('any pending order')
+    ) {
+      setState('WORKING');
+      setStatusMessage('Finding active orders...');
+
+      let ordersList = cachedOrders;
+      if (ordersList.length === 0) {
+        try {
+          const res = await apiRequest('/api/orders');
+          if (res.success && Array.isArray(res.orders)) {
+            ordersList = res.orders;
+            setCachedOrders(res.orders);
+          }
+        } catch {}
+      }
+
+      const ACTIVE_STATUSES = [
+        'PENDING',
+        'PENDING_PAYMENT',
+        'CONFIRMED',
+        'ACCEPTED',
+        'PREPARING',
+        'READY',
+        'READY_FOR_PICKUP',
+        'DELIVERY_ASSIGNED',
+        'PICKED_UP',
+        'OUT_FOR_DELIVERY',
+      ];
+
+      const activeOrder = ordersList.find((o) => ACTIVE_STATUSES.includes(o.status));
+
+      if (activeOrder) {
+        const itemNames =
+          activeOrder.items?.map((i: any) => i.productName || i.name).join(', ') || 'Campus items';
+        const isOutForDelivery = activeOrder.status === 'OUT_FOR_DELIVERY';
+
+        const aiReply = isOutForDelivery
+          ? `Your food order is currently out for delivery. Would you like me to check the delivery details?`
+          : `Your order #${activeOrder.orderNumber} for ${itemNames} is currently ${activeOrder.status.replace(/_/g, ' ').toLowerCase()}. Would you like me to check the delivery details?`;
+
+        router.push(`/orders/track?id=${activeOrder.id}`);
+        addAiMessage(aiReply, 'TRACK_ORDER', activeOrder);
+        return;
+      } else if (ordersList.length > 0) {
+        const lastOrder = ordersList[0];
+        const aiReply = `You have no pending orders right now. Your latest order #${lastOrder.orderNumber} was marked as ${lastOrder.status.replace(/_/g, ' ').toLowerCase()}. Would you like me to check anything else?`;
+        router.push(`/orders/${lastOrder.id}/track?id=${lastOrder.id}`);
+        addAiMessage(aiReply, 'TRACK_ORDER', lastOrder);
+        return;
+      } else {
+        addAiMessage(`You have no orders yet. Would you like to check out today's food options?`);
+        return;
+      }
+    }
+
+    // ==========================================
+    // 8. ORDER CANCELLATION (POLICY GUARDED)
+    // ==========================================
+    if (lower.includes('cancel order') || lower.includes('cancel my order')) {
+      setState('WORKING');
+      setStatusMessage('Checking cancellation eligibility...');
+
+      let ordersList = cachedOrders;
+      if (ordersList.length === 0) {
+        try {
+          const res = await apiRequest('/api/orders');
+          if (res.success && Array.isArray(res.orders)) {
+            ordersList = res.orders;
+            setCachedOrders(res.orders);
+          }
+        } catch {}
+      }
+
+      const activeOrder = ordersList.find(
+        (o) => !['DELIVERED', 'CANCELLED', 'REFUNDED'].includes(o.status)
+      );
+
+      if (!activeOrder) {
+        addAiMessage(`You don't have an active order that can be cancelled. Would you like me to help with anything else?`);
+        return;
+      }
+
+      // Check cancellation eligibility
+      const allowedCancellationStatuses = ['PENDING', 'PENDING_PAYMENT', 'CONFIRMED', 'ACCEPTED'];
+      if (!allowedCancellationStatuses.includes(activeOrder.status)) {
+        addAiMessage(
+          `Order #${activeOrder.orderNumber} is already in the ${activeOrder.status.replace(/_/g, ' ')} stage. Per Campus Basket policy, orders cannot be cancelled once food preparation or delivery dispatch has begun. Can I help you with anything else?`
+        );
+        return;
+      }
+
+      // Eligible: Ask explicit confirmation before irreversible action
+      setPendingCancelOrderId(activeOrder.id);
+      setAwaitingContext('CANCEL_CONFIRM');
+      addAiMessage(
+        `Are you sure you want to cancel Order #${activeOrder.orderNumber} (Total: ₹${activeOrder.totalAmount})? Say 'Yes, cancel it' to confirm cancellation.`,
+        'CANCEL_PROMPT',
+        activeOrder
+      );
+      return;
+    }
+
+    // ==========================================
+    // 9. ORDER HISTORY & DETAILS
+    // ==========================================
+    if (
+      lower.includes('order history') ||
+      lower.includes('previous orders') ||
+      lower.includes('past orders') ||
+      lower.includes('my orders') ||
+      lower.includes('show my orders')
+    ) {
+      router.push('/orders');
+      const count = cachedOrders.length;
+      const countText = count > 0 ? `You have placed ${count} order(s) with Campus Basket.` : '';
+      const aiReply = `Opening your Order History. ${countText} Would you like me to check details of your latest order?`;
+      addAiMessage(aiReply, 'ORDER_HISTORY');
+      return;
+    }
+
+    if (
+      lower.includes('what did i order') ||
+      lower.includes('latest order') ||
+      lower.includes('last order') ||
+      lower.includes('order details')
+    ) {
+      let ordersList = cachedOrders;
+      if (ordersList.length === 0) {
+        try {
+          const res = await apiRequest('/api/orders');
+          if (res.success && Array.isArray(res.orders)) {
+            ordersList = res.orders;
+            setCachedOrders(res.orders);
+          }
+        } catch {}
+      }
+
+      if (ordersList.length > 0) {
+        const latest = ordersList[0];
+        const itemsText =
+          latest.items?.map((i: any) => `${i.quantity}x ${i.productName || i.name}`).join(', ') || 'items';
+        const aiReply = `Your latest order #${latest.orderNumber} contains ${itemsText} totaling ₹${latest.totalAmount} (Status: ${latest.status.replace(/_/g, ' ')}). Opening full details. Would you like me to help with anything else?`;
+        router.push(`/orders/${latest.id}/track?id=${latest.id}`);
+        addAiMessage(aiReply, 'ORDER_DETAIL', latest);
+        return;
+      } else {
+        addAiMessage(`You haven't placed any orders yet. What would you like to order today?`);
+        return;
+      }
+    }
+
+    // ==========================================
+    // 10. REFUND & REFUND ACCOUNT DETAILS
+    // ==========================================
+    if (
+      lower.includes('refund') ||
+      lower.includes('refund details') ||
+      lower.includes('refund account') ||
+      lower.includes('where is my refund')
+    ) {
+      router.push('/dashboard?tab=refunds');
+      if (cachedRefundAccount) {
+        const masked = cachedRefundAccount.accountNumber
+          ? `••••${cachedRefundAccount.accountNumber.slice(-4)}`
+          : 'registered';
+        addAiMessage(
+          `Your saved refund account is with ${cachedRefundAccount.bankName || 'bank'} ending in ${masked} (IFSC: ${cachedRefundAccount.ifscCode}). Approved refunds are credited directly there within 24–48 hours. Would you like me to show your refund records?`,
+          'REFUND_VIEW',
+          cachedRefundAccount
+        );
+      } else {
+        addAiMessage(
+          `Approved refunds are credited directly to your saved student refund account or original payment method within 24–48 hours. Opening your refund records. Would you like me to help with anything else?`,
+          'REFUND_VIEW'
+        );
+      }
+      return;
+    }
+
+    // ==========================================
+    // 11. COMPLAINTS & SUPPORT TICKETS
+    // ==========================================
+    if (
+      lower.includes('complaint') ||
+      lower.includes('complain') ||
+      lower.includes('support') ||
+      lower.includes('report an issue') ||
+      lower.includes('help ticket') ||
+      lower.includes('do i have any complaints') ||
+      lower.includes('my tickets')
+    ) {
+      router.push('/dashboard?tab=support');
+      const openTickets = cachedTickets.filter((t) => !['RESOLVED', 'CLOSED'].includes(t.status));
+      if (openTickets.length > 0) {
+        const latest = openTickets[0];
+        addAiMessage(
+          `You have ${openTickets.length} active support ticket(s). Ticket #${(latest.id || '').slice(-6)} regarding ${latest.category || 'campus service'} is currently ${latest.status}. Would you like me to open the support portal?`,
+          'COMPLAINT_OPEN',
+          latest
+        );
+      } else {
+        addAiMessage(
+          `You have no pending complaints or support tickets in your Campus Basket account. I'm opening the Campus Support portal if you'd like to submit an inquiry. Would you like me to help with anything else?`,
+          'COMPLAINT_OPEN'
+        );
+      }
+      return;
+    }
+
+    // ==========================================
+    // 12. PROFILE & ACCOUNT NAVIGATION
+    // ==========================================
+    if (
+      lower.includes('profile') ||
+      lower.includes('my account') ||
+      lower.includes('my room') ||
+      lower.includes('my hostel') ||
+      lower.includes('who am i')
+    ) {
+      router.push('/dashboard?tab=profile');
+      addAiMessage(
+        `Opening your Student Profile. You are registered as ${user?.student?.fullName || studentName || 'Student'} in ${fullAddress}. Would you like me to help with anything else?`,
+        'PROFILE_VIEW'
+      );
+      return;
+    }
+
+    // ==========================================
+    // 13. ADDRESS & ROOM NUMBER
+    // ==========================================
+    if (lower.includes('address') || lower.includes('saved address')) {
+      addAiMessage(`Using your saved campus delivery address: ${fullAddress}. Ready for room delivery! Would you like me to help with anything else?`);
+      return;
+    }
+
+    // ==========================================
+    // 14. SERVICES & FACILITIES DISCOVERY
+    // ==========================================
+    if (
+      lower.includes('what services') ||
+      lower.includes('what can i use') ||
+      lower.includes('what can i do') ||
+      lower.includes('what can i buy') ||
+      lower.includes('what can i order') ||
+      lower.includes('facilities') ||
+      lower.includes('features') ||
+      lower.includes('help me with')
+    ) {
+      addAiMessage(
+        `Campus Basket provides Food & Meals, Fresh Fruits, Stationery, Daily Essentials, Express Laundry, Live Order Tracking, Refund Details, and Campus Support. What would you like to explore today?`
+      );
+      return;
+    }
+
+    // ==========================================
+    // 15. QUANTITY MODIFICATIONS ON ACTIVE CART
+    // ==========================================
+    if (
+      lower.includes('make it') ||
+      lower.includes('actually make it') ||
+      lower.includes('change to') ||
+      lower.includes('add one more') ||
+      lower.includes('add two more') ||
+      lower.includes('remove one')
+    ) {
+      const targetItem =
+        (selectedProduct && cartItems.find((i) => i.productId === selectedProduct.id)) ||
+        cartItems[cartItems.length - 1];
+
+      if (!targetItem) {
+        addAiMessage(`Your cart is currently empty. What would you like to add?`);
+        return;
+      }
+
+      if (lower.includes('add one more')) {
+        updateQuantity(targetItem.productId, targetItem.quantity + 1);
+        addAiMessage(`Added one more. You now have ${targetItem.quantity + 1} ${targetItem.name}. Would you like to continue to checkout?`, 'CART_UPDATE');
+        setAwaitingContext('CHECKOUT_CONFIRM');
+        return;
+      }
+
+      if (lower.includes('remove one')) {
+        const nextQty = targetItem.quantity - 1;
+        if (nextQty <= 0) {
+          removeItem(targetItem.productId);
+          addAiMessage(`Removed ${targetItem.name} from your cart. Would you like to help with anything else?`, 'CART_UPDATE');
+        } else {
+          updateQuantity(targetItem.productId, nextQty);
+          addAiMessage(`Removed one. You now have ${nextQty} ${targetItem.name}. Would you like to continue to checkout?`, 'CART_UPDATE');
+          setAwaitingContext('CHECKOUT_CONFIRM');
+        }
+        return;
+      }
+
+      const newQty = parseNumberFromText(lower);
+      if (newQty && newQty > 0) {
+        updateQuantity(targetItem.productId, newQty);
+        addAiMessage(`Updated quantity to ${newQty} ${targetItem.name} in your cart. Would you like to continue to checkout?`, 'CART_UPDATE');
+        setAwaitingContext('CHECKOUT_CONFIRM');
+        return;
+      }
+    }
+
+    // ==========================================
+    // 16. CART VIEW & CLEAR
+    // ==========================================
+    if (
+      lower.includes('open cart') ||
+      lower.includes('show cart') ||
+      lower.includes('view basket') ||
+      lower.includes('show my basket') ||
+      lower.includes("what's in my cart") ||
+      lower.includes('view cart')
+    ) {
+      setIsCartOpen(true);
+      if (cartItems.length === 0) {
+        addAiMessage(`Your cart is currently empty. Would you like to check out today's food menu?`, 'CART_OPEN');
+      } else {
+        const itemSummary = cartItems.map((i) => `${i.quantity}x ${i.name}`).join(', ');
+        addAiMessage(
+          `Your cart has ${itemSummary} (Total: ₹${total.toFixed(0)}). Would you like to continue to checkout?`,
+          'CART_OPEN'
+        );
+        setAwaitingContext('CHECKOUT_CONFIRM');
+      }
+      return;
+    }
+
+    if (lower.includes('clear cart') || lower.includes('empty basket')) {
+      clearCart();
+      addAiMessage(`Your cart has been cleared. What would you like to order instead?`);
+      return;
+    }
+
+    // ==========================================
+    // 17. CHECKOUT & FINAL CONFIRMATION
+    // ==========================================
+    if (
+      lower.includes('checkout') ||
+      lower.includes('go to checkout') ||
+      lower.includes('proceed to checkout') ||
+      lower.includes('place order') ||
+      lower.includes('place it')
+    ) {
+      if (cartItems.length === 0) {
+        addAiMessage(`Your cart is empty. Please add items before going to checkout.`);
+        return;
+      }
+
+      const itemsDesc = cartItems.map((i) => `${i.quantity} ${i.name}`).join(', ');
+      const aiReply = `Your cart contains ${itemsDesc}. Your total is ₹${total.toFixed(
+        0
+      )}. Would you like me to place the order?`;
+
+      if (pathname !== '/checkout') {
+        router.push('/checkout');
+      }
+
+      addAiMessage(aiReply, 'NAVIGATE_CHECKOUT');
+      setAwaitingContext('CHECKOUT_CONFIRM');
+      return;
+    }
+
+    // ==========================================
+    // 18. PROVIDER SPECIFIC FILTERING
+    // ==========================================
+    const matchedProv = FALLBACK_PROVIDERS.find(
+      (p) => lower.includes(p.shortName.toLowerCase()) || lower.includes(p.name.toLowerCase())
+    );
+
+    if (matchedProv && (lower.includes('provider') || lower.includes('from') || lower.includes('show'))) {
+      setSelectedProvider(matchedProv);
+      filterProductsByProvider(matchedProv);
+      return;
+    }
+
+    // ==========================================
+    // 19. DYNAMIC FUTURE-PROOF CATEGORIES DISCOVERY
+    // Discovers any existing or newly added category from database/API
+    // ==========================================
+    const matchedCategory = availableCategories.find(
+      (c) =>
+        lower.includes(c.name?.toLowerCase()) ||
+        lower.includes(c.slug?.toLowerCase())
+    );
+
+    if (
+      matchedCategory &&
+      (lower.includes('category') ||
+        lower.includes('show') ||
+        lower.includes('browse') ||
+        lower.includes('view') ||
+        lower.includes(matchedCategory.name?.toLowerCase())) &&
+      !lower.includes('cancel')
+    ) {
+      const catProducts = currentPool.filter(
+        (p) =>
+          p.categoryId === matchedCategory.id ||
+          p.category?.id === matchedCategory.id ||
+          p.category?.slug === matchedCategory.slug ||
+          p.category?.name?.toLowerCase() === matchedCategory.name?.toLowerCase()
+      );
+
+      if (catProducts.length > 0) {
+        lastCategoryOrPoolRef.current = catProducts;
+        displayedProductsIndexRef.current = 0;
+        setDisplayedProducts(catProducts);
+        const top3 = catProducts.slice(0, 3).map((p) => `${p.name} (₹${p.price})`).join(' and ');
+        addAiMessage(
+          `In ${matchedCategory.name}, we have ${catProducts.length} options including ${top3}. Which one would you like?`,
+          'SEARCH',
+          catProducts
+        );
+        setAwaitingContext('PRODUCT_CHOICE');
+        return;
+      } else {
+        addAiMessage(
+          `There are currently no items listed under ${matchedCategory.name}. Would you like me to help with anything else?`
+        );
+        return;
+      }
+    }
+
+    // ==========================================
+    // 20. STANDARD CATEGORIES BROWSING
+    // ==========================================
+    // 20A. General Store / Menu overview
+    if (
+      lower.includes('what do you have') ||
+      lower.includes('what is available') ||
+      lower.includes('show all products') ||
+      lower.includes('all products') ||
+      lower.includes('show menu') ||
+      lower.includes('browse store') ||
+      lower.includes('today\'s food') ||
+      lower === 'products' ||
+      lower === 'menu' ||
+      lower === 'store'
+    ) {
+      const topItems = currentPool.slice(0, 5);
+      lastCategoryOrPoolRef.current = currentPool;
+      setDisplayedProducts(topItems);
+      const itemList = topItems.map((p) => `${p.name} (₹${p.price})`).join(', ');
+      addAiMessage(
+        `We have items across Food & Meals, Fresh Fruits, Stationery, and Hostel Essentials! Popular items include: ${itemList}. Which category or product are you looking for?`,
+        'SEARCH',
+        topItems
+      );
+      setAwaitingContext('PRODUCT_CHOICE');
+      return;
+    }
+
+    // 20B. Food & Meals category
+    if (
+      (lower.includes('food') ||
+        lower.includes('meals') ||
+        lower.includes('lunch') ||
+        lower.includes('dinner') ||
+        lower.includes('breakfast') ||
+        lower.includes('snacks')) &&
+      !lower.includes('dog food')
+    ) {
+      const foodItems = currentPool.filter(
+        (p) =>
+          p.categoryId === 'cat_food' ||
+          p.category?.slug === 'food' ||
+          p.category?.name?.toLowerCase().includes('food') ||
+          p.subcategory?.toLowerCase() === 'meals' ||
+          p.subcategory?.toLowerCase() === 'snacks'
+      );
+      if (foodItems.length > 0) {
+        lastCategoryOrPoolRef.current = foodItems;
+        displayedProductsIndexRef.current = 0;
+        setDisplayedProducts(foodItems);
+        const top3 = foodItems.slice(0, 3).map((p) => `${p.name} (₹${p.price})`).join(' and ');
+        addAiMessage(
+          `In Food & Meals, we have ${foodItems.length} options including ${top3}. Which one would you like?`,
+          'SEARCH',
+          foodItems
+        );
+        setAwaitingContext('PRODUCT_CHOICE');
+        return;
+      }
+    }
+
+    // 20C. Fresh Fruits category
+    if (
+      lower.includes('fruit') ||
+      lower.includes('fruits') ||
+      lower.includes('produce') ||
+      lower.includes('orchard')
+    ) {
+      const fruitItems = currentPool.filter(
+        (p) =>
+          p.categoryId === 'cat_fruits' ||
+          p.category?.slug === 'fruits' ||
+          p.category?.name?.toLowerCase().includes('fruit') ||
+          p.subcategory?.toLowerCase() === 'fruits'
+      );
+      if (fruitItems.length > 0) {
+        lastCategoryOrPoolRef.current = fruitItems;
+        displayedProductsIndexRef.current = 0;
+        setDisplayedProducts(fruitItems);
+        const top3 = fruitItems.slice(0, 3).map((p) => `${p.name} (₹${p.price}/${p.unit || 'kg'})`).join(' and ');
+        addAiMessage(
+          `In Fresh Fruits, we have ${fruitItems.length} options including ${top3}. Which one would you like?`,
+          'SEARCH',
+          fruitItems
+        );
+        setAwaitingContext('PRODUCT_CHOICE');
+        return;
+      }
+    }
+
+    // 20D. Stationery & Academic category
+    if (
+      lower.includes('stationery') ||
+      lower.includes('stationery items') ||
+      lower.includes('study material') ||
+      lower.includes('college supplies') ||
+      lower.includes('lab supplies')
+    ) {
+      const statItems = currentPool.filter(
+        (p) =>
+          p.categoryId === 'cat_stationery' ||
+          p.category?.slug === 'stationery' ||
+          p.category?.name?.toLowerCase().includes('stationery') ||
+          p.tags?.toLowerCase().includes('stationery')
+      );
+      if (statItems.length > 0) {
+        lastCategoryOrPoolRef.current = statItems;
+        displayedProductsIndexRef.current = 0;
+        setDisplayedProducts(statItems);
+        const top3 = statItems.slice(0, 3).map((p) => `${p.name} (₹${p.price})`).join(' and ');
+        addAiMessage(
+          `In Stationery, we have ${statItems.length} supplies including ${top3}. Which one do you need?`,
+          'SEARCH',
+          statItems
+        );
+        setAwaitingContext('PRODUCT_CHOICE');
+        return;
+      }
+    }
+
+    // 20E. Hostel Essentials category
+    if (
+      lower.includes('hostel essentials') ||
+      lower.includes('daily essentials') ||
+      lower.includes('personal care') ||
+      lower.includes('hygiene') ||
+      lower.includes('toiletries') ||
+      lower.includes('cleaning supplies')
+    ) {
+      const essItems = currentPool.filter(
+        (p) =>
+          p.categoryId === 'cat_essentials' ||
+          p.category?.slug === 'essentials' ||
+          p.category?.name?.toLowerCase().includes('essential') ||
+          p.tags?.toLowerCase().includes('essentials')
+      );
+      if (essItems.length > 0) {
+        lastCategoryOrPoolRef.current = essItems;
+        displayedProductsIndexRef.current = 0;
+        setDisplayedProducts(essItems);
+        const top3 = essItems.slice(0, 3).map((p) => `${p.name} (₹${p.price})`).join(' and ');
+        addAiMessage(
+          `In Hostel Essentials, we have ${essItems.length} products including ${top3}. Which one would you like?`,
+          'SEARCH',
+          essItems
+        );
+        setAwaitingContext('PRODUCT_CHOICE');
+        return;
+      }
+    }
+
+    // ==========================================
+    // 16. COMPREHENSIVE PRODUCT SEARCH (ALL PRODUCTS)
+    // ==========================================
+    // Common conversational stopwords to strip so query tokens contain actual product keywords
+    const STOP_WORDS = new Set([
+      'i', 'want', 'need', 'give', 'me', 'please', 'can', 'you', 'show', 'find', 'search',
+      'for', 'get', 'buy', 'order', 'add', 'a', 'an', 'the', 'some', 'any', 'is', 'are',
+      'there', 'do', 'have', 'what', 'which', 'available', 'item', 'items', 'product',
+      'products', 'to', 'my', 'in', 'basket', 'cart', 'plate', 'plates', 'packet', 'pack',
+      'bottle', 'box', 'piece', 'pieces', 'kg', 'dozen', 'with', 'and', 'or', 'of', 'at',
+      'like', 'would', 'could', 'how', 'much', 'cost', 'price', 'tell', 'about', 'rate'
+    ]);
+
+    // Clean spoken query into meaningful search tokens
+    const rawTokens = lower
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 1);
+
+    const cleanTokens = rawTokens.filter((w) => !STOP_WORDS.has(w) && w.length >= 2);
+    const searchTokens = cleanTokens.length > 0 ? cleanTokens : rawTokens.filter((w) => w.length >= 3);
+
+    // Score all available products in memory
+    const scoredProducts = currentPool
+      .map((p) => {
+        const name = (p.name || '').toLowerCase();
+        const desc = (p.description || '').toLowerCase();
+        const tags = (p.tags || '').toLowerCase();
+        const subcat = (p.subcategory || '').toLowerCase();
+        const catName = (p.category?.name || '').toLowerCase();
+        const catSlug = (p.category?.slug || '').toLowerCase();
+
+        let score = 0;
+
+        // Exact full phrase match in name or tags gets highest priority
+        const fullCleanQuery = searchTokens.join(' ');
+        if (fullCleanQuery && (name.includes(fullCleanQuery) || tags.includes(fullCleanQuery))) {
+          score += 100;
+        }
+
+        for (const tok of searchTokens) {
+          if (name.includes(tok)) {
+            score += 20;
+            if (name.split(/\s+/).some((nw) => nw === tok)) score += 15; // exact word match
+          }
+          if (tags.includes(tok)) score += 12;
+          if (subcat.includes(tok)) score += 10;
+          if (catName.includes(tok) || catSlug.includes(tok)) score += 8;
+          if (desc.includes(tok)) score += 4;
+        }
+
+        return { product: p, score };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    let matched: Product[] = scoredProducts.map((entry) => entry.product);
+
+    // Fallback: If no memory match, try remote server search with apiRequest
+    if (matched.length === 0 && searchTokens.length > 0) {
+      try {
+        const searchParam = encodeURIComponent(searchTokens.join(' '));
+        const remoteRes = await apiRequest(`/api/products?search=${searchParam}&limit=10`);
+        if (remoteRes && remoteRes.success && Array.isArray(remoteRes.data) && remoteRes.data.length > 0) {
+          matched = remoteRes.data;
+        }
+      } catch {}
+    }
+
+    if (matched.length > 0) {
+      setDisplayedProducts(matched);
+
+      const quantityFound = parseNumberFromText(lower);
+      const chickenSpecific = matched.find((p) => p.name.toLowerCase().includes('chicken'));
+      const vegSpecific = matched.find((p) => p.name.toLowerCase().includes('veg'));
+
+      if (quantityFound && chickenSpecific && lower.includes('chicken')) {
+        setSelectedProduct(chickenSpecific);
+        addItem(chickenSpecific, quantityFound, false);
+        addAiMessage(
+          `Added ${quantityFound} ${chickenSpecific.name} to your cart. Would you like to continue to checkout?`,
+          'CART_ADD',
+          chickenSpecific
+        );
+        setAwaitingContext('CHECKOUT_CONFIRM');
+        return;
+      }
+
+      if (quantityFound && vegSpecific && lower.includes('veg') && !lower.includes('non-veg')) {
+        setSelectedProduct(vegSpecific);
+        addItem(vegSpecific, quantityFound, false);
+        addAiMessage(
+          `Added ${quantityFound} ${vegSpecific.name} to your cart. Would you like to continue to checkout?`,
+          'CART_ADD',
+          vegSpecific
+        );
+        setAwaitingContext('CHECKOUT_CONFIRM');
+        return;
+      }
+
+      if (quantityFound && matched.length === 1) {
+        const single = matched[0];
+        setSelectedProduct(single);
+        addItem(single, quantityFound, false);
+        addAiMessage(
+          `Added ${quantityFound} ${single.name} to your cart (₹${(single.price * quantityFound).toFixed(0)}). Would you like to continue to checkout?`,
+          'CART_ADD',
+          single
+        );
+        setAwaitingContext('CHECKOUT_CONFIRM');
+        return;
+      }
+
+      if (matched.length > 1) {
+        const prefix = studentName ? `Sure ${studentName}. ` : 'Sure. ';
+        const optionsList = matched
+          .slice(0, 3)
+          .map((p) => `${p.name} for ₹${p.price}`)
+          .join(' and ');
+
+        const aiReply = `${prefix}I found ${matched.length} options: ${optionsList}. Which one would you prefer?`;
+        addAiMessage(aiReply, 'SEARCH', matched);
+        setAwaitingContext('PRODUCT_CHOICE');
+        return;
+      }
+
+      const single = matched[0];
+      setSelectedProduct(single);
+      const unitLabel = single.unit || 'item';
+      const aiReply = `${single.name} is available for ₹${single.price} per ${unitLabel}. How many would you like?`;
+      addAiMessage(aiReply, 'SEARCH', [single]);
+      setAwaitingContext('QUANTITY');
+      return;
+    }
+
+    // ==========================================
+    // 17. HYBRID / SERVER BACKEND FALLBACK
+    // ==========================================
+    if (aiMode === 'HYBRID' || aiMode === 'FULL_AI') {
+      try {
+        const res = await apiRequest('/api/ai/query', {
+          method: 'POST',
+          body: JSON.stringify({ message: text, studentName }),
+        });
+
+        if (res.success && res.matchedProducts && res.matchedProducts.length > 0) {
+          setDisplayedProducts(res.matchedProducts);
+          const first = res.matchedProducts[0];
+          setSelectedProduct(first);
+          addAiMessage(
+            `I found ${first.name} for ₹${first.price}. How many would you like?`,
+            'SEARCH',
+            res.matchedProducts
+          );
+          setAwaitingContext('QUANTITY');
+          return;
+        } else if (res.mode === 'UI_ONLY') {
+          setAiMode('UI_ONLY');
+        }
+      } catch {}
+    }
+
+    // Not Found fallback per Requirement 12 & 6
+    addAiMessage(
+      `I couldn't find that information in your Campus Basket account. I can help you with Food & Meals, Fresh Fruits, Stationery, Daily Essentials, Express Laundry, Orders & Tracking, or Complaints. Would you like me to help with anything else?`
+    );
+  };
+
+  // Keep handleStudentInputRef continuously updated to the latest closure
+  useEffect(() => {
+    handleStudentInputRef.current = handleStudentInput;
+  });
+
+  // Helper to filter and report products by provider
+  const filterProductsByProvider = (provider: ProviderInfo) => {
+    const currentPool = allProductsRef.current.length > 0 ? allProductsRef.current : FALLBACK_STORE_PRODUCTS;
+    const providerProducts = currentPool.filter(
+      (p) => p.providerId === provider.id || p.tags?.toLowerCase().includes(provider.shortName.toLowerCase())
+    );
+
+    if (providerProducts.length > 0) {
+      setDisplayedProducts(providerProducts);
+      const desc = providerProducts.map((p) => `${p.name} for ₹${p.price}`).join(' and ');
+      const aiReply = `${provider.shortName} has ${desc}. Which one would you like?`;
+      addAiMessage(aiReply, 'FILTER', providerProducts);
+      setAwaitingContext('PRODUCT_CHOICE');
+    } else {
+      addAiMessage(
+        `That provider doesn't currently have this item available. Would you like another provider?`
+      );
+    }
+  };
+
+  // Reset/Clear conversation
+  const clearConversation = () => {
+    setMessages([]);
+    hasGreetedRef.current = false;
+    setSelectedProduct(null);
+    setSelectedProvider(null);
+    setDisplayedProducts([]);
+    setAwaitingContext('NONE');
+    setPendingCancelOrderId(null);
+    stopListening();
+  };
+
+  return {
+    isOpen,
+    setIsOpen,
+    state,
+    statusMessage,
+    messages,
+    isVoiceMuted,
+    setIsVoiceMuted,
+    isAiEnabled,
+    aiMode,
+    studentFirstName,
+    startListening,
+    stopListening,
+    handleStudentInput,
+    clearConversation,
+    displayedProducts,
+    selectedProduct,
+    liveTranscript,
+    micSupported,
+    micPermission,
+    requestMicPermission,
+  };
+}

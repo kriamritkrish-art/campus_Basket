@@ -117,6 +117,21 @@ export interface Product {
   categoryId?: string;
   category?: Category;
   providerId?: string;
+  providerName?: string;
+  provider?: {
+    id: string;
+    fullName?: string;
+    businessName?: string;
+    name?: string;
+    email?: string;
+    mobileNumber?: string;
+    phone?: string;
+    serviceCategory?: string;
+  };
+  providerShareType?: 'FIXED' | 'PERCENTAGE';
+  providerShareValue?: number;
+  providerAmount?: number;
+  cbGrossShare?: number;
   approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
   rejectionReason?: string | null;
   primaryImage?: string | null;
@@ -141,17 +156,21 @@ export interface CartItem {
   unit: string;
   image?: string | null;
   providerId?: string;
+  providerName?: string;
   allowCod?: boolean;
   allowReturn?: boolean;
 }
 
 export interface OrderItem {
   id: string;
+  productId?: string;
   productName: string;
   quantity: number;
   unitPrice: number;
   totalPrice: number;
   image?: string | null;
+  providerId?: string;
+  providerName?: string;
 }
 
 export interface Order {
