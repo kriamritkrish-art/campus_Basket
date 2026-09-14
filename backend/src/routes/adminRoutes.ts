@@ -149,6 +149,7 @@ router.put('/providers/:id', AdminPeopleController.updateProvider);
 router.patch('/providers/:id', AdminPeopleController.updateProvider);
 router.delete('/providers/:id', AdminPeopleController.deleteProvider);
 router.patch('/providers/:id/status', AdminPeopleController.toggleProviderActive);
+router.patch('/providers/:id/auto-assign', AdminPeopleController.toggleProviderAutoAssign);
 router.get('/providers/:id/details', AdminPeopleController.getProviderDetails);
 router.get('/providers/:providerId/analytics', AdminController.getProviderSalesAnalytics);
 

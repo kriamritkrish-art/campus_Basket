@@ -426,6 +426,34 @@ export class AdminPeopleController {
     }
   }
 
+  public static async toggleProviderAutoAssign(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { autoAssignDelivery } = req.body;
+
+      const updated = await prisma.serviceProvider.update({
+        where: { id },
+        data: { autoAssignDelivery: autoAssignDelivery === true || autoAssignDelivery === 'true' }
+      });
+
+      await AuditService.log(prisma, {
+        userId: req.user?.userId,
+        action: 'PROVIDER_AUTO_ASSIGN_TOGGLED',
+        entity: 'ServiceProvider',
+        entityId: id,
+        newValue: { autoAssignDelivery: updated.autoAssignDelivery }
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `Provider runner auto-assign updated to ${updated.autoAssignDelivery ? 'AUTO-ASSIGN' : 'REQUIRE APPROVAL'}.`,
+        provider: updated
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   public static async deleteProvider(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;

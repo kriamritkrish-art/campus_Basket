@@ -129,6 +129,22 @@ export default function AdminProvidersPage() {
     }
   };
 
+  const handleToggleAutoAssign = async (providerId: string, currentAutoAssign: boolean) => {
+    try {
+      const res = await apiRequest(`/api/admin/providers/${providerId}/auto-assign`, {
+        method: 'PATCH',
+        body: JSON.stringify({ autoAssignDelivery: !currentAutoAssign })
+      });
+      if (res.success) {
+        setProviders((prev) =>
+          prev.map((p) => (p.id === providerId ? { ...p, autoAssignDelivery: !currentAutoAssign } : p))
+        );
+      }
+    } catch (err) {
+      alert('Error updating provider auto-assign setting');
+    }
+  };
+
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateError(null);
@@ -442,15 +458,19 @@ export default function AdminProvidersPage() {
                       </td>
 
                       <td className="py-3.5 px-4">
-                        {p.autoAssignDelivery ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full font-bold">
-                            ⚡ Auto-Assign Runner
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] bg-sky-50 text-sky-800 border border-sky-200 px-2 py-0.5 rounded-full font-bold">
-                            🛡️ Requires Approval
-                          </span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleAutoAssign(p.id, Boolean(p.autoAssignDelivery))}
+                          title={p.autoAssignDelivery ? "Click to switch to: Require Provider Acceptance" : "Click to switch to: Auto-Assign Delivery Runner"}
+                          className={`inline-flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-full font-bold border transition cursor-pointer shadow-2xs hover:scale-105 ${
+                            p.autoAssignDelivery
+                              ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300'
+                              : 'bg-sky-50 hover:bg-sky-100 text-sky-800 border-sky-300'
+                          }`}
+                        >
+                          <span>{p.autoAssignDelivery ? '⚡ Auto-Assign' : '🛡️ Needs Approval'}</span>
+                          <span className="text-[9px] opacity-60">⇄</span>
+                        </button>
                       </td>
 
                       <td className="py-3.5 px-4">

@@ -224,8 +224,16 @@ export class DeliveryController {
       const orders = await prisma.order.findMany({
         where: {
           deliveryBoyId: null,
-          status: { in: ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP'] },
-          providerAccepted: true
+          OR: [
+            {
+              status: { in: ['CONFIRMED', 'ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP'] },
+              provider: { autoAssignDelivery: true }
+            },
+            {
+              status: { in: ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP'] },
+              providerAccepted: true
+            }
+          ]
         },
         include: {
           student: { select: { fullName: true, mobileNumber: true, roomNumber: true } },
@@ -235,11 +243,13 @@ export class DeliveryController {
         orderBy: { createdAt: 'desc' }
       });
 
-      // Query unassigned return pickups available for broadcast to all runners
+      // Query unassigned return pickups available for broadcast to all runners.
+      // MANDATORY REQUIREMENT: Delivery boy must NOT be automatically assigned or broadcast before Admin approval.
+      // Strictly query only return requests that have been explicitly APPROVED by Admin.
       const availableReturns = await (prisma as any).returnRequest.findMany({
         where: {
           deliveryBoyId: null,
-          status: { in: ['APPROVED', 'REQUESTED'] }
+          status: 'APPROVED'
         },
         include: {
           order: {
@@ -374,7 +384,25 @@ export class DeliveryController {
         }
       }).catch(() => null);
 
-      if (returnReq && (returnReq.status === 'APPROVED' || returnReq.status === 'REQUESTED' || !returnReq.deliveryBoyId)) {
+      if (returnReq) {
+        // MANDATORY REQUIREMENT: Admin acceptance/approval is strictly required first!
+        // Return requests in 'REQUESTED' state MUST NOT be claimed or assigned until Admin approves.
+        if (returnReq.status !== 'APPROVED') {
+          res.status(400).json({
+            success: false,
+            message: 'This return pickup is awaiting Admin approval before a delivery runner can accept it.'
+          });
+          return;
+        }
+
+        if (returnReq.deliveryBoyId && returnReq.deliveryBoyId !== deliveryBoy.id) {
+          res.status(400).json({
+            success: false,
+            message: 'This return pickup has already been accepted by another runner.'
+          });
+          return;
+        }
+
         const updatedReturn = await (prisma as any).returnRequest.update({
           where: { id: returnReq.id },
           data: {
@@ -409,7 +437,8 @@ export class DeliveryController {
         return;
       }
 
-      // Enforce Provider Workflow Policy: a provider must accept the order before it can be claimed by a delivery partner.
+      // Enforce Provider Workflow Policy: a provider must accept the order before it can be claimed by a delivery partner,
+      // UNLESS the provider has autoAssignDelivery enabled by Admin.
       if (!order.providerAccepted && order.provider && !order.provider.autoAssignDelivery) {
         res.status(400).json({
           success: false,
@@ -436,15 +465,22 @@ export class DeliveryController {
           throw new Error('This provider must accept the order before a delivery partner can be assigned.');
         }
 
+        const isAutoAssignProvider = Boolean(lockedOrder.provider?.autoAssignDelivery);
+        const validStatuses: any = isAutoAssignProvider
+          ? ['CONFIRMED', 'ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP']
+          : ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP'];
+
         const claimed = await tx.order.updateMany({
           where: {
             id: lockedOrder.id,
             deliveryBoyId: null,
-            status: { in: ['ACCEPTED', 'PREPARING', 'READY', 'READY_FOR_PICKUP'] }
+            status: { in: validStatuses }
           },
           data: {
             deliveryBoyId: deliveryBoy.id,
             status: 'DELIVERY_ASSIGNED',
+            providerAccepted: true,
+            providerAcceptedAt: lockedOrder.providerAcceptedAt || new Date(),
             updatedAt: new Date()
           }
         });
