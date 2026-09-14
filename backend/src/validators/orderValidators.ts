@@ -9,7 +9,7 @@ export const checkoutOrderSchema = z.object({
       })
     )
     .min(1, 'Cart cannot be empty'),
-  paymentMethod: z.enum(['RAZORPAY', 'CASH_ON_DELIVERY']),
+  paymentMethod: z.enum(['RAZORPAY', 'CASH_ON_DELIVERY', 'CAMPUS_BASKET_WALLET', 'WALLET']),
   couponCode: z.string().optional(),
   hallName: z.string().min(1, 'Hall name is required'),
   hallNumber: z.string().optional(),
@@ -48,7 +48,7 @@ export const laundryOrderSchema = z.object({
     .optional(),
   clothPhotos: z.array(z.string()).optional(),
   serviceConfigId: z.string().optional(),
-  paymentMethod: z.enum(['ONLINE', 'COD']).default('COD'),
+  paymentMethod: z.enum(['ONLINE', 'COD', 'CAMPUS_BASKET_WALLET', 'WALLET']).default('COD'),
   photos: z
     .array(
       z.object({

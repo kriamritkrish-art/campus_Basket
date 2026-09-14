@@ -7,6 +7,7 @@ import { LaundryOtpService } from '../services/laundry/LaundryOtpService';
 import { LaundryCodService } from '../services/laundry/LaundryCodService';
 import { LaundrySettlementService } from '../services/laundry/LaundrySettlementService';
 import { LedgerService } from '../services/financial/LedgerService';
+import { WalletService } from '../services/financial/WalletService';
 import { ReceiptService } from '../services/receipt/ReceiptService';
 import { AuditService } from '../services/audit/AuditService';
 import { RazorpayService } from '../services/payment/RazorpayService';
@@ -59,12 +60,27 @@ export class LaundryController {
         return;
       }
 
+      const isWallet = data.paymentMethod === 'CAMPUS_BASKET_WALLET' || (data.paymentMethod as string) === 'WALLET';
+      const isCod = data.paymentMethod === 'COD';
+
       // 1. Calculate price separation via LaundryPricingService (NO hardcoded prices)
       const pricing = await LaundryPricingService.calculatePricing({
         serviceConfigId: data.serviceConfigId,
         items: data.items,
-        paymentMethod: data.paymentMethod as 'ONLINE' | 'COD'
+        paymentMethod: isWallet ? 'ONLINE' : (data.paymentMethod as 'ONLINE' | 'COD')
       });
+
+      if (isWallet) {
+        const walletData = await WalletService.getWallet(studentId);
+        const currentBalance = Number(walletData?.wallet?.balance || 0);
+        if (currentBalance < pricing.totalAmount) {
+          res.status(400).json({
+            success: false,
+            message: `Insufficient Campus Basket Wallet balance (Available: ₹${currentBalance.toFixed(2)}, Required: ₹${pricing.totalAmount.toFixed(2)}). Please top up your wallet or choose another payment method.`
+          });
+          return;
+        }
+      }
 
       const orderNumber = generateLaundryOrderNumber();
       const trackingNumber = `TRK-${orderNumber}`;
@@ -78,15 +94,15 @@ export class LaundryController {
         room: data.roomNumber,
         serviceName: pricing.serviceName,
         garmentCount: pricing.totalQuantity,
-        paymentMethod: data.paymentMethod
+        paymentMethod: isWallet ? 'CAMPUS_BASKET_WALLET' : data.paymentMethod
       });
 
       // 2. Open broadcast pool & COD Mandatory Advance:
       // For COD, ₹1 per garment platform service charge is mandatory online advance.
       // The remaining laundryBaseAmount is COD balance payable directly to partner (Cash or Provider QR Scanner).
-      const isCod = data.paymentMethod === 'COD';
-      const onlinePaidAmount = isCod ? pricing.serviceChargeAmount : pricing.onlinePaidAmount;
-      const codAmount = isCod ? pricing.laundryBaseAmount : pricing.codAmount;
+      // For Campus Basket Wallet, full payment is debited upfront from wallet balance.
+      const onlinePaidAmount = isWallet ? pricing.totalAmount : isCod ? pricing.serviceChargeAmount : pricing.onlinePaidAmount;
+      const codAmount = isWallet ? 0 : isCod ? pricing.laundryBaseAmount : pricing.codAmount;
 
       // Ensure actual hall and room are captured and synced
       const orderHallName = data.hallName?.trim() || student.hall?.name || (student as any).hallName || 'Campus Hostel';
@@ -113,9 +129,9 @@ export class LaundryController {
             onlinePaidAmount: onlinePaidAmount,
             codAmount: codAmount,
             codCollectedAmount: 0,
-            codStatus: isCod ? 'PENDING' : 'NOT_APPLICABLE',
-            paymentMethod: data.paymentMethod,
-            paymentStatus: isCod ? 'PENDING' : (data.paymentMethod === 'ONLINE' ? 'PAID' : 'PARTIALLY_PAID'),
+            codStatus: (isCod && !isWallet) ? 'PENDING' : 'NOT_APPLICABLE',
+            paymentMethod: isWallet ? 'CAMPUS_BASKET_WALLET' : data.paymentMethod,
+            paymentStatus: isWallet ? 'PAID' : isCod ? 'PENDING' : (data.paymentMethod === 'ONLINE' ? 'PAID' : 'PARTIALLY_PAID'),
             settlementStatus: 'NOT_ELIGIBLE',
             refundStatus: 'NOT_APPLICABLE',
             serviceChargeRefundable: true,
@@ -140,7 +156,9 @@ export class LaundryController {
                 previousStatus: null,
                 newStatus: 'REQUESTED',
                 changedBy: 'STUDENT',
-                notes: isCod
+                notes: isWallet
+                  ? `Laundry booking placed. Payment: CAMPUS_BASKET_WALLET. Full payment of ₹${pricing.totalAmount} paid via Campus Basket Wallet.`
+                  : isCod
                   ? `Laundry booking placed in broadcast pool. Payment: COD. Mandatory advance service charge: ₹${onlinePaidAmount} (₹1/dress), COD Due to Partner: ₹${codAmount}`
                   : `Laundry booked. Payment: ONLINE. Full online paid: ₹${onlinePaidAmount}, COD Due: ₹${codAmount}`
               }
@@ -227,19 +245,47 @@ export class LaundryController {
         }
       });
 
+      // 4b. If paying via Campus Basket Wallet, debit wallet & create CAPTURED payment
+      if (isWallet) {
+        await WalletService.debitPayment({
+          studentId,
+          orderId: newLaundryOrder.id,
+          amount: pricing.totalAmount,
+          description: `Payment for laundry booking #${newLaundryOrder.orderNumber}`
+        });
+
+        await prisma.payment.create({
+          data: {
+            paymentNumber: `CB-PAY-LND-${Date.now().toString().slice(-6)}`,
+            laundryOrderId: newLaundryOrder.id,
+            studentId,
+            amount: pricing.totalAmount,
+            paymentMethod: 'CAMPUS_BASKET_WALLET',
+            status: 'CAPTURED',
+            capturedAt: new Date()
+          }
+        });
+      }
+
       // 5. Append payment to Financial Ledger if online payment occurred
       if (onlinePaidAmount > 0) {
         try {
           await LedgerService.recordEntry({
             orderId: newLaundryOrder.id,
             entryType: 'ORDER_PAYMENT',
-            debitAccount: data.paymentMethod === 'ONLINE' ? 'RAZORPAY_GATEWAY' : 'STUDENT_ONLINE_PAYMENT',
+            debitAccount: isWallet
+              ? 'STUDENT_WALLET_ESCROW'
+              : data.paymentMethod === 'ONLINE'
+              ? 'RAZORPAY_GATEWAY'
+              : 'STUDENT_ONLINE_PAYMENT',
             creditAccount: 'CAMPUS_ESCROW',
             amount: onlinePaidAmount,
-            description: `Full online payment collected for laundry order ${orderNumber}`,
+            description: isWallet
+              ? `Full wallet payment collected for laundry order ${orderNumber}`
+              : `Full online payment collected for laundry order ${orderNumber}`,
             metadata: {
               orderNumber,
-              paymentMethod: data.paymentMethod,
+              paymentMethod: isWallet ? 'CAMPUS_BASKET_WALLET' : data.paymentMethod,
               laundryBaseAmount: pricing.laundryBaseAmount,
               serviceChargeAmount: pricing.serviceChargeAmount,
               onlinePaidAmount,
@@ -253,7 +299,7 @@ export class LaundryController {
 
       // 6. Initialize Razorpay Order for online payable portion (both full online and COD advance service charge)
       let razorpayData = null;
-      if (onlinePaidAmount > 0) {
+      if (!isWallet && onlinePaidAmount > 0) {
         try {
           const rzpOrder = await razorpayService.createRazorpayOrder({
             amountInRupees: onlinePaidAmount,
@@ -308,7 +354,9 @@ export class LaundryController {
 
       res.status(201).json({
         success: true,
-        message: isCod
+        message: isWallet
+          ? 'Laundry booking placed successfully using Campus Basket Wallet!'
+          : isCod
           ? `Laundry order placed successfully! It is now available for laundry partners to accept.`
           : `Laundry booking created! Please complete payment of ₹${pricing.totalAmount} via Razorpay.`,
         order: orderPayload,

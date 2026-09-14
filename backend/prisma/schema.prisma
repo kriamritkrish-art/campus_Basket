@@ -76,6 +76,7 @@ enum LaundryOtpType {
 enum PaymentMethod {
   RAZORPAY
   CASH_ON_DELIVERY
+  CAMPUS_BASKET_WALLET
 }
 
 enum PaymentStatus {

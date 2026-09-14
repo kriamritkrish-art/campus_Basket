@@ -7,6 +7,7 @@ import { EmailService } from '../services/email/EmailService';
 import { ReceiptService } from '../services/receipt/ReceiptService';
 import { LedgerService } from '../services/financial/LedgerService';
 import { RefundService } from '../services/financial/RefundService';
+import { WalletService } from '../services/financial/WalletService';
 import { ReceiptPdfService } from '../services/pdf/ReceiptPdfService';
 import { env } from '../config/environment';
 
@@ -155,6 +156,20 @@ export class OrderController {
       }
 
       const totalAmount = Math.max(0, subtotal - discountAmount + deliveryFee);
+
+      const isWalletPayment = data.paymentMethod === 'CAMPUS_BASKET_WALLET' || (data.paymentMethod as string) === 'WALLET';
+
+      if (isWalletPayment) {
+        const walletData = await WalletService.getWallet(studentId);
+        const currentBalance = Number(walletData?.wallet?.balance || 0);
+        if (currentBalance < totalAmount) {
+          res.status(400).json({
+            success: false,
+            message: `Insufficient Campus Basket Wallet balance (Available: ₹${currentBalance.toFixed(2)}, Required: ₹${totalAmount.toFixed(2)}). Please top up your wallet or choose another payment method.`
+          });
+          return;
+        }
+      }
 
       // Verify COD settings & compute any required advance payment
       let codAdvanceAmount = 0;
@@ -311,17 +326,20 @@ export class OrderController {
 
       // Check auto-assignment policy
       // If COD requires advance payment, order remains PENDING_PAYMENT until advance is paid!
-      let initialStatus: any = (data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired === 0)
+      // Campus Basket Wallet orders are confirmed instantly.
+      let initialStatus: any = ((data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired === 0) || isWalletPayment)
         ? 'CONFIRMED'
         : 'PENDING_PAYMENT';
       let assignedDeliveryBoyId: string | null = null;
-      let initialStatusNote = advanceRequired > 0
+      let initialStatusNote = isWalletPayment
+        ? 'Order paid instantly using Campus Basket Wallet'
+        : advanceRequired > 0
         ? `Order initiated: Partial COD Advance of ₹${advanceRequired} required to confirm order. Remaining ₹${remainingCashDue} payable in cash at delivery.`
         : 'Order initiated at checkout';
 
       // Delivery assignment is intentionally deferred until a runner accepts an available order.
       // Provider acceptance makes the order available to eligible delivery boys, not auto-assigned to one runner.
-      if (data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired === 0 && targetProvider?.autoAssignDelivery) {
+      if (((data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired === 0) || isWalletPayment) && targetProvider?.autoAssignDelivery) {
         initialStatusNote = 'Order placed and available for eligible delivery partners after provider acceptance.';
       }
 
@@ -393,14 +411,18 @@ export class OrderController {
             deliveryFee,
             discountAmount,
             totalAmount,
-            paymentMethod: data.paymentMethod,
-            paymentStatus: (data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired === 0) ? 'COD_PENDING' : 'PENDING',
+            paymentMethod: (isWalletPayment ? 'CAMPUS_BASKET_WALLET' : data.paymentMethod) as any,
+            paymentStatus: isWalletPayment
+              ? 'PAID'
+              : (data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired === 0)
+              ? 'COD_PENDING'
+              : 'PENDING',
             refundStatus: 'NOT_APPLICABLE',
             settlementStatus: 'PENDING',
             commissionRate,
             commissionAmount,
             providerPayable,
-            advancePaidAmount: data.paymentMethod === 'CASH_ON_DELIVERY' ? advanceRequired : 0,
+            advancePaidAmount: isWalletPayment ? totalAmount : data.paymentMethod === 'CASH_ON_DELIVERY' ? advanceRequired : 0,
             providerAccepted: false,
             providerAcceptedAt: null,
             hallName: data.hallName,
@@ -511,15 +533,17 @@ export class OrderController {
         orderNumber: createdOrder.orderNumber,
         totalAmount,
         providerId: targetProviderId,
-        paymentMethod: data.paymentMethod,
+        paymentMethod: isWalletPayment ? 'CAMPUS_BASKET_WALLET' : data.paymentMethod,
         commissionRate,
         commissionAmount,
         providerPayable
       }).catch((err) => console.warn('[LedgerService] recordOrderPayment notice:', err));
 
       // Determine online gateway payment requirements:
-      // Case 1: Full online payment via RAZORPAY
-      // Case 2: Cash on Delivery WITH partial advance required (e.g. ₹10)
+      // Case 1: Campus Basket Wallet (Full instant payment from student wallet)
+      // Case 2: Full online payment via RAZORPAY
+      // Case 3: Cash on Delivery WITH partial advance required (e.g. ₹10)
+      // Case 4: Zero advance COD payment
       let razorpayOrderData = null;
       const requiresOnlinePayment =
         data.paymentMethod === 'RAZORPAY' ||
@@ -527,7 +551,35 @@ export class OrderController {
 
       const onlineChargeAmount = data.paymentMethod === 'RAZORPAY' ? totalAmount : advanceRequired;
 
-      if (requiresOnlinePayment && onlineChargeAmount > 0) {
+      if (isWalletPayment) {
+        // Debit student wallet balance
+        const debitRes = await WalletService.debitPayment({
+          studentId,
+          orderId: createdOrder.id,
+          amount: totalAmount,
+          description: `Checkout payment for Order #${createdOrder.orderNumber}`
+        });
+
+        await prisma.payment.create({
+          data: {
+            paymentNumber: `CB-PAY-${Date.now().toString().slice(-6)}`,
+            orderId: createdOrder.id,
+            studentId,
+            amount: totalAmount,
+            status: 'CAPTURED',
+            paymentMethod: 'CAMPUS_BASKET_WALLET',
+            capturedAt: new Date()
+          }
+        });
+
+        // Dispatch order confirmation email
+        emailService.sendOrderConfirmationEmail(
+          student.user.email,
+          orderNumber,
+          orderItemsData.map((i) => `${i.quantity}x ${i.productName}`).join(', '),
+          totalAmount
+        );
+      } else if (requiresOnlinePayment && onlineChargeAmount > 0) {
         const rzpOrder = await razorpayService.createRazorpayOrder({
           amountInRupees: onlineChargeAmount,
           receiptId: orderNumber,
@@ -545,7 +597,7 @@ export class OrderController {
             studentId,
             amount: onlineChargeAmount,
             status: 'PENDING',
-            paymentMethod: data.paymentMethod,
+            paymentMethod: data.paymentMethod as any,
             razorpayOrderId: rzpOrder.id
           }
         });
@@ -599,13 +651,14 @@ export class OrderController {
         deliveryFee,
         total: totalAmount,
         payment: {
-          method: data.paymentMethod,
-          status:
-            data.paymentMethod === 'CASH_ON_DELIVERY'
-              ? advanceRequired > 0
-                ? `COD Advance ₹${advanceRequired} Pending`
-                : 'COD Pending'
-              : 'Payment Processing'
+          method: isWalletPayment ? 'CAMPUS_BASKET_WALLET' : data.paymentMethod,
+          status: isWalletPayment
+            ? 'Paid via Campus Basket Wallet'
+            : data.paymentMethod === 'CASH_ON_DELIVERY'
+            ? advanceRequired > 0
+              ? `COD Advance ₹${advanceRequired} Pending`
+              : 'COD Pending'
+            : 'Payment Processing'
         }
       });
 
@@ -621,24 +674,25 @@ export class OrderController {
 
       res.status(201).json({
         success: true,
-        message:
-          data.paymentMethod === 'CASH_ON_DELIVERY'
-            ? advanceRequired > 0
-              ? `Advance deposit of ₹${advanceRequired} required to confirm order. Remaining ₹${remainingCashDue} will be paid in cash at delivery.`
-              : 'Order placed successfully with Cash on Delivery!'
-            : 'Order created. Please complete payment via Razorpay.',
-        requiresAdvance: data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired > 0,
-        advanceRequired,
-        remainingCashDue,
+        message: isWalletPayment
+          ? 'Order placed successfully using Campus Basket Wallet!'
+          : data.paymentMethod === 'CASH_ON_DELIVERY'
+          ? advanceRequired > 0
+            ? `Advance deposit of ₹${advanceRequired} required to confirm order. Remaining ₹${remainingCashDue} will be paid in cash at delivery.`
+            : 'Order placed successfully with Cash on Delivery!'
+          : 'Order created. Please complete payment via Razorpay.',
+        requiresAdvance: isWalletPayment ? false : (data.paymentMethod === 'CASH_ON_DELIVERY' && advanceRequired > 0),
+        advanceRequired: isWalletPayment ? 0 : advanceRequired,
+        remainingCashDue: isWalletPayment ? 0 : remainingCashDue,
         order: {
           id: createdOrder.id,
           orderNumber: createdOrder.orderNumber,
           status: createdOrder.status,
           serviceType: createdOrder.serviceType,
           totalAmount,
-          paymentMethod: data.paymentMethod,
-          advanceRequired,
-          remainingCashDue
+          paymentMethod: isWalletPayment ? 'CAMPUS_BASKET_WALLET' : data.paymentMethod,
+          advanceRequired: isWalletPayment ? 0 : advanceRequired,
+          remainingCashDue: isWalletPayment ? 0 : remainingCashDue
         },
         razorpay: razorpayOrderData
       });

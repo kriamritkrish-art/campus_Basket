@@ -74,7 +74,11 @@ export class LedgerService {
       ? Number(order.providerPayable)
       : Math.max(0, Math.round((productValue - Number(order.amount || 0) + Number(order.totalAmount || 0) - Number(order.amount || 0)) * 100) / 100);
 
-    const sourceAccount = order.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD_RECEIVABLE_IN_TRANSIT' : 'CAMPUS_ESCROW_GATEWAY';
+    const sourceAccount = order.paymentMethod === 'CASH_ON_DELIVERY'
+      ? 'COD_RECEIVABLE_IN_TRANSIT'
+      : (order.paymentMethod === 'CAMPUS_BASKET_WALLET' || (order.paymentMethod as string) === 'WALLET')
+      ? 'STUDENT_WALLET_ESCROW'
+      : 'CAMPUS_ESCROW_GATEWAY';
 
     // 1. Record Gross Payment
     const paymentEntry = await this.recordEntry({
