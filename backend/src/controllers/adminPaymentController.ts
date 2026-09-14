@@ -88,6 +88,8 @@ export class AdminPaymentController {
         }
       }
 
+      const totalAdminBalance = Math.max(0, Math.round(((totalOnlinePayments + totalCodCollected) - (settledPayoutsAmount + completedRefundsAmount)) * 100) / 100);
+
       res.status(200).json({
         success: true,
         data: {
@@ -96,6 +98,7 @@ export class AdminPaymentController {
             totalOnlinePayments: Math.round(totalOnlinePayments * 100) / 100,
             totalCodCollected: Math.round(totalCodCollected * 100) / 100,
             totalCommissionEarned: Math.round(totalCommissionEarned * 100) / 100,
+            totalAdminBalance,
             pendingSettlementsAmount: Math.round(pendingSettlementsAmount * 100) / 100,
             settledPayoutsAmount: Math.round(settledPayoutsAmount * 100) / 100,
             pendingRefundsCount,

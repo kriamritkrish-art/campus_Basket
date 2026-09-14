@@ -413,6 +413,15 @@ export class ReturnController {
         return;
       }
 
+      // Return request MUST be accepted/approved by admin first before delivery runner can be assigned
+      if (returnRequest.status !== 'APPROVED' && returnRequest.status !== 'PICKUP_ASSIGNED') {
+        res.status(400).json({
+          success: false,
+          message: 'Return request must be accepted/approved by admin before a delivery runner can be assigned.'
+        });
+        return;
+      }
+
       const dbUser = await (prisma as any).deliveryBoy.findUnique({
         where: { id: deliveryBoyId }
       });
@@ -562,11 +571,17 @@ export class ReturnController {
 
       const now = new Date();
       // Mark return request as COMPLETED (Physical collection verified via student OTP)
+      const isWalletRefund = (returnRequest.refundMethod || 'CAMPUS_BASKET_WALLET') === 'CAMPUS_BASKET_WALLET';
+      const refundAmount = Number(returnRequest.refundAmount || 0);
+
       const updateData: any = {
         status: 'COMPLETED',
         pickupOtpVerified: true,
         pickupOtpVerifiedAt: now,
-        deliveryBoyPayout: runnerRate
+        deliveryBoyPayout: runnerRate,
+        adminNotes: isWalletRefund && refundAmount > 0
+          ? `Refund of ₹${refundAmount.toFixed(2)} credited automatically to Campus Basket Wallet upon verified pickup. No admin disbursal required.`
+          : (returnRequest.adminNotes || 'Doorstep return pickup completed and verified.')
       };
       if (deliveryBoyId || returnRequest.deliveryBoyId) {
         updateData.deliveryBoyId = deliveryBoyId || returnRequest.deliveryBoyId;
@@ -612,8 +627,6 @@ export class ReturnController {
       // RETURN PICKUP IS THE REFUND TRIGGER:
       // If student selected Campus Basket Wallet, credit the eligible refund amount immediately upon successful return pickup OTP verification.
       const selectedRefundMethod = returnRequest.refundMethod || 'CAMPUS_BASKET_WALLET';
-      const isWalletRefund = selectedRefundMethod === 'CAMPUS_BASKET_WALLET';
-      const refundAmount = Number(returnRequest.refundAmount || 0);
 
       let walletResult: any = null;
       if (isWalletRefund && refundAmount > 0) {

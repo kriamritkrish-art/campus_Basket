@@ -1048,10 +1048,26 @@ export default function AdminPaymentsPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-gradient-to-br from-[#17202A] to-slate-800 text-white border border-slate-700 rounded-2xl p-5 shadow-xs">
+              <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                <span>Total Admin Balance (Net)</span>
+                <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/30">Live Platform</span>
+              </div>
+              <div className="text-2xl font-black text-emerald-400 mt-2 font-mono">
+                ₹{(overviewMetrics?.totalAdminBalance !== undefined
+                  ? overviewMetrics.totalAdminBalance
+                  : Math.max(0, (Number(overviewMetrics?.totalOnlinePayments || 0) + Number(overviewMetrics?.totalCodCollected || 0)) - (Number(overviewMetrics?.settledPayoutsAmount || 0) + Number(overviewMetrics?.completedRefundsAmount || 0)))
+                ).toLocaleString('en-IN')}
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Net funds held: Inflows minus provider payouts &amp; completed refunds
+              </p>
+            </div>
+
             <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
               <div className="text-xs font-bold text-gray-500 uppercase">Provider Settlements Disbursed</div>
-              <div className="text-2xl font-black text-gray-900 mt-2">
+              <div className="text-2xl font-black text-gray-900 mt-2 font-mono">
                 ₹{(overviewMetrics?.settledPayoutsAmount || 0).toLocaleString('en-IN')}
               </div>
               <p className="text-xs text-gray-500 mt-1">Transferred via NEFT / UPI to verified accounts</p>
@@ -1059,7 +1075,7 @@ export default function AdminPaymentsPage() {
 
             <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
               <div className="text-xs font-bold text-gray-500 uppercase">Pending Provider Payable</div>
-              <div className="text-2xl font-black text-amber-600 mt-2">
+              <div className="text-2xl font-black text-amber-600 mt-2 font-mono">
                 ₹{(overviewMetrics?.pendingSettlementsAmount || 0).toLocaleString('en-IN')}
               </div>
               <p className="text-xs text-gray-500 mt-1">Awaiting next disbursement cycle</p>
@@ -1067,10 +1083,10 @@ export default function AdminPaymentsPage() {
 
             <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
               <div className="text-xs font-bold text-gray-500 uppercase">Total Completed Refunds</div>
-              <div className="text-2xl font-black text-emerald-600 mt-2">
-                ₹{(overviewMetrics?.completedRefundsAmount || 0).toLocaleString('en-IN')}
+              <div className="text-2xl font-black text-rose-600 mt-2 font-mono">
+                -₹{(overviewMetrics?.completedRefundsAmount || 0).toLocaleString('en-IN')}
               </div>
-              <p className="text-xs text-gray-500 mt-1">{overviewMetrics?.completedRefundsCount || 0} student claims completed</p>
+              <p className="text-xs text-gray-500 mt-1">{overviewMetrics?.completedRefundsCount || 0} student claims completed (Deducted from balance)</p>
             </div>
           </div>
         </div>

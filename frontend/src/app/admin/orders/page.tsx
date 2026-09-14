@@ -970,11 +970,18 @@ export default function AdminOrdersPage() {
                               ? '⚠️ Awaiting Account Details'
                               : ret.status === 'PICKED_UP'
                               ? '📦 Picked Up (Verified)'
+                              : (ret.status === 'COMPLETED' && (ret.refundMethod === 'CAMPUS_BASKET_WALLET' || !ret.refundMethod))
+                              ? '⚡ Wallet Credited'
                               : ret.status}
                           </span>
                           {ret.refundFailureReason && (
                             <div className="text-[10px] font-bold text-rose-700 mt-1">
                               Reason: {ret.refundFailureReason}
+                            </div>
+                          )}
+                          {ret.status === 'COMPLETED' && (ret.refundMethod === 'CAMPUS_BASKET_WALLET' || !ret.refundMethod) && (
+                            <div className="text-[10px] text-emerald-800 font-semibold mt-0.5">
+                              ⚡ Credited to Campus Wallet (Auto)
                             </div>
                           )}
                           {ret.status === 'REFUNDED' && (
@@ -1334,9 +1341,10 @@ export default function AdminOrdersPage() {
             {/* ── Return Workflow Progress Stepper ── */}
             {(() => {
               const s = selectedReturn.status;
+              const isWalletReturn = (selectedReturn.refundMethod === 'CAMPUS_BASKET_WALLET' || !selectedReturn.refundMethod);
               const otpDone = Boolean(selectedReturn.pickupOtpVerified) || s === 'COMPLETED' || s === 'PICKED_UP' || s === 'PROCESSING' || selectedReturn.order?.refundStatus === 'PICKED_UP' || selectedReturn.order?.refundStatus === 'PROCESSING';
               const approved = ['APPROVED','ACCEPTED','PICKUP_ASSIGNED','COMPLETED','PICKED_UP','PROCESSING','REFUNDED'].includes(s) || otpDone;
-              const refunded = s === 'REFUNDED';
+              const refunded = s === 'REFUNDED' || (s === 'COMPLETED' && isWalletReturn && otpDone);
 
               const stages = [
                 {
@@ -1362,8 +1370,12 @@ export default function AdminOrdersPage() {
                 },
                 {
                   icon: <Banknote className="w-4 h-4" />,
-                  label: `Refund Disbursed`,
-                  sub: refunded ? `₹${selectedReturn.refundAmount} released ✓` : otpDone ? `Ready — ₹${selectedReturn.refundAmount} to disburse` : 'Locked until pickup verified',
+                  label: isWalletReturn ? 'Wallet Credited' : 'Refund Disbursed',
+                  sub: refunded
+                    ? (isWalletReturn ? `₹${selectedReturn.refundAmount} credited to wallet ✓` : `₹${selectedReturn.refundAmount} released ✓`)
+                    : otpDone
+                    ? `Ready — ₹${selectedReturn.refundAmount} to disburse`
+                    : 'Auto-credited on pickup',
                   done: refunded,
                   active: otpDone && !refunded
                 }
@@ -1414,9 +1426,9 @@ export default function AdminOrdersPage() {
                         ? 'bg-blue-50 text-blue-800 border border-blue-200'
                         : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                     }`}>
-                      {!approved && '⏳ Action required: Review and approve this return request below.'}
+                      {!approved && '⏳ Action required: Review and approve this return request below. Delivery runner cannot be assigned until approved.'}
                       {approved && !otpDone && '⏳ Waiting for runner to visit student\'s room and verify the 6-digit OTP.'}
-                      {otpDone && !refunded && '✅ Pickup verified! You can now disburse the refund to the student.'}
+                      {otpDone && !refunded && '✅ Pickup verified! Refund disbursement is ready.'}
                     </div>
                   )}
                 </div>
@@ -1635,7 +1647,19 @@ export default function AdminOrdersPage() {
               </div>
             )}
 
-            {(selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP') && (
+            {(selectedReturn.status === 'COMPLETED' && (selectedReturn.refundMethod === 'CAMPUS_BASKET_WALLET' || !selectedReturn.refundMethod)) && (
+              <div className="p-3 bg-emerald-50 border border-emerald-400 rounded-xl text-emerald-950 text-xs flex items-center gap-2 shadow-2xs">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div>
+                  <strong>✓ Refund Credited to Campus Basket Wallet (Automatic on Pickup)</strong>
+                  <p className="text-[11px] text-emerald-800 mt-0.5">
+                    ₹{selectedReturn.refundAmount} was automatically credited to student wallet upon 6-digit OTP pickup verification. No admin manual disbursal required. Total admin balance has been decremented.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {(selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || (Boolean(selectedReturn.pickupOtpVerified) && selectedReturn.refundMethod !== 'CAMPUS_BASKET_WALLET' && selectedReturn.status !== 'COMPLETED') || selectedReturn.order?.refundStatus === 'PICKED_UP') && selectedReturn.status !== 'REFUNDED' && (
               <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-900 text-xs flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>
@@ -1648,7 +1672,7 @@ export default function AdminOrdersPage() {
               <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-900 text-xs flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>
-                  <strong>Refund Disbursed &amp; Completed:</strong> ₹{selectedReturn.refundAmount} has been released and recorded in financial ledgers via {selectedReturn.refundMethod === 'RAZORPAY_GATEWAY' ? 'Direct Razorpay Gateway Reversal' : 'Manual Disbursal'}.
+                  <strong>Refund Disbursed &amp; Completed:</strong> ₹{selectedReturn.refundAmount} has been released and recorded in financial ledgers via {selectedReturn.refundMethod === 'RAZORPAY_GATEWAY' ? 'Direct Razorpay Gateway Reversal' : (selectedReturn.refundMethod === 'CAMPUS_BASKET_WALLET' ? 'Campus Basket Wallet' : 'Manual Disbursal')}.
                 </span>
               </div>
             )}
@@ -1937,8 +1961,13 @@ export default function AdminOrdersPage() {
                 {/* Phase 3: Pickup completed OR Awaiting Student Details */}
                 {(selectedReturn.status === 'COMPLETED' || selectedReturn.status === 'PICKED_UP' || selectedReturn.status === 'PROCESSING' || selectedReturn.status === 'AWAITING_STUDENT_DETAILS' || Boolean(selectedReturn.pickupOtpVerified) || selectedReturn.order?.refundStatus === 'PICKED_UP' || selectedReturn.order?.refundStatus === 'PROCESSING') && selectedReturn.status !== 'REFUNDED' && (
                   <>
-                    {/* If in Awaiting Details and student STILL hasn't provided details AND not cash handover AND refundMethod is MANUAL */}
-                    {selectedReturn.status === 'AWAITING_STUDENT_DETAILS' && !selectedReturn.refundAccount && !isCashHandover && refundMethod === 'MANUAL' ? (
+                    {/* If wallet refund was already completed automatically upon pickup OTP verification */}
+                    {selectedReturn.status === 'COMPLETED' && (selectedReturn.refundMethod === 'CAMPUS_BASKET_WALLET' || !selectedReturn.refundMethod) ? (
+                      <div className="px-4 py-2 bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-2xs">
+                        <CheckCircle className="w-4 h-4 text-emerald-600" />
+                        <span>✓ Refund Already Credited to Campus Wallet (Auto)</span>
+                      </div>
+                    ) : selectedReturn.status === 'AWAITING_STUDENT_DETAILS' && !selectedReturn.refundAccount && !isCashHandover && refundMethod === 'MANUAL' ? (
                       <button
                         type="button"
                         onClick={handleRequestStudentAccountDetails}

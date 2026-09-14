@@ -124,7 +124,14 @@ export class AdminController {
 
       // Financial calculations (authoritative)
       const validOrders = currentOrders.filter((o) => o.status !== 'CANCELLED');
-      const totalRevenue = validOrders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+      const grossRevenue = validOrders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+      const totalRefundsAmount = validOrders.reduce((sum, o) => {
+        if (o.refundStatus === 'COMPLETED' || o.paymentStatus === 'REFUNDED') {
+          return sum + Number(o.refundAmount || o.totalAmount || 0);
+        }
+        return sum;
+      }, 0);
+      const totalRevenue = Math.max(0, Math.round((grossRevenue - totalRefundsAmount) * 100) / 100);
       const totalOrdersCount = currentOrders.length;
       const avgOrderValue = totalOrdersCount > 0 ? totalRevenue / totalOrdersCount : 0;
 
