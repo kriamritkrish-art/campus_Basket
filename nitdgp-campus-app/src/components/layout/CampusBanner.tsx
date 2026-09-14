@@ -1,38 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { usePathname } from 'next/navigation';
 import { useGeolocation } from '../../context/GeolocationContext';
-import { useAuth } from '../../context/AuthContext';
-import { CampusLocationModal } from './CampusLocationModal';
-import { MapPin, AlertCircle, RefreshCw, Zap, Sparkles } from 'lucide-react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 
 export function CampusBanner() {
   const pathname = usePathname();
   const { isInsideCampus, isChecking, requestLocation } = useGeolocation();
-  const { user, isAuthenticated } = useAuth();
-  const [selectedHall, setSelectedHall] = useState('');
-  const [roomNumber, setRoomNumber] = useState('');
-  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
-
-  useEffect(() => {
-    const sync = () => {
-      if (typeof window !== 'undefined') {
-        if (isAuthenticated && user) {
-          const h = user?.student?.hall?.name || localStorage.getItem('cb_selected_hall') || '';
-          const r = user?.student?.roomNumber || localStorage.getItem('cb_room_number') || '';
-          setSelectedHall(h);
-          setRoomNumber(r);
-        } else {
-          setSelectedHall('');
-          setRoomNumber('');
-        }
-      }
-    };
-    sync();
-    window.addEventListener('cb_location_updated', sync);
-    return () => window.removeEventListener('cb_location_updated', sync);
-  }, [user, isAuthenticated]);
 
   if (
     pathname?.startsWith('/admin') ||
@@ -46,25 +21,25 @@ export function CampusBanner() {
     <>
       {/* GPS Checking Notice */}
       {isChecking && (
-        <div className="bg-[#eef7e9] border-b border-[#dcedc8] px-3 py-1.5 text-xs text-[#36751F] flex items-center justify-center gap-2 text-center">
-          <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#4F9D2F] shrink-0" />
-          <span className="text-[11px] sm:text-xs">Verifying Campus GPS Service Perimeter...</span>
+        <div className="bg-[#eef7e9] border-b border-[#dcedc8] px-3 py-1 text-xs text-[#36751F] flex items-center justify-center gap-2 text-center">
+          <RefreshCw className="w-3 h-3 animate-spin text-[#4F9D2F] shrink-0" />
+          <span className="text-[11px]">Verifying Campus GPS Service Perimeter...</span>
         </div>
       )}
 
       {/* Outside GPS Boundary Notice */}
       {!isChecking && !isInsideCampus && (
-        <div className="bg-[#fff8f0] border-b border-[#ffe2c8] px-3 sm:px-4 py-1.5 text-xs text-[#b45309]">
+        <div className="bg-[#fff8f0] border-b border-[#ffe2c8] px-3 sm:px-4 py-1 text-xs text-[#b45309]">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0 flex-1">
               <AlertCircle className="w-3.5 h-3.5 text-[#d97706] shrink-0" />
-              <span className="text-[11px] sm:text-xs leading-tight truncate">
+              <span className="text-[11px] leading-tight truncate">
                 Hostel room delivery active for verified campus residence halls.
               </span>
             </div>
             <button
               onClick={() => requestLocation()}
-              className="underline hover:text-red-700 font-bold shrink-0 text-[11px] sm:text-xs flex items-center gap-1 cursor-pointer"
+              className="underline hover:text-red-700 font-bold shrink-0 text-[11px] flex items-center gap-1 cursor-pointer"
             >
               <RefreshCw className="w-3 h-3" /> Re-check
             </button>
@@ -72,51 +47,13 @@ export function CampusBanner() {
         </div>
       )}
 
-      {/* Campus Location Bar */}
-      <div className="bg-[#F7F8F6] border-b border-[#E5E7EB] px-3 sm:px-6 lg:px-8 py-1.5 sm:py-2">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-2 sm:gap-3 text-[#172033] min-w-0">
-            <div className="flex items-center gap-1 font-bold min-w-0">
-              <MapPin className="w-3.5 h-3.5 text-[#4F9D2F] shrink-0" />
-              {isAuthenticated && selectedHall ? (
-                <>
-                  <span className="text-gray-500 font-medium hidden sm:inline">Delivering to</span>
-                  <span className="text-[#172033] font-black truncate max-w-[160px] sm:max-w-none">
-                    {selectedHall}{roomNumber ? ` • ${roomNumber}` : ''}
-                  </span>
-                </>
-              ) : (
-                <span className="text-[#172033] font-black truncate max-w-[200px] sm:max-w-none">
-                  Campus delivery available
-                </span>
-              )}
-            </div>
-            <span className="text-gray-300 hidden sm:inline">|</span>
-            <div className="hidden sm:flex items-center gap-1 text-gray-600 shrink-0">
-              <Zap className="w-3 h-3 text-[#4F9D2F] fill-[#4F9D2F] shrink-0" />
-              <span className="font-semibold text-[11px] sm:text-xs">10–15 min campus delivery</span>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setIsLocationModalOpen(true)}
-            className="text-[11px] sm:text-xs font-bold text-[#4F9D2F] hover:text-[#36751F] hover:underline cursor-pointer flex items-center gap-0.5 shrink-0"
-          >
-            <span>{isAuthenticated && selectedHall ? 'Change' : 'Set location'}</span>
-            <span>&rarr;</span>
-          </button>
+      {/* Top Information Bar */}
+      <div className="bg-[#172033] text-white px-3 sm:px-6 lg:px-8 py-1.5 text-center text-xs font-semibold tracking-wide">
+        <div className="max-w-7xl mx-auto flex items-center justify-center gap-1.5 sm:gap-2">
+          <span className="text-[#4F9D2F]">⚡</span>
+          <span>10–15 min campus delivery across campus</span>
         </div>
       </div>
-
-      <CampusLocationModal
-        isOpen={isLocationModalOpen}
-        onClose={() => setIsLocationModalOpen(false)}
-        onLocationChange={(h, r) => {
-          setSelectedHall(h);
-          setRoomNumber(r);
-        }}
-      />
     </>
   );
 }

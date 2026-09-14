@@ -450,22 +450,20 @@ export default function HomePage() {
         {/* ==================================================== */}
         {/* 1. WELCOME SECTION (DESKTOP ONLY) */}
         {/* ==================================================== */}
-        <section className="hidden md:block bg-white border border-[#E5E7EB] rounded-2xl p-6 sm:p-8 shadow-xs relative overflow-hidden">
-          <div className="max-w-2xl space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#172033]">
+        <section className="hidden md:block bg-white border border-[#E5E7EB] rounded-2xl p-4 sm:p-5 shadow-xs relative overflow-hidden">
+          <div className="max-w-2xl space-y-1">
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[#172033]">
               {user && studentFirstName
                 ? `${getGreeting()}, ${studentFirstName} 👋`
                 : user
                 ? `${getGreeting()} 👋`
                 : 'Welcome to Campus Basket 👋'}
             </h1>
-            <p className="text-sm sm:text-base font-semibold text-gray-700">
+            <p className="text-sm font-bold text-gray-800">
               What do you need today?
             </p>
-            <p className="text-xs sm:text-sm text-[#667085]">
-              {user
-                ? 'Fast delivery across campus residence halls in 10–15 minutes.'
-                : 'Fast delivery across campus.'}
+            <p className="text-xs text-[#667085]">
+              Fast campus delivery for food, laundry, essentials &amp; more.
             </p>
           </div>
         </section>
@@ -626,7 +624,7 @@ export default function HomePage() {
         </section>
 
         {/* ==================================================== */}
-        {/* 4. QUICK ACTIONS BAR                                 */}
+        {/* 4. QUICK ACTIONS / SHORTCUTS                         */}
         {/* ==================================================== */}
         <section className="space-y-2 w-full min-w-0">
           <div className="text-xs font-bold uppercase tracking-wider text-gray-400">
@@ -634,58 +632,31 @@ export default function HomePage() {
           </div>
           <div className="overflow-x-auto no-scrollbar -mx-3 px-3 touch-pan-x w-full">
             <div className="flex items-center gap-2 pb-1 text-xs w-max">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveCategory('food');
-                  setSelectedSubfilter('all');
-                }}
-                className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
-              >
-                <span>🍱</span>
-                <span>Order Food</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveCategory('laundry');
-                  const el = document.getElementById('laundry-booking-section');
-                  if (el) el.scrollIntoView({ behavior: 'smooth' });
-                }}
-                className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
-              >
-                <span>👕</span>
-                <span>Send Laundry</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveCategory('stationery');
-                  setSelectedSubfilter('all');
-                }}
-                className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
-              >
-                <span>📚</span>
-                <span>Buy Stationery</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveCategory('essentials');
-                  setSelectedSubfilter('all');
-                }}
-                className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
-              >
-                <span>🧴</span>
-                <span>Hostel Essentials</span>
-              </button>
               <Link
                 href={activeOrder ? `/orders/track?id=${activeOrder.id}` : '/dashboard?tab=orders'}
                 className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
               >
                 <span>📦</span>
-                <span>Track Order</span>
+                <span>{activeOrder ? 'Track Active Order' : 'Track Order'}</span>
               </Link>
+              {user && (
+                <>
+                  <Link
+                    href="/dashboard?tab=orders"
+                    className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
+                  >
+                    <span>📋</span>
+                    <span>Order History</span>
+                  </Link>
+                  <Link
+                    href="/dashboard?tab=orders"
+                    className="px-3.5 py-2 rounded-xl bg-white border border-[#E5E7EB] hover:border-[#4F9D2F] text-[#172033] font-bold shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
+                  >
+                    <span>👔</span>
+                    <span>Laundry Status</span>
+                  </Link>
+                </>
+              )}
               {orderAgainItems.length > 0 && (
                 <a
                   href="#order-again"
