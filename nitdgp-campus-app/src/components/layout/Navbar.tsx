@@ -39,27 +39,32 @@ export function Navbar() {
   const { itemCount, total } = useCart();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedHall, setSelectedHall] = useState('Hall 11');
-  const [roomNumber, setRoomNumber] = useState('Room 123');
+  const [selectedHall, setSelectedHall] = useState('');
+  const [roomNumber, setRoomNumber] = useState('');
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [activeOrder, setActiveOrder] = useState<any>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(2);
 
-  // Sync Location from localStorage and listen to updates
+  // Sync Location from user profile and listen to updates
   useEffect(() => {
     const syncLocation = () => {
       if (typeof window !== 'undefined') {
-        const h = localStorage.getItem('cb_selected_hall') || user?.student?.hall?.name || 'Hall 11';
-        const r = localStorage.getItem('cb_room_number') || user?.student?.roomNumber || 'Room 123';
-        setSelectedHall(h);
-        setRoomNumber(r);
+        if (isAuthenticated && user) {
+          const h = user?.student?.hall?.name || localStorage.getItem('cb_selected_hall') || '';
+          const r = user?.student?.roomNumber || localStorage.getItem('cb_room_number') || '';
+          setSelectedHall(h);
+          setRoomNumber(r);
+        } else {
+          setSelectedHall('');
+          setRoomNumber('');
+        }
       }
     };
     syncLocation();
     window.addEventListener('cb_location_updated', syncLocation);
     return () => window.removeEventListener('cb_location_updated', syncLocation);
-  }, [user]);
+  }, [user, isAuthenticated]);
 
   // Check for active orders for the student
   useEffect(() => {
@@ -116,8 +121,16 @@ export function Navbar() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/food?search=${encodeURIComponent(searchQuery.trim())}`);
+    const query = searchQuery.trim();
+    if (!query) return;
+    if (pathname === '/') {
+      window.dispatchEvent(new CustomEvent('cb_global_search', { detail: query }));
+      const catalog = document.getElementById('campus-services') || document.getElementById('products-section');
+      if (catalog) {
+        catalog.scrollIntoView({ behavior: 'smooth' });
+      }
+    } else {
+      router.push(`/?search=${encodeURIComponent(query)}`);
     }
   };
 
@@ -128,17 +141,16 @@ export function Navbar() {
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-3 sm:gap-6">
             {/* LEFT: Campus Basket Logo & Subtitle */}
-            <Link href="/" className="flex items-center gap-2 shrink-0 group">
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#4F9D2F] flex items-center justify-center text-white font-extrabold text-xs sm:text-sm shadow-xs group-hover:bg-[#36751F] transition-colors">
-                cb
+            <Link href="/" className="flex items-center gap-2.5 shrink-0 group py-1">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#4F9D2F] flex items-center justify-center text-white font-black text-sm sm:text-base shadow-xs group-hover:bg-[#36751F] transition-colors shrink-0">
+                CB
               </div>
-              <div>
-                <div className="font-extrabold text-[#172033] text-base sm:text-lg tracking-tight leading-none flex items-center gap-1">
-                  <span>campus</span>
-                  <span className="text-[#4F9D2F]">basket</span>
+              <div className="flex flex-col justify-center">
+                <div className="font-extrabold text-[#172033] text-base sm:text-lg tracking-tight leading-tight group-hover:text-[#4F9D2F] transition-colors">
+                  Campus Basket
                 </div>
-                <div className="hidden sm:block text-[9px] sm:text-[10px] font-semibold tracking-wide text-[#667085] uppercase mt-0.5">
-                  Campus Marketplace & Services
+                <div className="text-[9px] sm:text-[10px] font-bold tracking-wider text-[#667085] uppercase leading-none mt-0.5">
+                  CAMPUS MARKETPLACE &amp; SERVICES
                 </div>
               </div>
             </Link>
@@ -165,23 +177,40 @@ export function Navbar() {
 
             {/* RIGHT: Campus Location + Compact Professional Basket + Notifications + Profile */}
             <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-              {/* Campus Location Button (DESKTOP ONLY - On mobile, it's displayed directly below in CampusBanner) */}
+              {/* Campus Location Button (DESKTOP) */}
               <button
                 type="button"
                 onClick={() => setIsLocationModalOpen(true)}
                 className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#F7F8F6] hover:bg-[#EEF7E9] border border-[#E5E7EB] text-left transition-colors group cursor-pointer shrink-0"
-                title="Change Campus Delivery Location"
+                title={isAuthenticated && selectedHall ? 'Change Campus Delivery Location' : 'Set Campus Delivery Location'}
               >
                 <MapPin className="w-3.5 h-3.5 text-[#4F9D2F] shrink-0" />
                 <div className="leading-tight">
-                  <div className="text-[11px] font-black text-[#172033] flex items-center gap-1">
-                    <span>{selectedHall}</span>
-                    <span className="text-gray-300">•</span>
-                    <span className="text-gray-600 font-semibold">{roomNumber}</span>
-                  </div>
-                  <div className="text-[10px] font-bold text-[#4F9D2F] group-hover:underline">
-                    Change
-                  </div>
+                  {isAuthenticated && selectedHall ? (
+                    <>
+                      <div className="text-[11px] font-black text-[#172033] flex items-center gap-1">
+                        <span>{selectedHall}</span>
+                        {roomNumber && (
+                          <>
+                            <span className="text-gray-300">•</span>
+                            <span className="text-gray-600 font-semibold">{roomNumber}</span>
+                          </>
+                        )}
+                      </div>
+                      <div className="text-[10px] font-bold text-[#4F9D2F] group-hover:underline">
+                        Change
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-[11px] font-black text-[#172033]">
+                        Campus delivery available
+                      </div>
+                      <div className="text-[10px] font-bold text-[#4F9D2F] group-hover:underline">
+                        Set location
+                      </div>
+                    </>
+                  )}
                 </div>
               </button>
 
@@ -247,9 +276,15 @@ export function Navbar() {
                         <div className="text-[11px] text-gray-500 font-mono truncate">
                           {user?.email}
                         </div>
-                        <div className="text-[10px] text-[#4F9D2F] font-bold mt-1">
-                          📍 {selectedHall} • {roomNumber}
-                        </div>
+                        {selectedHall ? (
+                          <div className="text-[10px] text-[#4F9D2F] font-bold mt-1">
+                            📍 {selectedHall}{roomNumber ? ` • ${roomNumber}` : ''}
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-[#4F9D2F] font-bold mt-1">
+                            📍 Set delivery location
+                          </div>
+                        )}
                       </div>
 
                       {activeOrder && (
@@ -421,9 +456,15 @@ export function Navbar() {
             >
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-[#4F9D2F]" />
-                <span>{selectedHall} • {roomNumber}</span>
+                <span>
+                  {isAuthenticated && selectedHall
+                    ? `${selectedHall}${roomNumber ? ` • ${roomNumber}` : ''}`
+                    : 'Campus delivery available'}
+                </span>
               </div>
-              <span className="text-[#4F9D2F]">Change</span>
+              <span className="text-[#4F9D2F]">
+                {isAuthenticated && selectedHall ? 'Change' : 'Set location'}
+              </span>
             </button>
 
             <div className="space-y-1 text-xs font-bold text-gray-700">

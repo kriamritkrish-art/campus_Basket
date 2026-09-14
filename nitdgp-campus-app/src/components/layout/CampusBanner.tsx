@@ -10,24 +10,29 @@ import { MapPin, AlertCircle, RefreshCw, Zap, Sparkles } from 'lucide-react';
 export function CampusBanner() {
   const pathname = usePathname();
   const { isInsideCampus, isChecking, requestLocation } = useGeolocation();
-  const { user } = useAuth();
-  const [selectedHall, setSelectedHall] = useState('Hall 11');
-  const [roomNumber, setRoomNumber] = useState('Room 123');
+  const { user, isAuthenticated } = useAuth();
+  const [selectedHall, setSelectedHall] = useState('');
+  const [roomNumber, setRoomNumber] = useState('');
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
 
   useEffect(() => {
     const sync = () => {
       if (typeof window !== 'undefined') {
-        const h = localStorage.getItem('cb_selected_hall') || user?.student?.hall?.name || 'Hall 11';
-        const r = localStorage.getItem('cb_room_number') || user?.student?.roomNumber || 'Room 123';
-        setSelectedHall(h);
-        setRoomNumber(r);
+        if (isAuthenticated && user) {
+          const h = user?.student?.hall?.name || localStorage.getItem('cb_selected_hall') || '';
+          const r = user?.student?.roomNumber || localStorage.getItem('cb_room_number') || '';
+          setSelectedHall(h);
+          setRoomNumber(r);
+        } else {
+          setSelectedHall('');
+          setRoomNumber('');
+        }
       }
     };
     sync();
     window.addEventListener('cb_location_updated', sync);
     return () => window.removeEventListener('cb_location_updated', sync);
-  }, [user]);
+  }, [user, isAuthenticated]);
 
   if (
     pathname?.startsWith('/admin') ||
@@ -73,8 +78,18 @@ export function CampusBanner() {
           <div className="flex items-center gap-2 sm:gap-3 text-[#172033] min-w-0">
             <div className="flex items-center gap-1 font-bold min-w-0">
               <MapPin className="w-3.5 h-3.5 text-[#4F9D2F] shrink-0" />
-              <span className="text-gray-500 font-medium hidden sm:inline">Delivering to</span>
-              <span className="text-[#172033] font-black truncate max-w-[160px] sm:max-w-none">{selectedHall} • {roomNumber}</span>
+              {isAuthenticated && selectedHall ? (
+                <>
+                  <span className="text-gray-500 font-medium hidden sm:inline">Delivering to</span>
+                  <span className="text-[#172033] font-black truncate max-w-[160px] sm:max-w-none">
+                    {selectedHall}{roomNumber ? ` • ${roomNumber}` : ''}
+                  </span>
+                </>
+              ) : (
+                <span className="text-[#172033] font-black truncate max-w-[200px] sm:max-w-none">
+                  Campus delivery available
+                </span>
+              )}
             </div>
             <span className="text-gray-300 hidden sm:inline">|</span>
             <div className="hidden sm:flex items-center gap-1 text-gray-600 shrink-0">
@@ -88,7 +103,7 @@ export function CampusBanner() {
             onClick={() => setIsLocationModalOpen(true)}
             className="text-[11px] sm:text-xs font-bold text-[#4F9D2F] hover:text-[#36751F] hover:underline cursor-pointer flex items-center gap-0.5 shrink-0"
           >
-            <span>Change</span>
+            <span>{isAuthenticated && selectedHall ? 'Change' : 'Set location'}</span>
             <span>&rarr;</span>
           </button>
         </div>

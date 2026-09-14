@@ -158,10 +158,11 @@ export default function HomePage() {
   const [activeOrder, setActiveOrder] = useState<any>(null);
   const [pastOrders, setPastOrders] = useState<any[]>([]);
 
-  const studentName =
-    user?.student?.fullName?.split(' ')[0] ||
+  const studentFirstName =
+    user?.student?.fullName?.trim()?.split(' ')[0] ||
+    user?.username?.trim()?.split(' ')[0] ||
     user?.email?.split('@')[0] ||
-    'Student';
+    '';
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -169,6 +170,24 @@ export default function HomePage() {
     if (hour < 17) return 'Good afternoon';
     return 'Good evening';
   };
+
+  // Sync global header search and query params
+  useEffect(() => {
+    const onGlobalSearch = (e: any) => {
+      if (typeof e?.detail === 'string') {
+        setSearchFilter(e.detail);
+      }
+    };
+    window.addEventListener('cb_global_search', onGlobalSearch);
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get('search') || params.get('q');
+      if (q) setSearchFilter(q);
+    }
+
+    return () => window.removeEventListener('cb_global_search', onGlobalSearch);
+  }, []);
 
   useEffect(() => {
     if (isLoading || !user) return;
@@ -429,45 +448,25 @@ export default function HomePage() {
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-2 sm:pt-8 space-y-4 sm:space-y-8 w-full max-w-full min-w-0">
         
         {/* ==================================================== */}
-        {/* 1. WELCOME SECTION & CONTEXTUAL SEARCH (DESKTOP ONLY) */}
+        {/* 1. WELCOME SECTION (DESKTOP ONLY) */}
         {/* ==================================================== */}
         <section className="hidden md:block bg-white border border-[#E5E7EB] rounded-2xl p-6 sm:p-8 shadow-xs relative overflow-hidden">
           <div className="max-w-2xl space-y-2">
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#172033]">
-              {getGreeting()}, {studentName} 👋
+              {user && studentFirstName
+                ? `${getGreeting()}, ${studentFirstName} 👋`
+                : user
+                ? `${getGreeting()} 👋`
+                : 'Welcome to Campus Basket 👋'}
             </h1>
             <p className="text-sm sm:text-base font-semibold text-gray-700">
               What do you need today?
             </p>
             <p className="text-xs sm:text-sm text-[#667085]">
-              Fast delivery across campus residence halls in 10–15 minutes.
+              {user
+                ? 'Fast delivery across campus residence halls in 10–15 minutes.'
+                : 'Fast delivery across campus.'}
             </p>
-
-            {/* Embedded Contextual Search Input */}
-            <div className="pt-3">
-              <div className="relative flex items-center max-w-lg">
-                <Search className="w-4 h-4 text-gray-400 absolute left-3.5" />
-                <input
-                  type="text"
-                  placeholder="Search food, laundry, stationery, essentials..."
-                  value={searchFilter}
-                  onChange={(e) => setSearchFilter(e.target.value)}
-                  className="w-full h-11 pl-10 pr-24 rounded-xl bg-[#F7F8F6] border border-[#E5E7EB] text-xs sm:text-sm text-[#172033] placeholder:text-gray-400 focus:outline-none focus:border-[#4F9D2F] focus:bg-white focus:ring-1 focus:ring-[#4F9D2F] transition-all"
-                />
-                {searchFilter ? (
-                  <button
-                    onClick={() => setSearchFilter('')}
-                    className="absolute right-3 text-xs font-bold text-gray-400 hover:text-gray-600"
-                  >
-                    Clear
-                  </button>
-                ) : (
-                  <span className="absolute right-3 text-[11px] font-bold text-[#4F9D2F]">
-                    10–15 min
-                  </span>
-                )}
-              </div>
-            </div>
           </div>
         </section>
 
@@ -496,7 +495,7 @@ export default function HomePage() {
                 <div className="font-bold text-[#172033] flex items-center gap-2 min-w-0">
                   <span className="shrink-0">🍱 Campus Order</span>
                   <span className="text-gray-300">•</span>
-                  <span className="truncate">Campus Cafeteria &rarr; {activeOrder.hallName || 'Hall 11'} • {activeOrder.roomNumber || 'Room 123'}</span>
+                  <span className="truncate">Campus Cafeteria &rarr; {activeOrder.hallName || user?.student?.hall?.name || 'Campus Residence'} • {activeOrder.roomNumber || user?.student?.roomNumber || 'Hostel Room'}</span>
                 </div>
                 <div className="text-gray-500 text-[11px]">
                   Estimated Delivery Time: <strong className="text-[#172033]">8–12 minutes</strong>
@@ -520,7 +519,7 @@ export default function HomePage() {
         <section id="campus-services" className="space-y-2 sm:space-y-3 w-full min-w-0">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-xs sm:text-base font-black uppercase tracking-wider text-[#172033] shrink-0">
-              Service Categories
+              Explore Campus Basket
             </h2>
             <span className="text-[10px] sm:text-xs font-semibold text-[#4F9D2F] bg-[#EFF8EA] px-2 py-0.5 rounded-full border border-[#D0EBC2] shrink-0">
               ⚡ 10–15 min delivery
@@ -919,6 +918,24 @@ export default function HomePage() {
               </div>
             </div>
           </div>
+
+          {/* Active Global Search Query Feedback Banner */}
+          {searchFilter.trim() && (
+            <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-[#F7F8F6] border border-[#E5E7EB] shadow-2xs text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 font-medium">Search results for:</span>
+                <strong className="text-[#172033] font-black">"{searchFilter}"</strong>
+                <span className="text-gray-400">({filteredProducts.length} items found)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSearchFilter('')}
+                className="text-xs font-bold text-[#4F9D2F] hover:text-[#36751F] hover:underline cursor-pointer"
+              >
+                Clear search &times;
+              </button>
+            </div>
+          )}
 
           {/* Active Category Direct Store Link */}
           {activeCategory !== 'all' && (
