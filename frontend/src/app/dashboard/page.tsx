@@ -439,6 +439,8 @@ function DashboardContent() {
   return (
     <div className="min-h-screen bg-[#f8fafc] py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        {false && (
+          <>
         {/* 1. Student Identity Header (Matching exact style from user screenshot) */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
@@ -542,6 +544,9 @@ function DashboardContent() {
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
+        )}
+
+          </>
         )}
 
         {/* Sub-page Navigation Header: Clean ← Back to Account */}
