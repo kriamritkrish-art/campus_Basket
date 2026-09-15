@@ -206,11 +206,11 @@ export default function ProviderDashboardPage() {
         setSettlementAccount(res.data);
         setSettlementForm({
           accountType: res.data.accountType || 'BANK',
-          accountHolderName: res.data.accountHolderName || '',
+          accountHolderName: res.data.accountHolderName || res.data.beneficiaryName || '',
           bankName: res.data.bankName || '',
-          accountNumber: res.data.accountNumberMasked || '',
+          accountNumber: res.data.accountNumber || res.data.accountNumberMasked || '',
           ifscCode: res.data.ifscCode || '',
-          upiId: res.data.upiIdMasked || ''
+          upiId: res.data.upiId || res.data.upiIdMasked || ''
         });
       }
     } catch (err) {}
@@ -221,15 +221,23 @@ export default function ProviderDashboardPage() {
     setSettlementSaving(true);
     setSettlementMessage(null);
     try {
+      const payload = {
+        ...settlementForm,
+        beneficiaryName: settlementForm.accountHolderName
+      };
       const res = await apiRequest('/api/provider/settlement-account', {
         method: 'POST',
-        body: JSON.stringify(settlementForm)
+        body: JSON.stringify(payload)
       });
       if (res.success) {
         showToast('Settlement destination account saved successfully');
         setSettlementAccount(res.data);
         setSettlementMessage('Account verified & updated successfully');
-        setTimeout(() => setSettlementModalOpen(false), 1500);
+        await loadSettlementAccount();
+        setTimeout(() => {
+          setSettlementModalOpen(false);
+          setSettlementMessage(null);
+        }, 1200);
       } else {
         setSettlementMessage(res.message || 'Failed to update settlement account');
       }
@@ -262,9 +270,10 @@ export default function ProviderDashboardPage() {
     setRequestSettlementModalOpen(true);
   };
 
-  const loadProviderSettlements = async () => {
+  const loadProviderSettlements = async (isDemo = demoMode) => {
     try {
-      const res = await apiRequest('/api/provider/settlements').catch(() => null);
+      const url = `/api/provider/settlements${isDemo ? '?demo=true' : ''}`;
+      const res = await apiRequest(url).catch(() => null);
       if (res?.success && res.data) {
         setProviderSettlementsData(res.data);
       }
@@ -603,7 +612,7 @@ export default function ProviderDashboardPage() {
     loadLaundryJobs();
     loadSettlementAccount();
     loadLaundryConfig();
-    loadProviderSettlements();
+    loadProviderSettlements(isDemo);
   };
 
   useEffect(() => {
@@ -1211,7 +1220,7 @@ export default function ProviderDashboardPage() {
                   </button>
 
                   <button
-                    onClick={() => { setActiveTab('FINANCE'); setIsMobileSidebarOpen(false); }}
+                    onClick={() => { setActiveTab('FINANCE'); setIsMobileSidebarOpen(false); loadProviderSettlements(); loadSettlementAccount(); }}
                     className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
                       activeTab === 'FINANCE'
                         ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
@@ -1513,7 +1522,7 @@ export default function ProviderDashboardPage() {
               </button>
 
               <button
-                onClick={() => setActiveTab('FINANCE')}
+                onClick={() => { setActiveTab('FINANCE'); loadProviderSettlements(); loadSettlementAccount(); }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-all ${
                   activeTab === 'FINANCE'
                     ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
@@ -3146,7 +3155,7 @@ export default function ProviderDashboardPage() {
                   <span>Request Settlement Claim</span>
                 </button>
                 <button
-                  onClick={() => loadProviderSettlements()}
+                  onClick={() => { loadProviderSettlements(); loadSettlementAccount(); }}
                   className="p-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl transition cursor-pointer"
                   title="Sync Financial Ledger"
                 >
@@ -3326,9 +3335,9 @@ export default function ProviderDashboardPage() {
                   <p className="text-xs text-slate-600 mt-0.5">
                     {settlementAccount ? (
                       settlementAccount.accountType === 'UPI' ? (
-                        <>UPI VPA: <span className="font-mono font-bold text-slate-800">{settlementAccount.upiIdMasked || settlementAccount.upiId}</span> • Beneficiary: {settlementAccount.accountHolderName}</>
+                        <>UPI VPA: <span className="font-mono font-bold text-slate-800">{settlementAccount.upiId || settlementAccount.upiIdMasked}</span> • Beneficiary: {settlementAccount.accountHolderName || settlementAccount.beneficiaryName}</>
                       ) : (
-                        <>Bank A/C: <span className="font-mono font-bold text-slate-800">{settlementAccount.accountNumberMasked || settlementAccount.accountNumber}</span> ({settlementAccount.bankName}) • IFSC: {settlementAccount.ifscCode} • Beneficiary: {settlementAccount.accountHolderName}</>
+                        <>Bank A/C: <span className="font-mono font-bold text-slate-800">{settlementAccount.accountNumberMasked || settlementAccount.maskedAccountNumber || settlementAccount.accountNumber}</span> ({settlementAccount.bankName}) • IFSC: {settlementAccount.ifscCode} • Beneficiary: {settlementAccount.accountHolderName || settlementAccount.beneficiaryName}</>
                       )
                     ) : (
                       'No disbursement account registered yet. Institutional payouts require a verified UPI or Bank account.'
@@ -5529,8 +5538,8 @@ export default function ProviderDashboardPage() {
                       <div>UPI VPA: <strong>{settlementAccount.upiId || settlementAccount.upiIdMasked}</strong></div>
                     ) : (
                       <div>
-                        <div>A/C: <strong>{settlementAccount.accountNumber || settlementAccount.accountNumberMasked}</strong></div>
-                        <div className="text-slate-500 font-sans text-[10px]">IFSC: {settlementAccount.ifscCode} • Beneficiary: {settlementAccount.accountHolderName}</div>
+                        <div>A/C: <strong>{settlementAccount.accountNumberMasked || settlementAccount.maskedAccountNumber || settlementAccount.accountNumber}</strong></div>
+                        <div className="text-slate-500 font-sans text-[10px]">IFSC: {settlementAccount.ifscCode} • Beneficiary: {settlementAccount.accountHolderName || settlementAccount.beneficiaryName}</div>
                       </div>
                     )}
                   </div>

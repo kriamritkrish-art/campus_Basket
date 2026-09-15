@@ -1360,13 +1360,17 @@ export class ProviderController {
         success: true,
         data: account ? {
           id: account.id,
-          accountType: account.accountType,
-          beneficiaryName: account.beneficiaryName,
-          bankName: account.bankName,
-          accountNumberMasked: account.accountNumberMasked,
-          ifscCode: account.ifscCode,
-          upiIdMasked: account.upiIdMasked,
-          isVerified: account.isVerified
+          accountType: account.accountType || (account.upiId && (!account.accountNumber || account.accountNumber === 'UPI') ? 'UPI' : 'BANK'),
+          accountHolderName: account.accountHolderName || account.beneficiaryName || '',
+          beneficiaryName: account.accountHolderName || account.beneficiaryName || '',
+          bankName: account.bankName || '',
+          accountNumber: account.accountNumber || '',
+          accountNumberMasked: account.maskedAccountNumber || account.accountNumberMasked || (account.accountNumber ? SettlementService.maskAccountNumber(account.accountNumber) : ''),
+          maskedAccountNumber: account.maskedAccountNumber || account.accountNumberMasked || (account.accountNumber ? SettlementService.maskAccountNumber(account.accountNumber) : ''),
+          ifscCode: account.ifscCode || '',
+          upiId: account.upiId || '',
+          upiIdMasked: account.upiIdMasked || (account.upiId ? SettlementService.maskUpiId(account.upiId) : ''),
+          isVerified: account.isVerified ?? true
         } : null
       });
     } catch (err) {
@@ -1385,15 +1389,29 @@ export class ProviderController {
         return;
       }
 
-      const { accountType, beneficiaryName, bankName, accountNumber, ifscCode, upiId } = req.body;
-      if (!accountType || !beneficiaryName) {
-        res.status(400).json({ success: false, message: 'Account Type and Beneficiary Name are required' });
+      const { accountType, beneficiaryName, accountHolderName, bankName, accountNumber, ifscCode, upiId } = req.body;
+      const resolvedName = (accountHolderName || beneficiaryName || '').trim();
+      const resolvedType = (accountType === 'UPI' ? 'UPI' : 'BANK');
+
+      if (!resolvedName) {
+        res.status(400).json({ success: false, message: 'Account Holder / Beneficiary Name is required' });
+        return;
+      }
+
+      if (resolvedType === 'UPI' && !upiId) {
+        res.status(400).json({ success: false, message: 'UPI ID is required' });
+        return;
+      }
+
+      if (resolvedType === 'BANK' && (!accountNumber || !ifscCode)) {
+        res.status(400).json({ success: false, message: 'Account Number and IFSC Code are required for Bank Account' });
         return;
       }
 
       const account = await SettlementService.saveSettlementAccount(providerId, {
-        accountType,
-        beneficiaryName,
+        accountType: resolvedType,
+        accountHolderName: resolvedName,
+        beneficiaryName: resolvedName,
         bankName,
         accountNumber,
         ifscCode,
@@ -1402,15 +1420,20 @@ export class ProviderController {
 
       res.status(200).json({
         success: true,
-        message: 'Settlement disbursement account saved successfully.',
+        message: 'Settlement destination account saved successfully.',
         data: {
           id: account.id,
-          accountType: account.accountType,
-          beneficiaryName: account.beneficiaryName,
+          accountType: account.accountType || resolvedType,
+          accountHolderName: account.accountHolderName || resolvedName,
+          beneficiaryName: account.accountHolderName || resolvedName,
           bankName: account.bankName,
-          accountNumberMasked: account.accountNumberMasked,
-          upiIdMasked: account.upiIdMasked,
-          isVerified: account.isVerified
+          accountNumber: account.accountNumber,
+          accountNumberMasked: account.maskedAccountNumber || account.accountNumberMasked,
+          maskedAccountNumber: account.maskedAccountNumber || account.accountNumberMasked,
+          ifscCode: account.ifscCode,
+          upiId: account.upiId,
+          upiIdMasked: account.upiIdMasked || (account.upiId ? SettlementService.maskUpiId(account.upiId) : ''),
+          isVerified: account.isVerified ?? true
         }
       });
     } catch (err) {
@@ -1606,7 +1629,9 @@ export class ProviderController {
         return;
       }
 
-      const [orders, settlements, requests, adjustments, refunds] = await Promise.all([
+      const isDemoMode = req.query.demo === 'true';
+
+      let [orders, settlements, requests, adjustments, refunds] = await Promise.all([
         (prisma as any).order.findMany({
           where: { providerId },
           include: { student: true, items: { include: { product: true } }, refunds: true },
@@ -1625,6 +1650,18 @@ export class ProviderController {
         }).catch(() => []) || [],
         (prisma as any).refund?.findMany().catch(() => []) || []
       ]);
+
+      if (isDemoMode && orders.length === 0) {
+        const { fallbackOrders } = await import('../services/fallbackData');
+        const demoOrders = fallbackOrders.filter((o) => o.providerId === providerId);
+        if (demoOrders.length > 0) {
+          orders = demoOrders as any;
+        } else {
+          const provider = await prisma.serviceProvider.findUnique({ where: { id: providerId } });
+          const cat = provider?.serviceCategory?.toUpperCase() || 'FOOD';
+          orders = fallbackOrders.filter((o) => (o.serviceType || 'FOOD') === cat || cat.includes(o.serviceType || 'FOOD')) as any;
+        }
+      }
 
       let totalGrossSales = 0;
       let totalPayable = 0;
@@ -1784,11 +1821,34 @@ export class ProviderController {
       const { amount, notes, accountDetails } = req.body;
 
       const orders = await (prisma as any).order.findMany({
-        where: { providerId }
+        where: { providerId },
+        include: { items: true, refunds: true }
       });
 
-      const totalPayable = orders.reduce((sum: number, o: any) => sum + (Number(o.providerPayable) || 0), 0);
-      const alreadySettled = orders.reduce((sum: number, o: any) => sum + (Number(o.providerSettledAmount) || 0), 0);
+      let totalPayable = 0;
+      let alreadySettled = 0;
+
+      orders.forEach((o: any) => {
+        let orderEarnings = 0;
+        (o.items || []).forEach((it: any) => {
+          const qty = Number(it.quantity) || 1;
+          const uPrice = Number(it.unitPrice) || 0;
+          const uProvAmt = it.providerAmount !== undefined && it.providerAmount !== null
+            ? Number(it.providerAmount)
+            : uPrice;
+          orderEarnings += Math.round(uProvAmt * qty * 100) / 100;
+        });
+        if (!o.items || o.items.length === 0) {
+          orderEarnings = Number(o.providerPayable) || Number(o.totalAmount) || 0;
+        }
+        const refundDed = (o.refunds || []).filter((r: any) => ['COMPLETED', 'APPROVED'].includes(r.status))
+          .reduce((s: number, r: any) => s + (Number(r.amount) || 0), 0);
+        const finalPayable = Math.max(0, orderEarnings - refundDed);
+        totalPayable += finalPayable;
+        alreadySettled += (Number(o.providerSettledAmount) || 0);
+      });
+
+      totalPayable = Math.round(totalPayable * 100) / 100;
       const remainingPayable = Math.max(0, Math.round((totalPayable - alreadySettled) * 100) / 100);
 
       const requestedAmt = Number(amount) > 0 ? Number(amount) : remainingPayable;
@@ -1808,32 +1868,7 @@ export class ProviderController {
 
       // Upsert provider settlement account if passed
       if (accountDetails && (accountDetails.accountNumber || accountDetails.upiId)) {
-        const masked = accountDetails.accountNumber
-          ? `${accountDetails.accountNumber.slice(0, 2)}••••${accountDetails.accountNumber.slice(-4)}`
-          : (accountDetails.upiId || 'UPI');
-
-        await (prisma as any).providerSettlementAccount.upsert({
-          where: { providerId },
-          update: {
-            accountHolderName: accountDetails.accountHolderName || 'Campus Partner',
-            bankName: accountDetails.bankName || (accountDetails.accountType === 'UPI' ? 'UPI Transfer' : 'Bank Account'),
-            accountNumber: accountDetails.accountNumber || '',
-            maskedAccountNumber: masked,
-            ifscCode: accountDetails.ifscCode || '',
-            upiId: accountDetails.upiId || null,
-            isVerified: true
-          },
-          create: {
-            providerId,
-            accountHolderName: accountDetails.accountHolderName || 'Campus Partner',
-            bankName: accountDetails.bankName || (accountDetails.accountType === 'UPI' ? 'UPI Transfer' : 'Bank Account'),
-            accountNumber: accountDetails.accountNumber || '',
-            maskedAccountNumber: masked,
-            ifscCode: accountDetails.ifscCode || '',
-            upiId: accountDetails.upiId || null,
-            isVerified: true
-          }
-        }).catch(() => {});
+        await SettlementService.saveSettlementAccount(providerId, accountDetails).catch(() => {});
       }
 
       // Snapshot account details into request

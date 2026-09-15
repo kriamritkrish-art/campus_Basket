@@ -46,6 +46,7 @@ import {
   Store
 } from 'lucide-react';
 import { getOptimizedImageUrl } from '../../lib/imageUtils';
+import { AccountProfileView } from '../../components/profile/AccountProfileView';
 
 type DashboardTab =
   | 'profile'
@@ -64,7 +65,7 @@ type DashboardTab =
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, role, isAuthenticated, isLoading, logout } = useAuth();
+  const { user, role, isAuthenticated, isLoading, logout, refreshUser } = useAuth();
   const { addItem, showToast } = useCart();
 
   const tabParam = (searchParams.get('tab') as DashboardTab) || 'orders';
@@ -528,7 +529,7 @@ function DashboardContent() {
             </div>
 
             <Link
-              href={`/orders/track?id=${activeOrder.id}`}
+              href={`/orders/${activeOrder.id}/track?id=${activeOrder.id}`}
               onClick={() => {
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('cb_active_order_id', activeOrder.id);
@@ -883,136 +884,18 @@ function DashboardContent() {
           </div>
         )}
 
-        {/* TAB: MY PROFILE (Requirement 10) */}
+        {/* TAB: MY PROFILE (Matching exact user profile structure from screenshot) */}
         {activeTab === 'profile' && (
-          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-200 shadow-sm space-y-6">
-            <div>
-              <h2 className="text-lg font-black text-gray-900">My Student Profile</h2>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Manage your verified college account and hostel room delivery preferences.
-              </p>
-            </div>
-
-            <form onSubmit={handleSaveProfile} className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Student Name</label>
-                  <input
-                    type="text"
-                    disabled
-                    value={user?.student?.fullName || 'Campus Student'}
-                    className="w-full bg-gray-100 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-600 font-semibold cursor-not-allowed"
-                  />
-                  <span className="text-[10px] text-gray-400">Verified via College Identity Roll</span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">College Email</label>
-                  <input
-                    type="email"
-                    disabled
-                    value={user?.email || 'student@nitdgp.ac.in'}
-                    className="w-full bg-gray-100 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-600 font-mono cursor-not-allowed"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Student ID / Roll Number</label>
-                  <input
-                    type="text"
-                    disabled
-                    value={user?.student?.rollNumber || '24U10227'}
-                    className="w-full bg-gray-100 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-600 font-mono cursor-not-allowed"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Registration Number</label>
-                  <input
-                    type="text"
-                    disabled
-                    value={user?.student?.registrationNumber || '2026-UG-10227'}
-                    className="w-full bg-gray-100 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-600 font-mono cursor-not-allowed"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Mobile Number (Editable)</label>
-                  <input
-                    type="tel"
-                    value={mobileNumber}
-                    onChange={(e) => setMobileNumber(e.target.value)}
-                    placeholder="+91 98765 43210"
-                    required
-                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-900 font-bold focus:outline-none focus:border-[#84c225] focus:bg-white"
-                  />
-                  <span className="text-[10px] text-gray-400">Used by campus delivery runners to notify upon hostel entry</span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Residence Hostel / Hall</label>
-                  <select
-                    value={hallName}
-                    onChange={(e) => setHallName(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-900 font-bold focus:outline-none focus:border-[#84c225] focus:bg-white"
-                  >
-                    {hallsList.map((h) => (
-                      <option key={h} value={h}>{h}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Room Number (Editable)</label>
-                  <input
-                    type="text"
-                    value={roomNumber}
-                    onChange={(e) => setRoomNumber(e.target.value)}
-                    placeholder="e.g. 123 or B-304"
-                    required
-                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-900 font-bold focus:outline-none focus:border-[#84c225] focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Campus Institute</label>
-                  <input
-                    type="text"
-                    disabled
-                    value="National Institute of Technology Durgapur"
-                    className="w-full bg-gray-100 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-600 font-semibold cursor-not-allowed"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Default Delivery Instructions</label>
-                <textarea
-                  rows={2}
-                  value={deliveryInstructions}
-                  onChange={(e) => setDeliveryInstructions(e.target.value)}
-                  placeholder="e.g. Call before delivery, or leave outside room door."
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-xs text-gray-900 focus:outline-none focus:border-[#84c225] focus:bg-white"
-                />
-              </div>
-
-              {profileSuccessMsg && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  {profileSuccessMsg}
-                </div>
-              )}
-
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  disabled={profileSaving}
-                  className="px-6 py-2.5 bg-[#689f38] hover:bg-[#5b8c30] text-white text-xs font-extrabold rounded-xl shadow-sm transition-all"
-                >
-                  {profileSaving ? 'Saving...' : 'Save Profile Changes'}
-                </button>
-              </div>
-            </form>
+          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+            <AccountProfileView
+              orders={orders}
+              walletBalance={walletBalance}
+              onBack={() => handleTabChange('orders')}
+              onNavigateTab={(tab) => handleTabChange(tab as DashboardTab)}
+              onProfileUpdated={() => {
+                if (refreshUser) refreshUser();
+              }}
+            />
           </div>
         )}
 
@@ -1034,7 +917,7 @@ function DashboardContent() {
                     </p>
                   </div>
                   <Link
-                    href={`/orders/track?id=${activeOrder.id}`}
+                    href={`/orders/${activeOrder.id}/track?id=${activeOrder.id}`}
                     onClick={() => {
                       if (typeof window !== 'undefined') {
                         localStorage.setItem('cb_active_order_id', activeOrder.id);
@@ -1553,7 +1436,7 @@ function DashboardContent() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {wishlistProducts.map((p) => {
-                  const wishlistImg = getOptimizedImageUrl(p.primaryImage || p.images?.[0]?.googleDriveUrl);
+                  const wishlistImg = getOptimizedImageUrl(p.image || p.primaryImage || p.imageUrl || p.images?.[0]?.googleDriveUrl || p.images?.[0]?.url || p.images?.[0]?.webUrl);
                   const provName =
                     p.providerName ||
                     p.provider?.businessName ||
@@ -2285,7 +2168,7 @@ function DashboardContent() {
                   Reorder
                 </button>
                 <Link
-                  href={`/orders/track?id=${selectedOrder.id}`}
+                  href={`/orders/${selectedOrder.id}/track?id=${selectedOrder.id}`}
                   onClick={() => {
                     if (typeof window !== 'undefined') {
                       localStorage.setItem('cb_active_order_id', selectedOrder.id);

@@ -25,7 +25,7 @@ export class SettlementService {
   public static async saveSettlementAccount(
     providerId: string,
     data: {
-      accountType: 'BANK_ACCOUNT' | 'UPI' | 'BANK';
+      accountType?: 'BANK_ACCOUNT' | 'UPI' | 'BANK' | string;
       beneficiaryName?: string;
       accountHolderName?: string;
       bankName?: string;
@@ -34,39 +34,48 @@ export class SettlementService {
       upiId?: string;
     }
   ): Promise<any> {
-    const accType = (data.accountType === 'BANK' ? 'BANK_ACCOUNT' : data.accountType) || 'BANK_ACCOUNT';
-    const benName = (data.beneficiaryName || data.accountHolderName || 'Provider Account').trim();
-    const maskedAcc = data.accountNumber ? this.maskAccountNumber(data.accountNumber) : null;
-    const maskedUpi = data.upiId ? this.maskUpiId(data.upiId) : null;
+    const accType = (data.accountType === 'UPI' ? 'UPI' : 'BANK');
+    const benName = (data.accountHolderName || data.beneficiaryName || 'Campus Partner').trim();
+    const isUpi = accType === 'UPI';
+    const bName = isUpi ? (data.bankName || 'UPI Transfer') : (data.bankName || 'Bank Account');
+    const accNum = isUpi ? (data.accountNumber || data.upiId || 'UPI') : (data.accountNumber || '');
+    const masked = isUpi ? (data.upiId ? this.maskUpiId(data.upiId) : 'UPI') : this.maskAccountNumber(accNum);
+    const ifsc = isUpi ? (data.ifscCode ? data.ifscCode.toUpperCase() : 'UPI0000000') : (data.ifscCode ? data.ifscCode.toUpperCase() : '');
+    const upi = isUpi ? (data.upiId || null) : (data.upiId || null);
 
-    return (prisma as any).providerSettlementAccount.upsert({
+    const payload: any = {
+      accountType: accType,
+      accountHolderName: benName,
+      bankName: bName,
+      accountNumber: accNum,
+      maskedAccountNumber: masked,
+      ifscCode: ifsc,
+      upiId: upi,
+      isVerified: true,
+      updatedAt: new Date()
+    };
+
+    const res = await (prisma as any).providerSettlementAccount.upsert({
       where: { providerId },
-      update: {
-        accountType: accType,
-        beneficiaryName: benName,
-        bankName: data.bankName || null,
-        accountNumberMasked: maskedAcc,
-        accountNumberEncrypted: data.accountNumber || null,
-        ifscCode: data.ifscCode ? data.ifscCode.toUpperCase() : null,
-        upiIdMasked: maskedUpi,
-        upiIdEncrypted: data.upiId || null,
-        isVerified: true,
-        updatedAt: new Date()
-      },
+      update: payload,
       create: {
         providerId,
         accountType: accType,
-        beneficiaryName: benName,
-        bankName: data.bankName || null,
-        accountNumberMasked: maskedAcc,
-        accountNumberEncrypted: data.accountNumber || null,
-        ifscCode: data.ifscCode ? data.ifscCode.toUpperCase() : null,
-        upiIdMasked: maskedUpi,
-        upiIdEncrypted: data.upiId || null,
-        isVerified: true,
-        isPrimary: true
+        accountHolderName: benName,
+        bankName: bName,
+        accountNumber: accNum,
+        maskedAccountNumber: masked,
+        ifscCode: ifsc,
+        upiId: upi,
+        isVerified: true
       }
     });
+
+    return {
+      ...res,
+      accountNumberMasked: res.maskedAccountNumber || masked,
+      upiIdMasked: res.upiId ? this.maskUpiId(res.upiId) : (isUpi ? masked : null)
+    };
   }
 
   /**

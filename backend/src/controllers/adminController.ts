@@ -624,11 +624,24 @@ export class AdminController {
           }
         });
 
-        // Also save primary image URL directly
-        await prisma.product.update({
-          where: { id: product.id },
-          data: { image: uploadResult.webUrl }
-        }).catch(() => {});
+        let createdProductWithImg: any = product;
+        if (uploadResult?.webUrl) {
+          createdProductWithImg = await prisma.product.update({
+            where: { id: product.id },
+            data: { image: uploadResult.webUrl }
+          }).catch(() => ({ ...product, image: uploadResult.webUrl }));
+        }
+
+        res.status(201).json({
+          success: true,
+          message: 'Product created successfully with automated discount calculation.',
+          product: {
+            ...createdProductWithImg,
+            image: uploadResult?.webUrl || createdProductWithImg.image || null,
+            primaryImage: uploadResult?.webUrl || createdProductWithImg.image || null
+          }
+        });
+        return;
       }
 
       await AuditService.log(prisma, {
@@ -643,7 +656,11 @@ export class AdminController {
       res.status(201).json({
         success: true,
         message: 'Product created successfully with automated discount calculation.',
-        product
+        product: {
+          ...product,
+          image: (product as any).image || null,
+          primaryImage: (product as any).image || null
+        }
       });
     } catch (err) {
       next(err);
@@ -777,6 +794,35 @@ export class AdminController {
         updateData.cbGrossShare = Math.max(0, Math.round((newSellPrice - provAmt) * 100) / 100);
       }
 
+      // Handle image file upload if provided
+      const file = req.file;
+      if (file) {
+        const processed = await ImageProcessingService.normalizeProductImage(file.buffer);
+        const ext = processed.format === 'png' ? 'png' : processed.format === 'webp' ? 'webp' : 'jpg';
+
+        const uploadResult = await storageService.uploadFile(
+          processed.buffer,
+          `${oldProduct.slug || 'product'}_${Date.now()}.${ext}`,
+          processed.mimeType,
+          'General'
+        );
+
+        updateData.image = uploadResult.webUrl;
+
+        await prisma.productImage.create({
+          data: {
+            productId: id,
+            googleDriveFileId: uploadResult.fileId,
+            googleDriveUrl: uploadResult.webUrl,
+            fileName: uploadResult.fileName,
+            mimeType: uploadResult.mimeType,
+            fileSize: processed.size,
+            isPrimary: true,
+            uploadedBy: req.user?.email || 'ADMIN'
+          }
+        }).catch(() => {});
+      }
+
       const updated = await prisma.product.update({
         where: { id },
         data: updateData
@@ -803,7 +849,15 @@ export class AdminController {
         ipAddress: req.ip
       });
 
-      res.status(200).json({ success: true, message: 'Product updated successfully', product: updated });
+      res.status(200).json({
+        success: true,
+        message: 'Product updated successfully',
+        product: {
+          ...updated,
+          image: updateData.image || updated.image,
+          primaryImage: updateData.image || updated.image
+        }
+      });
     } catch (err) {
       next(err);
     }

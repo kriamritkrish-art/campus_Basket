@@ -66,11 +66,14 @@ const nextConfig = {
     ];
   },
   async rewrites() {
+    let defaultBackend = process.env.NODE_ENV === 'production'
+      ? 'https://campusbasket-production.up.railway.app'
+      : 'http://localhost:5000';
     let rawUrl = (
       process.env.BACKEND_URL ||
       process.env.NEXT_PUBLIC_BACKEND_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
-      'http://localhost:5000'
+      defaultBackend
     ).trim();
     if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://') && !rawUrl.startsWith('/')) {
       rawUrl = `https://${rawUrl}`;

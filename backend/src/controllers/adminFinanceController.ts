@@ -771,7 +771,8 @@ export class AdminFinanceController {
         data: {
           providerId,
           totalPayable,
-          settledAmount: finalSettled,
+          settledAmount: amountToSettle,
+          totalSettledAmount: finalSettled,
           remainingPayable: finalRemaining,
           status: finalStatus,
           relatedOrdersCount: updatedOrderIds.length,

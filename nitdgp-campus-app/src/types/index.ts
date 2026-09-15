@@ -52,6 +52,8 @@ export interface Student {
   roomNumber: string;
   isVerified: boolean;
   hall?: Hall;
+  hallName?: string;
+  deliveryInstructions?: string;
 }
 
 export interface DeliveryBoy {
@@ -86,10 +88,12 @@ export interface Category {
 
 export interface ProductImage {
   id: string;
-  googleDriveFileId: string;
-  googleDriveUrl: string;
-  fileName: string;
-  isPrimary: boolean;
+  googleDriveFileId?: string;
+  googleDriveUrl?: string;
+  fileName?: string;
+  isPrimary?: boolean;
+  url?: string;
+  webUrl?: string;
 }
 
 export interface Product {
@@ -134,6 +138,8 @@ export interface Product {
   cbGrossShare?: number;
   approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
   rejectionReason?: string | null;
+  image?: string | null;
+  imageUrl?: string | null;
   primaryImage?: string | null;
   images?: ProductImage[];
   rating: number;

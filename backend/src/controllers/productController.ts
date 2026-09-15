@@ -207,6 +207,7 @@ export class ProductController {
             allowCod,
             allowReturn,
             primaryImage,
+            image: (p as any).image || primaryImage,
             images,
             rating: Number(avgRating.toFixed(1)),
             reviewsCount: reviews.length
@@ -360,7 +361,7 @@ export class ProductController {
         if (fallback) {
           const cat = fallbackCategories.find((c) => c.id === fallback.categoryId);
           const images = fallback.images || [];
-          const primaryImage = images[0]?.googleDriveUrl || (fallback as any).primaryImage || null;
+          const primaryImage = (fallback as any).image || images[0]?.googleDriveUrl || (fallback as any).primaryImage || null;
           const fallbackProvName =
             (fallback as any).provider?.fullName ||
             (fallback.providerId === 'prov_abc'
@@ -381,6 +382,7 @@ export class ProductController {
               providerName: fallbackProvName,
               provider: fallback.providerId ? { id: fallback.providerId, fullName: fallbackProvName, serviceCategory: 'General' } : null,
               primaryImage,
+              image: (fallback as any).image || primaryImage,
               rating: 4.8,
               reviewsCount: 15,
               reviews: []
@@ -401,6 +403,7 @@ export class ProductController {
 
       const images = product.images || [];
       const primaryImage =
+        (product as any).image ||
         images.find((img) => img.isPrimary)?.googleDriveUrl ||
         images[0]?.googleDriveUrl ||
         (product as any).primaryImage ||
@@ -488,6 +491,7 @@ export class ProductController {
           allowCod,
           allowReturn,
           primaryImage,
+          image: (product as any).image || primaryImage,
           images,
           rating: Number(avgRating.toFixed(1)),
           reviewsCount: reviews.length

@@ -106,8 +106,13 @@ export function ProductCard({ product }: ProductCardProps) {
       : 'Campus Essentials Mart');
 
   const rawImage =
+    product.image ||
     product.primaryImage ||
+    product.imageUrl ||
     product.images?.[0]?.googleDriveUrl ||
+    product.images?.[0]?.url ||
+    product.images?.[0]?.webUrl ||
+    (Array.isArray(product.images) && typeof product.images[0] === 'string' ? product.images[0] : null) ||
     'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=1200';
   const displayImage = getOptimizedImageUrl(rawImage);
 

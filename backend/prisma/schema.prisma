@@ -950,11 +950,12 @@ model ProviderSettlementAccount {
   id                  String          @id @default(cuid())
   providerId          String          @unique
   provider            ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  accountType         String?         @default("BANK") // BANK or UPI
   accountHolderName   String
-  bankName            String
-  accountNumber       String
-  maskedAccountNumber String
-  ifscCode            String
+  bankName            String?
+  accountNumber       String?
+  maskedAccountNumber String?
+  ifscCode            String?
   upiId               String?
   isVerified          Boolean         @default(true)
   createdAt           DateTime        @default(now())

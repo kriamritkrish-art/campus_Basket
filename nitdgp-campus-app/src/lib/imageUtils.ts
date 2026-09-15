@@ -40,14 +40,19 @@ export function getGoogleDriveFallbackUrl(currentUrl: string): string | null {
   const driveMatch =
     currentUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
     currentUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
-    currentUrl.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+    currentUrl.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/) ||
+    currentUrl.match(/\/api\/images\/preview\/([a-zA-Z0-9_-]+)/);
 
   if (driveMatch && driveMatch[1]) {
     const fileId = driveMatch[1];
-    if (currentUrl.includes('googleusercontent.com')) {
-      return `https://drive.google.com/thumbnail?id=${fileId}&sz=w2048`;
+    const base = getApiBase();
+    const cleanBase = base ? base.replace(/\/+$/, '') : '';
+    const proxyUrl = `${cleanBase}/api/images/preview/${fileId}`;
+
+    if (!currentUrl.includes('/api/images/preview/')) {
+      return proxyUrl;
     }
-    return `https://lh3.googleusercontent.com/d/${fileId}=s2048`;
+    return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200`;
   }
   return null;
 }

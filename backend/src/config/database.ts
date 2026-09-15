@@ -47,6 +47,7 @@ const persistentDeliveryBoyEarnings: any[] = loadSavedList('mock_delivery_earnin
 const persistentLedger: any[] = loadSavedList('mock_financial_ledger.json', fallbackFinancialLedger);
 const persistentLaundryJobs: any[] = loadSavedList('mock_laundry_jobs.json', fallbackLaundryJobs);
 const persistentLaundryConfigs: any[] = loadSavedList('mock_laundry_provider_configs.json', fallbackLaundryProviderConfigs);
+const persistentSettlementAccounts: any[] = loadSavedList('mock_provider_settlement_accounts.json', fallbackProviderSettlementAccounts);
 const persistentLaundryComplaints: any[] = loadSavedList('mock_laundry_complaints.json', [
   {
     id: 'cmp_101',
@@ -2283,6 +2284,12 @@ const fallbackHandlers: Record<string, any> = {
     count: async () => persistentCodCollections.length
   },
   providerSettlementRequest: {
+    findFirst: async (args: any) => {
+      let list = [...persistentProviderRequests];
+      if (args?.where?.providerId) list = list.filter(r => r.providerId === args.where.providerId);
+      if (args?.where?.status) list = list.filter(r => r.status === args.where.status);
+      return list[0] ? JSON.parse(JSON.stringify(list[0])) : null;
+    },
     findMany: async (args?: any) => {
       let list = [...persistentProviderRequests];
       if (args?.where?.providerId) list = list.filter(r => r.providerId === args.where.providerId);
@@ -2789,38 +2796,64 @@ const fallbackHandlers: Record<string, any> = {
     findUnique: async (args: any) => {
       const id = args?.where?.id;
       const providerId = args?.where?.providerId;
-      return fallbackProviderSettlementAccounts.find(p => (id && p.id === id) || (providerId && p.providerId === providerId)) || null;
+      return persistentSettlementAccounts.find(p => (id && p.id === id) || (providerId && p.providerId === providerId)) || null;
     },
     findFirst: async (args: any) => {
       const providerId = args?.where?.providerId;
-      return fallbackProviderSettlementAccounts.find(p => p.providerId === providerId) || null;
+      return persistentSettlementAccounts.find(p => p.providerId === providerId) || null;
     },
     findMany: async (args?: any) => {
-      let list = [...fallbackProviderSettlementAccounts];
+      let list = [...persistentSettlementAccounts];
       if (args?.where?.providerId) list = list.filter(p => p.providerId === args.where.providerId);
       return JSON.parse(JSON.stringify(list));
     },
     create: async (args: any) => {
-      const psa = { id: `psa_${Date.now()}`, createdAt: new Date(), updatedAt: new Date(), ...args.data };
-      fallbackProviderSettlementAccounts.unshift(psa);
+      const psa = {
+        id: `psa_${Date.now()}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        accountHolderName: args.data?.accountHolderName || args.data?.beneficiaryName || 'Campus Partner',
+        beneficiaryName: args.data?.accountHolderName || args.data?.beneficiaryName || 'Campus Partner',
+        ...args.data
+      };
+      persistentSettlementAccounts.unshift(psa);
+      saveList('mock_provider_settlement_accounts.json', persistentSettlementAccounts);
       return JSON.parse(JSON.stringify(psa));
     },
     update: async (args: any) => {
-      const p = fallbackProviderSettlementAccounts.find(item => item.id === args.where.id || item.providerId === args.where.providerId);
+      const p = persistentSettlementAccounts.find(item => item.id === args.where.id || item.providerId === args.where.providerId);
       if (p) {
-        Object.assign(p, args.data, { updatedAt: new Date() });
+        Object.assign(p, args.data, {
+          updatedAt: new Date(),
+          accountHolderName: args.data?.accountHolderName || args.data?.beneficiaryName || p.accountHolderName,
+          beneficiaryName: args.data?.accountHolderName || args.data?.beneficiaryName || p.beneficiaryName
+        });
+        saveList('mock_provider_settlement_accounts.json', persistentSettlementAccounts);
         return JSON.parse(JSON.stringify(p));
       }
       return args.data;
     },
     upsert: async (args: any) => {
-      const existing = fallbackProviderSettlementAccounts.find(item => item.providerId === args.where.providerId);
+      const existing = persistentSettlementAccounts.find(item => item.providerId === args.where.providerId);
       if (existing) {
-        Object.assign(existing, args.update, { updatedAt: new Date() });
+        Object.assign(existing, args.update, {
+          updatedAt: new Date(),
+          accountHolderName: args.update?.accountHolderName || args.update?.beneficiaryName || existing.accountHolderName,
+          beneficiaryName: args.update?.accountHolderName || args.update?.beneficiaryName || existing.beneficiaryName
+        });
+        saveList('mock_provider_settlement_accounts.json', persistentSettlementAccounts);
         return JSON.parse(JSON.stringify(existing));
       }
-      const created = { id: `psa_${Date.now()}`, createdAt: new Date(), updatedAt: new Date(), ...args.create };
-      fallbackProviderSettlementAccounts.unshift(created);
+      const created = {
+        id: `psa_${Date.now()}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        accountHolderName: args.create?.accountHolderName || args.create?.beneficiaryName || 'Campus Partner',
+        beneficiaryName: args.create?.accountHolderName || args.create?.beneficiaryName || 'Campus Partner',
+        ...args.create
+      };
+      persistentSettlementAccounts.unshift(created);
+      saveList('mock_provider_settlement_accounts.json', persistentSettlementAccounts);
       return JSON.parse(JSON.stringify(created));
     }
   },
