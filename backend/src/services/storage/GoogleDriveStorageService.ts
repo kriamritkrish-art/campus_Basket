@@ -114,7 +114,10 @@ export class GoogleDriveStorageService implements IStorageService {
 
     return {
       fileId,
-      webUrl: `/api/images/preview/${fileId}`,
+      // Railway/container filesystems are not durable. Persist the image bytes in
+      // the product URL when Drive is unavailable so student clients can still
+      // render uploads after a restart or on another app instance.
+      webUrl: `data:${mimeType};base64,${fileBuffer.toString('base64')}`,
       fileName,
       mimeType,
       fileSize: fileBuffer.length
