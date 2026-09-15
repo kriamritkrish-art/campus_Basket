@@ -87,8 +87,8 @@ export const passwordResetSubmitLimiter = createRateLimiter({
 
 const internalGlobalLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300,
-  message: 'Too many requests from this IP address. Please slow down and try again later.',
+  max: process.env.GLOBAL_RATE_LIMIT ? parseInt(process.env.GLOBAL_RATE_LIMIT, 10) : 3000,
+  message: 'High traffic detected from this network. Please wait a moment and try again.',
   keyGenerator: (req) => `global_${req.ip}`
 });
 

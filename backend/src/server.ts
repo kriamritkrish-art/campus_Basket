@@ -27,6 +27,9 @@ import { PaymentReconciliationService } from './services/payment/PaymentReconcil
 
 const app = express();
 
+// Trust reverse proxy (Railway, Render, Cloudflare, etc.) to get real client IP from X-Forwarded-For
+app.set('trust proxy', 1);
+
 // Security Hardening: suppress Express fingerprinting
 app.disable('x-powered-by');
 
