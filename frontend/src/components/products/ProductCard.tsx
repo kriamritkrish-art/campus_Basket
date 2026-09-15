@@ -6,7 +6,7 @@ import { CartItem, Product } from '../../types';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../lib/api';
-import { getOptimizedImageUrl, getGoogleDriveFallbackUrl } from '../../lib/imageUtils';
+import { getProductImageUrl, getGoogleDriveFallbackUrl } from '../../lib/imageUtils';
 import { Plus, Minus, Heart, Zap, Star, Store } from 'lucide-react';
 
 interface ProductCardProps {
@@ -105,16 +105,7 @@ export function ProductCard({ product }: ProductCardProps) {
       ? 'NIT Central Stationery'
       : 'Campus Essentials Mart');
 
-  const rawImage =
-    product.image ||
-    product.primaryImage ||
-    product.imageUrl ||
-    product.images?.[0]?.googleDriveUrl ||
-    product.images?.[0]?.url ||
-    product.images?.[0]?.webUrl ||
-    (Array.isArray(product.images) && typeof product.images[0] === 'string' ? product.images[0] : null) ||
-    'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=1200';
-  const displayImage = getOptimizedImageUrl(rawImage);
+  const displayImage = getProductImageUrl(product);
 
   const origPrice = product.originalPrice ?? product.price;
   const sellPrice = product.sellingPrice ?? product.discountPrice ?? product.price;

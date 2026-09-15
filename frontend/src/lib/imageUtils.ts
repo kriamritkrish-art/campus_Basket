@@ -9,6 +9,10 @@ export function getOptimizedImageUrl(rawUrl?: string | null, fallback?: string):
   if (!rawUrl || typeof rawUrl !== 'string') return defaultFallback;
   const trimmed = rawUrl.trim();
 
+  if (trimmed.startsWith('//')) {
+    return `https:${trimmed}`;
+  }
+
   // Backend-served asset paths need the API host when the frontend is deployed separately.
   if (
     trimmed.startsWith('/api/') ||
@@ -34,6 +38,20 @@ export function getOptimizedImageUrl(rawUrl?: string | null, fallback?: string):
   }
 
   return trimmed;
+}
+
+export function getProductImageUrl(product: any, fallback?: string): string {
+  const firstImage = Array.isArray(product?.images) ? product.images[0] : null;
+  const rawImage =
+    product?.image ||
+    product?.primaryImage ||
+    product?.imageUrl ||
+    firstImage?.googleDriveUrl ||
+    firstImage?.url ||
+    firstImage?.webUrl ||
+    (typeof firstImage === 'string' ? firstImage : null);
+
+  return getOptimizedImageUrl(rawImage, fallback);
 }
 
 /**
