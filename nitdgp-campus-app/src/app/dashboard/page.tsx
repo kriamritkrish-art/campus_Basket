@@ -94,6 +94,7 @@ function DashboardContent() {
 
   // Campus Basket Wallet Balance State
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [refundRulesOpen, setRefundRulesOpen] = useState(false);
 
   // Notifications State
   const [notifications, setNotifications] = useState([
@@ -846,15 +847,28 @@ function DashboardContent() {
                     Source of Truth
                   </span>
                 </div>
-                <Link
-                  href="/refund-policy"
-                  className="text-xs font-bold text-[#4F9D2F] hover:underline inline-flex items-center gap-1"
-                >
-                  <span>Read Full Campus Policy</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </Link>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setRefundRulesOpen((open) => !open)}
+                    className="text-xs font-bold text-[#4F9D2F] hover:underline inline-flex items-center gap-1"
+                    aria-expanded={refundRulesOpen}
+                  >
+                    <span>{refundRulesOpen ? 'Hide Refund Rules' : 'View Refund Rules'}</span>
+                    <ChevronRight className={`w-3.5 h-3.5 transition-transform ${refundRulesOpen ? 'rotate-90' : ''}`} />
+                  </button>
+                  <Link
+                    href="/refund-policy"
+                    className="text-xs font-bold text-[#4F9D2F] hover:underline inline-flex items-center gap-1"
+                  >
+                    <span>Full Policy</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
               </div>
 
+              {refundRulesOpen && (
+                <>
               {/* Two Primary Pillars: Cancellation vs Return */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* 1. Cancellation Flow */}
@@ -971,6 +985,8 @@ function DashboardContent() {
                   View Wallet Balance (₹{walletBalance !== null ? walletBalance.toFixed(2) : '0.00'}) &rarr;
                 </Link>
               </div>
+                </>
+              )}
             </div>
 
             {refundOrders.length === 0 ? (

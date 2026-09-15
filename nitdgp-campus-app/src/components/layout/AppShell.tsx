@@ -27,7 +27,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const isDedicatedServiceRoute =
     pathname?.startsWith('/laundry') ||
-    pathname === '/checkout';
+    pathname === '/checkout' ||
+    pathname === '/orders/track' ||
+    pathname?.match(/^\/orders\/[^/]+\/track$/);
 
   const isAccountRoute = pathname === '/account' || pathname === '/dashboard';
 

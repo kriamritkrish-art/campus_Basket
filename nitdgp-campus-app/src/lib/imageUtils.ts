@@ -9,8 +9,12 @@ export function getOptimizedImageUrl(rawUrl?: string | null, fallback?: string):
   if (!rawUrl || typeof rawUrl !== 'string') return defaultFallback;
   const trimmed = rawUrl.trim();
 
-  // If local API proxy path, ensure host is prepended
-  if (trimmed.startsWith('/api/')) {
+  // Backend-served asset paths need the API host when the frontend is deployed separately.
+  if (
+    trimmed.startsWith('/api/') ||
+    trimmed.startsWith('/uploads/') ||
+    trimmed.startsWith('/storage_uploads/')
+  ) {
     const base = getApiBase();
     const cleanBase = base ? base.replace(/\/+$/, '') : '';
     const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
