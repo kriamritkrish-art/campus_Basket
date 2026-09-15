@@ -22,6 +22,13 @@ export function getOptimizedImageUrl(rawUrl?: string | null, fallback?: string):
     const base = getApiBase();
     const cleanBase = base ? base.replace(/\/+$/, '') : '';
     const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+
+    // Browser deployments proxy /api through Next so CSP and same-origin rules
+    // do not block images from the backend service.
+    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      return cleanPath;
+    }
+
     return cleanBase ? `${cleanBase}${cleanPath}` : cleanPath;
   }
 
