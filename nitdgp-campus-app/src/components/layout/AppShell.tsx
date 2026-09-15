@@ -29,11 +29,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname?.startsWith('/laundry') ||
     pathname === '/checkout';
 
+  const isAccountRoute = pathname === '/account' || pathname === '/dashboard';
+
   if (isDedicatedServiceRoute) {
     // Dedicated standalone service & checkout flows (zero marketplace clutter, no cart ₹139, no floating basket, no marketplace footer)
     return (
       <div className="min-h-screen bg-[#f8f9fa] w-full">
         {children}
+        <VoiceAssistantWidget />
+      </div>
+    );
+  }
+
+  if (isAccountRoute) {
+    return (
+      <div className="min-h-screen flex flex-col w-full">
+        <main className="flex-1 pb-28 md:pb-16 w-full max-w-full overflow-x-hidden min-w-0">{children}</main>
+        <CartDrawer />
+        <MobileCartBar />
+        <MobileBottomNav onOpenCategories={() => setIsCategoryDrawerOpen(true)} />
+        <MobileCategoryDrawer
+          isOpen={isCategoryDrawerOpen}
+          onClose={() => setIsCategoryDrawerOpen(false)}
+        />
         <VoiceAssistantWidget />
       </div>
     );

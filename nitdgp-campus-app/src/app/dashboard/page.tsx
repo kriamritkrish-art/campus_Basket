@@ -439,6 +439,8 @@ function DashboardContent() {
   return (
     <div className="min-h-screen bg-[#f8fafc] py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        {activeOrder && false && (
+          <>
         {/* 1. Student Identity Header (Matching exact style from user screenshot) */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
@@ -479,7 +481,7 @@ function DashboardContent() {
                   <span className="text-[8px] bg-emerald-500 text-black px-1.5 py-0.2 rounded font-black tracking-normal">INSTANT REFUND</span>
                 </div>
                 <div className="text-sm font-black text-white mt-0.5">
-                  ₹{walletBalance !== null ? walletBalance.toFixed(2) : '0.00'}
+                  ₹{walletBalance?.toFixed(2) ?? '0.00'}
                 </div>
                 <div className="text-[10px] text-emerald-300 font-bold underline">View Ledger &amp; Balance &rarr;</div>
               </div>
@@ -515,14 +517,14 @@ function DashboardContent() {
                     Active Order
                   </span>
                   <span className="text-xs font-bold text-gray-500 font-mono">
-                    #{activeOrder.orderNumber}
+                    #{activeOrder?.orderNumber}
                   </span>
                 </div>
                 <h2 className="text-base font-black text-gray-900 mt-1">
-                  {activeOrder.items.map((i) => `${i.productName} × ${i.quantity}`).join(', ')}
+                  {activeOrder?.items?.map((i) => `${i.productName} × ${i.quantity}`).join(', ')}
                 </h2>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600 mt-1">
-                  <span>Status: <strong className="text-[#2e7d32] font-extrabold">{activeOrder.status.replace(/_/g, ' ')}</strong></span>
+                  <span>Status: <strong className="text-[#2e7d32] font-extrabold">{activeOrder?.status.replace(/_/g, ' ')}</strong></span>
                   <span>•</span>
                   <span>Estimated delivery: <strong className="text-gray-900 font-bold">10–15 minutes</strong></span>
                 </div>
@@ -530,10 +532,10 @@ function DashboardContent() {
             </div>
 
             <Link
-              href={`/orders/${activeOrder.id}/track?id=${activeOrder.id}`}
+              href={`/orders/${activeOrder?.id}/track?id=${activeOrder?.id}`}
               onClick={() => {
                 if (typeof window !== 'undefined') {
-                  localStorage.setItem('cb_active_order_id', activeOrder.id);
+                  localStorage.setItem('cb_active_order_id', activeOrder?.id || '');
                 }
               }}
               className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-[#689f38] hover:bg-[#5b8c30] text-white text-xs font-extrabold rounded-xl shadow-md transition-all active:scale-95 shrink-0"
@@ -542,6 +544,9 @@ function DashboardContent() {
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
+        )}
+
+          </>
         )}
 
         {/* Sub-page Navigation Header: Clean ← Back to Account */}
