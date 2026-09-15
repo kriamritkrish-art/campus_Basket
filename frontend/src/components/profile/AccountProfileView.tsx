@@ -25,7 +25,13 @@ import {
   LogOut,
   X,
   CheckCircle2,
-  ShieldCheck
+  ShieldCheck,
+  Truck,
+  RotateCcw,
+  Bell,
+  FileText,
+  Clock,
+  ExternalLink
 } from 'lucide-react';
 
 interface AccountProfileViewProps {
@@ -41,7 +47,7 @@ export function AccountProfileView({
   onBack,
   onNavigateTab,
   orders = [],
-  walletBalance = 500,
+  walletBalance = null,
   onProfileUpdated,
   className = ''
 }: AccountProfileViewProps) {
@@ -52,15 +58,20 @@ export function AccountProfileView({
   // Modals state
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false);
   const [showKycModal, setShowKycModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showLegalModal, setShowLegalModal] = useState(false);
 
-  // Edit profile form state
-  const [fullName, setFullName] = useState(user?.student?.fullName || (user as any)?.name || 'Sourav Senapati');
-  const [mobileNumber, setMobileNumber] = useState(user?.student?.mobileNumber || (user as any)?.mobileNumber || '+91 8972495205');
+  // Dynamic student info from real user state (no hardcoded fallback names)
+  const [fullName, setFullName] = useState(
+    user?.student?.fullName || (user as any)?.name || user?.email?.split('@')[0] || 'Student'
+  );
+  const [mobileNumber, setMobileNumber] = useState(
+    user?.student?.mobileNumber || (user as any)?.mobileNumber || ''
+  );
   const [hallName, setHallName] = useState(user?.student?.hallName || 'Hall 11');
-  const [roomNumber, setRoomNumber] = useState(user?.student?.roomNumber || '123');
+  const [roomNumber, setRoomNumber] = useState(user?.student?.roomNumber || '');
   const [deliveryInstructions, setDeliveryInstructions] = useState(
     user?.student?.deliveryInstructions || 'Call before delivery.'
   );
@@ -89,23 +100,32 @@ export function AccountProfileView({
     'Sister Nivedita Hall', 'Gargi Hall'
   ];
 
-  // Calculate lifetime savings for the Fayda Meter
+  // Real Active Order (if any)
+  const activeOrder = useMemo(() => {
+    if (!Array.isArray(orders) || orders.length === 0) return null;
+    return orders.find(
+      (o) =>
+        o.status !== 'DELIVERED' &&
+        o.status !== 'CANCELLED' &&
+        o.status !== 'REFUNDED'
+    ) || null;
+  }, [orders]);
+
+  // Real Lifetime Savings calculated from database orders
   const lifetimeSavings = useMemo(() => {
     let savings = 0;
     if (Array.isArray(orders) && orders.length > 0) {
       for (const ord of orders) {
         if (ord.discountAmount) savings += Number(ord.discountAmount);
         if ((ord as any).couponDiscount) savings += Number((ord as any).couponDiscount);
-        savings += 25; // Subsidized delivery runner savings per order
       }
     }
-    // Match ₹0550 from user screenshot as baseline demonstration or computed savings
-    return savings > 0 ? Math.max(savings, 550) : 550;
+    return Math.max(0, Math.round(savings));
   }, [orders]);
 
-  // Format into 4 mechanical odometer digits e.g. ['0', '5', '5', '0']
+  // Mechanical odometer tumblers
   const odometerDigits = useMemo(() => {
-    const s = Math.min(Math.max(0, Math.round(lifetimeSavings)), 99999).toString();
+    const s = Math.min(Math.max(0, lifetimeSavings), 99999).toString();
     const padded = s.padStart(4, '0');
     return padded.split('');
   }, [lifetimeSavings]);
@@ -152,14 +172,21 @@ export function AccountProfileView({
         setTimeout(() => {
           setSaveSuccess(null);
           setShowEditModal(false);
+          setShowDeliveryModal(false);
         }, 1200);
       } else {
         setSaveSuccess(res.message || 'Profile saved.');
-        setTimeout(() => setShowEditModal(false), 1200);
+        setTimeout(() => {
+          setShowEditModal(false);
+          setShowDeliveryModal(false);
+        }, 1200);
       }
     } catch {
       setSaveSuccess('Profile saved locally.');
-      setTimeout(() => setShowEditModal(false), 1200);
+      setTimeout(() => {
+        setShowEditModal(false);
+        setShowDeliveryModal(false);
+      }, 1200);
     } finally {
       setSaving(false);
     }
@@ -173,6 +200,10 @@ export function AccountProfileView({
       router.push('/login');
     }
   };
+
+  const currentWalletBalance = walletBalance !== null && walletBalance !== undefined
+    ? Number(walletBalance).toFixed(2)
+    : '0.00';
 
   return (
     <div className={`w-full max-w-lg mx-auto bg-white min-h-[90vh] pb-16 text-gray-900 ${className}`}>
@@ -188,8 +219,8 @@ export function AccountProfileView({
         <h1 className="text-xl font-bold text-gray-900 tracking-tight">Account</h1>
       </div>
 
-      <div className="px-4 pt-4 pb-8">
-        {/* 2. Profile Summary Card */}
+      <div className="px-4 pt-4 pb-8 space-y-6">
+        {/* 2. Student Information (Real Data Only) */}
         <div className="flex items-center gap-4 py-2">
           {/* Avatar with Edit Pencil */}
           <div className="relative shrink-0">
@@ -207,12 +238,25 @@ export function AccountProfileView({
 
           {/* User Details */}
           <div className="min-w-0 flex-1">
-            <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight leading-tight truncate">
-              {fullName}
-            </h2>
-            <p className="text-sm font-semibold text-gray-500 mt-0.5">
-              {mobileNumber}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight leading-tight truncate">
+                {fullName}
+              </h2>
+              <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
+                <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" /> Verified
+              </span>
+            </div>
+
+            <p className="text-xs font-semibold text-gray-500 mt-0.5">
+              {mobileNumber ? `+91 ${mobileNumber.replace(/^\+91/, '').trim()}` : (user?.email || 'Student Account')}
             </p>
+
+            {user?.student?.rollNumber && (
+              <p className="text-[11px] font-mono text-gray-400 mt-0.5">
+                Roll: {user.student.rollNumber}
+              </p>
+            )}
+
             <button
               onClick={() => setShowEditModal(true)}
               className="text-[#0078AD] hover:text-[#005f8a] text-xs font-bold flex items-center gap-1 mt-1 transition-colors group cursor-pointer"
@@ -223,8 +267,8 @@ export function AccountProfileView({
           </div>
         </div>
 
-        {/* 3. Quick Action 4-Card Grid */}
-        <div className="grid grid-cols-4 gap-2.5 sm:gap-3.5 mt-5 select-none">
+        {/* 3. Quick Actions 4-Card Grid: Orders, Wishlist, Offers, Help */}
+        <div className="grid grid-cols-4 gap-2.5 sm:gap-3.5 select-none">
           {/* Orders */}
           <button
             onClick={() => handleGoToTab('orders')}
@@ -271,7 +315,7 @@ export function AccountProfileView({
         </div>
 
         {/* 4. Fayda Meter / Lifetime Savings Odometer Banner */}
-        <div className="mt-5 bg-white rounded-2xl border border-gray-200/90 p-4 relative overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex items-center justify-between gap-3">
+        <div className="bg-white rounded-2xl border border-gray-200/90 p-4 relative overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex items-center justify-between gap-3">
           {/* Floating Gold Coin Accents */}
           <div className="absolute -left-1 top-4 w-3.5 h-3.5 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-300 opacity-80 blur-[0.5px] pointer-events-none" />
           <div className="absolute left-28 -top-1 w-2.5 h-2.5 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-200 opacity-70 pointer-events-none" />
@@ -307,7 +351,7 @@ export function AccountProfileView({
         </div>
 
         {/* 5. Section: YOUR INFORMATION */}
-        <div className="mt-7">
+        <div>
           <h3 className="text-[11px] font-black tracking-wider text-gray-400 uppercase mb-2 px-1 select-none">
             YOUR INFORMATION
           </h3>
@@ -343,34 +387,26 @@ export function AccountProfileView({
                 <div>
                   <span className="text-sm font-bold text-gray-900 block">PAN Card information</span>
                   <span className="text-xs text-gray-500 font-medium block mt-0.5">
-                    Roll: {user?.student?.rollNumber || '24U10227'} • College Verified
+                    Roll: {user?.student?.rollNumber || 'College Verified Student'} &bull; Identity Protection
                   </span>
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
             </button>
-          </div>
-        </div>
 
-        {/* 6. Section: PAYMENT MODES */}
-        <div className="mt-6">
-          <h3 className="text-[11px] font-black tracking-wider text-gray-400 uppercase mb-2 px-1 select-none">
-            PAYMENT MODES
-          </h3>
-          <div className="space-y-1">
-            {/* JioMart / Campus Basket Wallet */}
+            {/* Delivery Details */}
             <button
-              onClick={() => router.push('/wallet')}
+              onClick={() => setShowDeliveryModal(true)}
               className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer"
             >
               <div className="flex items-center gap-3.5">
                 <div className="w-10 h-10 rounded-full bg-[#f4f6f8] text-gray-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <Wallet className="w-5 h-5 stroke-[1.8]" />
+                  <Truck className="w-5 h-5 stroke-[1.8]" />
                 </div>
                 <div>
-                  <span className="text-sm font-bold text-gray-900 block">Campus Basket Wallet</span>
-                  <span className="text-xs text-emerald-600 font-bold block mt-0.5">
-                    ₹{walletBalance !== null ? Number(walletBalance).toFixed(2) : '500.00'} Available Balance
+                  <span className="text-sm font-bold text-gray-900 block">Delivery Details</span>
+                  <span className="text-xs text-gray-500 font-medium block mt-0.5">
+                    {hallName} &bull; Room {roomNumber || 'Not set'}
                   </span>
                 </div>
               </div>
@@ -379,15 +415,238 @@ export function AccountProfileView({
           </div>
         </div>
 
-        {/* 7. Section: HELP & SUPPORT */}
-        <div className="mt-6">
+        {/* 6. Section: PAYMENT & WALLET */}
+        <div>
           <h3 className="text-[11px] font-black tracking-wider text-gray-400 uppercase mb-2 px-1 select-none">
-            HELP & SUPPORT
+            PAYMENT &amp; WALLET
           </h3>
           <div className="space-y-1">
-            {/* Service Hub */}
+            {/* Campus Basket Wallet */}
+            <Link
+              href="/wallet"
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer block"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Wallet className="w-5 h-5 stroke-[1.8]" />
+                </div>
+                <div>
+                  <span className="text-sm font-bold text-gray-900 block">Campus Basket Wallet</span>
+                  <span className="text-xs text-emerald-700 font-bold block mt-0.5">
+                    ₹{currentWalletBalance} Available Balance
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 text-xs font-bold text-emerald-700">
+                <span>View Wallet</span>
+                <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </Link>
+
+            {/* Payment History */}
+            <button
+              onClick={() => handleGoToTab('payments')}
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-full bg-[#f4f6f8] text-gray-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Clock className="w-5 h-5 stroke-[1.8]" />
+                </div>
+                <div>
+                  <span className="text-sm font-bold text-gray-900 block">Payment History</span>
+                  <span className="text-xs text-gray-500 font-medium block mt-0.5">
+                    Receipts, invoices and online transactions
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+
+            {/* Payment Methods */}
+            <button
+              onClick={() => handleGoToTab('payment-methods')}
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-full bg-[#f4f6f8] text-gray-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <CreditCard className="w-5 h-5 stroke-[1.8]" />
+                </div>
+                <div>
+                  <span className="text-sm font-bold text-gray-900 block">Payment Methods</span>
+                  <span className="text-xs text-gray-500 font-medium block mt-0.5">
+                    UPI, Razorpay, Cash on Delivery options
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+
+            {/* Refunds */}
+            <button
+              onClick={() => handleGoToTab('refunds')}
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-full bg-[#f4f6f8] text-gray-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <RotateCcw className="w-5 h-5 stroke-[1.8]" />
+                </div>
+                <div>
+                  <span className="text-sm font-bold text-gray-900 block">Refunds</span>
+                  <span className="text-xs text-gray-500 font-medium block mt-0.5">
+                    Cancellation credits &amp; return processing
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          </div>
+        </div>
+
+        {/* 7. Section: ACTIVITY */}
+        <div>
+          <h3 className="text-[11px] font-black tracking-wider text-gray-400 uppercase mb-2 px-1 select-none">
+            ACTIVITY
+          </h3>
+          <div className="space-y-1">
+            {/* My Orders */}
+            <button
+              onClick={() => handleGoToTab('orders')}
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-full bg-[#f4f6f8] text-gray-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Package className="w-5 h-5 stroke-[1.8]" />
+                </div>
+                <div>
+                  <span className="text-sm font-bold text-gray-900 block">My Orders</span>
+                  <span className="text-xs text-gray-500 font-medium block mt-0.5">
+                    {orders.length} campus orders placed
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+
+            {/* Track Active Order */}
+            <button
+              onClick={() => {
+                if (activeOrder) {
+                  router.push(`/orders/${activeOrder.id}/track?id=${activeOrder.id}`);
+                } else {
+                  handleGoToTab('active-order');
+                }
+              }}
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-full bg-[#EEF7E9] text-[#4F9D2F] flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Truck className="w-5 h-5 stroke-[1.8]" />
+                </div>
+                <div>
+                  <span className="text-sm font-bold text-gray-900 block">Track Active Order</span>
+                  <span className="text-xs text-gray-500 font-medium block mt-0.5">
+                    {activeOrder ? `Order #${activeOrder.orderNumber} in transit` : 'Check live runner dispatch status'}
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+
+            {/* Notifications */}
+            <button
+              onClick={() => handleGoToTab('notifications')}
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-full bg-[#f4f6f8] text-gray-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Bell className="w-5 h-5 stroke-[1.8]" />
+                </div>
+                <div>
+                  <span className="text-sm font-bold text-gray-900 block">Notifications</span>
+                  <span className="text-xs text-gray-500 font-medium block mt-0.5">
+                    Hostel order updates and announcements
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+
+            {/* Wishlist */}
+            <button
+              onClick={() => handleGoToTab('wishlist')}
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-full bg-[#f4f6f8] text-gray-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <Heart className="w-5 h-5 stroke-[1.8]" />
+                </div>
+                <div>
+                  <span className="text-sm font-bold text-gray-900 block">Wishlist</span>
+                  <span className="text-xs text-gray-500 font-medium block mt-0.5">
+                    Saved snacks, meals and study supplies
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          </div>
+        </div>
+
+        {/* 8. Section: HELP & SUPPORT */}
+        <div>
+          <h3 className="text-[11px] font-black tracking-wider text-gray-400 uppercase mb-2 px-1 select-none">
+            HELP &amp; SUPPORT
+          </h3>
+          <div className="space-y-1">
+            {/* Help & Complaints */}
             <button
               onClick={() => handleGoToTab('support')}
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-full bg-[#f4f6f8] text-gray-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <HelpCircle className="w-5 h-5 stroke-[1.8]" />
+                </div>
+                <div>
+                  <span className="text-sm font-bold text-gray-900 block">Help &amp; Complaints</span>
+                  <span className="text-xs text-gray-500 font-medium block mt-0.5">
+                    Student helpdesk, complaints and resolution tracking
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          </div>
+        </div>
+
+        {/* 9. Section: MORE INFORMATION */}
+        <div>
+          <h3 className="text-[11px] font-black tracking-wider text-gray-400 uppercase mb-2 px-1 select-none">
+            MORE INFORMATION
+          </h3>
+          <div className="space-y-1">
+            {/* Offers & Coupons */}
+            <button
+              onClick={() => handleGoToTab('offers')}
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-full bg-[#f4f6f8] text-gray-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <BadgePercent className="w-5 h-5 stroke-[1.8]" />
+                </div>
+                <div>
+                  <span className="text-sm font-bold text-gray-900 block">Offers &amp; Coupons</span>
+                  <span className="text-xs text-gray-500 font-medium block mt-0.5">
+                    Campus discounts and promo codes
+                  </span>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+
+            {/* Settings */}
+            <button
+              onClick={() => handleGoToTab('settings')}
               className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer"
             >
               <div className="flex items-center gap-3.5">
@@ -395,27 +654,19 @@ export function AccountProfileView({
                   <Settings className="w-5 h-5 stroke-[1.8]" />
                 </div>
                 <div>
-                  <span className="text-sm font-bold text-gray-900 block">Service Hub</span>
+                  <span className="text-sm font-bold text-gray-900 block">Settings</span>
                   <span className="text-xs text-gray-500 font-medium block mt-0.5">
-                    Student Helpdesk, Complaints & Live Resolution
+                    Security, sessions &amp; account preferences
                   </span>
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
             </button>
-          </div>
-        </div>
 
-        {/* 8. Section: MORE INFORMATION */}
-        <div className="mt-6">
-          <h3 className="text-[11px] font-black tracking-wider text-gray-400 uppercase mb-2 px-1 select-none">
-            MORE INFORMATION
-          </h3>
-          <div className="space-y-1">
             {/* About Campus Basket */}
-            <button
-              onClick={() => setShowAboutModal(true)}
-              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer"
+            <Link
+              href="/about"
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer block"
             >
               <div className="flex items-center gap-3.5">
                 <div className="w-10 h-10 rounded-full bg-[#f4f6f8] text-gray-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
@@ -424,51 +675,56 @@ export function AccountProfileView({
                 <div>
                   <span className="text-sm font-bold text-gray-900 block">About Campus Basket</span>
                   <span className="text-xs text-gray-500 font-medium block mt-0.5">
-                    NIT Durgapur Hyper-local Essentials Platform • v2.4.0
+                    NIT Durgapur student essentials platform &bull; v2.4.0
                   </span>
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
-            </button>
+            </Link>
 
-            {/* Legal Information */}
-            <button
-              onClick={() => setShowLegalModal(true)}
-              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer"
+            {/* Legal Information & Rules */}
+            <Link
+              href="/rules"
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors text-left group cursor-pointer block"
             >
               <div className="flex items-center gap-3.5">
                 <div className="w-10 h-10 rounded-full bg-[#f4f6f8] text-gray-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                   <Landmark className="w-5 h-5 stroke-[1.8]" />
                 </div>
                 <div>
-                  <span className="text-sm font-bold text-gray-900 block">Legal Information</span>
+                  <span className="text-sm font-bold text-gray-900 block">Legal Information &amp; Rules</span>
                   <span className="text-xs text-gray-500 font-medium block mt-0.5">
-                    Terms of Service, Privacy Policy & Refund Guidelines
+                    Rules &amp; Regulations, Terms of Service &amp; Privacy Policy
                   </span>
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
-            </button>
-
-            {/* Sign Out */}
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-rose-50/80 active:bg-rose-100 transition-colors text-left group cursor-pointer mt-2"
-            >
-              <div className="flex items-center gap-3.5">
-                <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <LogOut className="w-5 h-5 stroke-[1.8]" />
-                </div>
-                <div>
-                  <span className="text-sm font-bold text-rose-600 block">Sign Out</span>
-                  <span className="text-xs text-rose-400 font-medium block mt-0.5">
-                    Safely log out of your student account
-                  </span>
-                </div>
-              </div>
-              <ChevronRight className="w-5 h-5 text-rose-300 group-hover:translate-x-0.5 transition-transform" />
-            </button>
+            </Link>
           </div>
+        </div>
+
+        {/* 10. Section: ACCOUNT (Visually Separated Sign Out) */}
+        <div className="pt-2 border-t border-gray-100">
+          <h3 className="text-[11px] font-black tracking-wider text-gray-400 uppercase mb-2 px-1 select-none">
+            ACCOUNT
+          </h3>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-between p-3 rounded-2xl bg-rose-50/60 hover:bg-rose-100/70 active:bg-rose-200/60 transition-colors text-left group cursor-pointer border border-rose-100"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-full bg-white text-rose-600 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform">
+                <LogOut className="w-5 h-5 stroke-[2]" />
+              </div>
+              <div>
+                <span className="text-sm font-black text-rose-700 block">Sign Out</span>
+                <span className="text-xs text-rose-500 font-medium block mt-0.5">
+                  Safely log out of your student session
+                </span>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-rose-400 group-hover:translate-x-0.5 transition-transform" />
+          </button>
         </div>
       </div>
 
@@ -479,103 +735,103 @@ export function AccountProfileView({
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
           <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-[#0078AD]/10 text-[#0078AD] flex items-center justify-center">
-                  <Pencil className="w-4 h-4" />
-                </div>
-                <h3 className="text-lg font-black text-gray-900">Edit Profile</h3>
-              </div>
+              <h3 className="text-lg font-bold text-gray-900">Edit Profile</h3>
               <button
                 onClick={() => setShowEditModal(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 cursor-pointer"
+                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-500 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveProfile} className="space-y-4 mt-4">
+            <form onSubmit={handleSaveProfile} className="mt-5 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Full Name</label>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Full Name
+                </label>
                 <input
                   type="text"
+                  required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Your Full Name"
-                  required
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-900 font-bold focus:outline-none focus:border-[#0078AD] focus:bg-white"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0078AD]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Mobile Number (Editable)</label>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Mobile Number
+                </label>
                 <input
                   type="tel"
+                  required
                   value={mobileNumber}
                   onChange={(e) => setMobileNumber(e.target.value)}
-                  placeholder="+91 8972495205"
-                  required
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-xs text-gray-900 font-bold focus:outline-none focus:border-[#0078AD] focus:bg-white"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0078AD]"
                 />
-                <span className="text-[10px] text-gray-400">Used by campus delivery runners to notify you at hostel gate</span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Hostel / Hall</label>
-                  <select
-                    value={hallName}
-                    onChange={(e) => setHallName(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-xs text-gray-900 font-bold focus:outline-none focus:border-[#0078AD] focus:bg-white"
-                  >
-                    {hallsList.map((h) => (
-                      <option key={h} value={h}>{h}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Room Number</label>
-                  <input
-                    type="text"
-                    value={roomNumber}
-                    onChange={(e) => setRoomNumber(e.target.value)}
-                    placeholder="e.g. 123"
-                    required
-                    className="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-xs text-gray-900 font-bold focus:outline-none focus:border-[#0078AD] focus:bg-white"
-                  />
-                </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Default Delivery Instructions</label>
-                <textarea
-                  rows={2}
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Hostel / Residence Hall
+                </label>
+                <select
+                  value={hallName}
+                  onChange={(e) => setHallName(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm font-bold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#0078AD]"
+                >
+                  {hallsList.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Room Number
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={roomNumber}
+                  onChange={(e) => setRoomNumber(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0078AD]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Delivery Runner Instructions
+                </label>
+                <input
+                  type="text"
                   value={deliveryInstructions}
                   onChange={(e) => setDeliveryInstructions(e.target.value)}
-                  placeholder="e.g. Call before delivery, or leave with security."
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-xs text-gray-900 focus:outline-none focus:border-[#0078AD] focus:bg-white"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#0078AD]"
                 />
               </div>
 
               {saveSuccess && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-2">
+                <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  {saveSuccess}
+                  <span>{saveSuccess}</span>
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-3 pt-2">
+              <div className="pt-2 flex gap-3">
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 cursor-pointer"
+                  className="flex-1 py-3 border border-gray-300 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-50 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-6 py-2.5 bg-[#0078AD] hover:bg-[#00608a] text-white text-xs font-extrabold rounded-xl shadow-sm transition-all cursor-pointer"
+                  className="flex-1 py-3 bg-[#0078AD] hover:bg-[#00628e] text-white rounded-xl text-xs font-bold shadow-sm active:scale-98 transition-all cursor-pointer"
                 >
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
@@ -585,51 +841,141 @@ export function AccountProfileView({
         </div>
       )}
 
-      {/* 2. Saved Addresses Modal */}
-      {showAddressModal && (
+      {/* 2. Delivery Details Modal */}
+      {showDeliveryModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl">
+          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                  <MapPin className="w-4 h-4" />
-                </div>
-                <h3 className="text-lg font-black text-gray-900">Saved Addresses</h3>
+              <div className="flex items-center gap-2">
+                <Truck className="w-5 h-5 text-[#4F9D2F]" />
+                <h3 className="text-lg font-bold text-gray-900">Delivery Details</h3>
               </div>
               <button
-                onClick={() => setShowAddressModal(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 cursor-pointer"
+                onClick={() => setShowDeliveryModal(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-500 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="mt-4 space-y-4">
-              {/* Primary Address Card */}
-              <div className="p-4 rounded-2xl border-2 border-[#4F9D2F] bg-emerald-50/40 relative">
+            <div className="mt-4 space-y-4 text-xs">
+              <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 space-y-1">
+                <span className="font-bold text-emerald-900 uppercase tracking-wide text-[10px]">
+                  Current Delivery Room
+                </span>
+                <div className="text-sm font-black text-emerald-950">
+                  {hallName}, Room {roomNumber || 'Not set'}
+                </div>
+                <p className="text-emerald-700 text-[11px]">
+                  Deliveries arrive directly at your hostel room door via campus runners.
+                </p>
+              </div>
+
+              <form onSubmit={handleSaveProfile} className="space-y-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
+                    Select Residence Hall
+                  </label>
+                  <select
+                    value={hallName}
+                    onChange={(e) => setHallName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 font-bold text-gray-900 bg-white"
+                  >
+                    {hallsList.map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
+                    Room Number
+                  </label>
+                  <input
+                    type="text"
+                    value={roomNumber}
+                    onChange={(e) => setRoomNumber(e.target.value)}
+                    placeholder="e.g. 214"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 font-bold text-gray-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">
+                    Delivery Instructions
+                  </label>
+                  <input
+                    type="text"
+                    value={deliveryInstructions}
+                    onChange={(e) => setDeliveryInstructions(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 text-gray-800"
+                  />
+                </div>
+
+                <div className="pt-2 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowDeliveryModal(false)}
+                    className="flex-1 py-2.5 border border-gray-300 rounded-xl font-bold text-gray-700"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="flex-1 py-2.5 bg-[#4F9D2F] hover:bg-[#3d7c24] text-white rounded-xl font-bold"
+                  >
+                    {saving ? 'Updating...' : 'Update Delivery Room'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Address Modal */}
+      {showAddressModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-gray-100">
+              <h3 className="text-lg font-bold text-gray-900">Saved Addresses</h3>
+              <button
+                onClick={() => setShowAddressModal(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-500 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <div className="p-4 rounded-2xl border-2 border-[#0078AD] bg-sky-50/30 relative">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-wider bg-[#4F9D2F] text-white px-2.5 py-0.5 rounded-full">
-                    Default Campus Residence
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-[#0078AD] text-white px-2 py-0.5 rounded">
+                    Default Hostel Room
                   </span>
                   <button
                     onClick={() => {
                       setShowAddressModal(false);
                       setShowEditModal(true);
                     }}
-                    className="text-xs font-bold text-[#0078AD] hover:underline cursor-pointer"
+                    className="text-xs font-bold text-[#0078AD] hover:underline"
                   >
                     Edit
                   </button>
                 </div>
-                <h4 className="text-sm font-black text-gray-900 mt-2">
-                  {hallName}, Room {roomNumber}
-                </h4>
+                <h4 className="text-sm font-bold text-gray-900 mt-2">{fullName}</h4>
                 <p className="text-xs text-gray-600 mt-0.5">
-                  National Institute of Technology Durgapur, Mahatma Gandhi Avenue, Durgapur, WB 713209
+                  {hallName}, Room {roomNumber || '---'}
                 </p>
-                <div className="mt-2 text-xs text-gray-500 font-medium">
-                  <strong>Notes:</strong> {deliveryInstructions || 'Call upon arrival at hall gate.'}
-                </div>
+                <p className="text-xs text-gray-500">
+                  NIT Durgapur Campus, Mahatma Gandhi Avenue, Durgapur 713209
+                </p>
+                <p className="text-[11px] text-gray-500 font-mono mt-1">
+                  Phone: {mobileNumber || 'Not set'}
+                </p>
               </div>
 
               <button
@@ -637,184 +983,73 @@ export function AccountProfileView({
                   setShowAddressModal(false);
                   setShowEditModal(true);
                 }}
-                className="w-full py-3 border border-dashed border-gray-300 rounded-2xl text-xs font-bold text-[#0078AD] hover:bg-sky-50/50 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                className="w-full py-3 border border-dashed border-gray-300 hover:border-gray-400 rounded-2xl text-xs font-bold text-gray-700 transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Pencil className="w-3.5 h-3.5" />
-                <span>Update Delivery Hall & Room</span>
+                <span>Update Campus Address</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 3. PAN / Student ID Information Modal */}
+      {/* 4. KYC / PAN Modal */}
       {showKycModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl">
+          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center">
-                  <CreditCard className="w-4 h-4" />
-                </div>
-                <h3 className="text-lg font-black text-gray-900">Student ID & Verification</h3>
-              </div>
+              <h3 className="text-lg font-bold text-gray-900">Student Identity Verification</h3>
               <button
                 onClick={() => setShowKycModal(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 cursor-pointer"
+                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-500 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* College Digital ID Card */}
-            <div className="mt-4 p-5 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-sky-950 text-white shadow-lg space-y-4">
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <div className="mt-5 space-y-4 text-xs text-gray-700 leading-relaxed">
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3">
+                <ShieldCheck className="w-8 h-8 text-emerald-600 shrink-0" />
                 <div>
-                  <div className="text-[10px] uppercase font-bold text-sky-300 tracking-wider">
-                    NATIONAL INSTITUTE OF TECHNOLOGY DURGAPUR
+                  <div className="font-bold text-emerald-950 text-sm">
+                    Verified Campus Resident
                   </div>
-                  <div className="text-sm font-black text-white mt-0.5">Digital Student Identification</div>
-                </div>
-                <span className="text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" /> Verified
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">Student Name</span>
-                  <span className="font-bold text-white text-sm">{fullName}</span>
-                </div>
-                <div>
-                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">Roll Number</span>
-                  <span className="font-mono font-bold text-sky-200">{user?.student?.rollNumber || '24U10227'}</span>
-                </div>
-                <div>
-                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">Registration No.</span>
-                  <span className="font-mono font-bold text-white">{user?.student?.registrationNumber || '2026-UG-10227'}</span>
-                </div>
-                <div>
-                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">College Email</span>
-                  <span className="font-mono text-gray-300 truncate block">{user?.email || 'student@nitdgp.ac.in'}</span>
+                  <div className="text-emerald-700 text-[11px] mt-0.5">
+                    Your student email is authenticated with NIT Durgapur institutional systems.
+                  </div>
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] text-gray-400">
-                <span>Geofence: Inside NIT Durgapur Campus</span>
-                <span className="text-emerald-400 font-bold">Subsidized Delivery Rate: ₹0</span>
-              </div>
-            </div>
-
-            <div className="mt-4 text-center">
-              <button
-                onClick={() => setShowKycModal(false)}
-                className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl transition-colors cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 4. About Modal */}
-      {showAboutModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center">
-                  <Sun className="w-4 h-4" />
+              <div className="space-y-2 border border-gray-200 rounded-2xl p-4">
+                <div className="flex justify-between py-1 border-b border-gray-100">
+                  <span className="text-gray-500 font-medium">Student Name:</span>
+                  <span className="font-bold text-gray-900">{fullName}</span>
                 </div>
-                <h3 className="text-lg font-black text-gray-900">About Campus Basket</h3>
+                <div className="flex justify-between py-1 border-b border-gray-100">
+                  <span className="text-gray-500 font-medium">Roll Number:</span>
+                  <span className="font-mono font-bold text-gray-900">
+                    {user?.student?.rollNumber || 'Institutional'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-gray-100">
+                  <span className="text-gray-500 font-medium">Residence:</span>
+                  <span className="font-bold text-gray-900">
+                    {hallName}, Room {roomNumber || '---'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-gray-500 font-medium">Institutional Email:</span>
+                  <span className="font-bold text-gray-900">{user?.email || 'Authenticated'}</span>
+                </div>
               </div>
-              <button
-                onClick={() => setShowAboutModal(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            <div className="text-xs text-gray-600 space-y-2 leading-relaxed">
-              <p>
-                <strong className="text-gray-900 font-bold">Campus Basket</strong> is the dedicated hyper-local commerce and delivery ecosystem engineered exclusively for the students, faculty, and residents of <strong className="text-gray-900">NIT Durgapur</strong>.
+              <p className="text-[11px] text-gray-500 leading-normal">
+                All purchases and transactions are protected under institutional student privacy governance.
               </p>
-              <p>
-                From hostel midnight snacks, fruits, fresh juices, and stationery to rapid laundry pickup, Campus Basket eliminates excessive commercial commissions and guarantees rapid 10–15 minute hostel-gate delivery through verified student delivery runners.
-              </p>
-              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-[11px] text-gray-500 font-mono">
-                Platform Build: v2.4.0 • Release 2026 • NIT Durgapur
-              </div>
             </div>
-
-            <button
-              onClick={() => setShowAboutModal(false)}
-              className="w-full py-2.5 bg-gray-900 text-white text-xs font-bold rounded-xl hover:bg-gray-800 transition-colors cursor-pointer"
-            >
-              Done
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 5. Legal Information Modal */}
-      {showLegalModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center">
-                  <Landmark className="w-4 h-4" />
-                </div>
-                <h3 className="text-lg font-black text-gray-900">Legal Information</h3>
-              </div>
-              <button
-                onClick={() => setShowLegalModal(false)}
-                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              <Link
-                href="/terms"
-                onClick={() => setShowLegalModal(false)}
-                className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:bg-gray-50 text-xs font-bold text-gray-800"
-              >
-                <span>Terms &amp; Conditions</span>
-                <ChevronRight className="w-4 h-4 text-gray-400" />
-              </Link>
-              <Link
-                href="/privacy"
-                onClick={() => setShowLegalModal(false)}
-                className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:bg-gray-50 text-xs font-bold text-gray-800"
-              >
-                <span>Privacy Policy</span>
-                <ChevronRight className="w-4 h-4 text-gray-400" />
-              </Link>
-              <Link
-                href="/refund-policy"
-                onClick={() => setShowLegalModal(false)}
-                className="flex items-center justify-between p-3 rounded-xl border border-gray-200 hover:bg-gray-50 text-xs font-bold text-gray-800"
-              >
-                <span>Campus Return &amp; Refund Policy</span>
-                <ChevronRight className="w-4 h-4 text-gray-400" />
-              </Link>
-            </div>
-
-            <button
-              onClick={() => setShowLegalModal(false)}
-              className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl transition-colors cursor-pointer"
-            >
-              Close
-            </button>
           </div>
         </div>
       )}
     </div>
   );
 }
-
-export default AccountProfileView;

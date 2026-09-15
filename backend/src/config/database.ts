@@ -2744,18 +2744,24 @@ const fallbackHandlers: Record<string, any> = {
     },
     findFirst: async (args?: any) => {
       const t = persistentWalletTransactions.find(item => {
+        if (args?.where?.OR && Array.isArray(args.where.OR)) {
+          return args.where.OR.some((cond: any) => {
+            if (cond.transactionId && item.transactionId === cond.transactionId) return true;
+            if (cond.orderId && item.orderId === cond.orderId) return true;
+            if (cond.id && item.id === cond.id) return true;
+            return false;
+          });
+        }
         if (args?.where?.transactionId && item.transactionId !== args.where.transactionId) return false;
         if (args?.where?.id && item.id !== args.where.id) return false;
         if (args?.where?.studentId && item.studentId !== args.where.studentId) return false;
         if (args?.where?.providerId && item.providerId !== args.where.providerId) return false;
+        if (args?.where?.walletId && item.walletId !== args.where.walletId) return false;
         if (args?.where?.orderId && item.orderId !== args.where.orderId) return false;
         if (args?.where?.triggerEvent && item.triggerEvent !== args.where.triggerEvent) return false;
         if (args?.where?.refundType && item.refundType !== args.where.refundType) return false;
         if (args?.where?.type && item.type !== args.where.type) return false;
-        if (args?.where?.transactionId || args?.where?.id || (args?.where?.orderId && args?.where?.triggerEvent) || args?.where?.orderId) {
-          return true;
-        }
-        return false;
+        return true;
       });
       return t ? JSON.parse(JSON.stringify(t)) : null;
     },
@@ -2773,19 +2779,18 @@ const fallbackHandlers: Record<string, any> = {
       return JSON.parse(JSON.stringify(newT));
     },
     deleteMany: async (args?: any) => {
-      const studentId = args?.where?.studentId;
-      const orderId = args?.where?.orderId;
-      if (studentId) {
-        for (let i = persistentWalletTransactions.length - 1; i >= 0; i--) {
-          if (persistentWalletTransactions[i].studentId === studentId) {
-            persistentWalletTransactions.splice(i, 1);
-          }
-        }
-      } else if (orderId) {
-        for (let i = persistentWalletTransactions.length - 1; i >= 0; i--) {
-          if (persistentWalletTransactions[i].orderId === orderId) {
-            persistentWalletTransactions.splice(i, 1);
-          }
+      const where = args?.where || {};
+      for (let i = persistentWalletTransactions.length - 1; i >= 0; i--) {
+        const item = persistentWalletTransactions[i];
+        let match = true;
+        if (where.studentId && item.studentId !== where.studentId) match = false;
+        if (where.providerId && item.providerId !== where.providerId) match = false;
+        if (where.walletId && item.walletId !== where.walletId) match = false;
+        if (where.orderId && item.orderId !== where.orderId) match = false;
+        if (where.id && item.id !== where.id) match = false;
+        if (where.triggerEvent && item.triggerEvent !== where.triggerEvent) match = false;
+        if (match) {
+          persistentWalletTransactions.splice(i, 1);
         }
       }
       saveList('mock_wallet_transactions.json', persistentWalletTransactions);

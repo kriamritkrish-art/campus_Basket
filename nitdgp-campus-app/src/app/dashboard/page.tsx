@@ -29,6 +29,7 @@ import {
   HelpCircle,
   Settings,
   ArrowRight,
+  ArrowLeft,
   AlertTriangle,
   XCircle,
   Trash2,
@@ -543,183 +544,31 @@ function DashboardContent() {
           </div>
         )}
 
-        {/* 3. Dashboard Multi-Tab Navigation Bar */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-1.5 overflow-x-auto scrollbar-none">
-          <div className="flex items-center gap-1 min-w-max text-xs font-bold">
-            <button
-              onClick={() => handleTabChange('orders')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
-                activeTab === 'orders'
-                  ? 'bg-[#4F9D2F] text-white shadow-sm'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <ShoppingBag className="w-4 h-4" />
-              <span>My Orders</span>
-              <span className="ml-0.5 text-[10px] opacity-80">({orders.length})</span>
-            </button>
-
-            <button
-              onClick={() => handleTabChange('profile')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
-                activeTab === 'profile'
-                  ? 'bg-[#4F9D2F] text-white shadow-sm'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <User className="w-4 h-4" />
-              <span>My Profile</span>
-            </button>
-
-            {activeOrder && (
-              <button
-                onClick={() => handleTabChange('active-order')}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
-                  activeTab === 'active-order'
-                    ? 'bg-[#4F9D2F] text-white shadow-sm'
-                    : 'text-[#2e7d32] bg-[#f1f8e9] hover:bg-[#e8f5e9]'
-                }`}
-              >
-                <Truck className="w-4 h-4" />
-                <span>Track Active Order</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => handleTabChange('refunds')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
-                activeTab === 'refunds'
-                  ? 'bg-[#4F9D2F] text-white shadow-sm'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span>Refunds</span>
-              {refundOrders.length > 0 && (
-                <span className="ml-0.5 text-[10px] opacity-80">({refundOrders.length})</span>
-              )}
-            </button>
-
+        {/* Sub-page Navigation Header: Clean ← Back to Account */}
+        {activeTab !== 'profile' && (
+          <div className="flex items-center justify-between pb-1">
             <Link
-              href="/wallet"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
+              href="/account"
+              className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-gray-700 hover:text-gray-900 bg-white border border-gray-200 px-3.5 py-2 rounded-xl shadow-2xs hover:bg-gray-50 transition"
             >
-              <Wallet className="w-4 h-4 text-emerald-600" />
-              <span>Campus Wallet</span>
-              {walletBalance !== null && (
-                <span className="ml-0.5 text-[10px] font-black bg-emerald-600 text-white px-1.5 py-0.5 rounded-full">
-                  ₹{walletBalance.toFixed(0)}
-                </span>
-              )}
+              <ArrowLeft className="w-4 h-4 text-gray-700" />
+              <span>Back to Account</span>
             </Link>
-
-            <button
-              onClick={() => handleTabChange('payments')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
-                activeTab === 'payments'
-                  ? 'bg-[#4F9D2F] text-white shadow-sm'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <CreditCard className="w-4 h-4" />
-              <span>Payment History</span>
-            </button>
-
-            <button
-              onClick={() => handleTabChange('payment-methods')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
-                activeTab === 'payment-methods'
-                  ? 'bg-[#4F9D2F] text-white shadow-sm'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <Wallet className="w-4 h-4" />
-              <span>Payment Methods</span>
-            </button>
-
-            <button
-              onClick={() => handleTabChange('delivery')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
-                activeTab === 'delivery'
-                  ? 'bg-[#4F9D2F] text-white shadow-sm'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <MapPin className="w-4 h-4" />
-              <span>Delivery Details</span>
-            </button>
-
-            <button
-              onClick={() => handleTabChange('wishlist')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
-                activeTab === 'wishlist'
-                  ? 'bg-[#4F9D2F] text-white shadow-sm'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <Heart className="w-4 h-4" />
-              <span>Wishlist</span>
-              {wishlistProducts.length > 0 && (
-                <span className="ml-0.5 text-[10px] opacity-80">({wishlistProducts.length})</span>
-              )}
-            </button>
-
-            <button
-              onClick={() => handleTabChange('notifications')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
-                activeTab === 'notifications'
-                  ? 'bg-[#4F9D2F] text-white shadow-sm'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <Bell className="w-4 h-4" />
-              <span>Notifications</span>
-            </button>
-
-            <button
-              onClick={() => handleTabChange('offers')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
-                activeTab === 'offers'
-                  ? 'bg-[#4F9D2F] text-white shadow-sm'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <Gift className="w-4 h-4" />
-              <span>Offers &amp; Coupons</span>
-            </button>
-
-            <button
-              onClick={() => handleTabChange('support')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
-                activeTab === 'support'
-                  ? 'bg-[#4F9D2F] text-white shadow-sm'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <HelpCircle className="w-4 h-4" />
-              <span>Help &amp; Complaints</span>
-              {tickets.length > 0 && (
-                <span className={`ml-0.5 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full ${
-                  activeTab === 'support' ? 'bg-white text-[#4F9D2F]' : 'bg-rose-100 text-rose-700'
-                }`}>
-                  {tickets.filter((t: any) => t.status !== 'RESOLVED' && t.status !== 'CLOSED').length || tickets.length}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => handleTabChange('settings')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-colors ${
-                activeTab === 'settings'
-                  ? 'bg-[#4F9D2F] text-white shadow-sm'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <Settings className="w-4 h-4" />
-              <span>Settings</span>
-            </button>
+            <span className="text-xs font-black text-gray-400 uppercase tracking-wider">
+              {activeTab === 'orders' ? 'My Orders' :
+               activeTab === 'refunds' ? 'Refunds & Returns' :
+               activeTab === 'payments' ? 'Payment History' :
+               activeTab === 'payment-methods' ? 'Payment Methods' :
+               activeTab === 'delivery' ? 'Delivery Details' :
+               activeTab === 'wishlist' ? 'Wishlist' :
+               activeTab === 'notifications' ? 'Notifications' :
+               activeTab === 'offers' ? 'Offers & Coupons' :
+               activeTab === 'support' ? 'Help & Complaints' :
+               activeTab === 'settings' ? 'Settings' :
+               activeTab === 'active-order' ? 'Track Active Order' : 'Account Hub'}
+            </span>
           </div>
-        </div>
+        )}
 
         {/* 4. Tab Panels */}
 
@@ -1607,12 +1456,13 @@ function DashboardContent() {
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-lg sm:text-xl font-black text-gray-900">Campus Helpdesk &amp; Complaints</h2>
-                  <span className="text-[10px] font-extrabold bg-sky-50 text-sky-800 border border-sky-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                    <LifeBuoy className="w-3 h-3" /> Live Tracking
+                  <span className="text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
+                    <span>Live Status</span>
                   </span>
                 </div>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Track real-time resolution status and official desk responses across all your campus orders.
+                  Track your complaints, official responses, and resolution progress.
                 </p>
               </div>
 
@@ -1863,7 +1713,7 @@ function DashboardContent() {
                               </div>
                             </div>
 
-                            {/* 3-Step Visual Progress Stepper */}
+                            {/* 3-Step Status-Driven Progress Stepper */}
                             <div className="pt-2">
                               <div className="flex items-center justify-between text-[11px] font-bold mb-2">
                                 <span className="text-emerald-700 flex items-center gap-1">
@@ -1885,8 +1735,12 @@ function DashboardContent() {
                                     isResolved || isClosed ? 'text-emerald-700' : 'text-gray-400'
                                   }`}
                                 >
-                                  {(isResolved || isClosed) && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
-                                  3. Resolution Statement
+                                  {(isResolved || isClosed) ? (
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                  ) : (
+                                    <span className="w-3 h-3 rounded-full border border-gray-400 inline-block" />
+                                  )}
+                                  3. Resolution
                                 </span>
                               </div>
                               <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
@@ -1902,34 +1756,62 @@ function DashboardContent() {
                               </div>
                             </div>
 
-                            {/* Official Helpdesk Response & Resolution Box */}
+                            {/* Official Helpdesk Response Box */}
                             <div className="pt-1">
                               {ticket.adminResponse ? (
-                                <div className="p-4 rounded-xl bg-emerald-50/90 border-2 border-emerald-300 text-emerald-950 space-y-1.5 shadow-xs">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-1.5 text-xs font-black text-emerald-900">
-                                      <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                                      <span>Official Helpdesk Resolution &amp; Response:</span>
+                                isResolved || isClosed ? (
+                                  <div className="p-4 rounded-xl bg-emerald-50/90 border-2 border-emerald-300 text-emerald-950 space-y-1.5 shadow-xs">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-1.5 text-xs font-black text-emerald-900">
+                                        <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                                        <span>Official Helpdesk Resolution</span>
+                                      </div>
+                                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                                        Resolution Completed
+                                      </span>
                                     </div>
-                                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
-                                      Verified Desk Reply
-                                    </span>
+                                    <p className="text-xs font-bold leading-relaxed text-emerald-900 whitespace-pre-wrap">
+                                      {ticket.adminResponse}
+                                    </p>
+                                    {ticket.updatedAt && (
+                                      <div className="text-[10px] text-emerald-700/80 pt-1 border-t border-emerald-200">
+                                        Resolution logged: {new Date(ticket.updatedAt).toLocaleDateString('en-IN', {
+                                          day: '2-digit',
+                                          month: 'short',
+                                          year: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </div>
+                                    )}
                                   </div>
-                                  <p className="text-xs font-bold leading-relaxed text-emerald-900 whitespace-pre-wrap">
-                                    {ticket.adminResponse}
-                                  </p>
-                                  {ticket.updatedAt && (
-                                    <div className="text-[10px] text-emerald-700/80 pt-1 border-t border-emerald-200">
-                                      Response logged: {new Date(ticket.updatedAt).toLocaleDateString('en-IN', {
-                                        day: '2-digit',
-                                        month: 'short',
-                                        year: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      })}
+                                ) : (
+                                  <div className="p-4 rounded-xl bg-sky-50/90 border-2 border-sky-300 text-sky-950 space-y-1.5 shadow-xs">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-1.5 text-xs font-black text-sky-900">
+                                        <RotateCw className="w-4 h-4 text-sky-700 animate-spin" />
+                                        <span>Official Helpdesk Update</span>
+                                      </div>
+                                      <span className="text-[10px] font-bold text-sky-800 bg-sky-100 px-2 py-0.5 rounded-full">
+                                        Review in Progress
+                                      </span>
                                     </div>
-                                  )}
-                                </div>
+                                    <p className="text-xs font-bold leading-relaxed text-sky-900 whitespace-pre-wrap">
+                                      {ticket.adminResponse}
+                                    </p>
+                                    {ticket.updatedAt && (
+                                      <div className="text-[10px] text-sky-700/80 pt-1 border-t border-sky-200">
+                                        Update logged: {new Date(ticket.updatedAt).toLocaleDateString('en-IN', {
+                                          day: '2-digit',
+                                          month: 'short',
+                                          year: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
                               ) : (
                                 <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200 text-blue-900 flex items-start gap-2.5 text-xs">
                                   <LifeBuoy className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />

@@ -1,5 +1,9 @@
 import { prisma } from '../../config/database';
 import { LedgerService } from './LedgerService';
+import { RazorpayService } from '../payment/RazorpayService';
+import { env } from '../../config/environment';
+
+const razorpayService = new RazorpayService();
 
 export interface CreditRefundParams {
   studentId: string;
@@ -20,6 +24,163 @@ export interface DebitPaymentParams {
 }
 
 export class WalletService {
+  /**
+   * Initiate student wallet top-up by creating a Razorpay gateway order
+   */
+  public static async initiateTopUp(studentId: string, amount: number): Promise<{
+    razorpayOrderId: string;
+    amount: number;
+    currency: string;
+    keyId: string;
+  }> {
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || numAmount < 1) {
+      throw new Error('Minimum top-up amount is ₹1.00');
+    }
+    if (numAmount > 50000) {
+      throw new Error('Maximum top-up amount per transaction is ₹50,000.00');
+    }
+
+    const wallet = await this.getOrCreateWallet(studentId);
+    const receiptId = `WLT-TOP-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const rzpOrder = await razorpayService.createRazorpayOrder({
+      amountInRupees: numAmount,
+      receiptId,
+      notes: {
+        studentId,
+        walletId: wallet.id,
+        purpose: 'WALLET_TOPUP'
+      }
+    });
+
+    return {
+      razorpayOrderId: rzpOrder.id,
+      amount: rzpOrder.amount, // in paise
+      currency: rzpOrder.currency || 'INR',
+      keyId: env.RAZORPAY_KEY_ID || 'rzp_test_campusbasket'
+    };
+  }
+
+  /**
+   * Verify Razorpay payment signature and credit top-up amount to student wallet
+   */
+  public static async verifyAndCreditTopUp(params: {
+    studentId: string;
+    razorpayOrderId: string;
+    razorpayPaymentId: string;
+    razorpaySignature: string;
+    amount: number;
+  }): Promise<{
+    success: boolean;
+    wallet: any;
+    transaction: any;
+    newBalance: number;
+    alreadyProcessed: boolean;
+  }> {
+    const { studentId, razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = params;
+    const numAmount = Number((amount || 0).toFixed(2));
+    if (numAmount <= 0) {
+      throw new Error('Invalid top-up amount');
+    }
+
+    // 1. Verify Razorpay cryptographic HMAC-SHA256 signature
+    const isValid = razorpayService.verifyPaymentSignature(
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature
+    );
+
+    if (!isValid) {
+      throw new Error('Payment verification failed: invalid signature');
+    }
+
+    // 2. Idempotency Check: Prevent duplicate credit for the same payment
+    const existing = await (prisma as any).walletTransaction.findFirst({
+      where: {
+        OR: [
+          { transactionId: razorpayPaymentId },
+          { orderId: razorpayOrderId }
+        ]
+      }
+    }).catch(() => null);
+
+    if (existing) {
+      const wallet = await this.getOrCreateWallet(studentId);
+      return {
+        success: true,
+        wallet,
+        transaction: existing,
+        newBalance: Number(wallet.balance),
+        alreadyProcessed: true
+      };
+    }
+
+    // 3. Fetch wallet and calculate balances
+    const wallet = await this.getOrCreateWallet(studentId);
+    const balanceBefore = Number(wallet.balance || 0);
+    const balanceAfter = Number((balanceBefore + numAmount).toFixed(2));
+
+    // 4. Update Wallet Balance
+    const updatedWallet = await (prisma as any).wallet.update({
+      where: { id: wallet.id },
+      data: {
+        balance: balanceAfter,
+        updatedAt: new Date()
+      }
+    });
+
+    // 5. Create Wallet Transaction Record
+    const transaction = await (prisma as any).walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        studentId,
+        orderId: razorpayOrderId,
+        transactionId: razorpayPaymentId,
+        type: 'CREDIT',
+        direction: 'CREDIT',
+        refundType: 'WALLET_TOPUP',
+        refundMethod: 'RAZORPAY',
+        triggerEvent: 'TOPUP_SUCCESS',
+        amount: numAmount,
+        balanceBefore,
+        balanceAfter,
+        status: 'COMPLETED',
+        description: `Wallet Top-up via Online Payment (Ref: ${razorpayPaymentId.slice(-8)})`,
+        createdAt: new Date()
+      }
+    });
+
+    // 6. Record in Ledger
+    try {
+      await LedgerService.recordEntry({
+        orderId: razorpayOrderId,
+        entryType: 'PAYMENT_CAPTURED',
+        debitAccount: 'STUDENT_WALLET_ESCROW',
+        creditAccount: 'PAYMENT_GATEWAY_RECEIVABLE',
+        amount: numAmount,
+        referenceId: razorpayPaymentId,
+        description: `Student Wallet Top-up: Student ${studentId}, Amount: ₹${numAmount.toFixed(2)}`,
+        metadata: {
+          studentId,
+          razorpayOrderId,
+          razorpayPaymentId,
+          balanceBefore,
+          balanceAfter
+        }
+      });
+    } catch (e) {
+      console.warn('[WalletService] Ledger recording notice:', e);
+    }
+
+    return {
+      success: true,
+      wallet: updatedWallet,
+      transaction,
+      newBalance: balanceAfter,
+      alreadyProcessed: false
+    };
+  }
   /**
    * Fetch or initialize student wallet.
    */

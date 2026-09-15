@@ -304,12 +304,12 @@ export function Navbar() {
 
                       <div className="p-1 space-y-0.5 text-xs text-gray-700">
                         <Link
-                          href="/dashboard?tab=profile"
+                          href="/account"
                           onClick={() => setProfileDropdownOpen(false)}
                           className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-50 font-medium"
                         >
                           <span>📊</span>
-                          <span>Overview &amp; Profile</span>
+                          <span>Account Hub &amp; Profile</span>
                         </Link>
                         <Link
                           href="/dashboard?tab=orders"
@@ -487,7 +487,7 @@ export function Navbar() {
                 My Orders
               </Link>
               <Link
-                href={activeOrder ? `/orders/track?id=${activeOrder.id}` : '/orders/track'}
+                href={activeOrder ? `/orders/${activeOrder.id}/track?id=${activeOrder.id}` : '/orders/track'}
                 onClick={() => setMobileMenuOpen(false)}
                 className="block p-2 rounded-lg hover:bg-gray-50 text-[#4F9D2F]"
               >

@@ -83,4 +83,64 @@ router.post('/pay', rbacGuard(['STUDENT', 'ADMIN']), async (req, res, next) => {
   }
 });
 
+/**
+ * Initiate wallet top-up via Razorpay gateway order
+ */
+router.post('/topup/initiate', rbacGuard(['STUDENT', 'ADMIN']), async (req, res, next) => {
+  try {
+    const { amount } = req.body;
+    const student = await resolveStudentProfile(req.user);
+    const studentId = student?.id;
+    if (!studentId) {
+      res.status(403).json({ success: false, message: 'Student profile required' });
+      return;
+    }
+    const orderData = await WalletService.initiateTopUp(studentId, Number(amount));
+    res.status(200).json({
+      success: true,
+      message: 'Wallet top-up order initialized',
+      ...orderData
+    });
+  } catch (err: any) {
+    res.status(400).json({
+      success: false,
+      message: err?.message || 'Failed to initialize wallet top-up'
+    });
+  }
+});
+
+/**
+ * Verify Razorpay payment signature and credit student wallet
+ */
+router.post('/topup/verify', rbacGuard(['STUDENT', 'ADMIN']), async (req, res, next) => {
+  try {
+    const { razorpayOrderId, razorpayPaymentId, razorpaySignature, amount } = req.body;
+    const student = await resolveStudentProfile(req.user);
+    const studentId = student?.id;
+    if (!studentId) {
+      res.status(403).json({ success: false, message: 'Student profile required' });
+      return;
+    }
+
+    const result = await WalletService.verifyAndCreditTopUp({
+      studentId,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+      amount: Number(amount)
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `₹${Number(amount).toFixed(2)} added to Campus Basket Wallet successfully!`,
+      ...result
+    });
+  } catch (err: any) {
+    res.status(400).json({
+      success: false,
+      message: err?.message || 'Payment signature verification failed'
+    });
+  }
+});
+
 export default router;

@@ -37,7 +37,7 @@ export function MobileBottomNav({ onOpenCategories }: MobileBottomNavProps) {
   const isSearch = pathname === '/food' || pathname === '/fruits' || pathname === '/essentials';
   const isBasket = pathname === '/cart' || pathname === '/checkout';
   const isOrders = pathname?.startsWith('/orders') || pathname === '/dashboard?tab=orders';
-  const isProfile = pathname === '/dashboard' || pathname === '/login' || pathname === '/register';
+  const isProfile = pathname === '/account' || pathname === '/dashboard' || pathname === '/login' || pathname === '/register';
 
   return (
     <nav
@@ -103,16 +103,16 @@ export function MobileBottomNav({ onOpenCategories }: MobileBottomNavProps) {
         </span>
       </Link>
 
-      {/* 5. Profile */}
+      {/* 5. Account Hub */}
       <Link
-        href={isAuthenticated ? '/dashboard?tab=profile' : '/login'}
+        href={isAuthenticated ? '/account' : '/login'}
         className={`flex flex-col items-center justify-center py-1 px-3 min-w-[54px] rounded-lg transition-colors ${
           isProfile ? 'text-[#4F9D2F]' : 'text-gray-500 hover:text-gray-900'
         }`}
       >
         <User className={`w-5 h-5 ${isProfile ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
         <span className={`text-[10px] mt-0.5 ${isProfile ? 'font-black' : 'font-medium'}`}>
-          Profile
+          Account
         </span>
       </Link>
     </nav>
