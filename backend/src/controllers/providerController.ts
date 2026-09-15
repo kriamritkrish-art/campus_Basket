@@ -22,9 +22,14 @@ function matchesCategory(providerCategory: string, category: { name: string; slu
 
 export async function resolveProviderId(req: Request): Promise<string | null> {
   if (req.user?.providerId) return req.user.providerId;
-  if (req.user?.role === 'SERVICE_PROVIDER' && req.user?.userId) {
-    const prov = await prisma.serviceProvider.findUnique({ where: { userId: req.user.userId } });
+  if ((req.user as any)?.provider?.id) return (req.user as any).provider.id;
+  const uid = req.user?.userId || (req.user as any)?.id;
+  const role = req.user?.role;
+  if ((role === 'SERVICE_PROVIDER' || (role as string) === 'PROVIDER') && uid) {
+    const prov = await prisma.serviceProvider.findUnique({ where: { userId: uid } });
     if (prov) return prov.id;
+    const provById = await prisma.serviceProvider.findUnique({ where: { id: uid } });
+    if (provById) return provById.id;
   }
   if (req.user?.role === 'ADMIN' && req.query.providerId) {
     return String(req.query.providerId);
